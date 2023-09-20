@@ -71,5 +71,5 @@ systemctl enable backup_cloud.timer check_mount.timer check_hdsentinel_health.ti
 systemctl start backup_cloud.timer check_mount.timer check_hdsentinel_health.timer
 
 # Show success message and active timers to ensure installation worked
-echo "\nInstallation/Update complete. Your timers now are:\n"
+printf "\nInstallation/Update complete. Your timers now are:\n"
 systemctl list-timers
