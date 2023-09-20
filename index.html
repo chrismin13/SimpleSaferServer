@@ -71,4 +71,6 @@ systemctl start backup_cloud.timer check_mount.timer check_hdsentinel_health.tim
 # Clean up
 rm -rf /tmp/SimpleSaferServer
 
-echo "Installation/Update complete."
+# Show success message and active timers to ensure installation worked
+echo "Installation/Update complete. Your timers now are:"
+systemctl list-timers
