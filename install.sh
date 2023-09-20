@@ -6,16 +6,17 @@ if [ "$EUID" -ne 0 ]; then
   exec sudo bash "$0" "$@"
 fi
 
-# Create config directory if it doesn't exist
-mkdir -p /etc/SimpleSaferServer
-
-# Load existing configurations
-if [ -f "/etc/SimpleSaferServer/config.conf" ]; then
-  source /etc/SimpleSaferServer/config.conf
-fi
-
 # Get the username of the user who invoked sudo
 invoked_user=$(logname)
+config_path="/etc/SimpleSaferServer/config.conf"
+
+# Create config directory if it doesn't exist
+mkdir -p $(dirname "$config_path")
+
+# Load existing configurations
+if [ -f "$config_path" ]; then
+  source $config_path
+fi
 
 # Prompt for missing variables
 declare -A prompts=(
