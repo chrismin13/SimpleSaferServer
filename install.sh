@@ -32,7 +32,6 @@ declare -A prompts=(
 
 for key in "${!prompts[@]}"; do
     if [ -z "${!key}" ]; then
-        echo
         read -p "${prompts[$key]}" $key
     fi
 done
