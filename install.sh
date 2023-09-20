@@ -6,6 +6,8 @@ if [ "$EUID" -ne 0 ]; then
   exec sudo bash "$0" "$@"
 fi
 
+echo "Welcome to the Simple Safer Server script collection installer."
+
 # Get the username of the user who invoked sudo
 invoked_user=$(logname)
 config_path="/etc/SimpleSaferServer/config.conf"
@@ -30,7 +32,7 @@ declare -A prompts=(
 
 for key in "${!prompts[@]}"; do
     if [ -z "${!key}" ]; then
-        read -p "${prompts[$key]}" $key
+        read -p "\n${prompts[$key]}\n" $key
     fi
 done
 
@@ -69,5 +71,5 @@ systemctl enable backup_cloud.timer check_mount.timer check_hdsentinel_health.ti
 systemctl start backup_cloud.timer check_mount.timer check_hdsentinel_health.timer
 
 # Show success message and active timers to ensure installation worked
-echo "Installation/Update complete. Your timers now are:"
+echo "\nInstallation/Update complete. Your timers now are:\n"
 systemctl list-timers
