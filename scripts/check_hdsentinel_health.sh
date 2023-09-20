@@ -6,7 +6,7 @@ source /etc/SimpleSaferServer/config.conf
 # Function to send email
 function send_email {
     echo "$1 - $2" # Log the status
-    echo -e "Subject: $1 - $SERVER_NAME\n\n$2" | msmtp $EMAIL
+    echo -e "Subject: $1 - $SERVER_NAME\n\n$2" | msmtp $EMAIL_ADDRESS
 }
 
 # Define the directories for the hdsentinel files
