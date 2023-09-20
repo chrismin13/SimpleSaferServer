@@ -6,7 +6,7 @@ if [ "$EUID" -ne 0 ]; then
   exec sudo bash "$0" "$@"
 fi
 
-echo "Welcome to the Simple Safer Server script collection installer."
+printf "Welcome to the Simple Safer Server script collection installer.\n"
 
 # Get the username of the user who invoked sudo
 invoked_user=$(logname)
@@ -32,7 +32,7 @@ declare -A prompts=(
 
 for key in "${!prompts[@]}"; do
     if [ -z "${!key}" ]; then
-        read -p "\n${prompts[$key]}\n" $key
+        read -p "${prompts[$key]}" $key
     fi
 done
 
