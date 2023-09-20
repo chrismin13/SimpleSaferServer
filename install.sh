@@ -6,7 +6,7 @@ if [ "$EUID" -ne 0 ]; then
   exec sudo bash "$0" "$@"
 fi
 
-printf "Welcome to the Simple Safer Server script collection installer.\n"
+printf "Welcome to the Simple Safer Server script collection installer.\n\n"
 
 # Get the username of the user who invoked sudo
 invoked_user=$(logname)
