@@ -4,7 +4,7 @@
 #
 
 # Source the config file
-source /etc/SimpleSaferServer/my_config.conf
+source /etc/SimpleSaferServer/config.conf
 
 ## backup files ##
 

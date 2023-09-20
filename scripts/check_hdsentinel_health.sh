@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Source the config file
-source /etc/SimpleSaferServer/my_config.conf
+source /etc/SimpleSaferServer/config.conf
 
 # Function to send email
 function send_email {
