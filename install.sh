@@ -1,19 +1,21 @@
 #!/bin/bash
 
-# Check if script is running as root and if not, then prompt for elevation
+# Check if script is running as root
 if [ "$EUID" -ne 0 ]; then
   echo "This script must be run as root. Attempting to elevate privilege..."
-  exec sudo /bin/bash "$0" "$@"
+  exec sudo bash "$0" "$@"
+fi
+
+# Create config directory if it doesn't exist
+mkdir -p /etc/SimpleSaferServer
+
+# Load existing configurations
+if [ -f "/etc/SimpleSaferServer/config.conf" ]; then
+  source /etc/SimpleSaferServer/config.conf
 fi
 
 # Get the username of the user who invoked sudo
 invoked_user=$(logname)
-
-# Load existing config, if any
-config_path="/etc/SimpleSaferServer/config.conf"
-if [ -f "$config_path" ]; then
-    source "$config_path"
-fi
 
 # Prompt for missing variables
 declare -A prompts=(
