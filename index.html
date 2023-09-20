@@ -27,15 +27,15 @@ run_as_root() {
     done
 
     # Update or create config file
-    cat <<EOL > "$config_path"
-    USERNAME=$invoked_user
-    EMAIL_ADDRESS=$EMAIL_ADDRESS
-    SERVER_NAME=$SERVER_NAME
-    UUID=$UUID
-    USB_ID=$USB_ID
-    MOUNT_POINT=$MOUNT_POINT
-    RCLONE_DIR=$RCLONE_DIR
-    EOL
+    cat <<EOL >"$config_path"
+USERNAME=$invoked_user
+EMAIL_ADDRESS=$EMAIL_ADDRESS
+SERVER_NAME=$SERVER_NAME
+UUID=$UUID
+USB_ID=$USB_ID
+MOUNT_POINT=$MOUNT_POINT
+RCLONE_DIR=$RCLONE_DIR
+EOL
 
     # Clone the GitHub repository
     git clone https://github.com/chrismin13/SimpleSaferServer /tmp/SimpleSaferServer
@@ -51,7 +51,7 @@ run_as_root() {
 
     # Modify .service files to include the proper username and group, then copy them to /etc/systemd/system/
     for f in /tmp/SimpleSaferServer/*.service; do
-        sed -e "s/__USER__/$invoked_user/g" -e "s/__GROUP__/$invoked_user/g" "$f" > "/etc/systemd/system/$(basename $f)"
+        sed -e "s/__USER__/$invoked_user/g" -e "s/__GROUP__/$invoked_user/g" "$f" >"/etc/systemd/system/$(basename $f)"
     done
 
     # Copy systemd service and timer files
@@ -74,8 +74,8 @@ run_as_root() {
 
 # Check if script is running as root
 if [ "$EUID" -eq 0 ]; then
-  run_as_root
+    run_as_root
 else
-  echo "This script must be run as root. Attempting to elevate privilege..."
-  sudo bash -c "$(declare -f run_as_root); run_as_root"
+    echo "This script must be run as root. Attempting to elevate privilege..."
+    sudo bash -c "$(declare -f run_as_root); run_as_root"
 fi
