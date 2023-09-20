@@ -15,6 +15,10 @@ config_path="/etc/SimpleSaferServer/config.conf"
 # Create config directory if it doesn't exist
 mkdir -p $(dirname "$config_path")
 
+# Load existing configurations
+if [ -f "$config_path" ]; then
+  source $config_path
+fi
 
 # Prompt for missing variables
 declare -A prompts=(
@@ -25,15 +29,6 @@ declare -A prompts=(
     ["MOUNT_POINT"]="Enter the mount point of the external hard drive (e.g. /media/backup): "
     ["RCLONE_DIR"]="Enter the backup directory on Rclone (e.g. OneDriveCrypt:): "
 )
-
-for key in "${!prompts[@]}"; do
-  eval $key=
-done
-
-# Load existing configurations
-if [ -f "$config_path" ]; then
-  source $config_path
-fi
 
 for key in "${!prompts[@]}"; do
     if [ -z "${!key}" ]; then
