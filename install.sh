@@ -61,8 +61,7 @@ for f in ./services/*.service; do
     sed -e "s/__USER__/$invoked_user/g" -e "s/__GROUP__/$invoked_user/g" "$f" > "/etc/systemd/system/$(basename $f)"
 done
 
-# Copy systemd service and timer files
-cp ./services/* /etc/systemd/system/
+# Copy systemd timer files
 cp ./timers/* /etc/systemd/system/
 
 # Reload systemd, enable and start timers
