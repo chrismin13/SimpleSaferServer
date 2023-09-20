@@ -1,0 +1,9 @@
+[Unit]
+Description=Runs check_mount at a specific time, usually 10 minutes before the backup
+
+[Timer]
+OnCalendar=*-*-* 02:50:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

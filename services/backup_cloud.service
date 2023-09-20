@@ -1,0 +1,13 @@
+[Unit]
+Description=Runs the backup cloud script
+Wants=backup_cloud.timer
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/backup_cloud.sh
+ExecStartPre=/bin/bash -xc '/usr/bin/systemctl is-active --quiet backup-cloud.service && exit 1 || exit 0'
+User=__USER__
+Group=__GROUP__
+
+[Install]
+WantedBy=multi-user.target

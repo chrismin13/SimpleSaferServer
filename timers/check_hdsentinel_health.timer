@@ -1,0 +1,9 @@
+[Unit]
+Description=Runs hdsentinel at a specific time, usually a minute before the mount check
+
+[Timer]
+OnCalendar=*-*-* 02:49:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

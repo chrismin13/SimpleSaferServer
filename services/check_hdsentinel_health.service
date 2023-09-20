@@ -1,0 +1,8 @@
+[Unit]
+Description=Hard Disk Sentinel Health Check
+
+[Service]
+ExecStart=/usr/local/bin/check_hdsentinel_health.sh
+
+[Install]
+WantedBy=multi-user.target
