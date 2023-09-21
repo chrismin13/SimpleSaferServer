@@ -2,11 +2,11 @@
 
 # Check if script is running as root
 if [ "$EUID" -ne 0 ]; then
-  echo "This script must be run as root. Attempting to elevate privilege..."
+  printf "\nThis script must be run as root. Attempting to elevate privilege...\n"
   exec sudo bash "$0" "$@"
 fi
 
-printf "Welcome to the Simple Safer Server script collection installer.\n\n"
+printf "\nWelcome to the Simple Safer Server script collection installer.\n\n"
 
 # Get the username of the user who invoked sudo
 invoked_user=$(logname)
