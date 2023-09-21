@@ -18,7 +18,7 @@ fi
 
 # Check if there's a bandwith limit
 if [ -n "$BW_LIMIT" ]; then
-  extra_args="--bw-limit $BW_LIMIT" # e.g. --bw-limit 4M will limit the speed to 4mbps
+  extra_args="--bwlimit $BW_LIMIT" # e.g. --bw-limit 4M will limit the speed to 4mbps
 fi
 
 # Run rclone. The arguments are:
