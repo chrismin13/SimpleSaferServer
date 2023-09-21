@@ -1,5 +1,26 @@
 #!/bin/bash
 
+# Check if the /tmp/SimpleSaferServer directory already exists
+if [ -d "/tmp/SimpleSaferServer" ]; then
+  # Prompt user for confirmation to remove the existing directory
+  read -p "The directory /tmp/SimpleSaferServer already exists. Do you want to remove it? (y/n): " choice
+
+  case "$choice" in
+    y|Y ) 
+      echo "Removing /tmp/SimpleSaferServer..."
+      rm -rf /tmp/SimpleSaferServer
+      ;;
+    n|N )
+      echo "Not removing /tmp/SimpleSaferServer. Exiting script."
+      exit 1
+      ;;
+    * )
+      echo "Invalid choice. Exiting script."
+      exit 1
+      ;;
+  esac
+fi
+
 # Clone the GitHub repository to a temporary directory
 git clone https://github.com/chrismin13/SimpleSaferServer /tmp/SimpleSaferServer
 
