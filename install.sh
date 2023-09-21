@@ -28,7 +28,7 @@ declare -A prompts=(
   ["USB_ID"]="Enter the USB ID of the external hard drive (e.g. 0480:a202): "
   ["MOUNT_POINT"]="Enter the mount point of the external hard drive (e.g. /media/backup): "
   ["RCLONE_DIR"]="Enter the backup directory on Rclone (e.g. OneDriveCrypt:): "
-  ["BW_LIMIT"]="Optional: Enter a bandwidth limit for the rclone backup (e.g. 4M): "
+  ["BANDWIDTH_LIMIT"]="Optional: Enter a bandwidth limit for the rclone backup (e.g. 4M): "
 )
 
 for key in "${!prompts[@]}"; do
@@ -47,7 +47,7 @@ UUID="$UUID"
 USB_ID="$USB_ID"
 MOUNT_POINT="$MOUNT_POINT"
 RCLONE_DIR="$RCLONE_DIR"
-BW_LIMIT="$BW_LIMIT"
+BANDWIDTH_LIMIT="$BANDWIDTH_LIMIT"
 EOL
 
 # TODO: Add a menu for script selection here
