@@ -4,5 +4,5 @@ Basic scripts designed to run on Debian-based (Raspberry Pi or Ubuntu Server) ma
 # Install
 Run:
 ```
-curl sss.chrismin13.com | bash
+bash <(curl -s sss.chrismin13.com)
 ```

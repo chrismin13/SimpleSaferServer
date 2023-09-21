@@ -1,21 +1,16 @@
 #!/bin/bash
 
-echo "DEBUG 1: EMAIL_ADDRESS=$EMAIL_ADDRESS"
-
 # Check if script is running as root
 if [ "$EUID" -ne 0 ]; then
   echo "This script must be run as root. Attempting to elevate privilege..."
   exec sudo bash "$0" "$@"
 fi
-echo "DEBUG 2: EMAIL_ADDRESS=$EMAIL_ADDRESS"
 
 printf "Welcome to the Simple Safer Server script collection installer.\n\n"
-echo "DEBUG 3: EMAIL_ADDRESS=$EMAIL_ADDRESS"
 
 # Get the username of the user who invoked sudo
 invoked_user=$(logname)
 config_path="/etc/SimpleSaferServer/config.conf"
-echo "DEBUG 4: EMAIL_ADDRESS=$EMAIL_ADDRESS"
 
 # Create config directory if it doesn't exist
 mkdir -p $(dirname "$config_path")
@@ -24,7 +19,6 @@ mkdir -p $(dirname "$config_path")
 if [ -f "$config_path" ]; then
   source $config_path
 fi
-echo "DEBUG 5: EMAIL_ADDRESS=$EMAIL_ADDRESS"
 
 # Prompt for missing variables
 declare -A prompts=(
@@ -36,16 +30,12 @@ declare -A prompts=(
     ["RCLONE_DIR"]="Enter the backup directory on Rclone (e.g. OneDriveCrypt:): "
 )
 
-echo "DEBUG 6: EMAIL_ADDRESS=$EMAIL_ADDRESS"
-
 for key in "${!prompts[@]}"; do
     if [ -z "${!key}" ]; then
         read -p "${prompts[$key]}" input
         eval $key='$input'
     fi
 done
-
-echo "DEBUG 7: EMAIL_ADDRESS=$EMAIL_ADDRESS"
 
 # Update or create config file
 cat <<EOL > "$config_path"

@@ -30,15 +30,12 @@ chmod +x install.sh
 
 # Check if script is running as root and if not, then prompt for elevation
 if [ "$EUID" -ne 0 ]; then
-    echo "DEBUG 111: EMAIL_ADDRESS=$EMAIL_ADDRESS"
     echo "This script must be run as root. Attempting to elevate privilege..."
     sudo bash install.sh
-    echo "DEBUG 222: EMAIL_ADDRESS=$EMAIL_ADDRESS"
-
 else
     bash install.sh
 fi
-echo "DEBUG 333: EMAIL_ADDRESS=$EMAIL_ADDRESS"
+
 # Navigate back to the original directory and remove the temporary one
 cd -
 rm -rf /tmp/SimpleSaferServer
