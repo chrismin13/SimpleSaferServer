@@ -23,7 +23,7 @@ fi
 
 # Run rclone. The arguments are:
 # --create-empty-src-dirs: Copies empty folders
-# -v: Keeps a log of all the changes
+# -v: Keeps a log of all the changes and reports progress every minute
 # $extra_args: Whatever was set above
 rclone sync "$MOUNT_POINT" "$RCLONE_DIR" --create-empty-src-dirs -v $extra_args
 
