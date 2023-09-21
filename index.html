@@ -25,7 +25,8 @@ fi
 git clone https://github.com/chrismin13/SimpleSaferServer /tmp/SimpleSaferServer
 
 # Navigate to the directory containing the install script
-cd /tmp/SimpleSaferServer
+cd /tmp/SimpleSaferServer/
+chmod +x install.sh
 
 # Check if script is running as root and if not, then prompt for elevation
 if [ "$EUID" -ne 0 ]; then
