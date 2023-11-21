@@ -3,8 +3,6 @@ Description=Check USB Mount
 
 [Service]
 ExecStart=/usr/local/bin/check_mount.sh
-KillMode=none
-RemainAfterExit=yes
 
 [Install]
 WantedBy=multi-user.target
