@@ -23,7 +23,7 @@ Basic scripts designed to run on Debian-based (Raspberry Pi or Ubuntu Server) ma
     1. https://rclone.org/drive/
     2. https://rclone.org/onedrive/
     3. https://rclone.org/crypt/ 
-        1. USE OBFUSCATE FOR SHORTER PATHS
+        1. USE OBFUSCATE to keep paths short
         2. Store your keys in a password manager!
 3. Install screen for testing `sudo apt install screen`
 4. Run `screen`
