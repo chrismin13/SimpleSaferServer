@@ -3,6 +3,12 @@ Basic scripts designed to run on Debian-based (Raspberry Pi or Ubuntu Server) ma
 
 # Install
 ## Preparation
+### Install dependencies
+Install git - will be used to download this script later
+```
+sudo apt install git
+```
+
 ### Set up fstab to mount an external NTFS backup drive 
 1. Find the NTFS partition UUID  by running `sudo lsblk -f | grep -v loop` and getting just the UUID of the partition you want
 2. `sudo mkdir /media/backup`  to create the directory that will contain the partition
