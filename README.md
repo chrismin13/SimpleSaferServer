@@ -18,7 +18,7 @@ Basic scripts designed to run on Debian-based (Raspberry Pi or Ubuntu Server) ma
 4. `sudo mount -a` to apply the changes and remount the disks
 
 ### Download and set up rclone
-1. Run `curl https://rclone.org/install.sh | sudo bash`
+1. Run `sudo -v ; curl https://rclone.org/install.sh | sudo bash`
 2. Set up rclone by running `rclone config`. Some useful resources:
     1. https://rclone.org/drive/
     2. https://rclone.org/onedrive/
