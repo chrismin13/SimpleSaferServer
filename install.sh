@@ -69,7 +69,7 @@ cp ./timers/* /etc/systemd/system/
 
 # Reload systemd and enable timers
 systemctl daemon-reload
-systemctl enable backup_cloud.timer check_mount.timer check_hdsentinel_health.timer
+systemctl enable --now backup_cloud.timer check_mount.timer check_hdsentinel_health.timer
 
 # Show success message and active timers to ensure installation worked
 printf "\nInstallation/Update complete. Your timers now are:\n\n"
