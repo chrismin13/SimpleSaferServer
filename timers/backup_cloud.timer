@@ -1,6 +1,5 @@
 [Unit]
 Description=Backs up to the cloud daily
-Requires=backup_cloud.service
 
 [Timer]
 OnCalendar=*-*-* 3:00:00
