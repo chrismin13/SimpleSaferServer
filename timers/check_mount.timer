@@ -2,7 +2,7 @@
 Description=Runs check_mount at a specific time, usually 10 minutes before the backup
 
 [Timer]
-OnCalendar=*-*-* 02:50:00
+OnCalendar=*-*-* __CHECK_MOUNT_TIME__
 Persistent=true
 
 [Install]

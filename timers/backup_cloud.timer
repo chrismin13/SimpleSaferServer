@@ -2,7 +2,7 @@
 Description=Backs up to the cloud daily
 
 [Timer]
-OnCalendar=*-*-* 3:00:00
+OnCalendar=*-*-* __BACKUP_CLOUD_TIME__
 Persistent=true
 
 [Install]

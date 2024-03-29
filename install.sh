@@ -29,6 +29,10 @@ declare -A prompts=(
   ["MOUNT_POINT"]="Enter the mount point of the external hard drive (e.g. /media/backup): "
   ["RCLONE_DIR"]="Enter the backup directory on Rclone (e.g. OneDriveCrypt:): "
   ["BANDWIDTH_LIMIT"]="Optional: Enter a bandwidth limit for the rclone backup (e.g. 4M): "
+  ["CHECK_HDSENTINEL_HEALTH_TIME"]="You will now be asked to enter a time for the scheduled tasks. Use a time when the server and network won't be in use to avoid interruptions. Keep the tasks seperated from each other, e.g first at 2:49, next at 2:50 and final at 3:00.\n\nEnter the start time for checking HD Sentinel health (e.g. 2:49:00): "
+  ["CHECK_MOUNT_TIME"]="Enter the start time for checking if the disk is mounted (e.g. 2:50:00): "
+  ["BACKUP_CLOUD_TIME"]="Enter the start time for the cloud backup (e.g. 3:00:00): "
+
 )
 
 for key in "${!prompts[@]}"; do
@@ -48,6 +52,9 @@ USB_ID="$USB_ID"
 MOUNT_POINT="$MOUNT_POINT"
 RCLONE_DIR="$RCLONE_DIR"
 BANDWIDTH_LIMIT="$BANDWIDTH_LIMIT"
+CHECK_HDSENTINEL_HEALTH_TIME="$CHECK_HDSENTINEL_HEALTH_TIME"
+CHECK_MOUNT_TIME="$CHECK_MOUNT_TIME"
+BACKUP_CLOUD_TIME="$BACKUP_CLOUD_TIME"
 EOL
 
 # TODO: Add a menu for script selection here
@@ -64,8 +71,13 @@ for f in ./services/*.service; do
   sed -e "s/__USER__/$invoked_user/g" -e "s/__GROUP__/$invoked_user/g" "$f" >"/etc/systemd/system/$(basename $f)"
 done
 
-# Copy systemd timer files
-cp ./timers/* /etc/systemd/system/
+# Modify .timer files to include the correct time, then copy them to /etc/systemd/system/
+for f in ./timers/*.timer; do
+  sed -e "s/__CHECK_HDSENTINEL_HEALTH_TIME__/$CHECK_HDSENTINEL_HEALTH_TIME/g" \
+      -e "s/__CHECK_MOUNT_TIME__/$CHECK_MOUNT_TIME/g" \
+      -e "s/__BACKUP_CLOUD_TIME__/$BACKUP_CLOUD_TIME/g" "$f" >"/etc/systemd/system/$(basename $f)"
+done
+
 
 # Reload systemd and enable timers
 systemctl daemon-reload

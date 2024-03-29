@@ -2,7 +2,7 @@
 Description=Runs hdsentinel at a specific time, usually a minute before the mount check
 
 [Timer]
-OnCalendar=*-*-* 02:49:00
+OnCalendar=*-*-* __CHECK_HDSENTINEL_HEALTH_TIME__
 Persistent=true
 
 [Install]
