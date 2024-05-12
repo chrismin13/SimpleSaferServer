@@ -33,7 +33,7 @@ sudo apt install git
         2. Store your keys in a password manager!
 3. Install screen for testing `sudo apt install screen`
 4. Run `screen`
-    1. `rclone sync /media/backup/ YourRemote: -P --create-empty-src-dirs` (Replace OneDriveCrypt: with your rclone mount point or folder etc.)
+    1. `rclone sync /media/backup/ YourRemote: -P --create-empty-src-dirs` (Replace YourRemote: with your rclone mount point or folder etc.)
     2. If the script is running correctly, detach with Ctrl+A and Ctrl+D
     3. To resume, run `screen -r`.
 
