@@ -30,7 +30,7 @@ prompts=(
   "Enter the mount point of the external hard drive (e.g. /media/backup): "
   "Enter the backup directory on Rclone (e.g. OneDriveCrypt:): "
   "Optional: Enter a bandwidth limit for the rclone backup (e.g. 4M): "
-  "You will now be asked to enter a time for the scheduled tasks. Use a time when the server and network won't be in use to avoid interruptions. Keep the tasks separated from each other, e.g first at 2:49, next at 2:50 and final at 3:00.\n\nEnter the start time for checking HD Sentinel health (e.g. 2:49:00): "
+  "You will now be asked to enter a time for the scheduled tasks. Use a time when the server and network won't be in use to avoid interruptions. Keep the tasks separated from each other, e.g first at 2:49, next at 2:50 and final at 3:00. Enter the start time for checking HD Sentinel health (e.g. 2:49:00): "
   "Enter the start time for checking if the disk is mounted (e.g. 2:50:00): "
   "Enter the start time for the cloud backup (e.g. 3:00:00): "
 )
