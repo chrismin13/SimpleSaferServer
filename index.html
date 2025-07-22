@@ -82,7 +82,7 @@
         <h2 class="mb-3"><i class="fa-solid fa-terminal"></i> One-Line Install</h2>
         <div class="mb-3 d-flex align-items-center">
             <pre class="flex-grow-1 mb-0"><code id="install-cmd">sudo bash &lt;(curl -fsSL https://sss.chrismin13.com/install.sh)</code></pre>
-            <button class="copy-btn" onclick="copyCmd()"><i class="fa-regular fa-copy"></i> Copy</button>
+            <button class="copy-btn" onclick="copyCmd('install-cmd', this)"><i class="fa-regular fa-copy"></i> Copy</button>
         </div>
         <div class="note">
             <i class="fa-solid fa-circle-info"></i> <strong>Note:</strong> Run as <code>root</code> or with <code>sudo</code> on a clean Debian system.<br>
@@ -105,35 +105,17 @@
         </ul>
         <hr>
         <h2 class="mb-3"><i class="fa-solid fa-trash"></i> Uninstallation</h2>
-        <p>To completely remove SimpleSaferServer from your system, you can:</p>
-        <ul>
-          <li>If you still have the repository folder:<br>
-            <div class="d-flex align-items-center mb-2">
-              <pre class="flex-grow-1 mb-0"><code id="uninstall-cmd-local">cd /path/to/webui-capstone
-sudo bash uninstall.sh</code></pre>
-              <button class="copy-btn" onclick="copyCmd('uninstall-cmd-local', this)"><i class="fa-regular fa-copy"></i> Copy</button>
-            </div>
-          </li>
-          <li>Or, run directly from the web (recommended):<br>
-            <div class="d-flex align-items-center mb-2">
-              <pre class="flex-grow-1 mb-0"><code id="uninstall-cmd-web">sudo bash &lt;(curl -fsSL https://sss.chrismin13.com/uninstall.sh)</code></pre>
-              <button class="copy-btn" onclick="copyCmd('uninstall-cmd-web', this)"><i class="fa-regular fa-copy"></i> Copy</button>
-            </div>
-          </li>
-        </ul>
+        <p>To completely remove SimpleSaferServer from your system, you can run the following command:</p>
+          <div class="d-flex align-items-center mb-2">
+            <pre class="flex-grow-1 mb-0"><code id="uninstall-cmd-web">sudo bash &lt;(curl -fsSL https://sss.chrismin13.com/uninstall.sh)</code></pre>
+            <button class="copy-btn" onclick="copyCmd('uninstall-cmd-web', this)"><i class="fa-regular fa-copy"></i> Copy</button>
+        </div>
         <p class="note"><i class="fa-solid fa-circle-info"></i> This will remove all installed files, services, configuration, and user data. <strong>This process is irreversible.</strong></p>
         <div class="text-center mt-4">
             <span class="text-muted">&copy; 2025 Christos Miniotis &mdash; <a href="https://github.com/chrismin13/webui-capstone" target="_blank">webui-capstone</a></span>
         </div>
     </div>
     <script>
-        function copyCmd() {
-            const cmd = document.getElementById('install-cmd').textContent;
-            navigator.clipboard.writeText(cmd);
-            const btn = document.querySelector('.copy-btn');
-            btn.innerHTML = '<i class="fa-solid fa-check-circle"></i> Copied!';
-            setTimeout(() => { btn.innerHTML = '<i class="fa-regular fa-copy"></i> Copy'; }, 1500);
-        }
         function copyCmd(id, btn) {
             const cmd = document.getElementById(id).textContent;
             navigator.clipboard.writeText(cmd);
