@@ -30,8 +30,8 @@ rm -f "$TMPFILE"
 Clone the repository and copy files to `/opt/SimpleSaferServer`:
 
 ```bash
-git clone https://github.com/chrismin13/webui-capstone.git
-cd webui-capstone
+git clone https://github.com/chrismin13/SimpleSaferServer.git
+cd SimpleSaferServer
 sudo mkdir -p /opt/SimpleSaferServer
 sudo rsync -a --exclude='venv' --exclude='__pycache__' --exclude='*.pyc' --exclude='*.pyo' --exclude='*.log' --exclude='telemetry.csv' --exclude='harddrive_model' --exclude='scripts' --exclude='static' --exclude='templates' ./ /opt/SimpleSaferServer/
 sudo rsync -a static /opt/SimpleSaferServer/
@@ -103,4 +103,4 @@ Follow the setup wizard to complete configuration.
 
 ---
 
-For more help, see the [GitHub repository](https://github.com/chrismin13/webui-capstone) or [landing page](https://sss.chrismin13.com). 
+For more help, see the [GitHub repository](https://github.com/chrismin13/SimpleSaferServer) or [landing page](https://sss.chrismin13.com). 

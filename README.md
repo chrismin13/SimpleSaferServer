@@ -37,7 +37,7 @@ To completely remove SimpleSaferServer from your system, you can:
 
 **If you still have the repository folder:**
 ```bash
-cd /path/to/webui-capstone
+cd /path/to/SimpleSaferServer
 sudo bash uninstall.sh
 ```
 
