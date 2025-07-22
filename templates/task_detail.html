@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ task.name }} - Details</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+<div class="container py-4">
+    <h2>{{ task.name }}</h2>
+    <p>
+        Status:
+        {% if task.status == 'Success' %}
+            <span class="badge bg-success fw-normal" style="letter-spacing:0.03em;"><i class="fas fa-circle-check"></i> {{ task.status }}</span>
+        {% elif task.status == 'Failure' %}
+            <span class="badge bg-danger fw-normal" style="letter-spacing:0.03em;"><i class="fas fa-circle-xmark"></i> {{ task.status }}</span>
+        {% elif task.status == 'Running' %}
+            <span class="badge bg-info text-dark fw-normal" style="letter-spacing:0.03em;"><i class="fas fa-spinner fa-spin"></i> {{ task.status }}</span>
+        {% elif task.status == 'Missing' %}
+            <span class="badge bg-warning text-dark fw-normal" style="letter-spacing:0.03em;"><i class="fas fa-circle-exclamation"></i> {{ task.status }}</span>
+        {% elif task.status == 'Not Run Yet' %}
+            <span class="badge bg-secondary fw-normal" style="letter-spacing:0.03em;"><i class="fas fa-clock"></i> {{ task.status }}</span>
+        {% else %}
+            <span class="badge bg-warning text-dark fw-normal" style="letter-spacing:0.03em;"><i class="fas fa-question-circle"></i> {{ task.status }}</span>
+        {% endif %}
+    </p>
+    <form method="post" action="{{ url_for('start_task', task_name=task.name) }}" class="d-inline">
+        <button id="start-task-btn" type="submit" class="btn btn-success btn-sm" data-confirm="Are you sure you want to start this task?">Start</button>
+    </form>
+    <form method="post" action="{{ url_for('stop_task', task_name=task.name) }}" class="d-inline">
+        <button id="stop-task-btn" type="submit" class="btn btn-danger btn-sm" data-confirm="Are you sure you want to stop this task?">Stop</button>
+    </form>
+    <div class="mt-4">
+        <div class="form-check form-switch mb-2">
+            <input class="form-check-input" type="checkbox" id="auto-refresh" data-task-name="{{ task.name }}" checked>
+            <label class="form-check-label" for="auto-refresh">Auto refresh</label>
+        </div>
+        <h5>Recent Logs</h5>
+        <pre class="logs p-3 bg-light border rounded">{{ logs }}</pre>
+    </div>
+    <div class="mt-3">
+        <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">Back to Dashboard</a>
+    </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="{{ url_for('static', filename='js/scripts.js') }}"></script>
+</body>
+</html>

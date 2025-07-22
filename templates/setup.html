@@ -1,0 +1,1380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SimpleSaferServer Setup</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@5.15.4/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-light" style="background-color: #f3f4f6 !important;">
+    <div class="min-vh-100 d-flex align-items-center justify-content-center py-5 px-3">
+        <div class="container" style="max-width: 900px;">
+            <div class="mb-4">
+                <h2 class="mt-4 text-center display-6 fw-bold text-dark">
+                    SimpleSaferServer Setup Wizard
+                </h2>
+                <p class="mt-2 text-center text-secondary">
+                    Follow these steps to set up your backup system
+                </p>
+            </div>
+
+            <!-- Progress Steps -->
+            <div class="d-flex justify-content-between align-items-center mb-4" id="progressSteps">
+                <div class="step text-center" data-step="1">
+                    <div class="step-circle">1</div>
+                    <div class="step-text">Create Admin</div>
+                </div>
+                <div class="step-line"></div>
+                <div class="step text-center" data-step="2">
+                    <div class="step-circle">2</div>
+                    <div class="step-text">Format (Optional)</div>
+                </div>
+                <div class="step-line"></div>
+                <div class="step text-center" data-step="3">
+                    <div class="step-circle">3</div>
+                    <div class="step-text">Drive Mount</div>
+                </div>
+                <div class="step-line"></div>
+                <div class="step text-center" data-step="4">
+                    <div class="step-circle">4</div>
+                    <div class="step-text">Backup Configuration</div>
+                </div>
+                <div class="step-line"></div>
+                <div class="step text-center" data-step="5">
+                    <div class="step-circle">5</div>
+                    <div class="step-text">Email Setup</div>
+                </div>
+                <div class="step-line"></div>
+                <div class="step text-center" data-step="6">
+                    <div class="step-circle">6</div>
+                    <div class="step-text">Schedule</div>
+                </div>
+            </div>
+            <!-- <div class="text-center mb-4">
+                <small class="text-secondary fw-semibold">Need to review or change something? Click a step above to go there.</small>
+            </div> -->
+
+            <!-- Step 1: Create Admin User -->
+            <div id="step1" class="step-content">
+                <div class="bg-white shadow rounded-3 p-4">
+                    <h3 class="h5 fw-medium text-dark mb-3">Create Admin Account</h3>
+                    <!-- Error alert for step 1 -->
+                    <div id="adminError" class="alert alert-danger d-none" role="alert"></div>
+                    <!-- Username -->
+                    <div class="mb-4">
+                        <label class="form-label">Username</label>
+                        <input type="text" id="username" class="form-control" placeholder="Enter username">
+                        <div class="invalid-feedback">Username must be 3-32 characters and contain only letters, numbers, underscores, and hyphens.</div>
+                    </div>
+
+                    <!-- Server Name -->
+                    <div class="mb-4">
+                        <label class="form-label">Server Name</label>
+                        <input type="text" id="serverName" class="form-control" placeholder="e.g., NAS-01">
+                        <div class="invalid-feedback">Server name is required.</div>
+                    </div>
+
+                    <!-- Password -->
+                    <div class="mb-4">
+                        <label class="form-label">Password</label>
+                        <input type="password" id="password" class="form-control" placeholder="Enter password">
+                        <div id="passwordHelp" class="form-text">Password must be at least 4 characters long</div>
+                    </div>
+
+                    <!-- Confirm Password -->
+                    <div class="mb-4">
+                        <label class="form-label">Confirm Password</label>
+                        <input type="password" id="confirmPassword" class="form-control" placeholder="Confirm password">
+                        <div class="invalid-feedback">Passwords do not match.</div>
+                    </div>
+
+                    <div class="d-flex justify-content-end">
+                        <button onclick="createUser()" class="btn btn-primary">
+                            Create Admin Account
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 2: Drive Format (Optional) -->
+            <div id="step2" class="step-content d-none">
+                <div class="bg-white shadow rounded-3 p-4">
+                    <h3 class="h5 fw-medium text-dark mb-3">Drive Format (Optional)</h3>
+                    
+                    <!-- Drive Selection for Format -->
+                    <div class="mb-4">
+                        <label class="form-label">Select Drive to Format</label>
+                        <select id="formatDriveSelect" class="form-select">
+                            <option value="">Select a drive...</option>
+                        </select>
+                        <div id="driveMountStatusBadge" class="mt-2"></div>
+                        <div class="form-text">Warning: Formatting will erase all data on the selected drive</div>
+                    </div>
+                    <!-- Status area for unmount/format actions -->
+                    <div id="driveStatusArea" class="mb-3 d-flex align-items-center" style="min-height:1.5rem;">
+                        <!-- Status messages will appear here -->
+                    </div>
+                    <!-- Drive Formatting -->
+                    <div class="mb-4">
+                        <div class="mt-2 d-flex gap-3">
+                            <button id="unmountDriveBtn" class="btn btn-warning" data-confirm="Are you sure you want to unmount this drive? This is required before formatting.">
+                                Unmount Drive
+                            </button>
+                            <button id="formatDriveBtn" class="btn btn-danger fw-bold" data-confirm="Are you sure you want to format this drive? This will erase all data on the drive.">
+                                <i class="fas fa-exclamation-triangle me-1"></i> Format Drive
+                            </button>
+                        </div>
+                        <div id="formatError" class="mt-2 text-danger d-none small"></div>
+                        <div id="formatDetails" class="mt-2 text-secondary d-none small"></div>
+                    </div>
+
+                    <div class="d-flex justify-content-end">
+                        <button onclick="nextStep()" class="btn btn-primary">
+                            Skip Formatting
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 3: Drive Mount -->
+            <div id="step3" class="step-content d-none">
+                <div class="bg-white shadow rounded-3 p-4">
+                    <h3 class="h5 fw-medium text-dark mb-3">Drive Mount</h3>
+                    
+                    <!-- Drive Selection for Mount -->
+                    <div class="mb-4">
+                        <label class="form-label">Select Drive to Mount</label>
+                        <select id="mountDriveSelect" class="form-select">
+                            <option value="">Select a drive...</option>
+                        </select>
+                        <div class="form-text">Only NTFS partitions are shown</div>
+                    </div>
+                    <!-- Status area for mount/unmount actions -->
+                    <div id="mountStatusArea" class="mb-3 d-flex align-items-center" style="min-height:1.5rem;"></div>
+                    <!-- Mount Point and Mount Options under Advanced Options toggle -->
+                    <div class="mb-4">
+                        <a class="btn btn-link p-0" data-bs-toggle="collapse" href="#mountAdvancedOptions" role="button" aria-expanded="false" aria-controls="mountAdvancedOptions">
+                            <i class="fas fa-cog me-1"></i> Advanced Options
+                        </a>
+                        <div class="collapse mt-2" id="mountAdvancedOptions">
+                            <!-- Mount Point -->
+                            <div class="mb-3">
+                                <label class="form-label">Mount Point</label>
+                                <input type="text" id="mountPoint" value="/media/backup" class="form-control">
+                            </div>
+                            <!-- Mount Options -->
+                            <div class="mb-3">
+                                <label class="form-label">Mount Options</label>
+                                <div class="mt-2">
+                                    <div class="form-check">
+                                        <input type="checkbox" id="autoMount" class="form-check-input" checked>
+                                        <label class="form-check-label" for="autoMount">Mount automatically at boot</label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Mount Actions -->
+                    <div class="mb-4 d-flex justify-content-end gap-2">
+                        <button id="unmountMountDriveBtn" class="btn btn-warning" data-confirm="Are you sure you want to unmount this drive?">
+                            Unmount Drive
+                        </button>
+                        <button id="mountDriveBtn" class="btn btn-primary" data-confirm="Are you sure you want to mount this drive?">
+                            Mount Drive
+                        </button>
+                    </div>
+                    <!-- Mount error/status area (added for consistency with format step) -->
+                    <div id="mountError" class="mt-2 text-danger d-none small"></div>
+                    <div id="mountDetails" class="mt-2 text-secondary d-none small"></div>
+                </div>
+            </div>
+
+            <!-- Step 4: Backup Configuration -->
+            <div id="step4" class="step-content d-none">
+                <div class="bg-white shadow rounded-3 p-4">
+                    <h3 class="h5 fw-medium text-dark mb-3">Backup Configuration</h3>
+                    <!-- Error alert for step 4 -->
+                    <div id="backupConfigError" class="alert alert-danger d-none" role="alert"></div>
+
+                    <!-- Backup Mode Selector -->
+                    <div class="mb-4">
+                        <label class="form-label">How do you want to configure cloud backup?</label>
+                        <div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="backupMode" id="backupModeMega" value="mega" checked>
+                                <label class="form-check-label" for="backupModeMega">Easy MEGA Cloud Backup</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="backupMode" id="backupModeAdvanced" value="advanced">
+                                <label class="form-check-label" for="backupModeAdvanced">Advanced (Paste rclone config)</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- MEGA Easy Mode Fields -->
+                    <div id="megaConfigFields">
+                        <div class="mb-3 d-flex flex-column align-items-center">
+                            <img src="/static/img/mega-logo.svg" alt="MEGA logo" style="height: 64px; margin-bottom: 0.5rem;">
+                            <div class="fw-semibold text-center" style="font-size: 1.1rem;">Sign in to your MEGA account</div>
+                        </div>
+                        <div class="mb-3">
+                            <a href="https://mega.io/register" target="_blank" rel="noopener" class="link-primary">Don't have a MEGA account? Create one here</a>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">MEGA Email</label>
+                            <input type="email" id="megaEmail" class="form-control" placeholder="your@email.com">
+                            <div class="invalid-feedback">Please enter a valid MEGA email.</div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">MEGA Password</label>
+                            <input type="password" id="megaPassword" class="form-control" placeholder="Password">
+                            <div class="invalid-feedback">Please enter your MEGA password.</div>
+                        </div>
+                        <div class="mb-3">
+                            <button id="megaConnectBtn" class="btn btn-primary" type="button">
+                                <span id="megaConnectSpinner" class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                                Connect & Choose Folder
+                            </button>
+                        </div>
+                        <div id="megaFolderPathArea" class="mb-3 d-none">
+                            <label class="form-label">MEGA Folder Path</label>
+                            <div class="input-group">
+                                <input type="text" id="megaFolderPath" class="form-control" placeholder="/backups" readonly>
+                                <button id="megaBrowseBtn" class="btn btn-outline-secondary" type="button"><i class="fas fa-folder-open"></i> Browse</button>
+                            </div>
+                            <div class="invalid-feedback">Please select a folder.</div>
+                            <div class="alert alert-warning mt-3" role="alert">
+                                <strong>Warning:</strong> When you run a backup, <b>all files and folders in the selected MEGA directory will be overwritten or deleted to match your local backup.</b> Make sure this folder is used only for this backup, and does not contain any files you want to keep.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Advanced rclone Config Fields -->
+                    <div id="advancedConfigFields" class="d-none">
+                        <div class="mb-4">
+                            <label class="form-label">Rclone Configuration</label>
+                            <textarea id="rcloneConfig" rows="10" class="form-control" placeholder="Paste your rclone configuration here..."></textarea>
+                            <div class="invalid-feedback">Rclone configuration is required.</div>
+                        </div>
+                        <div class="mb-4">
+                            <label class="form-label">Remote Name and Path</label>
+                            <input type="text" id="remoteName" class="form-control" placeholder="e.g., myremote:/backups">
+                            <div class="invalid-feedback">Remote name and path is required. Use format: remotename:/path</div>
+                        </div>
+                        <div class="alert alert-warning mt-3" role="alert">
+                            <strong>Warning:</strong> When you run a backup, <b>rclone will synchronize the remote path to match your local backup directory.</b> This means files and folders in the specified remote may be <b>overwritten or deleted</b> if they do not exist locally. Double-check your remote and path to avoid accidental data loss.
+                        </div>
+                    </div>
+
+                    <div class="d-flex justify-content-end">
+                        <button id="saveBackupConfigBtn" onclick="saveBackupConfig()" class="btn btn-primary">
+                            Save Backup Configuration
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 5: Email Setup -->
+            <div id="step5" class="step-content d-none">
+                <div class="bg-white shadow rounded-3 p-4">
+                    <h3 class="h5 fw-medium text-dark mb-3">Email Setup</h3>
+                    <!-- Error alert for step 5 -->
+                    <div id="emailError" class="alert alert-danger d-none" role="alert"></div>
+                    <!-- Email Address -->
+                    <div class="mb-4">
+                        <label class="form-label">Email Address</label>
+                        <input type="email" id="emailAddress" class="form-control" placeholder="your@email.com">
+                        <div class="invalid-feedback">Please enter a valid email address.</div>
+                    </div>
+
+                    <!-- SMTP Configuration -->
+                    <div class="mb-4">
+                        <label class="form-label">SMTP Configuration</label>
+                        <div class="mt-2 row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label">SMTP Server</label>
+                                <input type="text" id="smtpServer" class="form-control" placeholder="smtp.gmail.com">
+                                <div class="invalid-feedback">SMTP server is required.</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">SMTP Port</label>
+                                <input type="number" id="smtpPort" class="form-control" placeholder="587">
+                                <div class="invalid-feedback">SMTP port is required and must be a number.</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Username</label>
+                                <input type="text" id="smtpUsername" class="form-control" placeholder="your@email.com">
+                                <div class="invalid-feedback">SMTP username is required.</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Password</label>
+                                <input type="password" id="smtpPassword" class="form-control">
+                                <div class="invalid-feedback">SMTP password is required.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="d-flex justify-content-end">
+                        <button onclick="setupEmail()" class="btn btn-primary">
+                            Save Email Configuration
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 6: Schedule -->
+            <div id="step6" class="step-content d-none">
+                <div class="bg-white shadow rounded-3 p-4">
+                    <h3 class="h5 fw-medium text-dark mb-3">Schedule Setup</h3>
+                    <!-- Error alert for schedule step -->
+                    <div id="scheduleError" class="alert alert-danger d-none" role="alert"></div>
+                    <!-- Backup Time -->
+                    <div class="mb-4">
+                        <label class="form-label">Backup Time</label>
+                        <input type="time" id="backupTime" class="form-control">
+                        <div class="invalid-feedback">Please select a valid backup time.</div>
+                    </div>
+                    <!-- Bandwidth Limit -->
+                    <div class="mb-4">
+                        <label class="form-label">Bandwidth Limit (optional)</label>
+                        <input type="text" id="bandwidthLimit" class="form-control" placeholder="e.g. 4M for 4 megabytes/sec">
+                        <div class="invalid-feedback">Bandwidth limit must be a valid format (e.g. 4M, 1G, 500k).</div>
+                    </div>
+                    <div class="d-flex justify-content-end">
+                        <button onclick="saveSchedule()" class="btn btn-primary">
+                            Save Schedule
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Navigation Buttons -->
+            <!-- Removed navigation buttons -->
+        </div>
+    </div>
+
+    <!-- MEGA Folder Picker Modal -->
+    <div class="modal fade" id="megaFolderPickerModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-folder-open me-2"></i>Select MEGA Folder</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-2">
+                        <strong>Current Path:</strong>
+                        <span id="megaPickerCurrentPath" class="text-monospace"></span>
+                    </div>
+                    <div class="mb-2 d-flex gap-2">
+                        <button class="btn btn-sm btn-outline-secondary" id="megaPickerUpBtn">
+                            <i class="fas fa-level-up-alt"></i> Up
+                        </button>
+                        <button class="btn btn-sm btn-outline-success" id="megaPickerCreateFolderBtn">
+                            <i class="fas fa-plus"></i> New Folder
+                        </button>
+                        <input type="text" id="megaPickerNewFolderName" class="form-control form-control-sm d-none" style="max-width: 200px;" placeholder="New folder name">
+                        <button class="btn btn-sm btn-success d-none" id="megaPickerSaveNewFolderBtn">Create</button>
+                    </div>
+                    <div id="megaPickerDirsList" class="list-group mb-2" style="max-height: 350px; overflow-y: auto;"></div>
+                    <div id="megaPickerError" class="alert alert-danger d-none"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-outline-primary" id="megaPickerSelectCurrentBtn">Select This Folder</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
+    {% block extra_js %}
+    <script src="{{ url_for('static', filename='js/mega_folder_picker.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/scripts.js') }}"></script>
+    {% endblock %}
+    <script>
+        let currentStep = 1;
+        const totalSteps = 6;
+
+        // --- LocalStorage step persistence ---
+        function saveStepToStorage(step) {
+            localStorage.setItem('setupCurrentStep', step);
+        }
+        function loadStepFromStorage() {
+            const step = parseInt(localStorage.getItem('setupCurrentStep'));
+            if (!isNaN(step) && step >= 1 && step <= totalSteps) {
+                currentStep = step;
+            }
+        }
+
+        // --- Step indicator coloring and clickability ---
+        function updateStepIndicators() {
+            const steps = document.querySelectorAll('.step');
+            steps.forEach((stepDiv, idx) => {
+                const stepNum = idx * 1 + 1;
+                const circle = stepDiv.querySelector('.step-circle');
+                // Remove all color classes
+                circle.style.backgroundColor = '';
+                circle.style.color = '#fff';
+                circle.style.cursor = 'pointer';
+                stepDiv.removeAttribute('title');
+                circle.classList.remove('step-completed', 'step-current', 'step-upcoming');
+                // Completed
+                if (stepNum < currentStep) {
+                    circle.style.backgroundColor = 'hsl(153, 60%, 47%)'; // pastel green
+                    circle.classList.add('step-completed');
+                } else if (stepNum === currentStep) {
+                    circle.style.backgroundColor = '#3a86f2';
+                    circle.classList.add('step-current');
+                } else {
+                    circle.style.backgroundColor = '#d1d5db';
+                    circle.classList.add('step-upcoming');
+                }
+                circle.style.color = '#fff';
+                // All steps are now clickable
+                circle.onclick = () => { goToStep(stepNum); };
+                circle.style.cursor = 'pointer';
+            });
+        }
+        function goToStep(step) {
+            showStep(step);
+            currentStep = step;
+            saveStepToStorage(currentStep);
+            updateStepIndicators();
+            // updateNavButtons(); // Removed as per edit hint
+        }
+        // --- Show step and update indicators ---
+        function showStep(step) {
+            document.querySelectorAll('.step-content').forEach(el => el.classList.add('d-none'));
+            document.getElementById(`step${step}`).classList.remove('d-none');
+            updateStepIndicators();
+            showPersistentStepSuccess();
+            // updateNavButtons(); // Removed as per edit hint
+        }
+        function nextStep() {
+            if (currentStep < totalSteps) {
+                currentStep++;
+                showStep(currentStep);
+                saveStepToStorage(currentStep);
+            }
+        }
+        function previousStep() {
+            if (currentStep > 1) {
+                currentStep--;
+                showStep(currentStep);
+                saveStepToStorage(currentStep);
+            }
+        }
+        // --- Navigation button visibility ---
+        // Removed as per edit hint
+
+        // --- Drive status area helpers ---
+        function setDriveStatus(message, type = 'info') {
+            const area = document.getElementById('driveStatusArea');
+            area.textContent = message;
+            area.className = 'mb-3 d-flex align-items-center';
+            area.style.minHeight = '1.5rem';
+            if (type === 'info') area.classList.add('text-primary');
+            else if (type === 'success') area.classList.add('text-success');
+            else if (type === 'error') area.classList.add('text-danger');
+            else if (type === 'warning') area.classList.add('text-warning');
+        }
+        function clearDriveStatus() {
+            setDriveStatus('', 'info');
+        }
+
+        // --- Update drive mount status badge when selection changes ---
+        function updateDriveMountStatusBadge() {
+            const select = document.getElementById('formatDriveSelect');
+            const badge = document.getElementById('driveMountStatusBadge');
+            const selectedOption = select.options[select.selectedIndex];
+            if (!select.value) {
+                badge.innerHTML = '';
+                return;
+            }
+            if (selectedOption && selectedOption.text.includes('[unmounted]')) {
+                badge.innerHTML = '<span class="badge bg-success text-white">Unmounted (ready for formatting)</span>';
+            } else {
+                badge.innerHTML = '<span class="badge bg-warning text-dark">Mounted</span>';
+            }
+        }
+        // Attach event listener to update badge on change
+
+        // --- Modified loadDrives to persist selection and mark unmounted ---
+        async function loadDrives() {
+            try {
+                const response = await fetch('/api/setup/drives');
+                const data = await response.json();
+                const formatSelect = document.getElementById('formatDriveSelect');
+                const prevValue = formatSelect.value;
+                formatSelect.innerHTML = '<option value="">Select a drive...</option>';
+                let foundPrev = false;
+                data.drives.forEach(drive => {
+                    const driveType = drive.type === 'usb' ? 'USB Drive' : 'Internal Drive';
+                    let isMounted = false;
+                    drive.partitions.forEach(partition => {
+                        if (partition.mountpoint) isMounted = true;
+                    });
+                    let label = `${drive.model} (${drive.size}) - ${driveType}`;
+                    if (!isMounted) label += ' [unmounted]';
+                    const option = new Option(label, drive.path);
+                    if (drive.path === prevValue) {
+                        option.selected = true;
+                        foundPrev = true;
+                    }
+                    formatSelect.add(option);
+                });
+                if (!foundPrev && prevValue) {
+                    // Add the previously selected drive as unmounted if not present
+                    const option = new Option(`${prevValue} [unmounted]`, prevValue);
+                    option.selected = true;
+                    formatSelect.add(option);
+                }
+                // Also update the mount select as before (if needed)
+                const mountSelect = document.getElementById('mountDriveSelect');
+                if (mountSelect) {
+                    mountSelect.innerHTML = '<option value="">Select a drive...</option>';
+                    data.drives.forEach(drive => {
+                        drive.partitions.forEach(partition => {
+                            if (partition.type === 'ntfs') {
+                                const mountStatus = partition.mountpoint ? ` (Mounted at ${partition.mountpoint})` : '';
+                                const label = partition.label ? ` - ${partition.label}` : '';
+                                const driveType = drive.type === 'usb' ? 'USB Drive' : 'Internal Drive';
+                                const option = new Option(
+                                    `${drive.model} - ${partition.path}${label} (${partition.size}) - ${driveType}${mountStatus}`,
+                                    partition.path
+                                );
+                                mountSelect.add(option);
+                            }
+                        });
+                    });
+                }
+                // Update badge after loading drives
+                updateDriveMountStatusBadge();
+            } catch (error) {
+                console.error('Error:', error);
+                showFormatError('Failed to load drives');
+            }
+        }
+
+        // Utility to set button loading state
+        function setButtonLoading(btn, isLoading, loadingText = 'Processing...') {
+            if (!btn) return;
+            if (isLoading) {
+                btn.disabled = true;
+                btn.dataset.originalText = btn.innerHTML;
+                btn.innerHTML = `<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>${loadingText}`;
+            } else {
+                btn.disabled = false;
+                if (btn.dataset.originalText) {
+                    btn.innerHTML = btn.dataset.originalText;
+                    delete btn.dataset.originalText;
+                }
+            }
+        }
+
+        // Format and mount drive
+        async function formatDrive() {
+            const formatBtn = document.getElementById('formatDriveBtn');
+            setButtonLoading(formatBtn, true, 'Formatting...');
+            const drive = document.getElementById('formatDriveSelect').value;
+            if (!drive) {
+                showFormatError('Please select a drive first');
+                setDriveStatus('Please select a drive first.', 'warning');
+                setButtonLoading(formatBtn, false);
+                return;
+            }
+            setDriveStatus('Formatting drive...', 'info');
+            try {
+                const response = await fetch('/api/setup/format', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ drive: drive })
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    localStorage.setItem('formatSuccess', '1');
+                    nextStep();
+                    hideFormatError();
+                    setDriveStatus('Drive formatted successfully. You may proceed to the next step.', 'success');
+                    await loadDrives();
+                    const formatSelect = document.getElementById('formatDriveSelect');
+                    for (let i = 0; i < formatSelect.options.length; i++) {
+                        if (formatSelect.options[i].value === drive) {
+                            formatSelect.selectedIndex = i;
+                            break;
+                        }
+                    }
+                } else {
+                    setDriveStatus('Failed to format drive.', 'error');
+                    showFormatError(data.error, data.details, data.can_unmount);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                setDriveStatus('An error occurred while formatting the drive.', 'error');
+                showFormatError('An error occurred while formatting the drive');
+            } finally {
+                setButtonLoading(formatBtn, false);
+            }
+        }
+
+        // --- Unmount drive with status feedback ---
+        async function unmountDrive() {
+            const unmountBtn = document.getElementById('unmountDriveBtn');
+            setButtonLoading(unmountBtn, true, 'Unmounting...');
+            const drive = document.getElementById('formatDriveSelect').value;
+            if (!drive) {
+                showFormatError('Please select a drive first');
+                setDriveStatus('Please select a drive first.', 'warning');
+                setButtonLoading(unmountBtn, false);
+                return;
+            }
+            setDriveStatus('Unmounting drive...', 'info');
+            try {
+                const response = await fetch('/api/setup/unmount', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ drive: drive })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    hideFormatError();
+                    setDriveStatus('Drive unmounted successfully.', 'success');
+                    await loadDrives();
+                    const formatSelect = document.getElementById('formatDriveSelect');
+                    for (let i = 0; i < formatSelect.options.length; i++) {
+                        if (formatSelect.options[i].value === drive) {
+                            formatSelect.selectedIndex = i;
+                            break;
+                        }
+                    }
+                } else {
+                    setDriveStatus('Failed to unmount drive.', 'error');
+                    showFormatError(data.error, data.details);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                setDriveStatus('An error occurred while unmounting the drive.', 'error');
+                showFormatError('An error occurred while unmounting the drive');
+            } finally {
+                setButtonLoading(unmountBtn, false);
+            }
+        }
+
+        function showFormatError(error, details = null, canUnmount = false) {
+            const errorDiv = document.getElementById('formatError');
+            const detailsDiv = document.getElementById('formatDetails');
+            
+            errorDiv.textContent = error;
+            errorDiv.classList.remove('d-none');
+            
+            if (details) {
+                detailsDiv.textContent = details;
+                detailsDiv.classList.remove('d-none');
+            } else {
+                detailsDiv.classList.add('d-none');
+            }
+        }
+
+        function hideFormatError() {
+            document.getElementById('formatError').classList.add('d-none');
+            document.getElementById('formatDetails').classList.add('d-none');
+        }
+
+        // --- Mount status area helpers ---
+        function setMountStatus(message, type = 'info') {
+            const area = document.getElementById('mountStatusArea');
+            area.textContent = message;
+            area.className = 'mb-3 d-flex align-items-center';
+            area.style.minHeight = '1.5rem';
+            if (type === 'info') area.classList.add('text-primary');
+            else if (type === 'success') area.classList.add('text-success');
+            else if (type === 'error') area.classList.add('text-danger');
+            else if (type === 'warning') area.classList.add('text-warning');
+        }
+        function clearMountStatus() {
+            setMountStatus('', 'info');
+        }
+
+        // --- Mount drive with status feedback and confirmation ---
+        async function mountDrive() {
+            const mountBtn = document.getElementById('mountDriveBtn');
+            setButtonLoading(mountBtn, true, 'Mounting...');
+            const drive = document.getElementById('mountDriveSelect').value;
+            const mountPoint = document.getElementById('mountPoint').value;
+            const autoMount = document.getElementById('autoMount').checked;
+            if (!drive) {
+                showMountError('Please select a drive to mount');
+                setMountStatus('Please select a drive to mount.', 'warning');
+                setButtonLoading(mountBtn, false);
+                return;
+            }
+            setMountStatus('Mounting drive...', 'info');
+            try {
+                const response = await fetch('/api/setup/mount', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        drive: drive,
+                        mount_point: mountPoint,
+                        auto_mount: autoMount
+                    })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    localStorage.setItem('mountSuccess', '1');
+                    nextStep();
+                    hideMountError();
+                    setMountStatus('Drive mounted successfully. You may proceed to the next step.', 'success');
+                    await loadDrives();
+                    const mountSelect = document.getElementById('mountDriveSelect');
+                    for (let i = 0; i < mountSelect.options.length; i++) {
+                        if (mountSelect.options[i].value === drive) {
+                            mountSelect.selectedIndex = i;
+                            break;
+                        }
+                    }
+                } else {
+                    setMountStatus('Failed to mount drive.', 'error');
+                    showMountError(data.error, data.details);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                setMountStatus('An error occurred while mounting the drive.', 'error');
+                showMountError('An error occurred while mounting the drive');
+            } finally {
+                setButtonLoading(mountBtn, false);
+            }
+        }
+
+        // --- Unmount drive in Step 3 with status feedback and confirmation ---
+        async function unmountMountDrive() {
+            const unmountMountBtn = document.getElementById('unmountMountDriveBtn');
+            setButtonLoading(unmountMountBtn, true, 'Unmounting...');
+            const drive = document.getElementById('mountDriveSelect').value;
+            if (!drive) {
+                showMountError('Please select a drive to unmount');
+                setMountStatus('Please select a drive to unmount.', 'warning');
+                setButtonLoading(unmountMountBtn, false);
+                return;
+            }
+            setMountStatus('Unmounting drive...', 'info');
+            try {
+                const response = await fetch('/api/setup/unmount', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ drive: drive })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    hideMountError();
+                    setMountStatus('Drive unmounted successfully.', 'success');
+                    await loadDrives();
+                    const mountSelect = document.getElementById('mountDriveSelect');
+                    for (let i = 0; i < mountSelect.options.length; i++) {
+                        if (mountSelect.options[i].value === drive) {
+                            mountSelect.selectedIndex = i;
+                            break;
+                        }
+                    }
+                } else {
+                    setMountStatus('Failed to unmount drive.', 'error');
+                    showMountError(data.error, data.details);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                setMountStatus('An error occurred while unmounting the drive.', 'error');
+                showMountError('An error occurred while unmounting the drive');
+            } finally {
+                setButtonLoading(unmountMountBtn, false);
+            }
+        }
+
+        function showMountError(error, details = null) {
+            const errorDiv = document.getElementById('mountError');
+            const detailsDiv = document.getElementById('mountDetails');
+            
+            errorDiv.textContent = error;
+            errorDiv.classList.remove('d-none');
+            
+            if (details) {
+                detailsDiv.textContent = details;
+                detailsDiv.classList.remove('d-none');
+            } else {
+                detailsDiv.classList.add('d-none');
+            }
+        }
+
+        function hideMountError() {
+            document.getElementById('mountError').classList.add('d-none');
+            document.getElementById('mountDetails').classList.add('d-none');
+        }
+
+        // Set up rclone
+        async function setupRclone() {
+            hideError('backupConfigError');
+            const valid = [validateRcloneConfig(), validateRemoteName()];
+            if (valid.includes(false)) {
+                showError('Please correct the highlighted fields.', 'backupConfigError');
+                return;
+            }
+            const config = document.getElementById('rcloneConfig').value;
+            const remoteName = document.getElementById('remoteName').value;
+
+            try {
+                const response = await fetch('/api/setup/rclone', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ config, remote_name: remoteName })
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    nextStep();
+                } else {
+                    showError('Error setting up rclone: ' + data.error, 'backupConfigError');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showError('An error occurred while setting up rclone', 'backupConfigError');
+            }
+        }
+
+        // Set up email
+        async function setupEmail() {
+            hideError('emailError');
+            const valid = [
+                validateEmail(),
+                validateSmtpServer(),
+                validateSmtpPort(),
+                validateSmtpUsername(),
+                validateSmtpPassword()
+            ];
+            if (valid.includes(false)) {
+                showError('Please correct the highlighted fields.', 'emailError');
+                return;
+            }
+            const email = document.getElementById('emailAddress').value;
+            const smtpServer = document.getElementById('smtpServer').value;
+            const smtpPort = document.getElementById('smtpPort').value;
+            const smtpUsername = document.getElementById('smtpUsername').value;
+            const smtpPassword = document.getElementById('smtpPassword').value;
+
+            if (!email || !smtpServer || !smtpPort || !smtpUsername || !smtpPassword) {
+                showError('Please fill in all email fields', 'emailError');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/setup/email', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        emailAddress: email,
+                        smtpServer: smtpServer,
+                        smtpPort: smtpPort,
+                        smtpUsername: smtpUsername,
+                        smtpPassword: smtpPassword
+                    })
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    nextStep();
+                } else {
+                    showError('Error setting up email: ' + data.error, 'emailError');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showError('An error occurred while setting up email', 'emailError');
+            }
+        }
+
+        // Set up schedule
+        async function saveSchedule() {
+            hideError();
+            const valid = [validateBackupTime(), validateBandwidthLimit()];
+            if (valid.includes(false)) {
+                showError('Please correct the highlighted fields.');
+                return;
+            }
+            const time = document.getElementById('backupTime').value;
+            const bandwidthLimit = document.getElementById('bandwidthLimit').value;
+            if (!time) {
+                showError('Please select a backup time.');
+                return;
+            }
+
+            const saveBtn = document.querySelector('button[onclick="saveSchedule()"]');
+            setButtonLoading(saveBtn, true, 'Saving...');
+
+            try {
+                const response = await fetch('/api/setup/schedule', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ time, bandwidth_limit: bandwidthLimit })
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    hideError();
+                    completeSetup();
+                } else {
+                    showError(data.error || 'Failed to save schedule');
+                    setButtonLoading(saveBtn, false);
+                }
+            } catch (error) {
+                showError('Error saving schedule: ' + error);
+                setButtonLoading(saveBtn, false);
+            }
+        }
+
+        // Complete setup
+        // Clear all setup-related localStorage items
+        function clearSetupStorage() {
+            localStorage.removeItem('setupCurrentStep');
+            localStorage.removeItem('formatSuccess');
+            localStorage.removeItem('mountSuccess');
+        }
+
+        async function completeSetup() {
+            try {
+                const response = await fetch('/api/setup/complete', {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Clear all setup storage before redirecting
+                    clearSetupStorage();
+                    window.location.href = '/';
+                } else {
+                    if (data.details) {
+                        alert('Error completing setup: ' + data.error + '\n\nMissing fields: ' + data.details.join(', '));
+                    } else {
+                        alert('Error completing setup: ' + data.error);
+                    }
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('An error occurred while completing setup');
+            }
+        }
+
+        // Add user creation function
+        async function createUser() {
+            hideError('adminError');
+            const valid = [
+                validateUsername(),
+                validateServerName(),
+                validatePassword(),
+                validateConfirmPassword()
+            ];
+            if (valid.includes(false)) {
+                showError('Please correct the highlighted fields.', 'adminError');
+                return;
+            }
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const serverName = document.getElementById('serverName').value;
+            try {
+                const response = await fetch('/api/setup/user', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    try {
+                        const sysResp = await fetch('/api/setup/system', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ username, server_name: serverName })
+                        });
+                        const sysData = await sysResp.json();
+                        if (!sysData.success) {
+                            showError('Error saving system info: ' + sysData.error, 'adminError');
+                            return;
+                        }
+                    } catch (err) {
+                        console.error('System info error', err);
+                        showError('An error occurred while saving system info', 'adminError');
+                        return;
+                    }
+                    nextStep();
+                } else {
+                    showError('Error creating user: ' + data.error, 'adminError');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showError('An error occurred while creating the user', 'adminError');
+            }
+        }
+
+        // Show persistent success messages if user returns to step 2 or 3
+        function showPersistentStepSuccess() {
+            if (currentStep === 2 && localStorage.getItem('formatSuccess') === '1') {
+                setDriveStatus('Drive formatted successfully. You may proceed to the next step.', 'success');
+            }
+            if (currentStep === 3 && localStorage.getItem('mountSuccess') === '1') {
+                setMountStatus('Drive mounted successfully. You may proceed to the next step.', 'success');
+            }
+        }
+
+        // --- Generalized showError/hideError for any step ---
+        function showError(message, errorDivId = 'scheduleError') {
+            const errorDiv = document.getElementById(errorDivId);
+            if (errorDiv) {
+                errorDiv.textContent = message;
+                errorDiv.classList.remove('d-none');
+            } else {
+                alert(message);
+            }
+        }
+        function hideError(errorDivId = 'scheduleError') {
+            const errorDiv = document.getElementById(errorDivId);
+            if (errorDiv) {
+                errorDiv.classList.add('d-none');
+                errorDiv.textContent = '';
+            }
+        }
+
+        // --- Validation functions for all steps ---
+        function validateUsername() {
+            const input = document.getElementById('username');
+            const value = input.value.trim();
+            const regex = /^[a-zA-Z0-9_-]{3,32}$/;
+            if (!regex.test(value)) {
+                input.classList.add('is-invalid');
+                return false;
+            } else {
+                input.classList.remove('is-invalid');
+                return true;
+            }
+        }
+        function validateServerName() {
+            const input = document.getElementById('serverName');
+            if (!input.value.trim()) {
+                input.classList.add('is-invalid');
+                return false;
+            } else {
+                input.classList.remove('is-invalid');
+                return true;
+            }
+        }
+        function validatePassword() {
+            const input = document.getElementById('password');
+            const help = document.getElementById('passwordHelp');
+            if (input.value.length < 4) {
+                input.classList.add('is-invalid');
+                if (help) help.classList.add('text-danger');
+                return false;
+            } else {
+                input.classList.remove('is-invalid');
+                if (help) help.classList.remove('text-danger');
+                return true;
+            }
+        }
+        function validateConfirmPassword() {
+            const input = document.getElementById('confirmPassword');
+            const password = document.getElementById('password').value;
+            if (input.value !== password || !input.value) {
+                input.classList.add('is-invalid');
+                return false;
+            } else {
+                input.classList.remove('is-invalid');
+                return true;
+            }
+        }
+        function validateRcloneConfig() {
+            const input = document.getElementById('rcloneConfig');
+            if (!input.value.trim()) {
+                input.classList.add('is-invalid');
+                return false;
+            } else {
+                input.classList.remove('is-invalid');
+                return true;
+            }
+        }
+        function validateRemoteName() {
+            const input = document.getElementById('remoteName');
+            const value = input.value.trim();
+            const regex = /^[a-zA-Z0-9_-]+:(?:\/[^\s]*)?$/; // e.g., myremote: or myremote:/backups
+            if (!regex.test(value)) {
+                input.classList.add('is-invalid');
+                return false;
+            } else {
+                input.classList.remove('is-invalid');
+                return true;
+            }
+        }
+        function validateEmail() {
+            const input = document.getElementById('emailAddress');
+            const value = input.value.trim();
+            const regex = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+            if (!regex.test(value)) {
+                input.classList.add('is-invalid');
+                return false;
+            } else {
+                input.classList.remove('is-invalid');
+                return true;
+            }
+        }
+        function validateSmtpServer() {
+            const input = document.getElementById('smtpServer');
+            if (!input.value.trim()) {
+                input.classList.add('is-invalid');
+                return false;
+            } else {
+                input.classList.remove('is-invalid');
+                return true;
+            }
+        }
+        function validateSmtpPort() {
+            const input = document.getElementById('smtpPort');
+            if (!input.value.trim() || isNaN(input.value)) {
+                input.classList.add('is-invalid');
+                return false;
+            } else {
+                input.classList.remove('is-invalid');
+                return true;
+            }
+        }
+        function validateSmtpUsername() {
+            const input = document.getElementById('smtpUsername');
+            if (!input.value.trim()) {
+                input.classList.add('is-invalid');
+                return false;
+            } else {
+                input.classList.remove('is-invalid');
+                return true;
+            }
+        }
+        function validateSmtpPassword() {
+            const input = document.getElementById('smtpPassword');
+            if (!input.value.trim()) {
+                input.classList.add('is-invalid');
+                return false;
+            } else {
+                input.classList.remove('is-invalid');
+                return true;
+            }
+        }
+        function validateBackupTime() {
+            const input = document.getElementById('backupTime');
+            if (!input.value) {
+                input.classList.add('is-invalid');
+                return false;
+            } else {
+                input.classList.remove('is-invalid');
+                return true;
+            }
+        }
+        function validateBandwidthLimit() {
+            const input = document.getElementById('bandwidthLimit');
+            const value = input.value.trim();
+            if (!value) {
+                input.classList.remove('is-invalid');
+                return true;
+            }
+            // Accepts e.g. 4M, 1G, 500k
+            const regex = /^\d+(k|M|G)$/i;
+            if (!regex.test(value)) {
+                input.classList.add('is-invalid');
+                return false;
+            } else {
+                input.classList.remove('is-invalid');
+                return true;
+            }
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            loadStepFromStorage(); // <-- Fix: restore currentStep from localStorage
+            loadDrives();
+            showStep(currentStep); // Use currentStep from localStorage
+            updateStepIndicators(); // Update indicators on load
+            // Add Enter key handler for confirm password
+            const confirmPasswordInput = document.getElementById('confirmPassword');
+            if (confirmPasswordInput) {
+                confirmPasswordInput.addEventListener('keydown', function(e) {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        createUser();
+                    }
+                });
+            }
+            // updateNavButtons(); // Removed as per edit hint
+            // Badge update event
+            const formatSelect = document.getElementById('formatDriveSelect');
+            if (formatSelect) {
+                formatSelect.addEventListener('change', updateDriveMountStatusBadge);
+                // Initial badge update
+                updateDriveMountStatusBadge();
+            }
+            // Step 1 validation listeners
+            document.getElementById('username').addEventListener('blur', validateUsername);
+            document.getElementById('serverName').addEventListener('blur', validateServerName);
+            document.getElementById('password').addEventListener('blur', validatePassword);
+            document.getElementById('confirmPassword').addEventListener('blur', validateConfirmPassword);
+            document.getElementById('username').addEventListener('input', validateUsername);
+            document.getElementById('serverName').addEventListener('input', validateServerName);
+            document.getElementById('password').addEventListener('input', validatePassword);
+            document.getElementById('confirmPassword').addEventListener('input', validateConfirmPassword);
+            // Step 4 validation listeners
+            if (document.getElementById('rcloneConfig')) {
+                document.getElementById('rcloneConfig').addEventListener('blur', validateRcloneConfig);
+                document.getElementById('rcloneConfig').addEventListener('input', validateRcloneConfig);
+            }
+            if (document.getElementById('remoteName')) {
+                document.getElementById('remoteName').addEventListener('blur', validateRemoteName);
+                document.getElementById('remoteName').addEventListener('input', validateRemoteName);
+            }
+            // Step 5 validation listeners
+            if (document.getElementById('emailAddress')) {
+                document.getElementById('emailAddress').addEventListener('blur', validateEmail);
+                document.getElementById('emailAddress').addEventListener('input', validateEmail);
+            }
+            if (document.getElementById('smtpServer')) {
+                document.getElementById('smtpServer').addEventListener('blur', validateSmtpServer);
+                document.getElementById('smtpServer').addEventListener('input', validateSmtpServer);
+            }
+            if (document.getElementById('smtpPort')) {
+                document.getElementById('smtpPort').addEventListener('blur', validateSmtpPort);
+                document.getElementById('smtpPort').addEventListener('input', validateSmtpPort);
+            }
+            if (document.getElementById('smtpUsername')) {
+                document.getElementById('smtpUsername').addEventListener('blur', validateSmtpUsername);
+                document.getElementById('smtpUsername').addEventListener('input', validateSmtpUsername);
+            }
+            if (document.getElementById('smtpPassword')) {
+                document.getElementById('smtpPassword').addEventListener('blur', validateSmtpPassword);
+                document.getElementById('smtpPassword').addEventListener('input', validateSmtpPassword);
+                // Add Enter key handler for SMTP password
+                document.getElementById('smtpPassword').addEventListener('keydown', function(e) {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        setupEmail();
+                    }
+                });
+            }
+            // Step 6 validation listeners
+            if (document.getElementById('backupTime')) {
+                document.getElementById('backupTime').addEventListener('blur', validateBackupTime);
+                document.getElementById('backupTime').addEventListener('input', validateBackupTime);
+                // Show time picker automatically on focus/click if supported
+                const timeInput = document.getElementById('backupTime');
+                const showTimePicker = () => {
+                    if (typeof timeInput.showPicker === 'function') {
+                        timeInput.showPicker();
+                    }
+                };
+                timeInput.addEventListener('focus', showTimePicker);
+                timeInput.addEventListener('click', showTimePicker);
+            }
+            if (document.getElementById('bandwidthLimit')) {
+                document.getElementById('bandwidthLimit').addEventListener('blur', validateBandwidthLimit);
+                document.getElementById('bandwidthLimit').addEventListener('input', validateBandwidthLimit);
+            }
+
+            // Restore event listeners for drive action buttons, but only call the action if not prevented by confirmation
+            const unmountBtn = document.getElementById('unmountDriveBtn');
+            if (unmountBtn) {
+                unmountBtn.addEventListener('click', function(e) {
+                    if (e.defaultPrevented) return;
+                    unmountDrive();
+                });
+            }
+            const formatBtn = document.getElementById('formatDriveBtn');
+            if (formatBtn) {
+                formatBtn.addEventListener('click', function(e) {
+                    if (e.defaultPrevented) return;
+                    formatDrive();
+                });
+            }
+            const mountBtn = document.getElementById('mountDriveBtn');
+            if (mountBtn) {
+                mountBtn.addEventListener('click', function(e) {
+                    if (e.defaultPrevented) return;
+                    mountDrive();
+                });
+            }
+            const unmountMountBtn = document.getElementById('unmountMountDriveBtn');
+            if (unmountMountBtn) {
+                unmountMountBtn.addEventListener('click', function(e) {
+                    if (e.defaultPrevented) return;
+                    unmountMountDrive();
+                });
+            }
+        });
+    </script>
+
+    <style>
+        body {
+            background-color: #f3f4f6 !important;
+        }
+        .step-circle {
+            width: 2rem;
+            height: 2rem;
+            border-radius: 9999px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 1.1rem;
+            line-height: 1;
+            transition: background 0.2s, color 0.2s, box-shadow 0.2s, transform 0.15s;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+            margin: 0 auto;
+            padding: 0;
+            cursor: pointer;
+        }
+        .step-circle:hover {
+            box-shadow: 0 4px 16px rgba(58,134,242,0.18), 0 0 0 2px #3a86f2;
+            transform: scale(1.08);
+            z-index: 2;
+        }
+        .step-completed {
+            background-color: hsl(153, 60%, 47%) !important; /* softer modern green */
+            color: #fff !important;
+        }
+        .step-current {
+            background-color: #3a86f2 !important;
+            color: #fff !important;
+            box-shadow: 0 0 0 3px #3a86f233;
+        }
+        .step-upcoming {
+            background-color: #d1d5db !important;
+            color: #fff !important;
+        }
+        .step-text {
+            margin-top: 0.5rem;
+            font-size: 0.875rem;
+            color: #6B7280;
+        }
+        .step-line {
+            flex: 1;
+            height: 2px;
+            background-color: #E5E7EB;
+            margin: 0 1rem;
+            margin-top: 1rem;
+        }
+        .shadow {
+            box-shadow: 0 4px 6px rgba(0,0,0,0.08);
+        }
+        .rounded-3 {
+            border-radius: 1rem;
+        }
+        .gap-3 > * + * {
+            margin-left: 1rem;
+        }
+        .d-none {
+            display: none !important;
+        }
+    </style>
+</body>
+</html> 

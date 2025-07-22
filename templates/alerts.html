@@ -1,0 +1,484 @@
+{% extends "base.html" %}
+
+{% block title %}Alerts - Simple Safer Server{% endblock %}
+
+{% block header %}Alerts{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Email Configuration Section -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex align-items-center">
+                    <h5 class="mb-0">
+                        <i class="fas fa-envelope me-2"></i> Email Alert Configuration
+                    </h5>
+                </div>
+                <div class="card-body pt-3 pb-2">
+                    <form id="emailConfigForm">
+                        <!-- Error alert for email config -->
+                        <div id="emailConfigError" class="alert alert-danger d-none" role="alert"></div>
+                        <div class="row mb-3">
+                            <div class="col-12">
+                                <label class="form-label mb-0">Email Address</label>
+                                <input type="email" id="emailAddress" class="form-control" placeholder="your@email.com">
+                                <div class="invalid-feedback">Please enter a valid email address.</div>
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-12 col-md-6 mb-3 mb-md-0">
+                                <label class="form-label mb-0">SMTP Server</label>
+                                <input type="text" id="smtpServer" class="form-control" placeholder="smtp.gmail.com">
+                                <div class="invalid-feedback">SMTP server is required.</div>
+                            </div>
+                            <div class="col-12 col-md-6">
+                                <label class="form-label mb-0">Port</label>
+                                <input type="number" id="smtpPort" class="form-control" placeholder="587">
+                                <div class="invalid-feedback">SMTP port is required and must be a number.</div>
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-12 col-md-6 mb-3 mb-md-0">
+                                <label class="form-label mb-0">Username</label>
+                                <input type="text" id="smtpUsername" class="form-control" placeholder="your@email.com">
+                                <div class="invalid-feedback">SMTP username is required.</div>
+                            </div>
+                            <div class="col-12 col-md-6">
+                                <label class="form-label mb-0">Password</label>
+                                <input type="password" id="smtpPassword" class="form-control">
+                                <div class="invalid-feedback">SMTP password is required.</div>
+                            </div>
+                        </div>
+                        <div class="d-flex justify-content-end">
+                            <button type="submit" class="btn btn-primary" id="saveEmailBtn">
+                                <span class="spinner-border spinner-border-sm d-none me-2" role="status"></span>
+                                Save Email Configuration
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Past Alerts Section -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="fas fa-bell me-2"></i> Past Alerts
+                    </h5>
+                    <div>
+                        <button class="btn btn-outline-secondary btn-sm" id="refreshAlertsBtn">
+                            <i class="fas fa-sync-alt me-1"></i>Refresh
+                        </button>
+                        <button class="btn btn-outline-secondary btn-sm ms-2" id="markAllReadBtn">
+                            <i class="fas fa-envelope-open me-1"></i>Mark All as Read
+                        </button>
+                        <button class="btn btn-outline-secondary btn-sm ms-2" id="clearAlertsBtn" data-confirm="Are you sure you want to clear all past alerts? This action cannot be undone.">
+                            <i class="fas fa-trash me-1"></i>Clear All
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <!-- Loading spinner -->
+                    <div id="alertsLoading" class="text-center py-4">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2 text-muted">Loading alerts...</p>
+                    </div>
+                    <!-- No alerts message -->
+                    <div id="noAlertsMessage" class="text-center py-4 d-none">
+                        <i class="fas fa-check-circle text-success fa-2x mb-2"></i>
+                        <div class="fw-bold">No Alerts</div>
+                        <div class="text-muted small">No alerts have been generated yet. Your system is running smoothly!</div>
+                    </div>
+                    <!-- Alerts list -->
+                    <div id="alertsList" class="d-none">
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Time</th>
+                                        <th>Type</th>
+                                        <th>Title</th>
+                                        <th>Message</th>
+                                        <th>Source</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="alertsTableBody">
+                                    <!-- Alerts will be populated here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Alert Detail Modal -->
+<div class="modal fade" id="alertDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="alertDetailTitle"></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <strong>Time:</strong> <span id="alertDetailTime"></span>
+                    </div>
+                    <div class="col-md-6">
+                        <strong>Source:</strong> <span id="alertDetailSource"></span>
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <strong>Type:</strong> <span id="alertDetailType"></span>
+                    </div>
+                    <div class="col-md-6">
+                        <strong>Status:</strong> <span id="alertDetailStatus"></span>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <strong>Message:</strong>
+                    <div id="alertDetailMessage" class="mt-2 p-3 bg-light rounded"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" id="markAsReadBtn">Mark as Read</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentAlertId = null;
+
+// Load email configuration on page load
+document.addEventListener('DOMContentLoaded', function() {
+    loadEmailConfig();
+    loadAlerts();
+});
+
+// Email Configuration Functions
+function loadEmailConfig() {
+    fetch('/api/alerts/email-config')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                document.getElementById('emailAddress').value = data.config.email_address || '';
+                document.getElementById('smtpServer').value = data.config.smtp_server || '';
+                document.getElementById('smtpPort').value = data.config.smtp_port || '';
+                document.getElementById('smtpUsername').value = data.config.smtp_username || '';
+                document.getElementById('smtpPassword').value = data.config.smtp_password || '';
+            }
+        })
+        .catch(error => {
+            console.error('Error loading email config:', error);
+        });
+}
+
+document.getElementById('emailConfigForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    saveEmailConfig();
+});
+
+function saveEmailConfig() {
+    const emailAddress = document.getElementById('emailAddress').value.trim();
+    const smtpServer = document.getElementById('smtpServer').value.trim();
+    const smtpPort = document.getElementById('smtpPort').value.trim();
+    const smtpUsername = document.getElementById('smtpUsername').value.trim();
+    const smtpPassword = document.getElementById('smtpPassword').value;
+
+    // Validation
+    if (!emailAddress || !smtpServer || !smtpPort || !smtpUsername || !smtpPassword) {
+        showEmailError('All fields are required');
+        return;
+    }
+
+    if (!isValidEmail(emailAddress)) {
+        showEmailError('Please enter a valid email address');
+        return;
+    }
+
+    if (!isValidPort(smtpPort)) {
+        showEmailError('SMTP port must be a valid number between 1 and 65535');
+        return;
+    }
+
+    // Show loading state
+    const saveBtn = document.getElementById('saveEmailBtn');
+    const spinner = saveBtn.querySelector('.spinner-border');
+    saveBtn.disabled = true;
+    spinner.classList.remove('d-none');
+
+    // Send request
+    fetch('/api/alerts/email-config', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            email_address: emailAddress,
+            smtp_server: smtpServer,
+            smtp_port: smtpPort,
+            smtp_username: smtpUsername,
+            smtp_password: smtpPassword
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showEmailSuccess('Email configuration saved successfully');
+            document.getElementById('smtpPassword').value = ''; // Clear password field
+        } else {
+            showEmailError(data.error || 'Failed to save email configuration');
+        }
+    })
+    .catch(error => {
+        console.error('Error saving email config:', error);
+        showEmailError('An error occurred while saving the configuration');
+    })
+    .finally(() => {
+        saveBtn.disabled = false;
+        spinner.classList.add('d-none');
+    });
+}
+
+function showEmailError(message) {
+    const errorDiv = document.getElementById('emailConfigError');
+    errorDiv.textContent = message;
+    errorDiv.classList.remove('d-none');
+    setTimeout(() => {
+        errorDiv.classList.add('d-none');
+    }, 5000);
+}
+
+function showEmailSuccess(message) {
+    // Create a temporary success alert
+    const successDiv = document.createElement('div');
+    successDiv.className = 'alert alert-success';
+    successDiv.textContent = message;
+    document.getElementById('emailConfigForm').insertBefore(successDiv, document.getElementById('emailConfigError'));
+    setTimeout(() => {
+        successDiv.remove();
+    }, 3000);
+}
+
+// Alerts Functions
+function loadAlerts() {
+    const loadingDiv = document.getElementById('alertsLoading');
+    const noAlertsDiv = document.getElementById('noAlertsMessage');
+    const alertsListDiv = document.getElementById('alertsList');
+
+    loadingDiv.classList.remove('d-none');
+    noAlertsDiv.classList.add('d-none');
+    alertsListDiv.classList.add('d-none');
+
+    fetch('/api/alerts')
+        .then(response => response.json())
+        .then(data => {
+            loadingDiv.classList.add('d-none');
+            
+            if (data.success) {
+                if (data.alerts.length === 0) {
+                    noAlertsDiv.classList.remove('d-none');
+                } else {
+                    displayAlerts(data.alerts);
+                    alertsListDiv.classList.remove('d-none');
+                }
+            } else {
+                showAlertError('Failed to load alerts: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(error => {
+            console.error('Error loading alerts:', error);
+            loadingDiv.classList.add('d-none');
+            showAlertError('An error occurred while loading alerts');
+        });
+}
+
+function displayAlerts(alerts) {
+    const tbody = document.getElementById('alertsTableBody');
+    tbody.innerHTML = '';
+
+    // Show newest alerts first
+    alerts.slice().reverse().forEach(alert => {
+        const row = document.createElement('tr');
+        row.className = alert.read ? '' : 'table-warning';
+        
+        const time = new Date(alert.timestamp).toLocaleString();
+        const typeBadge = getTypeBadge(alert.type);
+        const statusBadge = alert.read ? 
+            '<span class="badge bg-secondary">Read</span>' : 
+            '<span class="badge bg-warning text-dark">New</span>';
+
+        row.innerHTML = `
+            <td>${time}</td>
+            <td>${typeBadge}</td>
+            <td>
+                <a href="#" class="text-decoration-none" onclick="showAlertDetail(${alert.id})">
+                    ${alert.title}
+                </a>
+            </td>
+            <td>${truncateText(alert.message, 50)}</td>
+            <td><span class="badge bg-info">${alert.source}</span></td>
+            <td>${statusBadge}</td>
+        `;
+        
+        tbody.appendChild(row);
+    });
+}
+
+function getTypeBadge(type) {
+    const badges = {
+        'error': '<span class="badge bg-danger">Error</span>',
+        'warning': '<span class="badge bg-warning text-dark">Warning</span>',
+        'info': '<span class="badge bg-info">Info</span>',
+        'success': '<span class="badge bg-success">Success</span>'
+    };
+    return badges[type] || badges['info'];
+}
+
+function truncateText(text, maxLength) {
+    if (text.length <= maxLength) return text;
+    return text.substring(0, maxLength) + '...';
+}
+
+function showAlertDetail(alertId) {
+    fetch(`/api/alerts/${alertId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const alert = data.alert;
+                currentAlertId = alert.id;
+                
+                document.getElementById('alertDetailTitle').textContent = alert.title;
+                document.getElementById('alertDetailTime').textContent = new Date(alert.timestamp).toLocaleString();
+                document.getElementById('alertDetailSource').textContent = alert.source;
+                document.getElementById('alertDetailType').innerHTML = getTypeBadge(alert.type);
+                document.getElementById('alertDetailStatus').innerHTML = alert.read ? 
+                    '<span class="badge bg-secondary">Read</span>' : 
+                    '<span class="badge bg-warning text-dark">New</span>';
+                document.getElementById('alertDetailMessage').textContent = alert.message;
+                
+                // Show/hide mark as read button
+                const markAsReadBtn = document.getElementById('markAsReadBtn');
+                if (alert.read) {
+                    markAsReadBtn.style.display = 'none';
+                } else {
+                    markAsReadBtn.style.display = 'inline-block';
+                }
+                
+                const modal = new bootstrap.Modal(document.getElementById('alertDetailModal'));
+                modal.show();
+            } else {
+                showAlertError('Failed to load alert details');
+            }
+        })
+        .catch(error => {
+            console.error('Error loading alert details:', error);
+            showAlertError('An error occurred while loading alert details');
+        });
+}
+
+document.getElementById('markAsReadBtn').addEventListener('click', function() {
+    if (currentAlertId) {
+        fetch(`/api/alerts/${currentAlertId}/mark-read`, {
+            method: 'POST'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Close modal and refresh alerts
+                bootstrap.Modal.getInstance(document.getElementById('alertDetailModal')).hide();
+                loadAlerts();
+            } else {
+                showAlertError('Failed to mark alert as read');
+            }
+        })
+        .catch(error => {
+            console.error('Error marking alert as read:', error);
+            showAlertError('An error occurred while marking alert as read');
+        });
+    }
+});
+
+document.getElementById('refreshAlertsBtn').addEventListener('click', function() {
+    loadAlerts();
+});
+
+document.getElementById('clearAlertsBtn').addEventListener('click', function() {
+    if (confirm('Are you sure you want to clear all past alerts? This action cannot be undone.')) {
+        fetch('/api/alerts/clear', {
+            method: 'POST'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                loadAlerts();
+            } else {
+                showAlertError('Failed to clear alerts');
+            }
+        })
+        .catch(error => {
+            console.error('Error clearing alerts:', error);
+            showAlertError('An error occurred while clearing alerts');
+        });
+    }
+});
+
+document.getElementById('markAllReadBtn').addEventListener('click', function() {
+    fetch('/api/alerts/mark-all-read', {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            loadAlerts();
+        } else {
+            showAlertError('Failed to mark all alerts as read');
+        }
+    })
+    .catch(error => {
+        console.error('Error marking all alerts as read:', error);
+        showAlertError('An error occurred while marking all alerts as read');
+    });
+});
+
+function showAlertError(message) {
+    // Create a temporary error alert at the top of the alerts section
+    const alertsCard = document.querySelector('.card');
+    const errorDiv = document.createElement('div');
+    errorDiv.className = 'alert alert-danger alert-dismissible fade show';
+    errorDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    alertsCard.insertBefore(errorDiv, alertsCard.firstChild);
+    setTimeout(() => {
+        errorDiv.remove();
+    }, 5000);
+}
+
+// Utility Functions
+function isValidEmail(email) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+}
+
+function isValidPort(port) {
+    const portNum = parseInt(port);
+    return !isNaN(portNum) && portNum >= 1 && portNum <= 65535;
+}
+</script>
+{% endblock %} 

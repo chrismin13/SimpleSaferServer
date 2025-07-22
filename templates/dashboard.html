@@ -1,0 +1,683 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Simple Safer Server{% endblock %}
+
+{% block header %}Dashboard{% endblock %}
+
+{% block content %}
+    <!-- Status Indicators Section -->
+    <div class="row mb-4 text-center">
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="fas fa-database"></i> Storage</h5>
+                    <div id="storage-status">
+                        <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                        <span>Loading...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="fas fa-network-wired"></i> Network File Sharing <small class="text-muted">(SMB)</small></h5>
+                    <div id="network-status">
+                        <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                        <span>Loading...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="fas fa-stethoscope"></i> Hard Drive Health</h5>
+                    <div id="drive-health-status">
+                        <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                        <span>Loading...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="fas fa-microchip"></i> System Resources</h5>
+                    <p>CPU: <strong id="cpu-usage">{{ cpu_usage }}</strong></p>
+                    <p>RAM: <strong id="ram-usage">{{ ram_usage }}</strong></p>
+                    <p>Network: <span id="net-up">↑ 0 KB/s</span> <span id="net-down" class="ms-2">↓ 0 KB/s</span></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Task Scheduler Section -->
+    <div class="mb-4">
+        <h4>Task Schedule
+            <button id="refresh-tasks-btn" class="btn btn-sm btn-outline-primary ms-2" title="Refresh Task Schedule">
+                <i class="fas fa-rotate-right"></i> Refresh
+            </button>
+        </h4>
+        <div id="tasks-loading" class="text-center my-3">
+            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+            <span>Loading tasks...</span>
+        </div>
+        <table class="table table-striped" id="tasks-table" style="display:none;">
+            <thead>
+                <tr>
+                    <th scope="col">Task</th>
+                    <th scope="col">Next Run</th>
+                    <th scope="col">Last Run</th>
+                    <th scope="col">Ran For</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Actions</th>
+                </tr>
+            </thead>
+            <tbody id="tasks-tbody">
+                <!-- Dynamically loaded -->
+            </tbody>
+        </table>
+    </div>
+
+    <!-- System Actions Section -->
+    <div class="mb-4">
+        <h4>System Actions</h4>
+        <div class="row">
+            <div class="col-md-3">
+                <button id="unmount-btn" class="btn btn-danger w-100">Unmount Storage</button>
+            </div>
+            <div class="col-md-3">
+                <button id="mount-btn" class="btn btn-success w-100">Mount Storage</button>
+            </div>
+            <div class="col-md-3">
+                <button id="restart-btn" class="btn btn-warning w-100">Restart System</button>
+            </div>
+            <div class="col-md-3">
+                <button id="shutdown-btn" class="btn btn-danger w-100">Shutdown System</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Unmount Confirmation Modal -->
+    <div class="modal fade" id="unmountModal" tabindex="-1" aria-labelledby="unmountModalLabel" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="unmountModalLabel">Confirm Unmount Storage</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <div id="unmount-modal-body">
+              <p><strong>Are you sure you want to unmount the storage drive?</strong></p>
+              <ul>
+                <li>This will disconnect all users currently accessing files.</li>
+                <li>All scheduled tasks will be stopped.</li>
+                <li>Network file sharing will be disabled.</li>
+                <li>The drive will be safely powered down and can be removed.</li>
+              </ul>
+              <p>This action may take a few moments.</p>
+            </div>
+            <div id="unmount-modal-spinner" class="text-center d-none">
+              <div class="spinner-border text-danger" role="status">
+                <span class="visually-hidden">Unmounting...</span>
+              </div>
+              <p class="mt-2">Unmounting, please wait...</p>
+            </div>
+            <div id="unmount-modal-success" class="alert alert-success d-none mt-2"></div>
+            <div id="unmount-modal-error" class="alert alert-danger d-none mt-2"></div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="unmount-cancel-btn">Cancel</button>
+            <button type="button" class="btn btn-danger" id="unmount-confirm-btn">
+              <span id="unmount-confirm-spinner" class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+              Unmount
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mount Confirmation Modal -->
+    <div class="modal fade" id="mountModal" tabindex="-1" aria-labelledby="mountModalLabel" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="mountModalLabel">Mount Storage</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <div id="mount-modal-body">
+              <p><strong>When should you use this?</strong></p>
+              <ul>
+                <li>If the storage was not mounted automatically after connecting it.</li>
+                <li>If you cannot see your files in the network file share.</li>
+                <li>If you recently unplugged or moved your storage.</li>
+                <li>If you see a "Drive Not Connected" message above.</li>
+                <li>Any time you want to make the storage available for file sharing and backup again.</li>
+              </ul>
+              <p>This will attempt to mount the storage and make it available for use.</p>
+            </div>
+            <div id="mount-modal-spinner" class="text-center d-none">
+              <div class="spinner-border text-success" role="status">
+                <span class="visually-hidden">Mounting...</span>
+              </div>
+              <p class="mt-2">Mounting, please wait...</p>
+            </div>
+            <div id="mount-modal-success" class="alert alert-success d-none mt-2"></div>
+            <div id="mount-modal-error" class="alert alert-danger d-none mt-2"></div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="mount-cancel-btn">Cancel</button>
+            <button type="button" class="btn btn-success" id="mount-confirm-btn">Mount Storage</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Restart Confirmation Modal -->
+    <div class="modal fade" id="restartModal" tabindex="-1" aria-labelledby="restartModalLabel" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="restartModalLabel">Restart System</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <div id="restart-modal-body">
+              <p><strong>Are you sure you want to restart the system?</strong></p>
+              <ul>
+                <li>All users will be disconnected.</li>
+                <li>All running tasks will be stopped.</li>
+                <li>The system will be unavailable for a few minutes.</li>
+              </ul>
+              <p>This action cannot be undone.</p>
+            </div>
+            <div id="restart-modal-spinner" class="text-center d-none">
+              <div class="spinner-border text-warning" role="status">
+                <span class="visually-hidden">Restarting...</span>
+              </div>
+              <p class="mt-2">Restarting, please wait...</p>
+            </div>
+            <div id="restart-modal-success" class="alert alert-success d-none mt-2"></div>
+            <div id="restart-modal-error" class="alert alert-danger d-none mt-2"></div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="restart-cancel-btn">Cancel</button>
+            <button type="button" class="btn btn-warning" id="restart-confirm-btn">Restart</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Shutdown Confirmation Modal -->
+    <div class="modal fade" id="shutdownModal" tabindex="-1" aria-labelledby="shutdownModalLabel" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="shutdownModalLabel">Shut Down System</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <div id="shutdown-modal-body">
+              <p><strong>Are you sure you want to shut down the system?</strong></p>
+              <ul>
+                <li>All users will be disconnected.</li>
+                <li>All running tasks will be stopped.</li>
+                <li>The system will power off and must be turned on manually.</li>
+              </ul>
+              <p>This action cannot be undone.</p>
+            </div>
+            <div id="shutdown-modal-spinner" class="text-center d-none">
+              <div class="spinner-border text-danger" role="status">
+                <span class="visually-hidden">Shutting down...</span>
+              </div>
+              <p class="mt-2">Shutting down, please wait...</p>
+            </div>
+            <div id="shutdown-modal-success" class="alert alert-success d-none mt-2"></div>
+            <div id="shutdown-modal-error" class="alert alert-danger d-none mt-2"></div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="shutdown-cancel-btn">Cancel</button>
+            <button type="button" class="btn btn-danger" id="shutdown-confirm-btn">Shut Down</button>
+          </div>
+        </div>
+      </div>
+    </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Fetch and display storage status
+function updateStorageStatus() {
+    fetch('/api/storage/status')
+        .then(response => response.json())
+        .then(data => {
+            const el = document.getElementById('storage-status');
+            if (data.mounted) {
+                el.innerHTML = `<span class='badge bg-success'>Drive Connected</span><br>
+                    <strong>${data.used_storage} GB</strong> of <strong>${data.total_storage} GB</strong> used (<strong>${data.storage_usage}</strong>)`;
+            } else {
+                el.innerHTML = `<span class='badge bg-danger'>Drive Not Connected</span><br>
+                    <span class='text-danger'>Storage drive is not available.</span>`;
+            }
+        })
+        .catch(() => {
+            document.getElementById('storage-status').innerHTML = `<span class='badge bg-warning text-dark'>Status Unknown</span>`;
+        });
+}
+
+// Fetch and display network file sharing (SMB) status
+function updateNetworkStatus() {
+    fetch('/api/smb/status')
+        .then(response => response.json())
+        .then(data => {
+            const el = document.getElementById('network-status');
+            if (data.smbd === 'active' && data.nmbd === 'active') {
+                el.innerHTML = `<span class='badge bg-success'>Enabled</span><br>
+                    <span>Network file sharing is available.</span>`;
+            } else {
+                el.innerHTML = `<span class='badge bg-danger'>Disabled</span><br>
+                    <span>Network file sharing is not available.</span>`;
+            }
+        })
+        .catch(() => {
+            document.getElementById('network-status').innerHTML = `<span class='badge bg-warning text-dark'>Status Unknown</span>`;
+        });
+}
+
+// Fetch and display drive health status
+function updateDriveHealthStatus() {
+    fetch('/api/drive_health/summary')
+        .then(response => response.json())
+        .then(data => {
+            const el = document.getElementById('drive-health-status');
+            if (data.status === 'good') {
+                el.innerHTML = `<span class='badge bg-success'>Healthy</span><br>
+                    <span>Failure Risk: <strong>${(data.probability * 100).toFixed(2)}%</strong></span><br>
+                    <span>Temperature: <strong>${data.temperature}°C</strong></span>`;
+            } else if (data.status === 'warning') {
+                el.innerHTML = `<span class='badge bg-danger'>Warning</span><br>
+                    <span>Failure Risk: <strong>${(data.probability * 100).toFixed(2)}%</strong></span><br>
+                    <span>Temperature: <strong>${data.temperature}°C</strong></span>`;
+            } else {
+                el.innerHTML = `<span class='badge bg-warning text-dark'>Status Unknown</span><br>
+                    <span>Drive health data is not available.</span>`;
+            }
+        })
+        .catch(() => {
+            document.getElementById('drive-health-status').innerHTML = `<span class='badge bg-warning text-dark'>Status Unknown</span><br>
+                <span>Drive health data is not available.</span>`;
+        });
+}
+
+// Live update for System Resources (CPU, RAM, Network)
+let lastNetSent = null;
+let lastNetRecv = null;
+let lastNetTime = null;
+function updateSystemResourcesLive() {
+    fetch('/api/system/resources')
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) return;
+            document.getElementById('cpu-usage').textContent = data.cpu_usage.toFixed(1) + '%';
+            document.getElementById('ram-usage').textContent = data.ram_usage.toFixed(1) + '%';
+            // Network traffic
+            const now = Date.now();
+            if (lastNetSent !== null && lastNetRecv !== null && lastNetTime !== null) {
+                const intervalSec = (now - lastNetTime) / 1000;
+                const upRate = (data.bytes_sent - lastNetSent) / 1024 / intervalSec; // KB/s
+                const downRate = (data.bytes_recv - lastNetRecv) / 1024 / intervalSec; // KB/s
+                document.getElementById('net-up').textContent = '↑ ' + upRate.toFixed(1) + ' KB/s';
+                document.getElementById('net-down').textContent = '↓ ' + downRate.toFixed(1) + ' KB/s';
+            }
+            lastNetSent = data.bytes_sent;
+            lastNetRecv = data.bytes_recv;
+            lastNetTime = now;
+        });
+}
+setInterval(updateSystemResourcesLive, 1000);
+
+// Dynamic loading and refresh for Task Schedule
+function renderTaskStatusBadge(status) {
+    if (status === 'Success')
+        return `<span class="badge bg-success fw-normal" style="letter-spacing:0.03em;"><i class="fas fa-circle-check"></i> Success</span>`;
+    if (status === 'Failure')
+        return `<span class="badge bg-danger fw-normal" style="letter-spacing:0.03em;"><i class="fas fa-circle-xmark"></i> Failure</span>`;
+    if (status === 'Running')
+        return `<span class="badge bg-info text-dark fw-normal" style="letter-spacing:0.03em;"><i class="fas fa-spinner fa-spin"></i> Running</span>`;
+    if (status === 'Missing')
+        return `<span class="badge bg-warning text-dark fw-normal" style="letter-spacing:0.03em;"><i class="fas fa-circle-exclamation"></i> Missing</span>`;
+    if (status === 'Not Run Yet')
+        return `<span class="badge bg-secondary fw-normal" style="letter-spacing:0.03em;"><i class="fas fa-clock"></i> Not Run Yet</span>`;
+    if (status === 'Error')
+        return `<span class="badge bg-danger fw-normal" style="letter-spacing:0.03em;"><i class="fas fa-triangle-exclamation"></i> Error</span>`;
+    return `<span class="badge bg-warning text-dark fw-normal" style="letter-spacing:0.03em;"><i class="fas fa-question-circle"></i> ${status}</span>`;
+}
+
+function loadTaskSchedule() {
+    document.getElementById('tasks-loading').style.display = '';
+    document.getElementById('tasks-table').style.display = 'none';
+    fetch('/api/tasks/schedule')
+        .then(response => response.json())
+        .then(data => {
+            const tbody = document.getElementById('tasks-tbody');
+            tbody.innerHTML = '';
+            if (data.tasks && data.tasks.length > 0) {
+                data.tasks.forEach(task => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td><a href="/task/${encodeURIComponent(task.name)}">${task.name}</a></td>
+                        <td>${task.next_run}</td>
+                        <td>${task.last_run}</td>
+                        <td>${task.last_run_duration}</td>
+                        <td>${renderTaskStatusBadge(task.status)}</td>
+                        <td>
+                            <form method="post" action="/run_task/${encodeURIComponent(task.name)}" class="d-inline">
+                                <button type="submit" class="btn btn-sm btn-outline-primary" data-confirm="Are you sure you want to run this task?">Run Now</button>
+                            </form>
+                        </td>
+                    `;
+                    tbody.appendChild(row);
+                });
+            } else {
+                const row = document.createElement('tr');
+                row.innerHTML = `<td colspan="6" class="text-center">No tasks found.</td>`;
+                tbody.appendChild(row);
+            }
+            document.getElementById('tasks-loading').style.display = 'none';
+            document.getElementById('tasks-table').style.display = '';
+        })
+        .catch(() => {
+            document.getElementById('tasks-loading').innerHTML = '<span class="text-danger">Failed to load tasks.</span>';
+        });
+}
+document.getElementById('refresh-tasks-btn').addEventListener('click', function() {
+    loadTaskSchedule();
+});
+document.addEventListener('DOMContentLoaded', function() {
+    loadTaskSchedule();
+});
+
+document.addEventListener('DOMContentLoaded', function() {
+    updateStorageStatus();
+    updateNetworkStatus();
+    updateDriveHealthStatus();
+});
+
+// Unmount Storage Modal Logic
+const unmountBtn = document.getElementById('unmount-btn');
+const unmountModal = new bootstrap.Modal(document.getElementById('unmountModal'));
+const unmountConfirmBtn = document.getElementById('unmount-confirm-btn');
+const unmountCancelBtn = document.getElementById('unmount-cancel-btn');
+const unmountModalBody = document.getElementById('unmount-modal-body');
+const unmountModalSpinner = document.getElementById('unmount-modal-spinner');
+const unmountModalSuccess = document.getElementById('unmount-modal-success');
+const unmountModalError = document.getElementById('unmount-modal-error');
+const unmountConfirmSpinner = document.getElementById('unmount-confirm-spinner');
+
+// Create a Close button for after success
+let unmountCloseBtn = null;
+
+unmountBtn.addEventListener('click', function() {
+    // Reset modal state
+    unmountModalBody.classList.remove('d-none');
+    unmountModalSpinner.classList.add('d-none');
+    unmountModalSuccess.classList.add('d-none');
+    unmountModalError.classList.add('d-none');
+    unmountConfirmBtn.disabled = false;
+    // Remove spinner from Unmount button
+    unmountConfirmSpinner.classList.add('d-none');
+    unmountConfirmBtn.classList.remove('d-none');
+    unmountCancelBtn.classList.remove('d-none');
+    if (unmountCloseBtn) {
+        unmountCloseBtn.remove();
+        unmountCloseBtn = null;
+    }
+    unmountModal.show();
+});
+
+unmountConfirmBtn.addEventListener('click', function() {
+    // Show only the modal spinner, not the button spinner
+    unmountModalBody.classList.add('d-none');
+    unmountModalSpinner.classList.remove('d-none');
+    unmountConfirmBtn.disabled = true;
+    // Remove spinner from Unmount button
+    unmountConfirmSpinner.classList.add('d-none');
+    unmountModalSuccess.classList.add('d-none');
+    unmountModalError.classList.add('d-none');
+    // Call backend
+    fetch('/unmount', {method: 'POST', headers: {'Content-Type': 'application/json'}})
+        .then(response => response.json())
+        .then(data => {
+            unmountModalSpinner.classList.add('d-none');
+            if (data.success) {
+                unmountModalSuccess.textContent = data.message || 'Drive unmounted successfully.';
+                unmountModalSuccess.classList.remove('d-none');
+                // Hide Unmount and Cancel, show Close
+                unmountConfirmBtn.classList.add('d-none');
+                unmountCancelBtn.classList.add('d-none');
+                if (!unmountCloseBtn) {
+                    unmountCloseBtn = document.createElement('button');
+                    unmountCloseBtn.type = 'button';
+                    unmountCloseBtn.className = 'btn btn-success';
+                    unmountCloseBtn.textContent = 'Close';
+                    unmountCloseBtn.onclick = function() { unmountModal.hide(); };
+                    document.querySelector('#unmountModal .modal-footer').appendChild(unmountCloseBtn);
+                }
+                // Update dashboard status cards
+                updateStorageStatus();
+                updateNetworkStatus();
+            } else {
+                unmountModalError.textContent = data.message || 'Failed to unmount drive.';
+                unmountModalError.classList.remove('d-none');
+                unmountConfirmBtn.disabled = false;
+            }
+        })
+        .catch(() => {
+            unmountModalSpinner.classList.add('d-none');
+            unmountModalError.textContent = 'Failed to unmount drive.';
+            unmountModalError.classList.remove('d-none');
+            unmountConfirmBtn.disabled = false;
+        });
+});
+
+// Mount Drive Modal Logic
+const mountBtn = document.getElementById('mount-btn');
+const mountModal = new bootstrap.Modal(document.getElementById('mountModal'));
+const mountConfirmBtn = document.getElementById('mount-confirm-btn');
+const mountCancelBtn = document.getElementById('mount-cancel-btn');
+const mountModalBody = document.getElementById('mount-modal-body');
+const mountModalSpinner = document.getElementById('mount-modal-spinner');
+const mountModalSuccess = document.getElementById('mount-modal-success');
+const mountModalError = document.getElementById('mount-modal-error');
+let mountCloseBtn = null;
+
+mountBtn.addEventListener('click', function() {
+    // Reset modal state
+    mountModalBody.classList.remove('d-none');
+    mountModalSpinner.classList.add('d-none');
+    mountModalSuccess.classList.add('d-none');
+    mountModalError.classList.add('d-none');
+    mountConfirmBtn.disabled = false;
+    mountConfirmBtn.classList.remove('d-none');
+    mountCancelBtn.classList.remove('d-none');
+    if (mountCloseBtn) {
+        mountCloseBtn.remove();
+        mountCloseBtn = null;
+    }
+    mountModal.show();
+});
+
+mountConfirmBtn.addEventListener('click', function() {
+    // Show only the modal spinner
+    mountModalBody.classList.add('d-none');
+    mountModalSpinner.classList.remove('d-none');
+    mountConfirmBtn.disabled = true;
+    mountModalSuccess.classList.add('d-none');
+    mountModalError.classList.add('d-none');
+    // Call backend
+    fetch('/mount', {method: 'POST', headers: {'Content-Type': 'application/json'}})
+        .then(response => response.json())
+        .then(data => {
+            mountModalSpinner.classList.add('d-none');
+            if (data.success) {
+                mountModalSuccess.textContent = data.message || 'Drive mounted successfully.';
+                mountModalSuccess.classList.remove('d-none');
+                // Hide Mount and Cancel, show Close
+                mountConfirmBtn.classList.add('d-none');
+                mountCancelBtn.classList.add('d-none');
+                if (!mountCloseBtn) {
+                    mountCloseBtn = document.createElement('button');
+                    mountCloseBtn.type = 'button';
+                    mountCloseBtn.className = 'btn btn-success';
+                    mountCloseBtn.textContent = 'Close';
+                    mountCloseBtn.onclick = function() { mountModal.hide(); };
+                    document.querySelector('#mountModal .modal-footer').appendChild(mountCloseBtn);
+                }
+                // Update dashboard status cards
+                updateStorageStatus();
+                updateNetworkStatus();
+            } else {
+                mountModalError.textContent = data.message || 'Failed to mount drive.';
+                mountModalError.classList.remove('d-none');
+                mountConfirmBtn.disabled = false;
+            }
+        })
+        .catch(() => {
+            mountModalSpinner.classList.add('d-none');
+            mountModalError.textContent = 'Failed to mount drive.';
+            mountModalError.classList.remove('d-none');
+            mountConfirmBtn.disabled = false;
+        });
+});
+
+// Restart Modal Logic
+const restartBtn = document.getElementById('restart-btn');
+const restartModal = new bootstrap.Modal(document.getElementById('restartModal'));
+const restartConfirmBtn = document.getElementById('restart-confirm-btn');
+const restartCancelBtn = document.getElementById('restart-cancel-btn');
+const restartModalBody = document.getElementById('restart-modal-body');
+const restartModalSpinner = document.getElementById('restart-modal-spinner');
+const restartModalSuccess = document.getElementById('restart-modal-success');
+const restartModalError = document.getElementById('restart-modal-error');
+let restartCloseBtn = null;
+
+restartBtn.addEventListener('click', function() {
+    restartModalBody.classList.remove('d-none');
+    restartModalSpinner.classList.add('d-none');
+    restartModalSuccess.classList.add('d-none');
+    restartModalError.classList.add('d-none');
+    restartConfirmBtn.disabled = false;
+    restartConfirmBtn.classList.remove('d-none');
+    restartCancelBtn.classList.remove('d-none');
+    if (restartCloseBtn) {
+        restartCloseBtn.remove();
+        restartCloseBtn = null;
+    }
+    restartModal.show();
+});
+
+restartConfirmBtn.addEventListener('click', function() {
+    restartModalBody.classList.add('d-none');
+    restartModalSpinner.classList.remove('d-none');
+    restartConfirmBtn.disabled = true;
+    restartModalSuccess.classList.add('d-none');
+    restartModalError.classList.add('d-none');
+    fetch('/restart', {method: 'POST', headers: {'Content-Type': 'application/json'}})
+        .then(response => response.json())
+        .then(data => {
+            restartModalSpinner.classList.add('d-none');
+            if (data.success) {
+                restartModalSuccess.textContent = data.message || 'System is restarting...';
+                restartModalSuccess.classList.remove('d-none');
+                restartConfirmBtn.classList.add('d-none');
+                restartCancelBtn.classList.add('d-none');
+                if (!restartCloseBtn) {
+                    restartCloseBtn = document.createElement('button');
+                    restartCloseBtn.type = 'button';
+                    restartCloseBtn.className = 'btn btn-success';
+                    restartCloseBtn.textContent = 'Close';
+                    restartCloseBtn.onclick = function() { restartModal.hide(); };
+                    document.querySelector('#restartModal .modal-footer').appendChild(restartCloseBtn);
+                }
+                restartBtn.disabled = true;
+            } else {
+                restartModalError.textContent = data.message || 'Failed to restart system.';
+                restartModalError.classList.remove('d-none');
+                restartConfirmBtn.disabled = false;
+            }
+        })
+        .catch(() => {
+            restartModalSpinner.classList.add('d-none');
+            restartModalError.textContent = 'Failed to restart system.';
+            restartModalError.classList.remove('d-none');
+            restartConfirmBtn.disabled = false;
+        });
+});
+
+// Shutdown Modal Logic
+const shutdownBtn = document.getElementById('shutdown-btn');
+const shutdownModal = new bootstrap.Modal(document.getElementById('shutdownModal'));
+const shutdownConfirmBtn = document.getElementById('shutdown-confirm-btn');
+const shutdownCancelBtn = document.getElementById('shutdown-cancel-btn');
+const shutdownModalBody = document.getElementById('shutdown-modal-body');
+const shutdownModalSpinner = document.getElementById('shutdown-modal-spinner');
+const shutdownModalSuccess = document.getElementById('shutdown-modal-success');
+const shutdownModalError = document.getElementById('shutdown-modal-error');
+let shutdownCloseBtn = null;
+
+shutdownBtn.addEventListener('click', function() {
+    shutdownModalBody.classList.remove('d-none');
+    shutdownModalSpinner.classList.add('d-none');
+    shutdownModalSuccess.classList.add('d-none');
+    shutdownModalError.classList.add('d-none');
+    shutdownConfirmBtn.disabled = false;
+    shutdownConfirmBtn.classList.remove('d-none');
+    shutdownCancelBtn.classList.remove('d-none');
+    if (shutdownCloseBtn) {
+        shutdownCloseBtn.remove();
+        shutdownCloseBtn = null;
+    }
+    shutdownModal.show();
+});
+
+shutdownConfirmBtn.addEventListener('click', function() {
+    shutdownModalBody.classList.add('d-none');
+    shutdownModalSpinner.classList.remove('d-none');
+    shutdownConfirmBtn.disabled = true;
+    shutdownModalSuccess.classList.add('d-none');
+    shutdownModalError.classList.add('d-none');
+    fetch('/shutdown', {method: 'POST', headers: {'Content-Type': 'application/json'}})
+        .then(response => response.json())
+        .then(data => {
+            shutdownModalSpinner.classList.add('d-none');
+            if (data.success) {
+                shutdownModalSuccess.textContent = data.message || 'System is shutting down...';
+                shutdownModalSuccess.classList.remove('d-none');
+                shutdownConfirmBtn.classList.add('d-none');
+                shutdownCancelBtn.classList.add('d-none');
+                if (!shutdownCloseBtn) {
+                    shutdownCloseBtn = document.createElement('button');
+                    shutdownCloseBtn.type = 'button';
+                    shutdownCloseBtn.className = 'btn btn-success';
+                    shutdownCloseBtn.textContent = 'Close';
+                    shutdownCloseBtn.onclick = function() { shutdownModal.hide(); };
+                    document.querySelector('#shutdownModal .modal-footer').appendChild(shutdownCloseBtn);
+                }
+                shutdownBtn.disabled = true;
+            } else {
+                shutdownModalError.textContent = data.message || 'Failed to shut down system.';
+                shutdownModalError.classList.remove('d-none');
+                shutdownConfirmBtn.disabled = false;
+            }
+        })
+        .catch(() => {
+            shutdownModalSpinner.classList.add('d-none');
+            shutdownModalError.textContent = 'Failed to shut down system.';
+            shutdownModalError.classList.remove('d-none');
+            shutdownConfirmBtn.disabled = false;
+        });
+});
+</script>
+{% endblock %}

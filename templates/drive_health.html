@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+
+{% block title %}Drive Health - Simple Safer Server{% endblock %}
+
+{% block header %}Drive Health{% endblock %}
+
+{% block extra_css %}
+<style>
+    .tooltip-inner {
+        max-width: 300px;
+        text-align: left;
+    }
+    .smart-info {
+        cursor: help;
+        color: #6c757d;
+    }
+    .smart-info:hover {
+        color: #0d6efd;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+    {% if error %}
+        <div class="alert alert-danger">{{ error }}</div>
+    {% endif %}
+
+    {% if missing_attrs %}
+        <div class="alert alert-warning">
+            <h5><i class="fas fa-exclamation-triangle"></i> Missing SMART Attributes</h5>
+            <p>The following SMART attributes are not available for this drive and are using default values:</p>
+            <ul>
+                {% for attr in missing_attrs %}
+                    <li><code>{{ attr }}</code> - {{ smart_fields[attr].name }}</li>
+                {% endfor %}
+            </ul>
+            <p class="mb-0"><small>This may affect the accuracy of the health prediction.</small></p>
+        </div>
+    {% endif %}
+
+    {% if prediction is not none %}
+        <div class="card mb-4">
+            <div class="card-body">
+                {% if prediction == 0 %}
+                    <span class="text-success fs-3"><i class="fas fa-circle-check"></i> No Failure Detected</span>
+                {% else %}
+                    <span class="text-danger fs-3"><i class="fas fa-circle-xmark"></i> Failure Predicted</span>
+                {% endif %}
+                <p class="mt-2">Failure Probability: {{ '%.2f'|format(probability*100) }}%</p>
+            </div>
+        </div>
+    {% endif %}
+
+    <div class="mb-4">
+        <form method="post">
+            <button type="submit" class="btn btn-primary">Run Health Check</button>
+        </form>
+    </div>
+
+    {% if smart %}
+    <div class="card mb-4">
+        <div class="card-header">
+            <h4 class="mb-0">SMART Data</h4>
+        </div>
+        <div class="card-body">
+            <table class="table table-striped w-auto">
+                <thead>
+                    <tr>
+                        <th>Attribute</th>
+                        <th>Description</th>
+                        <th>Raw Value</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for key, value in smart.items() %}
+                    <tr>
+                        <td>{{ key }}</td>
+                        <td>
+                            {{ smart_fields[key].name }}
+                            <i class="fas fa-info-circle smart-info ms-1" 
+                               data-bs-toggle="tooltip" 
+                               data-bs-placement="right" 
+                               title="{{ smart_fields[key].description }}"></i>
+                        </td>
+                        <td>{{ value }}</td>
+                        <td>
+                            {% if key in missing_attrs %}
+                                <span class="badge bg-warning text-dark fw-normal" style="letter-spacing:0.03em;"><i class="fas fa-exclamation-triangle"></i> Default</span>
+                            {% else %}
+                                <span class="badge bg-success fw-normal" style="letter-spacing:0.03em;"><i class="fas fa-check"></i> Available</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="mb-4">
+        <a href="/download_telemetry" class="btn btn-secondary">Download Telemetry</a>
+        <a href="mailto:c.miniotis@acg.edu?subject=SMART%20Telemetry" class="btn btn-outline-primary" target="_blank">Send Telemetry</a>
+    </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Initialize all tooltips
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl)
+    })
+</script>
+{% endblock %}

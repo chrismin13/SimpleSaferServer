@@ -1,0 +1,13 @@
+[Unit]
+Description=SimpleSaferServer Web UI (Flask)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/SimpleSaferServer
+ExecStart=/usr/bin/python3 /opt/SimpleSaferServer/app.py --host=0.0.0.0 --port=5000 --no-debug
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target 

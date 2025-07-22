@@ -1,0 +1,449 @@
+{% extends "base.html" %}
+
+{% block title %}Users - Simple Safer Server{% endblock %}
+
+{% block header %}Users{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-0">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3 class="mb-0">User Management</h3>
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addUserModal">
+            <i class="fas fa-user-plus me-2"></i> Add User
+        </button>
+    </div>
+    <div class="card shadow-sm">
+        <div class="card-body p-0">
+            <table class="table table-hover mb-0 align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Username</th>
+                        <th>Role</th>
+                        <th>Created</th>
+                        <th>Last Login</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="usersTableBody">
+                    <!-- User rows will be dynamically inserted here -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Add User Modal -->
+<div class="modal fade" id="addUserModal" tabindex="-1" aria-labelledby="addUserModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="addUserModalLabel">Add User</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div id="addUserError" class="alert alert-danger d-none" role="alert"></div>
+        <form id="addUserForm">
+          <div class="mb-3">
+            <label for="addUsername" class="form-label">Username</label>
+            <input type="text" class="form-control" id="addUsername" required>
+            <div class="invalid-feedback">Username is required and must be 3-32 characters.</div>
+          </div>
+          <div class="mb-3">
+            <label for="addPassword" class="form-label">Password</label>
+            <input type="password" class="form-control" id="addPassword" required>
+            <div class="invalid-feedback">Password must be at least 4 characters long.</div>
+          </div>
+          <div class="mb-3 form-check">
+            <input type="checkbox" class="form-check-input" id="addIsAdmin">
+            <label class="form-check-label" for="addIsAdmin">Admin</label>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-primary" form="addUserForm">Add User</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Edit User Modal -->
+<div class="modal fade" id="editUserModal" tabindex="-1" aria-labelledby="editUserModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="editUserModalLabel">Edit User</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div id="editUserError" class="alert alert-danger d-none" role="alert"></div>
+        <form id="editUserForm">
+          <div class="mb-3">
+            <label for="editUsername" class="form-label">Username</label>
+            <input type="text" class="form-control" id="editUsername" readonly>
+          </div>
+          <div class="mb-3">
+            <label for="editPassword" class="form-label">New Password</label>
+            <input type="password" class="form-control" id="editPassword" placeholder="Leave blank to keep current password">
+            <div class="invalid-feedback">Password must be at least 4 characters long.</div>
+          </div>
+          <div class="mb-3 form-check">
+            <input type="checkbox" class="form-check-input" id="editIsAdmin">
+            <label class="form-check-label" for="editIsAdmin">Admin</label>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-primary" form="editUserForm">Save Changes</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Success Alert -->
+<div id="successAlert" class="alert alert-success alert-dismissible fade d-none" role="alert">
+    <i class="fas fa-check-circle me-2"></i>
+    <span id="successMessage"></span>
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+</div>
+
+<!-- Error Alert -->
+<div id="errorAlert" class="alert alert-danger alert-dismissible fade d-none" role="alert">
+    <i class="fas fa-exclamation-circle me-2"></i>
+    <span id="errorMessage"></span>
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Global variables
+let currentUsers = [];
+let editingUsername = null;
+
+// Utility functions
+function showSuccess(message) {
+    document.getElementById('successMessage').textContent = message;
+    document.getElementById('successAlert').classList.remove('d-none');
+    setTimeout(() => {
+        document.getElementById('successAlert').classList.add('d-none');
+    }, 5000);
+}
+
+function showError(message) {
+    document.getElementById('errorMessage').textContent = message;
+    document.getElementById('errorAlert').classList.remove('d-none');
+    setTimeout(() => {
+        document.getElementById('errorAlert').classList.add('d-none');
+    }, 5000);
+}
+
+function showModalError(modalId, message) {
+    const errorDiv = document.getElementById(modalId);
+    errorDiv.textContent = message;
+    errorDiv.classList.remove('d-none');
+}
+
+function hideModalError(modalId) {
+    document.getElementById(modalId).classList.add('d-none');
+}
+
+function setButtonLoading(button, isLoading, loadingText = 'Processing...') {
+    if (isLoading) {
+        button.disabled = true;
+        button.dataset.originalText = button.innerHTML;
+        button.innerHTML = `<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>${loadingText}`;
+    } else {
+        button.disabled = false;
+        if (button.dataset.originalText) {
+            button.innerHTML = button.dataset.originalText;
+            delete button.dataset.originalText;
+        }
+    }
+}
+
+// Validation functions
+function validateUsername(username) {
+    if (!username || username.length < 3 || username.length > 32) {
+        return false;
+    }
+    return /^[a-zA-Z0-9_-]+$/.test(username);
+}
+
+function validatePassword(password) {
+    return password && password.length >= 4;
+}
+
+// API functions
+async function loadUsers() {
+    try {
+        const response = await fetch('/api/users');
+        const data = await response.json();
+        
+        if (data.success) {
+            currentUsers = data.users;
+            renderUsersTable();
+        } else {
+            showError('Failed to load users: ' + (data.error || 'Unknown error'));
+        }
+    } catch (error) {
+        console.error('Error loading users:', error);
+        showError('Failed to load users');
+    }
+}
+
+async function addUser(username, password, isAdmin) {
+    try {
+        const response = await fetch('/api/users', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                username: username,
+                password: password,
+                is_admin: isAdmin
+            })
+        });
+        
+        const data = await response.json();
+        return data;
+    } catch (error) {
+        console.error('Error adding user:', error);
+        return { success: false, error: 'Network error' };
+    }
+}
+
+async function deleteUserAPI(username) {
+    try {
+        const response = await fetch(`/api/users/${username}`, {
+            method: 'DELETE'
+        });
+        
+        const data = await response.json();
+        return data;
+    } catch (error) {
+        console.error('Error deleting user:', error);
+        return { success: false, error: 'Network error' };
+    }
+}
+
+// UI functions
+function renderUsersTable() {
+    const tbody = document.getElementById('usersTableBody');
+    tbody.innerHTML = '';
+    
+    currentUsers.forEach(user => {
+        const row = document.createElement('tr');
+        // Ensure timestamps are parsed as UTC
+        function parseUTC(dateStr) {
+            if (!dateStr) return null;
+            return new Date(dateStr.endsWith('Z') ? dateStr : dateStr + 'Z');
+        }
+        const createdDate = user.created_at ? parseUTC(user.created_at).toLocaleDateString() : 'N/A';
+        const lastLoginDate = user.last_login ? parseUTC(user.last_login).toLocaleString() : 'Never';
+        row.innerHTML = `
+            <td>${user.username}</td>
+            <td><span class="badge ${user.is_admin ? 'bg-primary' : 'bg-secondary'}">${user.is_admin ? 'Admin' : 'User'}</span></td>
+            <td>${createdDate}</td>
+            <td>${lastLoginDate}</td>
+            <td class="text-end">
+                <button class="btn btn-sm btn-outline-secondary me-2" onclick="openEditUserModal('${user.username}')">
+                    <i class="fas fa-edit"></i> Edit
+                </button>
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteUser('${user.username}')" ${user.username === '{{ username }}' ? 'disabled' : ''}>
+                    <i class="fas fa-trash"></i> Delete
+                </button>
+            </td>
+        `;
+        tbody.appendChild(row);
+    });
+}
+
+// Separate UI and API functions for editing users
+function openEditUserModal(username) {
+    const user = currentUsers.find(u => u.username === username);
+    if (!user) return;
+    editingUsername = username;
+    document.getElementById('editUsername').value = user.username;
+    document.getElementById('editPassword').value = '';
+    document.getElementById('editIsAdmin').checked = user.is_admin;
+    // Disable admin checkbox if editing self
+    if (user.username === '{{ username }}') {
+        document.getElementById('editIsAdmin').disabled = true;
+        document.querySelector("label[for='editIsAdmin']").setAttribute('title', 'You cannot remove your own admin privileges while logged in.');
+    } else {
+        document.getElementById('editIsAdmin').disabled = false;
+        document.querySelector("label[for='editIsAdmin']").removeAttribute('title');
+    }
+    hideModalError('editUserError');
+    // Ensure only one modal is open
+    const allModals = document.querySelectorAll('.modal.show');
+    allModals.forEach(m => bootstrap.Modal.getInstance(m)?.hide());
+    const modal = new bootstrap.Modal(document.getElementById('editUserModal'));
+    modal.show();
+}
+
+async function editUserAPI(username, password, isAdmin) {
+    try {
+        const response = await fetch(`/api/users/${username}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                password: password,
+                is_admin: isAdmin
+            })
+        });
+        const data = await response.json();
+        return data;
+    } catch (error) {
+        console.error('Error editing user:', error);
+        return { success: false, error: 'Network error' };
+    }
+}
+
+function deleteUser(username) {
+    // Prevent deleting current user
+    if (username === '{{ username }}') {
+        showError('You cannot delete your own account');
+        return;
+    }
+    
+    if (!confirm(`Are you sure you want to delete user "${username}"?`)) {
+        return;
+    }
+    
+    const button = event.target.closest('button');
+    setButtonLoading(button, true, 'Deleting...');
+    
+    deleteUserAPI(username).then(data => {
+        setButtonLoading(button, false);
+        loadUsers(); // Always refresh the table
+        if (data.success) {
+            showSuccess(`User "${username}" deleted successfully`);
+        } else {
+            showError('Failed to delete user: ' + (data.error || 'Unknown error'));
+        }
+    }).catch(() => {
+        setButtonLoading(button, false);
+        loadUsers(); // Still refresh in case of error
+        showError('Failed to delete user: Network error');
+    });
+}
+
+// Event listeners
+document.addEventListener('DOMContentLoaded', function() {
+    // Load users on page load
+    loadUsers();
+    
+    // Add user form submission
+    document.getElementById('addUserForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const username = document.getElementById('addUsername').value.trim();
+        const password = document.getElementById('addPassword').value;
+        const isAdmin = document.getElementById('addIsAdmin').checked;
+        
+        // Validation
+        if (!validateUsername(username)) {
+            document.getElementById('addUsername').classList.add('is-invalid');
+            return;
+        }
+        document.getElementById('addUsername').classList.remove('is-invalid');
+        
+        if (!validatePassword(password)) {
+            document.getElementById('addPassword').classList.add('is-invalid');
+            return;
+        }
+        document.getElementById('addPassword').classList.remove('is-invalid');
+        
+        // Check if username already exists
+        if (currentUsers.some(u => u.username === username)) {
+            showModalError('addUserError', 'Username already exists');
+            return;
+        }
+        
+        const submitButton = document.querySelector('#addUserModal .modal-footer .btn-primary');
+        setButtonLoading(submitButton, true, 'Adding...');
+        
+        const result = await addUser(username, password, isAdmin);
+        
+        setButtonLoading(submitButton, false);
+        
+        if (result.success) {
+            showSuccess(`User "${username}" added successfully`);
+            document.getElementById('addUserForm').reset();
+            const modal = bootstrap.Modal.getInstance(document.getElementById('addUserModal'));
+            modal.hide();
+            loadUsers();
+        } else {
+            showModalError('addUserError', result.error || 'Failed to add user');
+        }
+    });
+    
+    // Edit user form submission
+    document.getElementById('editUserForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const password = document.getElementById('editPassword').value;
+        const isAdmin = document.getElementById('editIsAdmin').checked;
+        
+        // Validation
+        if (password && !validatePassword(password)) {
+            document.getElementById('editPassword').classList.add('is-invalid');
+            return;
+        }
+        document.getElementById('editPassword').classList.remove('is-invalid');
+        
+        const submitButton = document.querySelector('#editUserModal .modal-footer .btn-primary');
+        setButtonLoading(submitButton, true, 'Saving...');
+        
+        const result = await editUserAPI(editingUsername, password || null, isAdmin);
+        
+        setButtonLoading(submitButton, false);
+        
+        if (result.success) {
+            showSuccess(`User "${editingUsername}" updated successfully`);
+            const modal = bootstrap.Modal.getInstance(document.getElementById('editUserModal'));
+            modal.hide();
+            loadUsers();
+        } else {
+            showModalError('editUserError', result.error || 'Failed to update user');
+        }
+    });
+    
+    // Clear validation on input
+    document.getElementById('addUsername').addEventListener('input', function() {
+        this.classList.remove('is-invalid');
+        hideModalError('addUserError');
+    });
+    
+    document.getElementById('addPassword').addEventListener('input', function() {
+        this.classList.remove('is-invalid');
+        hideModalError('addUserError');
+    });
+    
+    document.getElementById('editPassword').addEventListener('input', function() {
+        this.classList.remove('is-invalid');
+        hideModalError('editUserError');
+    });
+    
+    // Clear form when modal is hidden
+    document.getElementById('addUserModal').addEventListener('hidden.bs.modal', function() {
+        document.getElementById('addUserForm').reset();
+        hideModalError('addUserError');
+        document.getElementById('addUsername').classList.remove('is-invalid');
+        document.getElementById('addPassword').classList.remove('is-invalid');
+    });
+    
+    document.getElementById('editUserModal').addEventListener('hidden.bs.modal', function() {
+        editingUsername = null;
+        hideModalError('editUserError');
+        document.getElementById('editPassword').classList.remove('is-invalid');
+    });
+});
+</script>
+{% endblock %} 

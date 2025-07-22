@@ -1,0 +1,261 @@
+/* General Styles */
+body {
+    background-color: #f8f9fa; /* Light gray background */
+    font-family: 'Roboto', sans-serif; /* Clean modern font */
+}
+
+.logs {
+    height: 400px;
+    overflow-y: scroll;
+    resize: vertical;
+    font-family: monospace;
+    font-size: 0.85rem;
+}
+h1, h4 {
+    font-weight: 600;
+    color: #333;
+}
+
+/* Sidebar */
+.sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 100;
+    padding: 0;
+    box-shadow: inset -1px 0 0 rgba(0, 0, 0, .1);
+    background-color: #f8f9fa;
+}
+
+.sidebar .nav-item {
+    margin-bottom: 10px;
+}
+
+.sidebar .nav-link {
+    font-size: 1rem;
+    color: #555;
+    padding: 0.75rem 1rem;
+    transition: color 0.2s ease-in-out, background-color 0.2s ease-in-out;
+}
+
+.sidebar .nav-link.active,
+.sidebar .nav-link:hover {
+    color: #fff;
+    background-color: #007bff;
+    border-radius: 5px;
+}
+
+/* Mobile Navigation */
+.navbar-toggler {
+    z-index: 102;
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    padding: 0.5rem;
+    border-radius: 0.25rem;
+    position: fixed;
+    top: 1rem;
+    left: 1rem;
+}
+
+.navbar-toggler:focus {
+    box-shadow: none;
+    outline: none;
+}
+
+@media (max-width: 767.98px) {
+    .sidebar {
+        position: fixed;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        max-width: 250px;
+        transform: translateX(-100%);
+        transition: transform 0.3s ease-in-out;
+        padding-top: 4rem; /* Add padding to prevent overlap with hamburger menu */
+    }
+
+    .sidebar.show {
+        transform: translateX(0);
+    }
+
+    main {
+        margin-left: 0 !important;
+        width: 100% !important;
+        padding-top: 4rem; /* Increased padding to prevent content from being hidden under the hamburger menu */
+    }
+
+    /* Adjust the header spacing in mobile view */
+    main .pt-3 {
+        padding-top: 1rem !important;
+    }
+
+    /* Ensure the border-bottom doesn't overlap with content */
+    main .border-bottom {
+        margin-top: 0.5rem;
+    }
+}
+
+/* Status Indicators */
+.card {
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.card .card-title {
+    font-size: 1.2rem;
+    font-weight: bold;
+    margin-bottom: 0.5rem;
+    color: #333;
+}
+
+.card p {
+    font-size: 1rem;
+    color: #555;
+    margin-bottom: 0.5rem;
+    line-height: 1.4;
+}
+
+.card .card-body {
+    padding: 1rem 1.2rem;
+    text-align: center;
+}
+
+/* Task Scheduler */
+.table {
+    background-color: #fff;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.table th {
+    background-color: #007bff;
+    color: white;
+    text-align: center;
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.table td {
+    vertical-align: middle;
+    text-align: center;
+}
+
+.table .badge {
+    font-size: 0.85rem;
+}
+
+/* System Actions */
+button {
+    font-size: 1rem;
+    padding: 0.6rem 1rem;
+    border-radius: 8px;
+    transition: transform 0.1s ease-in-out, background-color 0.2s ease-in-out;
+}
+
+button:hover {
+    transform: scale(1.05);
+}
+
+button.btn-danger {
+    background-color: #dc3545;
+    color: #fff;
+    border: none;
+}
+
+button.btn-danger:hover {
+    background-color: #c82333;
+}
+
+button.btn-warning {
+    background-color: #ffc107;
+    color: #212529;
+    border: none;
+}
+
+button.btn-warning:hover {
+    background-color: #e0a800;
+}
+
+button.btn-secondary {
+    background-color: #6c757d;
+    color: #fff;
+    border: none;
+}
+
+button.btn-secondary:hover {
+    background-color: #5a6268;
+}
+
+/* Progress Bar (for Storage Status) */
+.progress {
+    height: 20px;
+    border-radius: 10px;
+    background-color: #e9ecef;
+}
+
+.progress-bar {
+    font-size: 0.85rem;
+    font-weight: bold;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+    .card {
+        margin-bottom: 1rem;
+    }
+
+    .table th, .table td {
+        font-size: 0.8rem;
+    }
+
+    button {
+        font-size: 0.9rem;
+    }
+}
+
+/* --- Folder Picker List Item: Prevent hover from resizing, jumping, and scrollbars --- */
+#pickerDirsList {
+  overflow-y: auto;
+  overflow-x: hidden;
+  max-height: 350px;
+  width: 100%;
+  min-width: 0;
+}
+#pickerDirsList .list-group-item {
+  min-height: 2.25rem;
+  line-height: 1.5;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  width: 100%;
+  min-width: 0;
+  background-color: #fff !important;
+  box-sizing: border-box !important;
+}
+#pickerDirsList .list-group-item-action:hover, 
+#pickerDirsList .list-group-item-action:focus {
+  background-color: #f8f9fa !important;
+  color: #212529 !important;
+  font-weight: normal !important;
+  outline: none !important;
+  box-shadow: none !important;
+  border-left-width: 1px !important;
+  padding-left: 1rem !important;
+}
+
+/* Custom backdrop for folder picker modal on top of another modal */
+.custom-folder-backdrop {
+  z-index: 1061 !important;
+  background-color: rgba(0,0,0,0.5) !important;
+}
+
+/* Improve legibility for source badge in Past Alerts table */
+.badge.bg-info {
+    color: #000 !important;
+}
