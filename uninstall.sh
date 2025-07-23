@@ -18,13 +18,7 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-echo -e "${YELLOW}WARNING:${NC} This will permanently remove all SimpleSaferServer files, configuration, logs, and user data."
-echo -e "${YELLOW}This process is irreversible. Back up any important data before continuing.${NC}\n"
-read -p "Are you sure you want to uninstall SimpleSaferServer? [y/N]: " confirm
-if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
-    echo -e "${GREEN}Uninstallation cancelled. No changes were made.${NC}"
-    exit 0
-fi
+# Proceed with uninstallation without prompt
 
 echo -e "${BLUE}Proceeding with uninstallation...${NC}\n"
 

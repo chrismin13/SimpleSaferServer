@@ -73,7 +73,7 @@ echo -e "${GREEN}✔ rclone installed.${NC}\n"
 # 3. Copy/update application files (excluding /etc/SimpleSaferServer/)
 echo -e "${YELLOW}Step 3: Copying application files...${NC}"
 mkdir -p "$APP_DIR"
-rsync -a --exclude='venv' --exclude='__pycache__' --exclude='*.pyc' --exclude='*.pyo' --exclude='*.log' --exclude='telemetry.csv' --exclude='harddrive_model' --exclude='scripts' --exclude='static' --exclude='templates' ./ "$APP_DIR/"
+rsync -a --exclude='venv' --exclude='__pycache__' --exclude='*.pyc' --exclude='*.pyo' --exclude='*.log' --exclude='telemetry.csv' --exclude='harddrive_model' --exclude='static' --exclude='templates' ./ "$APP_DIR/"
 echo -e "${GREEN}✔ Application files copied.${NC}\n"
 
 # 4. Copy static and templates directories
