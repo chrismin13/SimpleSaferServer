@@ -8,8 +8,8 @@ import numpy as np
 import joblib
 
 # Paths for the XGBoost model and threshold (same as main app)
-MODEL_PATH = "/usr/local/bin/harddrive_model/xgb_model.json"
-THRESHOLD_PATH = "/usr/local/bin/harddrive_model/optimal_threshold_xgb.pkl"
+MODEL_PATH = "/opt/SimpleSaferServer/harddrive_model/xgb_model.json"
+THRESHOLD_PATH = "/opt/SimpleSaferServer/harddrive_model/optimal_threshold_xgb.pkl"
 
 # SMART attributes used for telemetry/model with their default values
 SMART_FIELDS = {

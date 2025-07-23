@@ -44,7 +44,7 @@ set -e
 
 APP_DIR="/opt/SimpleSaferServer"
 SCRIPTS_DIR="/usr/local/bin"
-MODEL_DIR="/usr/local/bin/harddrive_model"
+MODEL_DIR="/opt/SimpleSaferServer/harddrive_model"
 SERVICE_FILE="/etc/systemd/system/simple_safer_server_web.service"
 
 # 1. Install system dependencies and Python packages using apt

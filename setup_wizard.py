@@ -516,12 +516,12 @@ def install_systemd_tasks(config):
         if not ok:
             return False, f"Failed to install systemd scripts: {err}"
         
-        # Copy the harddrive model files to /usr/local/bin/harddrive_model/
+        # Copy the harddrive model files to /opt/SimpleSaferServer/harddrive_model/
         try:
             # Get the project root directory (parent of setup_wizard.py)
             project_root = Path(__file__).parent
             model_source_dir = project_root / 'harddrive_model'
-            model_dest_dir = Path('/usr/local/bin/harddrive_model')
+            model_dest_dir = Path('/opt/SimpleSaferServer/harddrive_model')
             
             if model_source_dir.exists():
                 model_dest_dir.mkdir(parents=True, exist_ok=True)

@@ -46,8 +46,8 @@ for script in scripts/*.sh scripts/*.py; do
   sudo cp "$script" /usr/local/bin/
   sudo chmod +x /usr/local/bin/$(basename $script)
 done
-sudo mkdir -p /usr/local/bin/harddrive_model
-sudo cp harddrive_model/* /usr/local/bin/harddrive_model/
+sudo mkdir -p /opt/SimpleSaferServer/harddrive_model
+sudo cp harddrive_model/* /opt/SimpleSaferServer/harddrive_model/
 ```
 
 ## 5. Set Up the Systemd Service

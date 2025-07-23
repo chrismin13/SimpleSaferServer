@@ -110,12 +110,12 @@ find /usr/local/bin -maxdepth 1 -type f \( -name 'check_mount.sh' -o -name 'chec
 rm -f /usr/local/bin/xgb_model.json
 rm -f /usr/local/bin/optimal_threshold_xgb.pkl
 echo "/usr/local/bin/xgb_model.json and /usr/local/bin/optimal_threshold_xgb.pkl removed if present."
-echo "Removing /usr/local/bin/harddrive_model/ and its contents..."
-if [ -d /usr/local/bin/harddrive_model ]; then
-    rm -rf /usr/local/bin/harddrive_model
-    echo "/usr/local/bin/harddrive_model/ removed."
+echo "Removing /opt/SimpleSaferServer/harddrive_model/ and its contents..."
+if [ -d /opt/SimpleSaferServer/harddrive_model ]; then
+    rm -rf /opt/SimpleSaferServer/harddrive_model
+    echo "/opt/SimpleSaferServer/harddrive_model/ removed."
 else
-    echo "/usr/local/bin/harddrive_model/ not found."
+    echo "/opt/SimpleSaferServer/harddrive_model/ not found."
 fi
 
 # Remove the application directory

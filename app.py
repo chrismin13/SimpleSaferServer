@@ -51,8 +51,8 @@ config_manager = ConfigManager()
 app.register_blueprint(setup)
 
 # Paths for the XGBoost model and threshold
-MODEL_PATH = os.path.join("harddrive_model", "xgb_model.json")
-THRESHOLD_PATH = os.path.join("harddrive_model", "optimal_threshold_xgb.pkl")
+MODEL_PATH = "/opt/SimpleSaferServer/harddrive_model/xgb_model.json"
+THRESHOLD_PATH = "/opt/SimpleSaferServer/harddrive_model/optimal_threshold_xgb.pkl"
 
 # Load model and threshold once on startup
 model = XGBClassifier()
