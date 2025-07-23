@@ -516,32 +516,6 @@ def install_systemd_tasks(config):
         if not ok:
             return False, f"Failed to install systemd scripts: {err}"
         
-        # Copy the harddrive model files to /opt/SimpleSaferServer/harddrive_model/
-        try:
-            # Get the project root directory (parent of setup_wizard.py)
-            project_root = Path(__file__).parent
-            model_source_dir = project_root / 'harddrive_model'
-            model_dest_dir = Path('/opt/SimpleSaferServer/harddrive_model')
-            
-            if model_source_dir.exists():
-                model_dest_dir.mkdir(parents=True, exist_ok=True)
-                
-                # Copy model files
-                for model_file in ['xgb_model.json', 'optimal_threshold_xgb.pkl']:
-                    source_path = model_source_dir / model_file
-                    dest_path = model_dest_dir / model_file
-                    
-                    if source_path.exists():
-                        shutil.copy2(source_path, dest_path)
-                        logger.info(f"Copied model file: {dest_path}")
-                    else:
-                        logger.warning(f"Model file not found: {source_path}")
-            else:
-                logger.warning(f"Model source directory not found: {model_source_dir}")
-        except Exception as e:
-            logger.error(f"Error copying model files: {e}")
-            return False, f"Failed to copy model files: {e}"
-        
         # Install systemd services and timers
         ok, err = system_utils.install_systemd_services_and_timers(config)
         if not ok:
