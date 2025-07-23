@@ -5,7 +5,7 @@
 To install SimpleSaferServer on a clean Debian-based system, run the following command:
 
 ```bash
-sudo bash <(curl -fsSL https://sss.chrismin13.com/install.sh)
+curl -fsSL https://sss.chrismin13.com/install.sh | sudo bash
 ```
 
 - This script will install all dependencies, set up the service, and print your Web UI address.
@@ -43,7 +43,7 @@ sudo bash uninstall.sh
 
 **Or, run directly from the web (recommended):**
 ```bash
-sudo bash <(curl -fsSL https://sss.chrismin13.com/uninstall.sh)
+curl -fsSL https://sss.chrismin13.com/uninstall.sh | sudo bash
 ```
 
 This will:

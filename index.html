@@ -83,7 +83,7 @@
         </div>
         <h2 class="mb-3"><i class="fa-solid fa-terminal"></i> One-Line Install</h2>
         <div class="mb-3 d-flex align-items-center">
-            <pre class="flex-grow-1 mb-0"><code id="install-cmd">sudo bash &lt;(curl -fsSL https://sss.chrismin13.com/install.sh)</code></pre>
+            <pre class="flex-grow-1 mb-0"><code id="install-cmd">curl -fsSL https://sss.chrismin13.com/install.sh | sudo bash</code></pre>
             <button class="copy-btn" onclick="copyCmd('install-cmd', this)"><i class="fa-regular fa-copy"></i> Copy</button>
         </div>
         <div class="note">
@@ -109,7 +109,7 @@
         <h2 class="mb-3"><i class="fa-solid fa-trash"></i> Uninstallation</h2>
         <p>To completely remove SimpleSaferServer from your system, you can run the following command:</p>
           <div class="d-flex align-items-center mb-2">
-            <pre class="flex-grow-1 mb-0"><code id="uninstall-cmd-web">sudo bash &lt;(curl -fsSL https://sss.chrismin13.com/uninstall.sh)</code></pre>
+            <pre class="flex-grow-1 mb-0"><code id="uninstall-cmd-web">curl -fsSL https://sss.chrismin13.com/uninstall.sh | sudo bash</code></pre>
             <button class="copy-btn" onclick="copyCmd('uninstall-cmd-web', this)"><i class="fa-regular fa-copy"></i> Copy</button>
         </div>
         <p class="note"><i class="fa-solid fa-circle-info"></i> This will remove all installed files, services, configuration, and user data. <strong>This process is irreversible.</strong></p>
