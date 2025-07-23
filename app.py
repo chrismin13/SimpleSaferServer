@@ -1,5 +1,5 @@
 # sudo apt install python3-flask python3-psutil python3-xgboost python3-joblib python3-pandas smartmontools python3-sklearn python3-flask-socketio
-from flask import Flask, render_template, jsonify, request, abort, url_for, redirect, send_file, session, flash, current_app, make_response
+from flask import Flask, render_template, jsonify, request, abort, url_for, redirect, send_file, session, flash, current_app, make_response, send_from_directory
 import subprocess
 import psutil
 from datetime import timedelta
@@ -1515,6 +1515,10 @@ def handle_not_found(e):
     if request.path.startswith('/api/'):
         return make_response(jsonify({'success': False, 'error': 'Not found'}), 404)
     return e
+
+@app.route('/favicon.ico')
+def favicon():
+    return send_from_directory('static/img', 'favicon.ico')
 
 # Run the app locally
 if __name__ == "__main__":
