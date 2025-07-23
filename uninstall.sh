@@ -87,14 +87,12 @@ if [ -f "$SMB_CONF" ]; then
     echo "SMB services restarted."
 fi
 
-# Remove scripts installed to /usr/local/bin from scripts/
-echo "Removing scripts from /usr/local/bin..."
+# Remove scripts from /opt/SimpleSaferServer/scripts/
+echo "Removing scripts from /opt/SimpleSaferServer/scripts..."
 for script in check_mount.sh check_health.sh backup_cloud.sh predict_health.py log_alert.py; do
-    rm -f /usr/local/bin/$script
-    echo "/usr/local/bin/$script removed."
+  rm -f /opt/SimpleSaferServer/scripts/$script
+  echo "/opt/SimpleSaferServer/scripts/$script removed."
 done
-# Remove any other SimpleSaferServer-related scripts
-find /usr/local/bin -maxdepth 1 -type f \( -name 'check_mount.sh' -o -name 'check_health.sh' -o -name 'backup_cloud.sh' -o -name 'predict_health.py' -o -name 'log_alert.py' \) -exec rm -f {} \;
 
 # Remove model files from legacy and new locations
 rm -f /usr/local/bin/xgb_model.json

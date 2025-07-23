@@ -43,7 +43,7 @@ cd "$SRC_DIR"
 set -e
 
 APP_DIR="/opt/SimpleSaferServer"
-SCRIPTS_DIR="/usr/local/bin"
+SCRIPTS_DIR="$APP_DIR/scripts"
 MODEL_DIR="/opt/SimpleSaferServer/harddrive_model"
 SERVICE_FILE="/etc/systemd/system/simple_safer_server_web.service"
 
@@ -82,7 +82,7 @@ rsync -a static "$APP_DIR/"
 rsync -a templates "$APP_DIR/"
 echo -e "${GREEN}✔ Static assets and templates copied.${NC}\n"
 
-# 5. Copy scripts to /usr/local/bin and set permissions
+# 5. Copy scripts to /opt/SimpleSaferServer/scripts and set permissions
 echo -e "${YELLOW}Step 5: Installing scripts...${NC}"
 mkdir -p "$SCRIPTS_DIR"
 for script in scripts/*.sh scripts/*.py; do

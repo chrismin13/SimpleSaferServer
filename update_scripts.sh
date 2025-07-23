@@ -1,5 +1,5 @@
 #!/bin/bash
-# Update all relevant scripts to /usr/local/bin and set permissions
+# Update all relevant scripts to /opt/SimpleSaferServer/scripts and set permissions
 
 set -e
 
@@ -12,7 +12,7 @@ SCRIPTS=(
 )
 
 SRC_DIR="$(dirname "$0")/scripts"
-DEST_DIR="/usr/local/bin"
+DEST_DIR="/opt/SimpleSaferServer/scripts"
 
 for script in "${SCRIPTS[@]}"; do
   if [ -f "$SRC_DIR/$script" ]; then

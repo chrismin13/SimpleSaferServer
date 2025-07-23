@@ -23,7 +23,7 @@ function send_email {
     echo -e "Subject: $1 - $SERVER_NAME\n$2" | msmtp $EMAIL_ADDRESS
     
     # Log alert using the standalone script
-    python3 /usr/local/bin/log_alert.py "$1" "$2" "error" "check_health"
+    python3 /opt/SimpleSaferServer/scripts/log_alert.py "$1" "$2" "error" "check_health"
 }
 
 echo "Starting drive health check using XGBoost model..."
@@ -88,7 +88,7 @@ json_data="${json_data%,}}}"
 echo "SMART data collected, making health prediction..."
 
 # Call Python script to make prediction
-prediction=$(python3 /opt/SimpleSaferServer/harddrive_model/predict_health.py "$json_data")
+prediction=$(python3 /opt/SimpleSaferServer/scripts/predict_health.py "$json_data")
 
 if [ $? -ne 0 ]; then
     send_email "Drive Health Check Failed - Prediction Error" "Error running health prediction script"

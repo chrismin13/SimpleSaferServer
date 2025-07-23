@@ -24,7 +24,7 @@ function send_email {
     echo -e "Subject: $1 - $SERVER_NAME\n$2" | msmtp $EMAIL_ADDRESS
     
     # Log alert using the standalone script
-    python3 /usr/local/bin/log_alert.py "$1" "$2" "error" "backup_cloud"
+    python3 /opt/SimpleSaferServer/scripts/log_alert.py "$1" "$2" "error" "backup_cloud"
 }
 
 echo "Starting cloud backup process..."
