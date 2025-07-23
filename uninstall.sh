@@ -18,10 +18,6 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-# Proceed with uninstallation without prompt
-
-echo -e "${BLUE}Proceeding with uninstallation...${NC}\n"
-
 echo "Starting SimpleSaferServer uninstallation..."
 
 # Create backup of current smb.conf before uninstalling
