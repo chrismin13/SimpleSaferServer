@@ -20,7 +20,7 @@ SERVER_NAME=$(get_config_value system server_name)
 # Function to send email and log alert
 function send_email {
     echo "$1 - $2" # Log the status
-    echo -e "Subject: $1 - $SERVER_NAME\n$2" | msmtp $EMAIL_ADDRESS
+    echo -e "Subject: $1 - $SERVER_NAME\nFrom: $EMAIL_ADDRESS\n\n$2" | msmtp $EMAIL_ADDRESS
     
     # Log alert using the standalone script
     python3 /opt/SimpleSaferServer/scripts/log_alert.py "$1" "$2" "error" "check_health"
