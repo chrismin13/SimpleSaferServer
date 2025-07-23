@@ -27,6 +27,13 @@
                             </div>
                         </div>
                         <div class="row mb-3">
+                            <div class="col-12">
+                                <label class="form-label mb-0">From Address</label>
+                                <input type="email" id="fromAddress" class="form-control" placeholder="from@email.com">
+                                <div class="invalid-feedback">Please enter a valid from address.</div>
+                            </div>
+                        </div>
+                        <div class="row mb-3">
                             <div class="col-12 col-md-6 mb-3 mb-md-0">
                                 <label class="form-label mb-0">SMTP Server</label>
                                 <input type="text" id="smtpServer" class="form-control" placeholder="smtp.gmail.com">
@@ -176,6 +183,7 @@ function loadEmailConfig() {
         .then(data => {
             if (data.success) {
                 document.getElementById('emailAddress').value = data.config.email_address || '';
+                document.getElementById('fromAddress').value = data.config.from_address || '';
                 document.getElementById('smtpServer').value = data.config.smtp_server || '';
                 document.getElementById('smtpPort').value = data.config.smtp_port || '';
                 document.getElementById('smtpUsername').value = data.config.smtp_username || '';
@@ -194,19 +202,25 @@ document.getElementById('emailConfigForm').addEventListener('submit', function(e
 
 function saveEmailConfig() {
     const emailAddress = document.getElementById('emailAddress').value.trim();
+    const fromAddress = document.getElementById('fromAddress').value.trim();
     const smtpServer = document.getElementById('smtpServer').value.trim();
     const smtpPort = document.getElementById('smtpPort').value.trim();
     const smtpUsername = document.getElementById('smtpUsername').value.trim();
     const smtpPassword = document.getElementById('smtpPassword').value;
 
     // Validation
-    if (!emailAddress || !smtpServer || !smtpPort || !smtpUsername || !smtpPassword) {
+    if (!emailAddress || !fromAddress || !smtpServer || !smtpPort || !smtpUsername || !smtpPassword) {
         showEmailError('All fields are required');
         return;
     }
 
     if (!isValidEmail(emailAddress)) {
         showEmailError('Please enter a valid email address');
+        return;
+    }
+
+    if (!isValidEmail(fromAddress)) {
+        showEmailError('Please enter a valid from address');
         return;
     }
 
@@ -229,6 +243,7 @@ function saveEmailConfig() {
         },
         body: JSON.stringify({
             email_address: emailAddress,
+            from_address: fromAddress,
             smtp_server: smtpServer,
             smtp_port: smtpPort,
             smtp_username: smtpUsername,

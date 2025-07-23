@@ -803,7 +803,6 @@ def api_get_email_config():
         try:
             with open('/etc/msmtprc', 'r') as f:
                 content = f.read()
-                
             # Parse the msmtp config to extract settings
             lines = content.split('\n')
             for line in lines:
@@ -813,18 +812,20 @@ def api_get_email_config():
                 elif line.startswith('port '):
                     msmtp_config['smtp_port'] = line.split(' ', 1)[1]
                 elif line.startswith('from '):
-                    msmtp_config['email_address'] = line.split(' ', 1)[1]
+                    msmtp_config['from_address'] = line.split(' ', 1)[1]
                 elif line.startswith('user '):
                     msmtp_config['smtp_username'] = line.split(' ', 1)[1]
                 elif line.startswith('password '):
                     msmtp_config['smtp_password'] = line.split(' ', 1)[1]
         except FileNotFoundError:
             pass  # msmtp config doesn't exist yet
-        
-        # Get email address from config manager as well
+        # Get email address and from address from config manager as well
         email_address = config_manager.get_value('backup', 'email_address', '')
+        from_address = config_manager.get_value('backup', 'from_address', '')
         if email_address and 'email_address' not in msmtp_config:
             msmtp_config['email_address'] = email_address
+        if from_address and 'from_address' not in msmtp_config:
+            msmtp_config['from_address'] = from_address
         
         return jsonify({'success': True, 'config': msmtp_config})
     except Exception as e:
@@ -838,19 +839,18 @@ def api_set_email_config():
     try:
         data = request.get_json()
         email = data.get('email_address')
+        from_address = data.get('from_address')
         smtp_server = data.get('smtp_server')
         smtp_port = data.get('smtp_port')
         smtp_username = data.get('smtp_username')
         smtp_password = data.get('smtp_password')
-        
-        if not all([email, smtp_server, smtp_port, smtp_username, smtp_password]):
+        if not all([email, from_address, smtp_server, smtp_port, smtp_username, smtp_password]):
             return jsonify({'success': False, 'error': 'All email fields are required'})
-        
-        # Save email to config
+        # Save email and from address to config
         config_manager.set_value('backup', 'email_address', email)
-
+        config_manager.set_value('backup', 'from_address', from_address)
         # Write msmtp configuration
-        if not system_utils.write_msmtp_config(email, smtp_server, smtp_port, smtp_username, smtp_password):
+        if not system_utils.write_msmtp_config(from_address, smtp_server, smtp_port, smtp_username, smtp_password):
             return jsonify({'success': False, 'error': 'Failed to write msmtp configuration'})
         
         return jsonify({'success': True})

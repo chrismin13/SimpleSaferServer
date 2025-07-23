@@ -52,6 +52,12 @@ sudo cp harddrive_model/* /opt/SimpleSaferServer/harddrive_model/
 
 ## 5. Set Up the Systemd Service
 
+## Email Setup
+- **Email Address**: Enter the address for alerts.
+- **From Address**: Enter the address that will appear in the From field of alert emails. This must be a valid, verified sender for your SMTP service (e.g., the authenticated SMTP user or a domain-verified address). Some SMTP providers will only deliver mail if the From address matches the authenticated user or a verified sender.
+- **SMTP Configuration**: Enter SMTP server, port, username, and password.
+- **Save Email Configuration**: Button to save settings.
+
 Copy the service file and enable/start the service:
 
 ```bash

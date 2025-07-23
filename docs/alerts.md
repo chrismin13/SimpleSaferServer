@@ -3,7 +3,8 @@
 The Alerts page displays system alerts and allows configuration of email notifications.
 
 ## Email Alert Configuration
-- **Fields**: Email address, SMTP server, port, username, password.
+- **Fields**: Email address, From address, SMTP server, port, username, password.
+- **From Address**: This is the address that will appear in the From field of alert emails. It must be a valid, verified sender for your SMTP service (e.g., the authenticated SMTP user or a domain-verified address). Some SMTP providers will only deliver mail if the From address matches the authenticated user or a verified sender.
 - **Save**: Button to save email configuration (shows spinner while saving).
 - **Validation**: Inline feedback for all fields.
 - **Success/Error Feedback**: Inline messages for save actions.

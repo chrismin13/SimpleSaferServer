@@ -15,14 +15,14 @@ get_config_value() {
 MOUNT_POINT=$(get_config_value backup mount_point)
 UUID=$(get_config_value backup uuid)
 USB_ID=$(get_config_value backup usb_id)
+FROM_ADDRESS=$(get_config_value backup from_address)
 EMAIL_ADDRESS=$(get_config_value backup email_address)
 SERVER_NAME=$(get_config_value system server_name)
 
 # Function to send email and log alert
 function send_email {
     echo "$1 - $2" # Log the status
-    echo -e "Subject: $1 - $SERVER_NAME\nFrom: $EMAIL_ADDRESS\n\n$2" | msmtp $EMAIL_ADDRESS
-    
+    echo -e "Subject: $1 - $SERVER_NAME\nFrom: $FROM_ADDRESS\n\n$2" | msmtp --from=$FROM_ADDRESS $EMAIL_ADDRESS
     # Log alert using the standalone script
     python3 /opt/SimpleSaferServer/scripts/log_alert.py "$1" "$2" "error" "check_mount"
 }

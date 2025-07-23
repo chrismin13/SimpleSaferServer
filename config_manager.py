@@ -61,6 +61,7 @@ class ConfigManager:
         
         self.config['backup'] = {
             'email_address': '',
+            'from_address': '',
             'uuid': '',
             'usb_id': '',
             'mount_point': '/media/backup',

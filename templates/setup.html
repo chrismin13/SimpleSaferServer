@@ -289,6 +289,11 @@
                         <input type="email" id="emailAddress" class="form-control" placeholder="your@email.com">
                         <div class="invalid-feedback">Please enter a valid email address.</div>
                     </div>
+                    <div class="mb-4">
+                        <label class="form-label">From Address</label>
+                        <input type="email" id="fromAddress" class="form-control" placeholder="from@email.com">
+                        <div class="invalid-feedback">Please enter a valid from address.</div>
+                    </div>
 
                     <!-- SMTP Configuration -->
                     <div class="mb-4">
@@ -849,6 +854,7 @@
             hideError('emailError');
             const valid = [
                 validateEmail(),
+                validateFromAddress(),
                 validateSmtpServer(),
                 validateSmtpPort(),
                 validateSmtpUsername(),
@@ -859,12 +865,13 @@
                 return;
             }
             const email = document.getElementById('emailAddress').value;
+            const fromAddress = document.getElementById('fromAddress').value;
             const smtpServer = document.getElementById('smtpServer').value;
             const smtpPort = document.getElementById('smtpPort').value;
             const smtpUsername = document.getElementById('smtpUsername').value;
             const smtpPassword = document.getElementById('smtpPassword').value;
 
-            if (!email || !smtpServer || !smtpPort || !smtpUsername || !smtpPassword) {
+            if (!email || !fromAddress || !smtpServer || !smtpPort || !smtpUsername || !smtpPassword) {
                 showError('Please fill in all email fields', 'emailError');
                 return;
             }
@@ -875,6 +882,7 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         emailAddress: email,
+                        fromAddress: fromAddress,
                         smtpServer: smtpServer,
                         smtpPort: smtpPort,
                         smtpUsername: smtpUsername,
@@ -1126,6 +1134,18 @@
                 return true;
             }
         }
+        function validateFromAddress() {
+            const input = document.getElementById('fromAddress');
+            const value = input.value.trim();
+            const regex = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+            if (!regex.test(value)) {
+                input.classList.add('is-invalid');
+                return false;
+            } else {
+                input.classList.remove('is-invalid');
+                return true;
+            }
+        }
         function validateSmtpServer() {
             const input = document.getElementById('smtpServer');
             if (!input.value.trim()) {
@@ -1240,6 +1260,10 @@
             if (document.getElementById('emailAddress')) {
                 document.getElementById('emailAddress').addEventListener('blur', validateEmail);
                 document.getElementById('emailAddress').addEventListener('input', validateEmail);
+            }
+            if (document.getElementById('fromAddress')) {
+                document.getElementById('fromAddress').addEventListener('blur', validateFromAddress);
+                document.getElementById('fromAddress').addEventListener('input', validateFromAddress);
             }
             if (document.getElementById('smtpServer')) {
                 document.getElementById('smtpServer').addEventListener('blur', validateSmtpServer);

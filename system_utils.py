@@ -89,8 +89,8 @@ WantedBy=timers.target
             self.logger.error(f"Error setting up systemd service: {e}")
             return False
 
-    def write_msmtp_config(self, email, server, port, user, password):
-        """Write /etc/msmtprc with the supplied SMTP settings"""
+    def write_msmtp_config(self, from_address, server, port, user, password):
+        """Write /etc/msmtprc with the supplied SMTP settings. 'from_address' is used for the 'from' line and as the envelope-from in scripts."""
         try:
             content = f"""defaults
 port {port}
@@ -99,7 +99,7 @@ tls_trust_file /etc/ssl/certs/ca-certificates.crt
 
 account simplesaferserver
 host {server}
-from {email}
+from {from_address}
 auth on
 user {user}
 password {password}

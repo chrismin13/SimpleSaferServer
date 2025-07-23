@@ -437,19 +437,21 @@ def setup_email():
         logger.info(f"Received email setup data: {data}")
         
         email = data.get('emailAddress')
+        from_address = data.get('fromAddress')
         smtp_server = data.get('smtpServer')
         smtp_port = data.get('smtpPort')
         smtp_username = data.get('smtpUsername')
         smtp_password = data.get('smtpPassword')
         
-        if not all([email, smtp_server, smtp_port, smtp_username, smtp_password]):
+        if not all([email, from_address, smtp_server, smtp_port, smtp_username, smtp_password]):
             logger.error("Missing email fields")
             return jsonify({'success': False, 'error': 'All email fields are required'})
         
         # Save email to config and write /etc/msmtprc
         config_manager.set_value('backup', 'email_address', email)
+        config_manager.set_value('backup', 'from_address', from_address)
 
-        if not system_utils.write_msmtp_config(email, smtp_server, smtp_port, smtp_username, smtp_password):
+        if not system_utils.write_msmtp_config(from_address, smtp_server, smtp_port, smtp_username, smtp_password):
             return jsonify({'success': False, 'error': 'Failed to write msmtp configuration'})
 
         # Verify the config was saved

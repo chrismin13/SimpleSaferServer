@@ -52,6 +52,7 @@ The Setup Wizard guides you through the initial configuration of your backup sys
 
 ## Step 5: Email Setup
 - **Email Address**: Enter the address for alerts.
+- **From Address**: Enter the address that will appear in the From field of alert emails. This must be a valid, verified sender for your SMTP service (e.g., the authenticated SMTP user or a domain-verified address). Some SMTP providers will only deliver mail if the From address matches the authenticated user or a verified sender.
 - **SMTP Configuration**: Enter SMTP server, port, username, and password.
 - **Save Email Configuration**: Button to save settings.
 
