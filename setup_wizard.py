@@ -328,7 +328,7 @@ def mount_drive():
     try:
         data = request.get_json()
         drive = data.get('drive')
-        mount_point = data.get('mount_point', '/media/backup')
+        mount_point = data.get('mount_point') or (runtime.default_mount_point if runtime.is_fake else '/media/backup')
         auto_mount = data.get('auto_mount', True)
 
         if runtime.is_fake:
