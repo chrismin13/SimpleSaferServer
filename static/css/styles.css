@@ -946,7 +946,11 @@ table .text-end { text-align: right; }
 .task-log-viewer {
   flex: 1;
   min-height: 0;
-  max-height: none;
+  max-height: min(60vh, 40rem);
+  overflow-y: auto;
+  overflow-x: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   resize: none;
 }
 
@@ -1735,6 +1739,7 @@ body.task-detail-body .page-header {
 
   .task-log-viewer {
     min-height: 50vh;
+    max-height: 65vh;
   }
 
   .action-bar-btn {

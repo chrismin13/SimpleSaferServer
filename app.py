@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 import json
 import os
 import csv
+import queue
 import threading
 from config_manager import ConfigManager
 from setup_wizard import setup, install_systemd_tasks
@@ -314,9 +315,11 @@ class Task:
         """Stop the associated service asynchronously."""
         if runtime.is_fake:
             with fake_task_lock:
+                thread = fake_task_threads.get(self.name)
                 cancel_event = fake_task_cancel_events.get(self.name)
-                if cancel_event:
-                    cancel_event.set()
+                if not thread or not thread.is_alive() or not cancel_event:
+                    raise RuntimeError(f'{self.name} is not running.')
+                cancel_event.set()
             fake_state.append_task_log(self.name, f"Stopped {self.name} in fake mode.")
             # Map fake-mode stop to a UI-supported status so it renders correctly
             fake_state.set_task_state(self.name, status=Status.STOPPED)
@@ -848,20 +851,79 @@ def run_fake_cloud_backup(cancel_event: threading.Event):
     if bandwidth_limit:
         command.extend(['--bwlimit', bandwidth_limit])
 
-    proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    proc = subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1,
+    )
+    output_queue: queue.Queue[tuple[str, str]] = queue.Queue()
+
+    def _drain_stream(stream, stream_name: str):
+        try:
+            for line in iter(stream.readline, ''):
+                output_queue.put((stream_name, line))
+        finally:
+            stream.close()
+
+    stdout_thread = threading.Thread(
+        target=_drain_stream,
+        args=(proc.stdout, 'stdout'),
+        name='fake-cloud-backup-stdout',
+        daemon=True,
+    )
+    stderr_thread = threading.Thread(
+        target=_drain_stream,
+        args=(proc.stderr, 'stderr'),
+        name='fake-cloud-backup-stderr',
+        daemon=True,
+    )
+    stdout_thread.start()
+    stderr_thread.start()
+
+    stdout_chunks: list[str] = []
+    stderr_chunks: list[str] = []
+    while True:
+        while True:
+            try:
+                stream_name, chunk = output_queue.get_nowait()
+            except queue.Empty:
+                break
+            if stream_name == 'stdout':
+                stdout_chunks.append(chunk)
+            else:
+                stderr_chunks.append(chunk)
+
+        if proc.poll() is not None:
+            break
+        if cancel_event.is_set():
+            proc.terminate()
+            try:
+                proc.wait(timeout=5.0)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
+            break
+        time.sleep(0.1)
+
+    stdout_thread.join(timeout=1.0)
+    stderr_thread.join(timeout=1.0)
     while True:
         try:
-            stdout, stderr = proc.communicate(timeout=1.0)
+            stream_name, chunk = output_queue.get_nowait()
+        except queue.Empty:
             break
-        except subprocess.TimeoutExpired:
-            if cancel_event.is_set():
-                proc.terminate()
-                stdout, stderr = proc.communicate()
-                raise RuntimeError('Cloud backup was cancelled.')
+        if stream_name == 'stdout':
+            stdout_chunks.append(chunk)
+        else:
+            stderr_chunks.append(chunk)
 
-    output = (stdout or '') + (stderr or '')
+    output = ''.join(stdout_chunks + stderr_chunks)
     if output.strip():
         fake_state.append_task_log('Cloud Backup', output.strip())
+    if cancel_event.is_set():
+        raise RuntimeError('Cloud backup was cancelled.')
     if proc.returncode != 0:
         raise RuntimeError(output.strip() or 'Cloud backup failed.')
 
