@@ -994,8 +994,8 @@ table .text-end { text-align: right; }
 }
 
 /* Completely vanish from document flow when empty
-   - :empty works everywhere
-   - .is-empty can be toggled from JS/templates as a no-:has() fallback */
+   - :empty only matches when there are no text/whitespace nodes
+   - .is-empty can be toggled from JS/templates when markup may add whitespace */
 .feedback-slot:empty,
 .feedback-slot.is-empty {
   display: none !important;
