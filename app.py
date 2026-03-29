@@ -551,12 +551,20 @@ def login():
             if user_manager.is_admin(username):
                 session['username'] = username
                 session.pop('skip_login_disabled', None)
+                if request.accept_mimetypes.best == 'application/json':
+                    return jsonify({"success": True, "redirect": url_for('dashboard')})
                 return redirect(url_for('dashboard'))
             else:
-                flash('This account does not have administrator privileges. Only administrators can access the SimpleSaferServer management interface. Please contact your system administrator for access or view the accompanying documentation for information on how to mount any network file shares that you have been given access to.', 'error')
+                msg = 'This account does not have administrator privileges. Only administrators can access the SimpleSaferServer management interface. Please contact your system administrator for access or view the accompanying documentation for information on how to mount any network file shares that you have been given access to.'
+                if request.accept_mimetypes.best == 'application/json':
+                    return jsonify({"success": False, "message": msg})
+                flash(msg, 'error')
                 return render_template('login.html')
         else:
-            flash('Invalid username or password', 'error')
+            msg = 'Invalid username or password'
+            if request.accept_mimetypes.best == 'application/json':
+                return jsonify({"success": False, "message": msg})
+            flash(msg, 'error')
     
     return render_template('login.html')
 

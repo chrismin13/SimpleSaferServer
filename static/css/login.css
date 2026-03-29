@@ -1,0 +1,268 @@
+/* ============================================================
+   STYLES — Login Redesign (Bunker Theme)
+   ============================================================ */
+
+/* ── Abstract Animated Background ───────────────────────────── */
+.login-body {
+    background: var(--bg-root);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: var(--sp-4);
+    position: relative;
+    overflow: hidden;
+}
+
+/* Background Container */
+.login-bg-container {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    z-index: 0;
+    pointer-events: none;
+    background: var(--bg-root);
+}
+
+/* Rotating Orbs */
+.login-bg-orbs {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 150vw;
+    height: 150vw;
+    transform: translate(-50%, -50%);
+    animation: rotateOrbs 60s linear infinite;
+}
+
+.orb {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(120px);
+    opacity: 0.5;
+}
+
+.orb-1 {
+    top: 20%;
+    left: 30%;
+    width: 45vw;
+    height: 45vw;
+    background: var(--accent); /* Amber */
+    animation: pulseOrb 20s ease-in-out infinite alternate;
+}
+
+.orb-2 {
+    bottom: 20%;
+    right: 20%;
+    width: 60vw;
+    height: 60vw;
+    background: hsl(220, 80%, 35%); /* Intense deep blue */
+    animation: pulseOrb 28s ease-in-out infinite alternate-reverse;
+}
+
+@keyframes rotateOrbs {
+    0% { transform: translate(-50%, -50%) rotate(0deg); }
+    100% { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+@keyframes pulseOrb {
+    0% { transform: scale(0.8); opacity: 0.3; }
+    100% { transform: scale(1.2); opacity: 0.7; }
+}
+
+/* Scrolling Grid */
+.login-bg-grid {
+    position: absolute;
+    inset: -100px; /* Buffer for scrolling */
+    background-image: 
+        linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+    background-size: 50px 50px;
+    animation: scrollGrid 30s linear infinite;
+    mask-image: radial-gradient(circle at center, black 30%, transparent 80%);
+    -webkit-mask-image: radial-gradient(circle at center, black 30%, transparent 80%);
+}
+
+@keyframes scrollGrid {
+    0% { transform: translateY(0); }
+    100% { transform: translateY(50px); }
+}
+
+/* Texture Noise overlay */
+.login-bg-noise {
+    position: absolute;
+    inset: 0;
+    background: url('data:image/svg+xml,%3Csvg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"%3E%3Cfilter id="noiseFilter"%3E%3CfeTurbulence type="fractalNoise" baseFrequency="0.75" numOctaves="3" stitchTiles="stitch"/%3E%3C/filter%3E%3Crect width="100%25" height="100%25" filter="url(%23noiseFilter)"/%3E%3C/svg%3E');
+    opacity: 0.15;
+    mix-blend-mode: overlay;
+}
+
+/* ── Login Container & Card ─────────────────────────────────── */
+.login-wrapper {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 420px;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-6);
+}
+
+.login-brand-header {
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--sp-4);
+    margin-bottom: var(--sp-2);
+}
+
+.login-brand-icon-wrapper {
+    width: 64px;
+    height: 64px;
+    border-radius: var(--radius-xl);
+    background: linear-gradient(135deg, var(--bg-surface), var(--bg-root));
+    border: 1px solid var(--border-strong);
+    box-shadow: 0 8px 32px hsla(0, 0%, 0%, 0.4), var(--shadow-glow);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--accent);
+    font-size: var(--text-2xl);
+}
+
+.login-brand-title {
+    font-family: var(--font-display);
+    font-size: var(--text-2xl);
+    font-weight: var(--weight-bold);
+    color: var(--text-primary);
+    letter-spacing: -0.02em;
+    margin: 0;
+}
+
+.login-brand-subtitle {
+    font-size: var(--text-md);
+    color: var(--text-secondary);
+    margin: 0;
+}
+
+.login-card {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-xl);
+    padding: var(--sp-8);
+    box-shadow: var(--shadow-xl);
+    position: relative;
+    /* Frosted style leveraging tokens */
+    background-color: hsla(220, 16%, 12%, 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+}
+
+/* ── Layout Stability: Feedback Slot ───────────────────────── */
+.login-feedback-slot {
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    margin-bottom: var(--sp-4);
+    z-index: 1000;
+    min-height: 0;
+    width: max-content;
+    max-width: 90vw;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+}
+
+
+/* Inherit from alert styles or build custom alert box */
+.login-alert {
+    padding: var(--sp-3) var(--sp-4);
+    border-radius: var(--radius-md);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    animation: slideDownIn 0.3s var(--ease-bounce) forwards;
+}
+
+.login-alert-error {
+    background: var(--danger-subtle);
+    color: var(--danger-text);
+    border: 1px solid hsla(0, 68%, 56%, 0.2);
+}
+
+.login-alert-success {
+    background: var(--success-subtle);
+    color: var(--success-text);
+    border: 1px solid hsla(152, 58%, 46%, 0.2);
+}
+
+@keyframes slideDownIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* ── Form Enhancements ─────────────────────────────────────── */
+.login-form .form-group {
+    margin-bottom: var(--sp-5);
+}
+
+.login-form .form-label {
+    margin-bottom: var(--sp-2);
+    display: block;
+}
+
+.login-form .form-control {
+    height: 44px;
+    background: var(--bg-input);
+    border: 1px solid var(--border-input);
+    transition: border-color var(--dur-normal) var(--ease-default),
+                box-shadow var(--dur-normal) var(--ease-default);
+}
+
+.login-form .form-control:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 4px var(--accent-subtle);
+    background: var(--bg-root);
+}
+
+.login-form .btn-submit {
+    margin-top: var(--sp-2);
+    height: 48px;
+    font-size: var(--text-md);
+    position: relative;
+    overflow: hidden;
+}
+
+/* Custom styling for the async thinking state if needed, 
+   though common.js adds standard aria-busy states */
+.btn-submit.is-async-pending {
+    color: transparent !important;
+}
+
+.btn-submit.is-async-pending::after {
+    content: "";
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+}
+
+@keyframes spin {
+    to { transform: translate(-50%, -50%) rotate(360deg); }
+}
