@@ -12,6 +12,26 @@ curl -fsSL https://sss.chrismin13.com/install.sh | sudo bash
 - For more details and documentation, visit the [landing page](https://sss.chrismin13.com).
 - For manual installation, see the [Manual Installation Guide](docs/manual_install.md).
 
+## Local Fake Mode
+
+To run the app locally without touching system services, disks, or `/etc`, start it in fake mode:
+
+```bash
+bash install_dev.sh
+bash run_fake.sh
+```
+
+If you also want the full drive-health ML stack locally, install it explicitly:
+
+```bash
+bash install_dev.sh --with-ml
+```
+
+- Fake mode stores its state under `.dev-data/`.
+- Use the setup wizard's mount step to point the backup source at a local folder on your machine.
+- Cloud backup can still use real `rclone` destinations such as MEGA when `rclone` is installed.
+- `run_fake.sh` enables fake-mode auto-login by default. Set `SSS_SKIP_LOGIN=false` if you want the normal login screen.
+
 ---
 
 # Documentation Index

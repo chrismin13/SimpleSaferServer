@@ -5,10 +5,10 @@ import logging
 from functools import wraps
 from flask import session, redirect, url_for, flash
 import re
-import secrets
 import os
 import datetime
 import subprocess
+from runtime import get_runtime
 
 logger = logging.getLogger(__name__)
 
@@ -22,8 +22,9 @@ class PasswordPolicy:
         return True, "Password is valid"
 
 class UserManager:
-    def __init__(self):
-        self.users_file = Path('/etc/SimpleSaferServer/users.json')
+    def __init__(self, runtime=None):
+        self.runtime = runtime or get_runtime()
+        self.users_file = self.runtime.config_dir / 'users.json'
         self.users = self._load_users()
         self._ensure_secure_permissions()
 
@@ -31,6 +32,7 @@ class UserManager:
         """Ensure secure file permissions"""
         try:
             # Ensure directory has correct permissions
+            self.users_file.parent.mkdir(parents=True, exist_ok=True)
             self.users_file.parent.chmod(0o700)
             
             # Ensure file has correct permissions
@@ -74,6 +76,9 @@ class UserManager:
 
     def _sync_user_to_samba(self, username, password):
         """Sync a user to the Samba user database"""
+        if self.runtime.is_fake:
+            logger.info(f"Fake mode: skipping Samba sync for {username}")
+            return True
         try:
             # First, ensure the user exists in the system
             try:
@@ -106,6 +111,9 @@ class UserManager:
 
     def _remove_user_from_samba(self, username):
         """Remove a user from the Samba user database"""
+        if self.runtime.is_fake:
+            logger.info(f"Fake mode: skipping Samba removal for {username}")
+            return True
         try:
             subprocess.run(['sudo', 'smbpasswd', '-x', username], check=True)
             logger.info(f"Removed Samba user {username}")
@@ -128,9 +136,6 @@ class UserManager:
         is_valid, message = policy.validate(password)
         if not is_valid:
             return False, message
-        
-        # Generate a unique salt for this user
-        salt = secrets.token_hex(16)
         
         # Store user with additional security measures
         self.users[username] = {
@@ -239,8 +244,21 @@ class UserManager:
         """Get all users (excluding sensitive data)"""
         return [self.get_user(username) for username in self.users.keys()]
 
+    def get_preferred_admin_username(self, preferred_username=None):
+        """Return the best admin user to auto-login for local fake mode."""
+        if preferred_username and self.is_admin(preferred_username):
+            return preferred_username
+
+        for username, data in self.users.items():
+            if data.get('is_admin', False):
+                return username
+
+        return next(iter(self.users), None)
+
     def user_exists_in_samba(self, username):
         """Check if user exists in Samba database"""
+        if self.runtime.is_fake:
+            return username in self.users
         try:
             result = subprocess.run(['sudo', 'pdbedit', '-L'], capture_output=True, text=True)
             return username in result.stdout.splitlines()
@@ -249,6 +267,8 @@ class UserManager:
 
     def user_exists_in_system(self, username):
         """Check if user exists in system user database"""
+        if self.runtime.is_fake:
+            return username in self.users
         try:
             subprocess.run(['id', username], check=True, capture_output=True)
             return True

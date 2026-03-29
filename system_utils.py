@@ -5,9 +5,12 @@ from pathlib import Path
 import os
 import re
 import shutil
+from runtime import get_runtime, get_fake_state
 
 class SystemUtils:
-    def __init__(self):
+    def __init__(self, runtime=None):
+        self.runtime = runtime or get_runtime()
+        self.fake_state = get_fake_state() if self.runtime.is_fake else None
         self.logger = logging.getLogger(__name__)
 
     def run_command(self, command, check=True):
@@ -28,7 +31,7 @@ class SystemUtils:
         """Set up rclone configuration"""
         try:
             # Create rclone config directory if it doesn't exist
-            rclone_dir = Path.home() / '.config' / 'rclone'
+            rclone_dir = self.runtime.rclone_config_dir
             rclone_dir.mkdir(parents=True, exist_ok=True)
             
             # Write rclone config
@@ -59,7 +62,7 @@ Restart=on-failure
 WantedBy=multi-user.target
 """
             
-            service_path = Path(f'/etc/systemd/system/{service_name}.service')
+            service_path = self.runtime.systemd_dir / f'{service_name}.service'
             service_path.write_text(service_content)
             
             # Create timer if specified
@@ -74,10 +77,12 @@ Persistent=true
 [Install]
 WantedBy=timers.target
 """
-                timer_path = Path(f'/etc/systemd/system/{service_name}.timer')
+                timer_path = self.runtime.systemd_dir / f'{service_name}.timer'
                 timer_path.write_text(timer_content)
             
             # Reload systemd and enable service
+            if self.runtime.is_fake:
+                return True
             self.run_command(['systemctl', 'daemon-reload'])
             self.run_command(['systemctl', 'enable', f'{service_name}.service'])
             if timer:
@@ -106,7 +111,8 @@ password {password}
 
 account default : simplesaferserver
 """
-            path = Path('/etc/msmtprc')
+            path = self.runtime.msmtp_config_path
+            path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content)
             path.chmod(0o600)
             return True
@@ -116,6 +122,8 @@ account default : simplesaferserver
 
     def get_parent_device(self, partition_path):
         """Given a partition device path (e.g. /dev/sda1), return the parent drive (e.g. /dev/sda)."""
+        if self.runtime.is_fake and partition_path.startswith('/dev/fakebackup'):
+            return '/dev/fakebackup'
         try:
             # Use lsblk to get the parent device
             result = self.run_command(['lsblk', '-no', 'PKNAME', partition_path])
@@ -134,6 +142,8 @@ account default : simplesaferserver
 
     def is_mounted(self, mount_point):
         """Check if the given mount point is currently mounted."""
+        if self.runtime.is_fake:
+            return self.fake_state.is_mounted(mount_point)
         try:
             with open('/proc/mounts', 'r') as f:
                 for line in f:
@@ -150,7 +160,7 @@ account default : simplesaferserver
             # Get the current script directory (relative to the project root)
             current_dir = Path(__file__).parent
             scripts_source_dir = current_dir / 'scripts'
-            scripts_dest_dir = Path('/usr/local/bin')
+            scripts_dest_dir = self.runtime.bin_dir
             
             if not scripts_source_dir.exists():
                 self.logger.error(f"Scripts source directory not found: {scripts_source_dir}")
@@ -251,7 +261,7 @@ mega_folder = {backup_config.get('mega_folder', '')}
 backup_cloud_time = {schedule_config.get('backup_cloud_time', '')}
 """
             # Create the config directory
-            config_dir = Path('/etc/SimpleSaferServer')
+            config_dir = self.runtime.config_dir
             config_dir.mkdir(parents=True, exist_ok=True)
             # Write the config file
             config_path = config_dir / 'config.conf'
@@ -369,11 +379,13 @@ WantedBy=timers.target
             
             # Write all service and timer files
             for filename, content in services.items():
-                file_path = Path(f'/etc/systemd/system/{filename}')
+                file_path = self.runtime.systemd_dir / filename
                 file_path.write_text(content)
                 self.logger.info(f"Created systemd file: {file_path}")
             
             # Reload systemd daemon
+            if self.runtime.is_fake:
+                return True, None
             self.run_command(['systemctl', 'daemon-reload'])
             
             # Enable and start services and timers

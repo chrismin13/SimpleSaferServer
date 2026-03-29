@@ -11,12 +11,15 @@ import shutil
 from datetime import datetime
 from tempfile import NamedTemporaryFile
 from pathlib import Path
+from runtime import get_runtime, get_fake_state
 
 setup = Blueprint('setup', __name__)
-config_manager = ConfigManager()
-system_utils = SystemUtils()
-user_manager = UserManager()
-smb_manager = SMBManager()
+runtime = get_runtime()
+fake_state = get_fake_state() if runtime.is_fake else None
+config_manager = ConfigManager(runtime=runtime)
+system_utils = SystemUtils(runtime=runtime)
+user_manager = UserManager(runtime=runtime)
+smb_manager = SMBManager(runtime=runtime)
 logger = logging.getLogger(__name__)
 
 @setup.route('/setup')
@@ -84,6 +87,9 @@ def create_user():
 def list_drives():
     """List available drives with detailed information"""
     try:
+        if runtime.is_fake:
+            return jsonify({'success': True, 'drives': fake_state.get_virtual_drives()})
+
         # Get detailed drive information using lsblk
         lsblk_result = subprocess.run(['lsblk', '-f', '-o', 'NAME,FSTYPE,LABEL,SIZE,MODEL,MOUNTPOINT,TYPE'], 
                                     capture_output=True, text=True)
@@ -161,6 +167,13 @@ def list_drives():
 def format_drive():
     """Format the selected drive"""
     try:
+        if runtime.is_fake:
+            return jsonify({
+                'success': False,
+                'error': 'Formatting is disabled in fake mode',
+                'details': 'Fake mode never formats local disks. Use the mount step to point the backup source at an existing folder instead.'
+            })
+
         data = request.get_json()
         drive = data.get('drive')
         
@@ -230,6 +243,10 @@ def format_drive():
 def unmount_drive():
     """Unmount the selected drive and clean up fstab entries related to SimpleSaferServer"""
     try:
+        if runtime.is_fake:
+            fake_state.set_mount(False)
+            return jsonify({'success': True, 'message': 'Fake backup source disconnected.'})
+
         data = request.get_json()
         drive = data.get('drive')
         
@@ -314,7 +331,32 @@ def mount_drive():
         drive = data.get('drive')
         mount_point = data.get('mount_point', '/media/backup')
         auto_mount = data.get('auto_mount', True)
-        
+
+        if runtime.is_fake:
+            selected_path = Path(os.path.abspath(mount_point or runtime.default_mount_point))
+            if not selected_path.exists():
+                try:
+                    selected_path.relative_to(runtime.data_dir)
+                    selected_path.mkdir(parents=True, exist_ok=True)
+                except ValueError:
+                    return jsonify({
+                        'success': False,
+                        'error': 'Source folder does not exist',
+                        'details': 'In fake mode, choose an existing folder on this machine or a path inside .dev-data that can be created safely.'
+                    })
+            if not selected_path.is_dir():
+                return jsonify({'success': False, 'error': 'Source path must be a directory'})
+
+            config_manager.set_value('backup', 'mount_point', str(selected_path))
+            config_manager.set_value('backup', 'uuid', 'FAKE-UUID-0001')
+            config_manager.set_value('backup', 'usb_id', 'FAKE:0001')
+            fake_state.set_mount(True, mount_point=str(selected_path), drive=drive or '/dev/fakebackup1')
+            logger.info(f"Fake mode: using local backup source at {selected_path}")
+            return jsonify({
+                'success': True,
+                'message': f'Successfully selected local backup source at {selected_path}'
+            })
+
         if not drive:
             return jsonify({'success': False, 'error': 'No drive selected'})
 
@@ -354,12 +396,12 @@ def mount_drive():
 
         # Get USB ID of the drive (if available)
         try:
-            logger = logging.getLogger(__name__)
+            usb_logger = logging.getLogger(__name__)
             usb_id = ""
             # Find sysfs path for the block device
             sys_block_path = f"/sys/class/block/{os.path.basename(drive)}/device"
             parent = os.path.realpath(sys_block_path)
-            logger.info(f"Starting sysfs walk for USB ID from: {parent}")
+            usb_logger.info(f"Starting sysfs walk for USB ID from: {parent}")
             while parent != "/":
                 id_vendor_path = os.path.join(parent, "idVendor")
                 id_product_path = os.path.join(parent, "idProduct")
@@ -369,13 +411,13 @@ def mount_drive():
                     with open(id_product_path) as f:
                         product = f.read().strip()
                     usb_id = f"{vendor}:{product}"
-                    logger.info(f"Found USB ID at {parent}: {usb_id}")
+                    usb_logger.info(f"Found USB ID at {parent}: {usb_id}")
                     break
                 parent = os.path.dirname(parent)
             if not usb_id:
-                logger.info("USB ID not found, likely not a USB device or not detected.")
+                usb_logger.info("USB ID not found, likely not a USB device or not detected.")
         except Exception as e:
-            logger.error(f"Error getting USB ID: {e}")
+            usb_logger.error(f"Error getting USB ID: {e}")
             usb_id = ""
 
         # Add to fstab if auto_mount is enabled
@@ -508,6 +550,9 @@ def save_schedule():
 def install_systemd_tasks(config):
     """Generate and install systemd service/timer files for all main tasks."""
     try:
+        if runtime.is_fake:
+            return True, None
+
         # Create the systemd configuration file
         ok, err = system_utils.create_systemd_config_file(config)
         if not ok:
@@ -535,31 +580,39 @@ def setup_smb_share(config):
         mount_point = backup.get('mount_point', '/media/backup')
         system = config.get('system', {})
         admin_username = system.get('username', 'admin')
-        
-        # Get the admin user's password from the user manager
-        admin_user = user_manager.users.get(admin_username)
-        if not admin_user:
+
+        if runtime.is_fake:
+            existing_shares = smb_manager.get_shares()
+            backup_share_exists = any(share['name'] == 'backup' for share in existing_shares)
+            if backup_share_exists:
+                smb_manager.update_share(
+                    old_name='backup',
+                    new_name='backup',
+                    path=mount_point,
+                    writable=True,
+                    comment='Fake-mode backup share',
+                    valid_users=[admin_username]
+                )
+            else:
+                smb_manager.add_share(
+                    name='backup',
+                    path=mount_point,
+                    writable=True,
+                    comment='Fake-mode backup share',
+                    valid_users=[admin_username]
+                )
+            return True, None
+         
+        if admin_username not in user_manager.users:
             return False, f"Admin user {admin_username} not found in user database"
         
         # Ensure admin user exists in Samba
         if not user_manager.user_exists_in_samba(admin_username):
-            # We need to recreate the user in Samba with their password
-            # For now, we'll use a default password and let the user change it later
-            # In a real implementation, you might want to store the password temporarily
-            logger.warning(f"Admin user {admin_username} not found in Samba, creating with default password")
-            
-            # First ensure the user exists in the system
-            try:
-                subprocess.run(['id', admin_username], check=True, capture_output=True)
-            except subprocess.CalledProcessError:
-                # User doesn't exist, create them
-                logger.info(f"Creating system user {admin_username}")
-                subprocess.run(['sudo', 'useradd', '-m', '-s', '/bin/bash', admin_username], check=True)
-            
-            # Use the actual admin password from the user database
-            admin_password = admin_user.get('password', 'admin')  # fallback to 'admin' if not found
-            subprocess.run(['sudo', 'smbpasswd', '-s', '-a', admin_username], 
-                         input=f"{admin_password}\n{admin_password}\n", text=True, check=True)
+            return False, (
+                f"Admin user {admin_username} is missing from Samba. "
+                "The setup flow does not store plaintext passwords, so the Samba account cannot be recreated automatically. "
+                "Recreate the admin user through the setup flow or reset the Samba password manually."
+            )
         
         # Check if backup share already exists and update it, or create new one
         existing_shares = smb_manager.get_shares()

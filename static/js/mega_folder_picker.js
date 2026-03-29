@@ -5,7 +5,9 @@ window.openMegaFolderPicker = function openMegaFolderPicker(options) {
   const {
     getCredentials, // function that returns { email, password }
     onSelect,       // function(folderPath) called when folder is selected
-    modalSelector   // selector for the modal (e.g., '#megaFolderPickerModal')
+    modalSelector,  // selector for the modal (e.g., '#megaFolderPickerModal')
+    listUrl = '/api/cloud_backup/mega/list_folders',
+    createUrl = '/api/cloud_backup/mega/create_folder'
   } = options;
 
   // Modal elements
@@ -34,16 +36,26 @@ window.openMegaFolderPicker = function openMegaFolderPicker(options) {
     if (errorEl) errorEl.classList.add('d-none');
   }
 
+  function parseJsonResponse(response) {
+    return response.text().then(text => {
+      try {
+        return JSON.parse(text);
+      } catch (error) {
+        throw new Error(`Unexpected response from server (${response.status})`);
+      }
+    });
+  }
+
   function loadDirs(path) {
     clearError();
     if (dirsListEl) dirsListEl.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Loading...';
     const creds = getCredentials();
-    fetch('/api/cloud_backup/mega/list_folders', {
+    fetch(listUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ path, email: creds ? creds.email : null, password: creds ? creds.password : null })
     })
-      .then(r => r.json())
+      .then(parseJsonResponse)
       .then(data => {
         if (!data.success && data.error) throw new Error(data.error);
         currentPath = data.path;
@@ -96,12 +108,12 @@ window.openMegaFolderPicker = function openMegaFolderPicker(options) {
     saveNewFolderBtn.disabled = true;
     saveNewFolderBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Creating...';
     const creds = getCredentials();
-    fetch('/api/cloud_backup/mega/create_folder', {
+    fetch(createUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ folder_name: folderName, path: currentPath, email: creds.email, password: creds.password })
     })
-      .then(r => r.json())
+      .then(parseJsonResponse)
       .then(data => {
         saveNewFolderBtn.disabled = false;
         saveNewFolderBtn.innerHTML = 'Create';

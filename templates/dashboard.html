@@ -374,7 +374,7 @@ function loadTaskSchedule() {
                         <td>${renderTaskStatusBadge(task.status)}</td>
                         <td>
                             <form method="post" action="/run_task/${encodeURIComponent(task.name)}" class="d-inline">
-                                <button type="submit" class="btn btn-sm btn-outline-primary" data-confirm="Are you sure you want to run this task?">Run Now</button>
+                                <button type="submit" class="btn btn-sm btn-outline-primary" data-confirm="Are you sure you want to run this task?" data-confirm-title="Run Task" data-confirm-button="Run Now" data-confirm-class="btn-primary">Run Now</button>
                             </form>
                         </td>
                     `;

@@ -31,18 +31,6 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
 
-  // Handle buttons that require confirmation
-  const confirmButtons = document.querySelectorAll("[data-confirm]");
-  confirmButtons.forEach((btn) => {
-    btn.addEventListener("click", function (e) {
-      const message = btn.getAttribute("data-confirm");
-      if (!confirm(message)) {
-        e.preventDefault();
-        e.stopImmediatePropagation(); // Prevent further click handlers if cancelled
-      }
-    });
-  });
-
   // Auto-refresh logs on the task detail page
   const autoRefreshCheckbox = document.getElementById("auto-refresh");
   if (autoRefreshCheckbox) {
@@ -210,7 +198,9 @@ document.addEventListener("DOMContentLoaded", function () {
           const warning = document.getElementById('megaFolderWarning');
           if (warning) warning.classList.remove('d-none');
         },
-        modalSelector: '#megaFolderPickerModal'
+        modalSelector: '#megaFolderPickerModal',
+        listUrl: '/api/setup/mega/list_folders',
+        createUrl: '/api/setup/mega/create_folder'
       });
     });
   }

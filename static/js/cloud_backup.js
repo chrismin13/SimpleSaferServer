@@ -10,7 +10,7 @@ function renderStatusBadge(status) {
   return `<span class="badge bg-warning text-dark">${status}</span>`;
 }
 
-function loadStatus() {
+  function loadStatus() {
   const statusBadge = document.getElementById('cloud-backup-status-badge');
   const lastRun = document.getElementById('cloud-backup-last-run');
   const nextRun = document.getElementById('cloud-backup-next-run');
@@ -36,8 +36,36 @@ function loadStatus() {
       statusBadge.innerHTML = renderStatusBadge('Error');
       statusError.textContent = e.message || 'Could not load backup status.';
       statusError.classList.remove('d-none');
-    });
-}
+     });
+  }
+
+  function runBackupNow() {
+    const runBtn = document.getElementById('cloud-backup-run-btn');
+    const runSpinner = document.getElementById('cloud-backup-run-spinner');
+    const statusError = document.getElementById('cloud-backup-status-error');
+
+    statusError.classList.add('d-none');
+    runBtn.disabled = true;
+    runSpinner.classList.remove('d-none');
+
+    fetch('/api/cloud_backup/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (!data.success) throw new Error(data.error || 'Failed to start backup');
+        loadStatus();
+      })
+      .catch(e => {
+        statusError.textContent = e.message || 'Could not start backup.';
+        statusError.classList.remove('d-none');
+      })
+      .finally(() => {
+        runBtn.disabled = false;
+        runSpinner.classList.add('d-none');
+      });
+  }
 
 document.addEventListener('DOMContentLoaded', function () {
   // Elements
@@ -111,6 +139,12 @@ document.addEventListener('DOMContentLoaded', function () {
     };
     backupTime.addEventListener('focus', showTimePicker);
     backupTime.addEventListener('click', showTimePicker);
+  }
+
+  if (runBtn) {
+    runBtn.addEventListener('click', function () {
+      runBackupNow();
+    });
   }
 
   // Add Enter key handler for MEGA password field
@@ -440,7 +474,9 @@ document.addEventListener('DOMContentLoaded', function () {
         megaFolderPath.value = folderPath;
         megaFolderWarning.classList.remove('d-none');
       },
-      modalSelector: '#megaFolderPickerModal'
+      modalSelector: '#megaFolderPickerModal',
+      listUrl: '/api/cloud_backup/mega/list_folders',
+      createUrl: '/api/cloud_backup/mega/create_folder'
     });
   });
 

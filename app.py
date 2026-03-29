@@ -2,13 +2,11 @@
 from flask import Flask, render_template, jsonify, request, abort, url_for, redirect, send_file, session, flash, current_app, make_response, send_from_directory
 import subprocess
 import psutil
-from datetime import timedelta
+from datetime import datetime, timedelta
 import json
 import os
 import csv
-import pandas as pd
-from xgboost import XGBClassifier
-import joblib
+import shutil
 from config_manager import ConfigManager
 from setup_wizard import setup, install_systemd_tasks
 import logging
@@ -20,18 +18,29 @@ import time
 from system_utils import SystemUtils
 from smb_manager import SMBManager
 from tempfile import NamedTemporaryFile
-import subprocess
+from runtime import get_runtime, get_fake_state
+
+try:
+    import pandas as pd
+    from xgboost import XGBClassifier
+    import joblib
+except ModuleNotFoundError:
+    pd = None
+    XGBClassifier = None
+    joblib = None
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)  # Required for session management
 socketio = SocketIO(app) 
-user_manager = UserManager()
+runtime = get_runtime()
+fake_state = get_fake_state() if runtime.is_fake else None
+user_manager = UserManager(runtime=runtime)
 
-system_utils = SystemUtils()
-smb_manager = SMBManager()
+system_utils = SystemUtils(runtime=runtime)
+smb_manager = SMBManager(runtime=runtime)
 
 # Configure logging
-log_dir = '/var/log/SimpleSaferServer'
+log_dir = str(runtime.logs_dir)
 os.makedirs(log_dir, exist_ok=True)
 log_file = os.path.join(log_dir, 'app.log')
 
@@ -45,24 +54,45 @@ app.logger.setLevel(logging.INFO)
 app.logger.info('SimpleSaferServer startup')
 
 # Initialize configuration
-config_manager = ConfigManager()
+config_manager = ConfigManager(runtime=runtime)
 
 # Register setup blueprint
 app.register_blueprint(setup)
 
 # Paths for the XGBoost model and threshold
-MODEL_PATH = "/opt/SimpleSaferServer/harddrive_model/xgb_model.json"
-THRESHOLD_PATH = "/opt/SimpleSaferServer/harddrive_model/optimal_threshold_xgb.pkl"
+MODEL_PATH = str(runtime.model_dir / "xgb_model.json")
+THRESHOLD_PATH = str(runtime.model_dir / "optimal_threshold_xgb.pkl")
 
 # Load model and threshold once on startup
-model = XGBClassifier()
-try:
-    model.load_model(MODEL_PATH)
-    optimal_threshold = joblib.load(THRESHOLD_PATH)
-except Exception as exc:
-    print(f"Failed to load model: {exc}")
-    model = None
-    optimal_threshold = 0.5
+model = None
+optimal_threshold = 0.5
+if XGBClassifier is not None and joblib is not None:
+    model = XGBClassifier()
+    try:
+        model.load_model(MODEL_PATH)
+        optimal_threshold = joblib.load(THRESHOLD_PATH)
+    except Exception as exc:
+        print(f"Failed to load model: {exc}")
+        model = None
+        optimal_threshold = 0.5
+
+
+def predict_failure_probability(smart):
+    if model is not None and pd is not None:
+        df = pd.DataFrame([smart])
+        probabilities = model.predict_proba(df)
+        return float(probabilities[0, 1])
+
+    if runtime.is_fake:
+        temperature = float(smart.get('smart_194_raw', 30.0) or 30.0)
+        reallocated = float(smart.get('smart_5_raw', 0.0) or 0.0)
+        pending = float(smart.get('smart_197_raw', 0.0) or 0.0)
+        probability = 0.03 + min(0.25, reallocated * 0.02) + min(0.25, pending * 0.05)
+        if temperature > 40:
+            probability += min(0.15, (temperature - 40) * 0.01)
+        return min(0.95, probability)
+
+    return None
 
 # SMART attributes used for telemetry/model with their default values and descriptions
 SMART_FIELDS = {
@@ -135,8 +165,28 @@ SMART_FIELDS = {
 }
 
 
+def get_fake_smart_attributes():
+    attrs = {field: info["default"] for field, info in SMART_FIELDS.items()}
+    attrs.update({
+        "smart_1_raw": 0.0,
+        "smart_3_raw": 1420.0,
+        "smart_4_raw": 321.0,
+        "smart_5_raw": 0.0,
+        "smart_7_raw": 0.0,
+        "smart_10_raw": 0.0,
+        "smart_192_raw": 2.0,
+        "smart_193_raw": 145.0,
+        "smart_194_raw": 31.0,
+        "smart_197_raw": 0.0,
+        "smart_198_raw": 0.0,
+    })
+    return attrs, []
+
+
 def get_smart_attributes(device=None):
     """Return SMART attributes as a dictionary using smartctl JSON output."""
+    if runtime.is_fake:
+        return get_fake_smart_attributes()
     try:
         # If device is not specified, get UUID from config and resolve to device
         if device is None:
@@ -196,8 +246,10 @@ def append_telemetry(data_dict, prediction):
     """Append SMART data and prediction to telemetry.csv."""
     if not data_dict:
         return
-    file_exists = os.path.exists("telemetry.csv")
-    with open("telemetry.csv", "a", newline="") as csvfile:
+    telemetry_path = runtime.telemetry_path
+    telemetry_path.parent.mkdir(parents=True, exist_ok=True)
+    file_exists = telemetry_path.exists()
+    with open(telemetry_path, "a", newline="") as csvfile:
         writer = csv.writer(csvfile)
         if not file_exists:
             writer.writerow(list(SMART_FIELDS.keys()) + ["failure"])
@@ -224,6 +276,8 @@ class Task:
 
     def get_logs(self, lines: int = 50) -> str:
         """Return the latest systemd journal logs for this service."""
+        if runtime.is_fake:
+            return fake_state.get_task_log(self.name)
         try:
             result = subprocess.run(
                 [
@@ -244,6 +298,9 @@ class Task:
 
     def start(self):
         """Start the associated service asynchronously."""
+        if runtime.is_fake:
+            run_fake_task(self.name)
+            return
         try:
             subprocess.Popen(
                 ["systemctl", "start", self.service_name, "--no-block"],
@@ -255,6 +312,10 @@ class Task:
 
     def stop(self):
         """Stop the associated service asynchronously."""
+        if runtime.is_fake:
+            fake_state.append_task_log(self.name, f"Stopped {self.name} in fake mode.")
+            fake_state.set_task_state(self.name, status=Status.SUCCESS)
+            return
         try:
             subprocess.Popen(
                 ["systemctl", "stop", self.service_name, "--no-block"],
@@ -270,6 +331,8 @@ class Task:
         Returns the next run time of the systemd timer by executing
         a system command.
         """
+        if runtime.is_fake:
+            return fake_state.get_next_run(self.name, config_manager.get_value('schedule', 'backup_cloud_time', '03:00'))
         try:
             # Example: using 'systemctl list-timers' or 'systemctl show'
             result = subprocess.run(
@@ -293,6 +356,9 @@ class Task:
         """
         Returns the last run time of the systemd service.
         """
+        if runtime.is_fake:
+            task_state = fake_state.get_task_state(self.name)
+            return task_state.get("last_run") or "Not Run Yet"
         try:
             result = subprocess.run(
                 ["systemctl", "show", self.service_name, "--property=ExecMainStartTimestamp"],
@@ -310,6 +376,9 @@ class Task:
     @property
     def last_run_duration(self):
         """Return the duration of the last run in a human friendly format."""
+        if runtime.is_fake:
+            task_state = fake_state.get_task_state(self.name)
+            return task_state.get("last_run_duration", "-")
         try:
             result = subprocess.run(
                 [
@@ -360,6 +429,9 @@ class Task:
         """
         Returns the status of the service: Running, Success, or Failure.
         """
+        if runtime.is_fake:
+            task_state = fake_state.get_task_state(self.name)
+            return task_state.get("status", Status.NOT_RUN_YET)
         try:
             # Check if the service exists
             result = subprocess.run(
@@ -420,21 +492,16 @@ class Task:
 def index():
     """Main entry point - redirects to appropriate page based on setup status"""
     if not config_manager.is_setup_complete():
-        return redirect(url_for('setup_wizard'))
+        return redirect(url_for('setup.setup_page'))
     return redirect(url_for('dashboard'))
-
-@app.route('/setup')
-def setup_wizard():
-    """Setup wizard entry point"""
-    if config_manager.is_setup_complete():
-        return redirect(url_for('dashboard'))
-    return render_template('setup.html')
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     """Login page - only accessible after setup is complete"""
     if not config_manager.is_setup_complete():
-        return redirect(url_for('setup_wizard'))
+        return redirect(url_for('setup.setup_page'))
+    if 'username' in session:
+        return redirect(url_for('dashboard'))
         
     if request.method == 'POST':
         # Reload user data to ensure we have the latest
@@ -447,6 +514,7 @@ def login():
             # Check if user is admin before allowing login
             if user_manager.is_admin(username):
                 session['username'] = username
+                session.pop('skip_login_disabled', None)
                 return redirect(url_for('dashboard'))
             else:
                 flash('This account does not have administrator privileges. Only administrators can access the SimpleSaferServer management interface. Please contact your system administrator for access or view the accompanying documentation for information on how to mount any network file shares that you have been given access to.', 'error')
@@ -456,10 +524,36 @@ def login():
     
     return render_template('login.html')
 
+
+def get_auto_login_username():
+    configured_username = config_manager.get_value('system', 'username', '')
+    user_manager.users = user_manager._load_users()
+    return user_manager.get_preferred_admin_username(configured_username)
+
+
+@app.before_request
+def auto_login_fake_mode_user():
+    if not runtime.is_fake or not runtime.skip_login:
+        return None
+    if request.endpoint in {'static'}:
+        return None
+    if session.get('skip_login_disabled'):
+        return None
+    if 'username' in session:
+        return None
+    if not config_manager.is_setup_complete():
+        return None
+
+    username = get_auto_login_username()
+    if username:
+        session['username'] = username
+        session['auto_logged_in'] = True
+    return None
+
 @app.route('/network_file_sharing')
 @login_required
 def network_file_sharing():
-    backup_mount_point = config_manager.get_value('backup', 'mount_point', '/media/backup')
+    backup_mount_point = config_manager.get_value('backup', 'mount_point', runtime.default_mount_point)
     return render_template('network_file_sharing.html', username=session.get('username'), backup_mount_point=backup_mount_point)
 
 @app.route('/users')
@@ -470,13 +564,15 @@ def users():
 @app.route('/logout')
 def logout():
     session.clear()
+    if runtime.is_fake and runtime.skip_login:
+        session['skip_login_disabled'] = True
     return redirect(url_for('login'))
 
 @app.route('/dashboard')
 @login_required
 def dashboard():
     if not config_manager.is_setup_complete():
-        return redirect(url_for('setup_wizard'))
+        return redirect(url_for('setup.setup_page'))
     # Get tasks from config
     config = config_manager.get_all_config()
     # Get task information
@@ -508,7 +604,11 @@ def dashboard():
                 'last_run_duration': 'Error'
             })
     # Get system metrics
-    disk = psutil.disk_usage('/media/backup')
+    mount_point = config_manager.get_value('backup', 'mount_point', runtime.default_mount_point)
+    try:
+        disk = psutil.disk_usage(mount_point)
+    except Exception:
+        disk = psutil.disk_usage(runtime.repo_root)
     cpu_percent = psutil.cpu_percent()
     ram_percent = psutil.virtual_memory().percent
     return render_template('dashboard.html',
@@ -592,8 +692,13 @@ def run_task(task_name):
 @app.route("/unmount", methods=["POST"])
 @login_required
 def unmount():
-    mount_point = config_manager.get_value('backup', 'mount_point', '/media/backup')
+    mount_point = config_manager.get_value('backup', 'mount_point', runtime.default_mount_point)
     try:
+        if runtime.is_fake:
+            fake_state.set_mount(False)
+            fake_state.append_task_log('Check Mount', f'Backup source disconnected from {mount_point}.')
+            return jsonify({"success": True, "message": "Local backup source disconnected."})
+
         # 1. Disconnect all SMB users (if possible)
         try:
             subprocess.run(["sudo", "smbcontrol", "all", "close-share", mount_point], check=False)
@@ -637,6 +742,8 @@ def unmount():
 @admin_required
 def restart():
     try:
+        if runtime.is_fake:
+            return jsonify({"success": True, "message": "Fake mode: restart simulated."})
         subprocess.run(["sudo", "systemctl", "reboot"], check=True)
         return jsonify({"success": True, "message": "System is restarting..."})
     except subprocess.CalledProcessError as e:
@@ -650,6 +757,8 @@ def restart():
 @admin_required
 def shutdown():
     try:
+        if runtime.is_fake:
+            return jsonify({"success": True, "message": "Fake mode: shutdown simulated."})
         subprocess.run(["sudo", "systemctl", "poweroff"], check=True)
         return jsonify({"success": True, "message": "System is shutting down..."})
     except subprocess.CalledProcessError as e:
@@ -673,9 +782,8 @@ def drives():
             error = "Could not retrieve SMART data"
         else:
             smart, missing_attrs = result
-            if model:
-                df = pd.DataFrame([smart])
-                prob = float(model.predict_proba(df)[:, 1])
+            prob = predict_failure_probability(smart)
+            if prob is not None:
                 prediction = int(prob >= optimal_threshold)
                 probability = prob
                 append_telemetry(smart, prediction)
@@ -695,9 +803,86 @@ def drives():
 @app.route("/download_telemetry")
 @login_required
 def download_telemetry():
-    if os.path.exists("telemetry.csv"):
-        return send_file("telemetry.csv", as_attachment=True)
+    if runtime.telemetry_path.exists():
+        return send_file(runtime.telemetry_path, as_attachment=True)
     abort(404)
+
+
+def run_fake_cloud_backup():
+    source = config_manager.get_value('backup', 'mount_point', runtime.default_mount_point)
+    destination = config_manager.get_value('backup', 'rclone_dir', '').strip()
+    rclone_config_path = runtime.rclone_config_dir / 'rclone.conf'
+    if not source:
+        raise RuntimeError('No source folder configured.')
+    if not os.path.isdir(source):
+        raise RuntimeError(f'Source folder does not exist: {source}')
+    if not destination:
+        raise RuntimeError('No cloud destination configured.')
+    if ':' in destination and not rclone_config_path.exists():
+        raise RuntimeError(f'Rclone config not found at {rclone_config_path}')
+
+    fake_state.append_task_log('Cloud Backup', f'Starting backup from {source} to {destination}')
+    bandwidth_limit = config_manager.get_value('backup', 'bandwidth_limit', '').strip()
+    command = ['rclone', 'sync', source, destination, '--create-empty-src-dirs', '-v']
+    if rclone_config_path.exists():
+        command.extend(['--config', str(rclone_config_path)])
+    if bandwidth_limit:
+        command.extend(['--bwlimit', bandwidth_limit])
+
+    result = subprocess.run(command, capture_output=True, text=True)
+    output = (result.stdout or '') + (result.stderr or '')
+    if output.strip():
+        fake_state.append_task_log('Cloud Backup', output.strip())
+    if result.returncode != 0:
+        raise RuntimeError(output.strip() or 'Cloud backup failed.')
+
+
+def run_fake_task(task_name: str):
+    start_time = datetime.now()
+    fake_state.set_task_state(task_name, status=Status.RUNNING)
+    fake_state.append_task_log(task_name, f'Starting {task_name} in fake mode.')
+    try:
+        if task_name == 'Check Mount':
+            mount_point = config_manager.get_value('backup', 'mount_point', runtime.default_mount_point)
+            if runtime.is_fake:
+                if not os.path.isdir(mount_point):
+                    raise RuntimeError(f'Backup source folder not found: {mount_point}')
+                if not fake_state.is_mounted(mount_point):
+                    fake_state.set_mount(True, mount_point=mount_point)
+                    fake_state.append_task_log(task_name, f'Found local backup source at {mount_point}; marking it as connected.')
+                fake_state.append_task_log(task_name, f'Backup source available at {mount_point}.')
+            elif system_utils.is_mounted(mount_point):
+                fake_state.append_task_log(task_name, f'Backup source available at {mount_point}.')
+            else:
+                raise RuntimeError('Backup source is not mounted.')
+        elif task_name == 'Drive Health Check':
+            smart, _ = get_smart_attributes()
+            probability = predict_failure_probability(smart)
+            if probability is not None:
+                fake_state.append_task_log(task_name, f'Drive health probability: {probability:.4f}')
+            else:
+                fake_state.append_task_log(task_name, 'Model unavailable; using sample SMART data only.')
+        elif task_name == 'Cloud Backup':
+            run_fake_cloud_backup()
+
+        duration = max(0, int((datetime.now() - start_time).total_seconds()))
+        fake_state.set_task_state(
+            task_name,
+            status=Status.SUCCESS,
+            last_run=start_time.strftime('%Y-%m-%d %H:%M:%S'),
+            last_run_duration=f'{duration}s',
+        )
+        fake_state.append_task_log(task_name, f'{task_name} finished successfully.')
+    except Exception as exc:
+        duration = max(0, int((datetime.now() - start_time).total_seconds()))
+        fake_state.set_task_state(
+            task_name,
+            status=Status.FAILURE,
+            last_run=start_time.strftime('%Y-%m-%d %H:%M:%S'),
+            last_run_duration=f'{duration}s',
+        )
+        fake_state.append_task_log(task_name, f'{task_name} failed: {exc}')
+        raise RuntimeError(str(exc)) from exc
 
 
 # Define tasks globally so they can be reused across routes
@@ -801,7 +986,7 @@ def api_get_email_config():
         # Read msmtp config file to get current settings
         msmtp_config = {}
         try:
-            with open('/etc/msmtprc', 'r') as f:
+            with open(runtime.msmtp_config_path, 'r') as f:
                 content = f.read()
             # Parse the msmtp config to extract settings
             lines = content.split('\n')
@@ -860,7 +1045,11 @@ def api_set_email_config():
 
 @app.context_processor
 def inject_username():
-    return dict(username=session.get('username'))
+    return dict(
+        username=session.get('username'),
+        runtime_mode=runtime.mode,
+        default_mount_point=runtime.default_mount_point,
+    )
 
 @app.route('/api/users', methods=['GET'])
 @admin_required
@@ -1112,7 +1301,7 @@ def api_list_dirs():
 @app.route('/api/storage/status')
 @login_required
 def api_storage_status():
-    mount_point = config_manager.get_value('backup', 'mount_point', '/media/backup')
+    mount_point = config_manager.get_value('backup', 'mount_point', runtime.default_mount_point)
     mounted = system_utils.is_mounted(mount_point)
     if mounted:
         try:
@@ -1139,9 +1328,8 @@ def api_drive_health_summary():
         smart, missing_attrs = get_smart_attributes()
         if smart is None:
             return jsonify({'status': 'unknown', 'probability': None, 'temperature': None})
-        if model:
-            df = pd.DataFrame([smart])
-            prob = float(model.predict_proba(df)[:, 1])
+        prob = predict_failure_probability(smart)
+        if prob is not None:
             temperature = smart.get('smart_194_raw', None)
             status = 'good' if prob < optimal_threshold else 'warning'
             return jsonify({
@@ -1157,9 +1345,16 @@ def api_drive_health_summary():
 @app.route("/mount", methods=["POST"])
 @login_required
 def mount_drive():
-    mount_point = config_manager.get_value('backup', 'mount_point', '/media/backup')
+    mount_point = config_manager.get_value('backup', 'mount_point', runtime.default_mount_point)
     uuid = config_manager.get_value('backup', 'uuid', None)
     try:
+        if runtime.is_fake:
+            if not os.path.isdir(mount_point):
+                return jsonify({"success": False, "message": f"Source folder not found: {mount_point}"}), 400
+            fake_state.set_mount(True, mount_point=mount_point)
+            fake_state.append_task_log('Check Mount', f'Backup source connected at {mount_point}.')
+            return jsonify({"success": True, "message": "Local backup source connected."})
+
         if not uuid:
             return jsonify({"success": False, "message": "No drive UUID configured."}), 400
         # Find the device by UUID
@@ -1248,7 +1443,7 @@ def api_cloud_backup_get_config():
         }
         # For advanced mode, also return the current rclone.conf (if exists)
         import os
-        rclone_conf_path = os.path.expanduser('~/.config/rclone/rclone.conf')
+        rclone_conf_path = runtime.rclone_config_dir / 'rclone.conf'
         if os.path.exists(rclone_conf_path):
             with open(rclone_conf_path) as f:
                 resp['rclone_config'] = f.read()
@@ -1401,6 +1596,60 @@ def api_cloud_backup_mega_list_folders():
         current_app.logger.error(f"Error listing MEGA folders: {e}")
         return jsonify({'success': False, 'error': 'Could not list MEGA folders.'})
 
+
+@app.route('/api/cloud_backup/mega/create_folder', methods=['POST'])
+@login_required
+def api_cloud_backup_mega_create_folder():
+    """Create a MEGA folder using provided or stored credentials."""
+    try:
+        data = request.get_json() or {}
+        folder_name = (data.get('folder_name') or '').strip()
+        path = data.get('path', '/')
+        email = data.get('email')
+        password = data.get('password')
+
+        if not folder_name:
+            return jsonify({'success': False, 'error': 'Folder name is required.'})
+
+        if email and password:
+            result = subprocess.run(["rclone", "obscure", password], stdout=subprocess.PIPE, check=True, text=True)
+            obscured_pw = result.stdout.strip()
+        else:
+            email = config_manager.get_value('backup', 'mega_email', '')
+            obscured_pw = config_manager.get_value('backup', 'mega_pass', '')
+            if not email or not obscured_pw:
+                return jsonify({'success': False, 'error': 'No MEGA credentials stored.'})
+
+        config_text = f"""
+[mega]
+type = mega
+user = {email}
+pass = {obscured_pw}
+"""
+        with NamedTemporaryFile(delete=False, mode="w", prefix="rclone-", suffix=".conf") as config_file:
+            config_file.write(config_text)
+            config_path = config_file.name
+
+        try:
+            full_path = f"{path.rstrip('/')}/{folder_name}" if path != '/' else f"/{folder_name}"
+            mkdir = subprocess.run(
+                ["rclone", "mkdir", f"mega:{full_path}", "--config", config_path],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            if mkdir.returncode != 0:
+                error_msg = mkdir.stderr.strip() if mkdir.stderr else 'Unknown rclone error'
+                current_app.logger.error(f"Rclone error creating MEGA folder: {error_msg}")
+                return jsonify({'success': False, 'error': f'Failed to create folder: {error_msg}'})
+
+            return jsonify({'success': True})
+        finally:
+            os.remove(config_path)
+    except Exception as e:
+        current_app.logger.error(f"Error creating MEGA folder: {e}")
+        return jsonify({'success': False, 'error': 'Could not create MEGA folder.'})
+
 @app.route('/api/cloud_backup/schedule', methods=['GET'])
 @login_required
 def api_cloud_backup_get_schedule():
@@ -1431,6 +1680,9 @@ def api_cloud_backup_set_schedule():
         if bandwidth_limit is not None:
             config_manager.set_value('backup', 'bandwidth_limit', bandwidth_limit)
         
+        if runtime.is_fake:
+            return jsonify({'success': True})
+
         # Update systemd timers and configuration after saving schedule
         config = config_manager.get_all_config()
         
