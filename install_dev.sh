@@ -34,3 +34,4 @@ if [ "$WITH_ML" -eq 0 ]; then
 fi
 
 printf '%s\n' "Development environment ready. Start fake mode with: bash run_fake.sh"
+printf '%s\n' "To reset fake-mode setup data later, run: bash reset_fake_mode.sh"

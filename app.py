@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 import json
 import os
 import csv
-import shutil
+import threading
 from config_manager import ConfigManager
 from setup_wizard import setup, install_systemd_tasks
 import logging
@@ -299,7 +299,7 @@ class Task:
     def start(self):
         """Start the associated service asynchronously."""
         if runtime.is_fake:
-            run_fake_task(self.name)
+            start_fake_task(self.name)
             return
         try:
             subprocess.Popen(
@@ -605,6 +605,7 @@ def dashboard():
             })
     # Get system metrics
     mount_point = config_manager.get_value('backup', 'mount_point', runtime.default_mount_point)
+    mounted = system_utils.is_mounted(mount_point)
     try:
         disk = psutil.disk_usage(mount_point)
     except Exception:
@@ -620,6 +621,7 @@ def dashboard():
         hdd_temp='35',  # Just the number, template will add °C
         cpu_usage=f"{cpu_percent}%",
         ram_usage=f"{ram_percent}%",
+        mount_info={'is_mounted': mounted, 'mount_point': mount_point},
         tasks=tasks
     )
 
@@ -651,12 +653,18 @@ def task_logs(task_name):
 def start_task(task_name):
     task = get_task(task_name)
     if not task:
+        if request.accept_mimetypes.best == 'application/json':
+            return jsonify({"success": False, "message": "Task not found"}), 404
         abort(404)
     try:
         task.start()
+        if request.accept_mimetypes.best == 'application/json':
+            return jsonify({"success": True, "message": f"Started {task_name}."})
         return redirect(url_for("task_detail", task_name=task_name))
     except Exception as e:
-        return jsonify({"success": False, "message": str(e)}), 500
+        if request.accept_mimetypes.best == 'application/json':
+            return jsonify({"success": False, "message": str(e)}), 500
+        abort(500)
 
 
 @app.route("/task/<task_name>/stop", methods=["POST"])
@@ -664,12 +672,18 @@ def start_task(task_name):
 def stop_task(task_name):
     task = get_task(task_name)
     if not task:
+        if request.accept_mimetypes.best == 'application/json':
+            return jsonify({"success": False, "message": "Task not found"}), 404
         abort(404)
     try:
         task.stop()
+        if request.accept_mimetypes.best == 'application/json':
+            return jsonify({"success": True, "message": f"Stopped {task_name}."})
         return redirect(url_for("task_detail", task_name=task_name))
     except Exception as e:
-        return jsonify({"success": False, "message": str(e)}), 500
+        if request.accept_mimetypes.best == 'application/json':
+            return jsonify({"success": False, "message": str(e)}), 500
+        abort(500)
 
 
 # API route for running a task
@@ -837,24 +851,40 @@ def run_fake_cloud_backup():
         raise RuntimeError(output.strip() or 'Cloud backup failed.')
 
 
+fake_task_threads: dict[str, threading.Thread] = {}
+fake_task_lock = threading.Lock()
+
+
+def start_fake_task(task_name: str):
+    with fake_task_lock:
+        existing_thread = fake_task_threads.get(task_name)
+        if existing_thread and existing_thread.is_alive():
+            raise RuntimeError(f'{task_name} is already running.')
+
+        fake_state.set_task_state(task_name, status=Status.RUNNING)
+        fake_state.append_task_log(task_name, f'Starting {task_name} in fake mode.')
+
+        thread = threading.Thread(
+            target=run_fake_task,
+            args=(task_name,),
+            name=f'fake-task-{task_name.lower().replace(" ", "-")}',
+            daemon=True,
+        )
+        fake_task_threads[task_name] = thread
+        thread.start()
+
+
 def run_fake_task(task_name: str):
     start_time = datetime.now()
-    fake_state.set_task_state(task_name, status=Status.RUNNING)
-    fake_state.append_task_log(task_name, f'Starting {task_name} in fake mode.')
     try:
         if task_name == 'Check Mount':
             mount_point = config_manager.get_value('backup', 'mount_point', runtime.default_mount_point)
-            if runtime.is_fake:
-                if not os.path.isdir(mount_point):
-                    raise RuntimeError(f'Backup source folder not found: {mount_point}')
-                if not fake_state.is_mounted(mount_point):
-                    fake_state.set_mount(True, mount_point=mount_point)
-                    fake_state.append_task_log(task_name, f'Found local backup source at {mount_point}; marking it as connected.')
-                fake_state.append_task_log(task_name, f'Backup source available at {mount_point}.')
-            elif system_utils.is_mounted(mount_point):
-                fake_state.append_task_log(task_name, f'Backup source available at {mount_point}.')
-            else:
-                raise RuntimeError('Backup source is not mounted.')
+            if not os.path.isdir(mount_point):
+                raise RuntimeError(f'Backup source folder not found: {mount_point}')
+            if not fake_state.is_mounted(mount_point):
+                fake_state.set_mount(True, mount_point=mount_point)
+                fake_state.append_task_log(task_name, f'Found local backup source at {mount_point}; marking it as connected.')
+            fake_state.append_task_log(task_name, f'Backup source available at {mount_point}.')
         elif task_name == 'Drive Health Check':
             smart, _ = get_smart_attributes()
             probability = predict_failure_probability(smart)
@@ -882,7 +912,12 @@ def run_fake_task(task_name: str):
             last_run_duration=f'{duration}s',
         )
         fake_state.append_task_log(task_name, f'{task_name} failed: {exc}')
-        raise RuntimeError(str(exc)) from exc
+        app.logger.warning('Fake task %s failed: %s', task_name, exc)
+    finally:
+        with fake_task_lock:
+            active_thread = fake_task_threads.get(task_name)
+            if active_thread is threading.current_thread():
+                fake_task_threads.pop(task_name, None)
 
 
 # Define tasks globally so they can be reused across routes

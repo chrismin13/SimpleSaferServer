@@ -7,7 +7,6 @@ import logging
 import subprocess
 import os
 import re
-import shutil
 from datetime import datetime
 from tempfile import NamedTemporaryFile
 from pathlib import Path
