@@ -981,12 +981,20 @@ table .text-end { text-align: right; }
   min-height: 0;
 }
 
-/* Completely vanish from document flow if the inner alert is hidden (prevents margin stacking) */
+/* Completely vanish from document flow when empty
+   - :empty works everywhere
+   - .is-empty can be toggled from JS/templates as a no-:has() fallback */
 .feedback-slot:empty,
-.feedback-slot:has(> .d-none:only-child) {
+.feedback-slot.is-empty {
   display: none !important;
 }
 
+/* In browsers that support :has(), also hide slots whose only child is a hidden alert */
+@supports selector(:has(*)) {
+  .feedback-slot:has(> .d-none:only-child) {
+    display: none !important;
+  }
+}
 .drive-health-result-panel {
   display: flex;
   align-items: center;
