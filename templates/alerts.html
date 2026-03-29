@@ -167,29 +167,32 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   });
 
-  document.getElementById('generateTestAlertsBtn').addEventListener('click', function() {
-    const btn = this;
-    const originalHtml = btn.innerHTML;
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner"></span>';
+  const generateTestAlertsBtn = document.getElementById('generateTestAlertsBtn');
+  if (generateTestAlertsBtn) {
+    generateTestAlertsBtn.addEventListener('click', function() {
+      const btn = this;
+      const originalHtml = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>';
 
-    fetch('/api/alerts/generate-test', { method: 'POST' })
-      .then(r => r.json())
-      .then(data => {
-        btn.disabled = false;
-        btn.innerHTML = originalHtml;
-        if (data.success) {
-          loadAlerts();
-        } else {
-          showAlert(data.error || 'Failed to generate test alerts', 'danger');
-        }
-      })
-      .catch(() => {
-        btn.disabled = false;
-        btn.innerHTML = originalHtml;
-        showAlert('Network error while generating test alerts', 'danger');
-      });
-  });
+      fetch('/api/alerts/generate-test', { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+          btn.disabled = false;
+          btn.innerHTML = originalHtml;
+          if (data.success) {
+            loadAlerts();
+          } else {
+            showAlert(data.error || 'Failed to generate test alerts', 'danger');
+          }
+        })
+        .catch(() => {
+          btn.disabled = false;
+          btn.innerHTML = originalHtml;
+          showAlert('Network error while generating test alerts', 'danger');
+        });
+    });
+  }
 });
 
 function loadEmailConfig() {
@@ -272,7 +275,7 @@ function loadAlerts() {
         else { displayAlerts(data.alerts); alertsList.classList.remove('d-none'); }
       } else {
         noAlerts.classList.remove('d-none');
-        showAlert(data.message || 'Failed to load alerts. Please try again.', 'danger');
+        showAlert(data.error || 'Failed to load alerts. Please try again.', 'danger');
       }
     })
     .catch(() => {
@@ -398,7 +401,7 @@ document.getElementById('clearAlertsBtn').addEventListener('click', function() {
     .then(data => {
       btn.disabled = false;
       if (data.success) loadAlerts();
-      else showAlert(data.message || 'Failed to clear alerts.', 'danger');
+      else showAlert(data.error || 'Failed to clear alerts.', 'danger');
     })
     .catch(() => { btn.disabled = false; showAlert('Network error while clearing alerts.', 'danger'); });
 });
@@ -411,7 +414,7 @@ document.getElementById('markAllReadBtn').addEventListener('click', function() {
     .then(data => {
       btn.disabled = false;
       if (data.success) loadAlerts();
-      else showAlert(data.message || 'Failed to mark alerts as read.', 'danger');
+      else showAlert(data.error || 'Failed to mark alerts as read.', 'danger');
     })
     .catch(() => { btn.disabled = false; showAlert('Network error while marking alerts as read.', 'danger'); });
 });
