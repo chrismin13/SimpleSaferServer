@@ -265,7 +265,7 @@ class Status:
     MISSING = "Missing"
     NOT_RUN_YET = "Not Run Yet"
     ERROR = "Error"
-    
+    STOPPED = "Stopped"
 
 # use actual dates for next run and last run
 class Task:
@@ -313,8 +313,12 @@ class Task:
     def stop(self):
         """Stop the associated service asynchronously."""
         if runtime.is_fake:
+            with fake_task_lock:
+                cancel_event = fake_task_cancel_events.get(self.name)
+                if cancel_event:
+                    cancel_event.set()
             fake_state.append_task_log(self.name, f"Stopped {self.name} in fake mode.")
-            fake_state.set_task_state(self.name, status=Status.SUCCESS)
+            fake_state.set_task_state(self.name, status=Status.STOPPED)
             return
         try:
             subprocess.Popen(
@@ -822,7 +826,7 @@ def download_telemetry():
     abort(404)
 
 
-def run_fake_cloud_backup():
+def run_fake_cloud_backup(cancel_event: threading.Event):
     source = config_manager.get_value('backup', 'mount_point', runtime.default_mount_point)
     destination = config_manager.get_value('backup', 'rclone_dir', '').strip()
     rclone_config_path = runtime.rclone_config_dir / 'rclone.conf'
@@ -843,15 +847,26 @@ def run_fake_cloud_backup():
     if bandwidth_limit:
         command.extend(['--bwlimit', bandwidth_limit])
 
-    result = subprocess.run(command, capture_output=True, text=True)
-    output = (result.stdout or '') + (result.stderr or '')
+    proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    while True:
+        try:
+            stdout, stderr = proc.communicate(timeout=1.0)
+            break
+        except subprocess.TimeoutExpired:
+            if cancel_event.is_set():
+                proc.terminate()
+                stdout, stderr = proc.communicate()
+                raise RuntimeError('Cloud backup was cancelled.')
+
+    output = (stdout or '') + (stderr or '')
     if output.strip():
         fake_state.append_task_log('Cloud Backup', output.strip())
-    if result.returncode != 0:
+    if proc.returncode != 0:
         raise RuntimeError(output.strip() or 'Cloud backup failed.')
 
 
 fake_task_threads: dict[str, threading.Thread] = {}
+fake_task_cancel_events: dict[str, threading.Event] = {}
 fake_task_lock = threading.Lock()
 
 
@@ -861,12 +876,15 @@ def start_fake_task(task_name: str):
         if existing_thread and existing_thread.is_alive():
             raise RuntimeError(f'{task_name} is already running.')
 
+        cancel_event = threading.Event()
+        fake_task_cancel_events[task_name] = cancel_event
+
         fake_state.set_task_state(task_name, status=Status.RUNNING)
         fake_state.append_task_log(task_name, f'Starting {task_name} in fake mode.')
 
         thread = threading.Thread(
             target=run_fake_task,
-            args=(task_name,),
+            args=(task_name, cancel_event),
             name=f'fake-task-{task_name.lower().replace(" ", "-")}',
             daemon=True,
         )
@@ -874,26 +892,33 @@ def start_fake_task(task_name: str):
         thread.start()
 
 
-def run_fake_task(task_name: str):
+def run_fake_task(task_name: str, cancel_event: threading.Event):
     start_time = datetime.now()
     try:
         if task_name == 'Check Mount':
             mount_point = config_manager.get_value('backup', 'mount_point', runtime.default_mount_point)
             if not os.path.isdir(mount_point):
                 raise RuntimeError(f'Backup source folder not found: {mount_point}')
+            if cancel_event.is_set():
+                raise RuntimeError('Task was cancelled.')
             if not fake_state.is_mounted(mount_point):
                 fake_state.set_mount(True, mount_point=mount_point)
                 fake_state.append_task_log(task_name, f'Found local backup source at {mount_point}; marking it as connected.')
             fake_state.append_task_log(task_name, f'Backup source available at {mount_point}.')
         elif task_name == 'Drive Health Check':
             smart, _ = get_smart_attributes()
+            if cancel_event.is_set():
+                raise RuntimeError('Task was cancelled.')
             probability = predict_failure_probability(smart)
             if probability is not None:
                 fake_state.append_task_log(task_name, f'Drive health probability: {probability:.4f}')
             else:
                 fake_state.append_task_log(task_name, 'Model unavailable; using sample SMART data only.')
         elif task_name == 'Cloud Backup':
-            run_fake_cloud_backup()
+            run_fake_cloud_backup(cancel_event)
+
+        if cancel_event.is_set():
+            raise RuntimeError('Task was cancelled.')
 
         duration = max(0, int((datetime.now() - start_time).total_seconds()))
         fake_state.set_task_state(
@@ -905,19 +930,28 @@ def run_fake_task(task_name: str):
         fake_state.append_task_log(task_name, f'{task_name} finished successfully.')
     except Exception as exc:
         duration = max(0, int((datetime.now() - start_time).total_seconds()))
-        fake_state.set_task_state(
-            task_name,
-            status=Status.FAILURE,
-            last_run=start_time.strftime('%Y-%m-%d %H:%M:%S'),
-            last_run_duration=f'{duration}s',
-        )
-        fake_state.append_task_log(task_name, f'{task_name} failed: {exc}')
-        app.logger.warning('Fake task %s failed: %s', task_name, exc)
+        if cancel_event.is_set():
+            fake_state.set_task_state(
+                task_name,
+                status=Status.STOPPED,
+                last_run=start_time.strftime('%Y-%m-%d %H:%M:%S'),
+                last_run_duration=f'{duration}s',
+            )
+        else:
+            fake_state.set_task_state(
+                task_name,
+                status=Status.FAILURE,
+                last_run=start_time.strftime('%Y-%m-%d %H:%M:%S'),
+                last_run_duration=f'{duration}s',
+            )
+            fake_state.append_task_log(task_name, f'{task_name} failed: {exc}')
+            app.logger.warning('Fake task %s failed: %s', task_name, exc)
     finally:
         with fake_task_lock:
             active_thread = fake_task_threads.get(task_name)
             if active_thread is threading.current_thread():
                 fake_task_threads.pop(task_name, None)
+                fake_task_cancel_events.pop(task_name, None)
 
 
 # Define tasks globally so they can be reused across routes

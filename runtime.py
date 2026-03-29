@@ -1,5 +1,6 @@
 import json
 import os
+import threading
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -48,6 +49,7 @@ class FakeState:
 
     def __init__(self, runtime: Runtime):
         self.runtime = runtime
+        self._lock = threading.Lock()
         self._ensure_layout()
 
     def _ensure_layout(self) -> None:
@@ -89,11 +91,17 @@ class FakeState:
             return json.loads(self.runtime.state_path.read_text())
         except Exception:
             state = self.default_state()
-            self.save(state)
+            self._write_state(state)
             return state
 
+    def _write_state(self, state: dict[str, Any]) -> None:
+        """Write state atomically via a temp file and rename to avoid partial writes."""
+        tmp_path = self.runtime.state_path.with_suffix('.tmp')
+        tmp_path.write_text(json.dumps(state, indent=2))
+        tmp_path.replace(self.runtime.state_path)
+
     def save(self, state: dict[str, Any]) -> None:
-        self.runtime.state_path.write_text(json.dumps(state, indent=2))
+        self._write_state(state)
 
     def get_virtual_drives(self) -> list[dict[str, Any]]:
         state = self.load()
@@ -118,13 +126,14 @@ class FakeState:
         ]
 
     def set_mount(self, mounted: bool, mount_point: str | None = None, drive: str | None = None) -> None:
-        state = self.load()
-        state["mounted"] = mounted
-        if mount_point:
-            state["mount_point"] = mount_point
-        if drive:
-            state["selected_drive"] = drive
-        self.save(state)
+        with self._lock:
+            state = self.load()
+            state["mounted"] = mounted
+            if mount_point:
+                state["mount_point"] = mount_point
+            if drive:
+                state["selected_drive"] = drive
+            self.save(state)
 
     def is_mounted(self, mount_point: str | None = None) -> bool:
         state = self.load()
@@ -136,9 +145,10 @@ class FakeState:
         return self.load().get("mount_point", str(self.runtime.backup_drive_dir))
 
     def set_smb_services(self, smbd: str, nmbd: str) -> None:
-        state = self.load()
-        state["smb_services"] = {"smbd": smbd, "nmbd": nmbd}
-        self.save(state)
+        with self._lock:
+            state = self.load()
+            state["smb_services"] = {"smbd": smbd, "nmbd": nmbd}
+            self.save(state)
 
     def get_smb_services(self) -> dict[str, str]:
         return self.load().get("smb_services", {"smbd": "active", "nmbd": "active"})
@@ -152,27 +162,29 @@ class FakeState:
         last_run_duration: str | None = None,
         log: str | None = None,
     ) -> None:
-        state = self.load()
-        task_state = state.setdefault("tasks", {}).setdefault(task_name, {})
-        if status is not None:
-            task_state["status"] = status
-        if last_run is not None:
-            task_state["last_run"] = last_run
-        if last_run_duration is not None:
-            task_state["last_run_duration"] = last_run_duration
-        if log is not None:
-            task_state["log"] = log
-        self.save(state)
+        with self._lock:
+            state = self.load()
+            task_state = state.setdefault("tasks", {}).setdefault(task_name, {})
+            if status is not None:
+                task_state["status"] = status
+            if last_run is not None:
+                task_state["last_run"] = last_run
+            if last_run_duration is not None:
+                task_state["last_run_duration"] = last_run_duration
+            if log is not None:
+                task_state["log"] = log
+            self.save(state)
 
     def append_task_log(self, task_name: str, message: str) -> None:
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        state = self.load()
-        task_state = state.setdefault("tasks", {}).setdefault(task_name, {})
-        current = task_state.get("log", "")
-        task_state["log"] = f"{current}{now} {message}\n"
-        self.save(state)
-        log_path = self.runtime.tasks_log_dir / f"{task_name.lower().replace(' ', '_')}.log"
-        log_path.write_text(task_state["log"])
+        with self._lock:
+            state = self.load()
+            task_state = state.setdefault("tasks", {}).setdefault(task_name, {})
+            current = task_state.get("log", "")
+            task_state["log"] = f"{current}{now} {message}\n"
+            self.save(state)
+            log_path = self.runtime.tasks_log_dir / f"{task_name.lower().replace(' ', '_')}.log"
+            log_path.write_text(task_state["log"])
 
     def get_task_log(self, task_name: str) -> str:
         state = self.load()
