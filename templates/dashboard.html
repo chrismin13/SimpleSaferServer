@@ -201,6 +201,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (status === 'Running') return '<span class="badge badge-info"><i class="fas fa-spinner fa-spin"></i> Running</span>';
     if (status === 'Missing') return '<span class="badge badge-warning"><i class="fas fa-circle-exclamation"></i> Missing</span>';
     if (status === 'Not Run Yet') return '<span class="badge badge-neutral"><i class="fas fa-clock"></i> Not Run Yet</span>';
+    if (status === 'Stopped') return '<span class="badge badge-neutral"><i class="fas fa-circle-stop"></i> Stopped</span>';
     return `<span class="badge badge-warning">${escapeHtml(status || 'Unknown')}</span>`;
   }
 
