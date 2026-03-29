@@ -4,7 +4,6 @@ import logging
 from pathlib import Path
 import os
 import re
-import shutil
 from runtime import get_runtime, get_fake_state
 
 class SystemUtils:

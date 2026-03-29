@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 import json
 import os
 import csv
-import shutil
+import threading
 from config_manager import ConfigManager
 from setup_wizard import setup, install_systemd_tasks
 import logging
@@ -299,7 +299,7 @@ class Task:
     def start(self):
         """Start the associated service asynchronously."""
         if runtime.is_fake:
-            run_fake_task(self.name)
+            start_fake_task(self.name)
             return
         try:
             subprocess.Popen(
@@ -847,10 +847,31 @@ def run_fake_cloud_backup():
         raise RuntimeError(output.strip() or 'Cloud backup failed.')
 
 
+fake_task_threads: dict[str, threading.Thread] = {}
+fake_task_lock = threading.Lock()
+
+
+def start_fake_task(task_name: str):
+    with fake_task_lock:
+        existing_thread = fake_task_threads.get(task_name)
+        if existing_thread and existing_thread.is_alive():
+            raise RuntimeError(f'{task_name} is already running.')
+
+        fake_state.set_task_state(task_name, status=Status.RUNNING)
+        fake_state.append_task_log(task_name, f'Starting {task_name} in fake mode.')
+
+        thread = threading.Thread(
+            target=run_fake_task,
+            args=(task_name,),
+            name=f'fake-task-{task_name.lower().replace(" ", "-")}',
+            daemon=True,
+        )
+        fake_task_threads[task_name] = thread
+        thread.start()
+
+
 def run_fake_task(task_name: str):
     start_time = datetime.now()
-    fake_state.set_task_state(task_name, status=Status.RUNNING)
-    fake_state.append_task_log(task_name, f'Starting {task_name} in fake mode.')
     try:
         if task_name == 'Check Mount':
             mount_point = config_manager.get_value('backup', 'mount_point', runtime.default_mount_point)
@@ -892,7 +913,12 @@ def run_fake_task(task_name: str):
             last_run_duration=f'{duration}s',
         )
         fake_state.append_task_log(task_name, f'{task_name} failed: {exc}')
-        raise RuntimeError(str(exc)) from exc
+        app.logger.warning('Fake task %s failed: %s', task_name, exc)
+    finally:
+        with fake_task_lock:
+            active_thread = fake_task_threads.get(task_name)
+            if active_thread is threading.current_thread():
+                fake_task_threads.pop(task_name, None)
 
 
 # Define tasks globally so they can be reused across routes
