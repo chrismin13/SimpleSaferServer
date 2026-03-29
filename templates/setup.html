@@ -13,7 +13,7 @@
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/favicon.png') }}">
 </head>
-<body>
+<body{% if runtime_mode == 'fake' %} class="fake-mode-active"{% endif %}>
     {% if runtime_mode == 'fake' %}
     <div class="fake-mode-banner">
         <i class="fas fa-flask me-1"></i> Fake mode — destructive disk operations are disabled

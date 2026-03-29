@@ -18,6 +18,11 @@ body {
   min-height: 100vh;
 }
 
+body.fake-mode-active {
+  display: flex;
+  flex-direction: column;
+}
+
 a { color: var(--accent-text); text-decoration: none; transition: color var(--dur-fast) var(--ease-default); }
 a:hover { color: var(--accent); }
 
@@ -42,6 +47,12 @@ h1, h2, h3, h4, h5, h6 { font-family: var(--font-display); font-weight: var(--we
 .app-layout {
   display: flex;
   min-height: 100vh;
+}
+
+body.fake-mode-active .app-layout,
+body.fake-mode-active .setup-page {
+  flex: 1;
+  min-height: 0;
 }
 
 /* ── Sidebar ────────────────────────────────────────────────── */
@@ -183,6 +194,10 @@ h1, h2, h3, h4, h5, h6 { font-family: var(--font-display); font-weight: var(--we
   padding: var(--sp-8) var(--sp-8) var(--sp-12);
   min-height: 100vh;
   max-width: calc(100vw - var(--sidebar-width));
+}
+
+body.fake-mode-active .main-content {
+  min-height: 0;
 }
 
 .page-header {

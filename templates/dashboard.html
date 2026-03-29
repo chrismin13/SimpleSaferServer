@@ -127,27 +127,29 @@
 <section class="mb-6">
   <h2 class="mb-4" style="font-size: var(--text-lg);">System Actions</h2>
   <div class="d-flex gap-3 flex-wrap">
-    {% if mount_info and mount_info.is_mounted %}
-    <form method="post" action="{{ url_for('unmount') }}" class="d-inline dashboard-action-form" data-success-action="reload">
-      <button type="submit" class="btn btn-warning btn-sm"
-        data-confirm="Are you sure you want to unmount the backup drive?"
-        data-confirm-title="Unmount Drive"
-        data-confirm-button="Unmount"
-        data-confirm-class="btn-warning">
-        <i class="fas fa-eject me-1"></i> Unmount Drive
-      </button>
-    </form>
-    {% else %}
-    <form method="post" action="{{ url_for('mount_drive') }}" class="d-inline dashboard-action-form" data-success-action="reload">
-      <button type="submit" class="btn btn-secondary btn-sm"
-        data-confirm="Are you sure you want to mount the backup drive?"
-        data-confirm-title="Mount Drive"
-        data-confirm-button="Mount"
-        data-confirm-class="btn-primary">
-        <i class="fas fa-plug me-1"></i> Mount Drive
-      </button>
-    </form>
-    {% endif %}
+    <div id="drive-action-slot">
+      {% if mount_info and mount_info.is_mounted %}
+      <form method="post" action="{{ url_for('unmount') }}" class="d-inline dashboard-action-form" data-success-action="refresh-drive-ui">
+        <button type="submit" class="btn btn-warning btn-sm"
+          data-confirm="Are you sure you want to unmount the backup drive?"
+          data-confirm-title="Unmount Drive"
+          data-confirm-button="Unmount"
+          data-confirm-class="btn-warning">
+          <i class="fas fa-eject me-1"></i> Unmount Drive
+        </button>
+      </form>
+      {% else %}
+      <form method="post" action="{{ url_for('mount_drive') }}" class="d-inline dashboard-action-form" data-success-action="refresh-drive-ui">
+        <button type="submit" class="btn btn-secondary btn-sm"
+          data-confirm="Are you sure you want to mount the backup drive?"
+          data-confirm-title="Mount Drive"
+          data-confirm-button="Mount"
+          data-confirm-class="btn-primary">
+          <i class="fas fa-plug me-1"></i> Mount Drive
+        </button>
+      </form>
+      {% endif %}
+    </div>
     <form method="post" action="{{ url_for('restart') }}" class="d-inline dashboard-action-form">
       <button type="submit" class="btn btn-secondary btn-sm"
         data-confirm="Are you sure you want to restart the system?"
@@ -184,6 +186,7 @@
 document.addEventListener('DOMContentLoaded', function() {
   const tasksBody = document.getElementById('tasks-body');
   const taskContextMenu = document.getElementById('taskContextMenu');
+  const driveActionSlot = document.getElementById('drive-action-slot');
   let activeContextTaskName = null;
 
   function escapeHtml(value) {
@@ -316,6 +319,40 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   }
 
+  function renderDriveActionForm(isMounted) {
+    if (!driveActionSlot) return;
+
+    driveActionSlot.innerHTML = isMounted
+      ? `<form method="post" action="{{ url_for('unmount') }}" class="d-inline dashboard-action-form" data-success-action="refresh-drive-ui">
+          <button type="submit" class="btn btn-warning btn-sm"
+            data-confirm="Are you sure you want to unmount the backup drive?"
+            data-confirm-title="Unmount Drive"
+            data-confirm-button="Unmount"
+            data-confirm-class="btn-warning">
+            <i class="fas fa-eject me-1"></i> Unmount Drive
+          </button>
+        </form>`
+      : `<form method="post" action="{{ url_for('mount_drive') }}" class="d-inline dashboard-action-form" data-success-action="refresh-drive-ui">
+          <button type="submit" class="btn btn-secondary btn-sm"
+            data-confirm="Are you sure you want to mount the backup drive?"
+            data-confirm-title="Mount Drive"
+            data-confirm-button="Mount"
+            data-confirm-class="btn-primary">
+            <i class="fas fa-plug me-1"></i> Mount Drive
+          </button>
+        </form>`;
+
+    bindDashboardActionForms();
+  }
+
+  function refreshDriveUi() {
+    updateStorage();
+    updateTaskSchedule();
+    updateHealth();
+    updateBackup();
+    updateSharing();
+  }
+
   async function runTaskAction(taskName, action) {
     const response = await fetch(`/task/${encodeURIComponent(taskName)}/${action}`, {
       method: 'POST',
@@ -332,6 +369,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
   function bindDashboardActionForms() {
     document.querySelectorAll('.dashboard-action-form').forEach((form) => {
+      if (form.dataset.dashboardActionBound === 'true') {
+        return;
+      }
+      form.dataset.dashboardActionBound = 'true';
+
       form.addEventListener('submit', async (event) => {
         event.preventDefault();
         const submitButton = form.querySelector('button[type="submit"]');
@@ -354,8 +396,8 @@ document.addEventListener('DOMContentLoaded', function() {
           }
 
           showAlert(data.message || 'Action completed successfully.', 'success');
-          if (form.dataset.successAction === 'reload') {
-            window.setTimeout(() => window.location.reload(), 500);
+          if (form.dataset.successAction === 'refresh-drive-ui') {
+            window.setTimeout(refreshDriveUi, 150);
           }
         } catch (error) {
           showAlert(error.message || 'Action failed.', 'danger');
@@ -374,6 +416,7 @@ document.addEventListener('DOMContentLoaded', function() {
     fetch('/api/storage/status')
       .then(r => r.json())
       .then(data => {
+        renderDriveActionForm(Boolean(data.mounted));
         const badge = document.getElementById('mount-status-badge');
         const val = document.getElementById('storage-used');
         const bar = document.getElementById('storage-bar');

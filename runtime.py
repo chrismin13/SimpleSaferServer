@@ -1,5 +1,6 @@
 import json
 import os
+import tempfile
 import threading
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -49,7 +50,7 @@ class FakeState:
 
     def __init__(self, runtime: Runtime):
         self.runtime = runtime
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._ensure_layout()
 
     def _ensure_layout(self) -> None:
@@ -91,17 +92,26 @@ class FakeState:
             return json.loads(self.runtime.state_path.read_text())
         except Exception:
             state = self.default_state()
-            self._write_state(state)
+            self.save(state)
             return state
 
     def _write_state(self, state: dict[str, Any]) -> None:
-        """Write state atomically via a temp file and rename to avoid partial writes."""
-        tmp_path = self.runtime.state_path.with_suffix('.tmp')
-        tmp_path.write_text(json.dumps(state, indent=2))
+        """Write state atomically via a unique temp file and rename to avoid partial writes."""
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=self.runtime.state_path.parent,
+            prefix=f"{self.runtime.state_path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as tmp_file:
+            json.dump(state, tmp_file, indent=2)
+            tmp_path = Path(tmp_file.name)
         tmp_path.replace(self.runtime.state_path)
 
     def save(self, state: dict[str, Any]) -> None:
-        self._write_state(state)
+        with self._lock:
+            self._write_state(state)
 
     def get_virtual_drives(self) -> list[dict[str, Any]]:
         state = self.load()
