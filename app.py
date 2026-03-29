@@ -1476,7 +1476,7 @@ def api_drive_health_summary():
 
 @app.route("/mount", methods=["POST"])
 @login_required
-def mount_drive():
+def dashboard_mount_drive():
     mount_point = config_manager.get_value('backup', 'mount_point', runtime.default_mount_point)
     uuid = config_manager.get_value('backup', 'uuid', None)
     try:
