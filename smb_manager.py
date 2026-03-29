@@ -3,13 +3,16 @@ import logging
 import os
 import time
 from pathlib import Path
+from runtime import get_runtime, get_fake_state
 
 logger = logging.getLogger(__name__)
 
 class SMBManager:
-    def __init__(self):
-        self.smb_conf_path = '/etc/samba/smb.conf'
-        self.backup_dir = '/etc/samba/backups'
+    def __init__(self, runtime=None):
+        self.runtime = runtime or get_runtime()
+        self.smb_conf_path = str(self.runtime.samba_dir / 'smb.conf')
+        self.backup_dir = str(self.runtime.samba_backup_dir)
+        self.fake_state = get_fake_state() if self.runtime.is_fake else None
         
         # Ensure backup directory exists
         Path(self.backup_dir).mkdir(parents=True, exist_ok=True)
@@ -18,7 +21,10 @@ class SMBManager:
         """Create a backup of the current smb.conf"""
         timestamp = time.strftime('%Y%m%d_%H%M%S')
         backup_path = f'{self.backup_dir}/smb.conf.backup.{timestamp}'
-        subprocess.run(['sudo', 'cp', self.smb_conf_path, backup_path], check=True)
+        if self.runtime.is_fake:
+            Path(backup_path).write_text(self._read_smb_conf())
+        else:
+            subprocess.run(['sudo', 'cp', self.smb_conf_path, backup_path], check=True)
         logger.info(f"Created backup of smb.conf at {backup_path}")
         return backup_path
 
@@ -252,6 +258,10 @@ class SMBManager:
 
     def _restart_services(self):
         """Restart SMB services"""
+        if self.runtime.is_fake:
+            self.fake_state.set_smb_services('active', 'active')
+            logger.info("Fake mode: marked SMB services as active")
+            return True
         try:
             subprocess.run(['sudo', 'systemctl', 'restart', 'smbd'], check=True)
             subprocess.run(['sudo', 'systemctl', 'restart', 'nmbd'], check=True)
@@ -507,6 +517,8 @@ class SMBManager:
 
     def get_service_status(self):
         """Get SMB service status"""
+        if self.runtime.is_fake:
+            return self.fake_state.get_smb_services()
         try:
             smbd_result = subprocess.run(['systemctl', 'is-active', 'smbd'], 
                                        capture_output=True, text=True)

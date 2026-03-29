@@ -1,68 +1,37 @@
-console.log("Setup wizard JS loaded");
-// Wait for the DOM to load
+/* ============================================================
+   SCRIPTS.JS — Setup Wizard Logic + Task Detail Auto-Refresh
+   (Mobile nav is now handled by common.js)
+   ============================================================ */
+
 document.addEventListener("DOMContentLoaded", function () {
 
-  // Mobile Navigation
-  const sidebar = document.getElementById('sidebarMenu');
-  const navbarToggler = document.querySelector('.navbar-toggler');
-  
-  if (navbarToggler && sidebar) {
-    navbarToggler.addEventListener('click', function() {
-      sidebar.classList.toggle('show');
-    });
-
-    // Close sidebar when clicking outside
-    document.addEventListener('click', function(event) {
-      const isClickInside = sidebar.contains(event.target) || navbarToggler.contains(event.target);
-      
-      if (!isClickInside && sidebar.classList.contains('show')) {
-        sidebar.classList.remove('show');
-      }
-    });
-
-    // Close sidebar when clicking a nav link on mobile
-    const navLinks = sidebar.querySelectorAll('.nav-link');
-    navLinks.forEach(link => {
-      link.addEventListener('click', function() {
-        if (window.innerWidth < 768) {
-          sidebar.classList.remove('show');
-        }
-      });
-    });
-  }
-
-  // Handle buttons that require confirmation
-  const confirmButtons = document.querySelectorAll("[data-confirm]");
-  confirmButtons.forEach((btn) => {
-    btn.addEventListener("click", function (e) {
-      const message = btn.getAttribute("data-confirm");
-      if (!confirm(message)) {
-        e.preventDefault();
-        e.stopImmediatePropagation(); // Prevent further click handlers if cancelled
-      }
-    });
-  });
-
-  // Auto-refresh logs on the task detail page
+  // --- Auto-refresh logs on the task detail page ---
   const autoRefreshCheckbox = document.getElementById("auto-refresh");
   if (autoRefreshCheckbox) {
-    const logContainer = document.querySelector("pre.logs");
+    const logContainer = document.querySelector(".log-viewer");
     const taskName = autoRefreshCheckbox.getAttribute("data-task-name");
     let intervalId;
     let initialLoad = true;
 
     function scrollToBottom() {
-      logContainer.scrollTop = logContainer.scrollHeight;
+      if (logContainer) logContainer.scrollTop = logContainer.scrollHeight;
     }
 
     function fetchLogs() {
+      const distanceFromBottom = logContainer
+        ? logContainer.scrollHeight - logContainer.scrollTop - logContainer.clientHeight
+        : 0;
+      const stickToBottom = distanceFromBottom < 48;
+
       return fetch(`/task/${encodeURIComponent(taskName)}/logs`)
         .then((resp) => resp.text())
         .then((text) => {
-          logContainer.textContent = text;
+          if (logContainer) logContainer.textContent = text;
           if (initialLoad) {
             scrollToBottom();
             initialLoad = false;
+          } else if (logContainer && stickToBottom) {
+            scrollToBottom();
           }
         })
         .catch((err) => console.error(err));
@@ -88,7 +57,6 @@ document.addEventListener("DOMContentLoaded", function () {
       }
     });
 
-    // Scroll to bottom of existing logs and start polling by default
     scrollToBottom();
     start();
   }
@@ -106,7 +74,6 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   }
 
-  // Listen for backup mode changes
   const backupModeRadios = document.getElementsByName('backupMode');
   if (backupModeRadios && backupModeRadios.length > 0) {
     backupModeRadios.forEach(radio => {
@@ -126,14 +93,12 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   // --- Update MEGA Connect logic ---
-  const megaConnectSpinner = document.getElementById('megaConnectSpinner');
   const megaFolderPathArea = document.getElementById('megaFolderPathArea');
   const megaFolderPath = document.getElementById('megaFolderPath');
   const megaBrowseBtn = document.getElementById('megaBrowseBtn');
 
   function updateSaveBackupConfigState() {
     const saveBtn = document.getElementById('saveBackupConfigBtn');
-    const megaConnectBtn = document.getElementById('megaConnectBtn');
     const modeRadio = document.querySelector('input[name="backupMode"]:checked');
     if (!saveBtn || !modeRadio) return;
     const mode = modeRadio.value;
@@ -162,7 +127,7 @@ document.addEventListener("DOMContentLoaded", function () {
       }
       email.classList.remove('is-invalid');
       password.classList.remove('is-invalid');
-      if (megaConnectSpinner) megaConnectSpinner.classList.remove('d-none');
+      window.AsyncButtonState.start(megaConnectBtn);
       megaConnectBtn.disabled = true;
       fetch('/api/setup/mega/connect', {
         method: 'POST',
@@ -171,8 +136,11 @@ document.addEventListener("DOMContentLoaded", function () {
       })
       .then(resp => resp.json())
       .then(data => {
-        if (megaConnectSpinner) megaConnectSpinner.classList.add('d-none');
-        megaConnectBtn.disabled = false;
+        if (data.success) {
+          window.AsyncButtonState.success(megaConnectBtn);
+        } else {
+          window.AsyncButtonState.error(megaConnectBtn);
+        }
         const backupConfigError = document.getElementById('backupConfigError');
         if (data.success) {
           if (megaFolderPathArea) megaFolderPathArea.classList.remove('d-none');
@@ -184,8 +152,7 @@ document.addEventListener("DOMContentLoaded", function () {
         }
       })
       .catch(err => {
-        if (megaConnectSpinner) megaConnectSpinner.classList.add('d-none');
-        megaConnectBtn.disabled = false;
+        window.AsyncButtonState.error(megaConnectBtn);
         const backupConfigError = document.getElementById('backupConfigError');
         if (backupConfigError) {
           backupConfigError.textContent = 'Error connecting to MEGA.';
@@ -206,11 +173,12 @@ document.addEventListener("DOMContentLoaded", function () {
         },
         onSelect: (folderPath) => {
           document.getElementById('megaFolderPath').value = folderPath;
-          // Show warning if needed
           const warning = document.getElementById('megaFolderWarning');
           if (warning) warning.classList.remove('d-none');
         },
-        modalSelector: '#megaFolderPickerModal'
+        modalId: 'megaFolderPickerModal',
+        listUrl: '/api/setup/mega/list_folders',
+        createUrl: '/api/setup/mega/create_folder'
       });
     });
   }
@@ -226,18 +194,11 @@ document.addEventListener("DOMContentLoaded", function () {
       backupConfigError.textContent = '';
     }
     const saveBtn = document.getElementById('saveBackupConfigBtn');
-    let saveSpinner = saveBtn ? saveBtn.querySelector('.spinner-border') : null;
-    if (saveBtn && !saveSpinner) {
-      saveSpinner = document.createElement('span');
-      saveSpinner.className = 'spinner-border spinner-border-sm ms-2';
-      saveSpinner.setAttribute('role', 'status');
-      saveSpinner.setAttribute('aria-hidden', 'true');
-      saveSpinner.style.display = 'none';
-      saveBtn.appendChild(saveSpinner);
-    }
     function setSaving(saving) {
-      if (saveBtn) saveBtn.disabled = saving;
-      if (saveSpinner) saveSpinner.style.display = saving ? '' : 'none';
+      if (!saveBtn) return;
+      if (saving) {
+        window.AsyncButtonState.start(saveBtn);
+      }
     }
     if (mode === 'mega') {
       const emailField = document.getElementById('megaEmail');
@@ -271,21 +232,23 @@ document.addEventListener("DOMContentLoaded", function () {
       })
       .then(resp => resp.json())
       .then(data => {
-        setSaving(false);
         if (data.success) {
+          window.AsyncButtonState.success(saveBtn);
           if (typeof nextStep === 'function') nextStep();
         } else if (backupConfigError) {
+          window.AsyncButtonState.error(saveBtn);
           backupConfigError.textContent = data.error || 'Failed to save MEGA config.';
           backupConfigError.classList.remove('d-none');
         }
       })
       .catch(err => {
-        setSaving(false);
+        window.AsyncButtonState.error(saveBtn);
         if (backupConfigError) {
           backupConfigError.textContent = 'Error saving MEGA config.';
           backupConfigError.classList.remove('d-none');
         }
       });
+      return;
     }
     const configField = document.getElementById('rcloneConfig');
     const remoteNameField = document.getElementById('remoteName');
@@ -311,16 +274,17 @@ document.addEventListener("DOMContentLoaded", function () {
     })
     .then(resp => resp.json())
     .then(data => {
-      setSaving(false);
       if (data.success) {
+        window.AsyncButtonState.success(saveBtn);
         if (typeof nextStep === 'function') nextStep();
       } else if (backupConfigError) {
+        window.AsyncButtonState.error(saveBtn);
         backupConfigError.textContent = data.error || 'Failed to save rclone config.';
         backupConfigError.classList.remove('d-none');
       }
     })
     .catch(err => {
-      setSaving(false);
+      window.AsyncButtonState.error(saveBtn);
       if (backupConfigError) {
         backupConfigError.textContent = 'Error saving rclone config.';
         backupConfigError.classList.remove('d-none');
@@ -340,6 +304,5 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
 
-  // Initially disable Save button
   updateSaveBackupConfigState();
 });

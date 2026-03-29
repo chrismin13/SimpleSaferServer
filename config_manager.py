@@ -5,10 +5,12 @@ from cryptography.fernet import Fernet
 import json
 import logging
 from datetime import datetime
+from runtime import get_runtime
 
 class ConfigManager:
-    def __init__(self):
-        self.config_dir = Path('/etc/SimpleSaferServer')
+    def __init__(self, runtime=None):
+        self.runtime = runtime or get_runtime()
+        self.config_dir = self.runtime.config_dir
         self.config_path = self.config_dir / 'config.conf'
         self.secrets_path = self.config_dir / '.secrets'
         self.key_path = self.config_dir / '.key'
@@ -64,7 +66,7 @@ class ConfigManager:
             'from_address': '',
             'uuid': '',
             'usb_id': '',
-            'mount_point': '/media/backup',
+            'mount_point': self.runtime.default_mount_point,
             'rclone_dir': '',
             'bandwidth_limit': ''
         }

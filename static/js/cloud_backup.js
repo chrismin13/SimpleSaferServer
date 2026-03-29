@@ -1,13 +1,13 @@
 // Cloud Backup Page JS
 
 function renderStatusBadge(status) {
-  if (status === 'Success') return '<span class="badge bg-success"><i class="fas fa-circle-check"></i> Success</span>';
-  if (status === 'Failure') return '<span class="badge bg-danger"><i class="fas fa-circle-xmark"></i> Failure</span>';
-  if (status === 'Running') return '<span class="badge bg-info text-dark"><i class="fas fa-spinner fa-spin"></i> Running</span>';
-  if (status === 'Missing') return '<span class="badge bg-warning text-dark"><i class="fas fa-circle-exclamation"></i> Missing</span>';
-  if (status === 'Not Run Yet') return '<span class="badge bg-secondary"><i class="fas fa-clock"></i> Not Run Yet</span>';
-  if (status === 'Error') return '<span class="badge bg-danger"><i class="fas fa-triangle-exclamation"></i> Error</span>';
-  return `<span class="badge bg-warning text-dark">${status}</span>`;
+  if (status === 'Success') return '<span class="badge badge-success"><i class="fas fa-circle-check"></i> Success</span>';
+  if (status === 'Failure') return '<span class="badge badge-danger"><i class="fas fa-circle-xmark"></i> Failure</span>';
+  if (status === 'Running') return '<span class="badge badge-info"><i class="fas fa-spinner fa-spin"></i> Running</span>';
+  if (status === 'Missing') return '<span class="badge badge-warning"><i class="fas fa-circle-exclamation"></i> Missing</span>';
+  if (status === 'Not Run Yet') return '<span class="badge badge-neutral"><i class="fas fa-clock"></i> Not Run Yet</span>';
+  if (status === 'Error') return '<span class="badge badge-danger"><i class="fas fa-triangle-exclamation"></i> Error</span>';
+  return `<span class="badge badge-warning">${status}</span>`;
 }
 
 function loadStatus() {
@@ -15,49 +15,56 @@ function loadStatus() {
   const lastRun = document.getElementById('cloud-backup-last-run');
   const nextRun = document.getElementById('cloud-backup-next-run');
   const lastDuration = document.getElementById('cloud-backup-last-duration');
-  const statusError = document.getElementById('cloud-backup-status-error');
 
-  statusBadge.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+  statusBadge.innerHTML = '<span class="spinner"></span>';
   lastRun.textContent = '-';
   nextRun.textContent = '-';
   lastDuration.textContent = '-';
-  statusError.classList.add('d-none');
   fetch('/api/cloud_backup/status')
     .then(r => r.json())
     .then(data => {
       if (!data.success) throw new Error(data.error || 'Failed to load status');
       const s = data.status;
       statusBadge.innerHTML = renderStatusBadge(s.status);
-      lastRun.textContent = s.last_run || '-';
-      nextRun.textContent = s.next_run || '-';
+      lastRun.textContent = window.formatRelativeTimestamp(s.last_run, { fallback: '-' });
+      lastRun.title = s.last_run || '';
+      nextRun.textContent = window.formatRelativeTimestamp(s.next_run, { fallback: '-', futurePrefix: false });
+      nextRun.title = s.next_run || '';
       lastDuration.textContent = s.last_run_duration || '-';
     })
     .catch(e => {
       statusBadge.innerHTML = renderStatusBadge('Error');
-      statusError.textContent = e.message || 'Could not load backup status.';
-      statusError.classList.remove('d-none');
+      showAlert(e.message || 'Could not load backup status.', 'danger');
+    });
+}
+
+function runBackupNow() {
+  const runBtn = document.getElementById('cloud-backup-run-btn');
+  window.AsyncButtonState.start(runBtn);
+
+  fetch('/api/cloud_backup/run', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' }
+  })
+    .then(r => r.json())
+    .then(data => {
+      if (!data.success) throw new Error(data.error || 'Failed to start backup');
+      window.AsyncButtonState.success(runBtn);
+      showAlert(data.message || 'Cloud backup started.', 'success');
+      loadStatus();
+    })
+    .catch(e => {
+      window.AsyncButtonState.error(runBtn);
+      showAlert(e.message || 'Could not start backup.', 'danger');
     });
 }
 
 document.addEventListener('DOMContentLoaded', function () {
-  // Elements
-  const statusBadge = document.getElementById('cloud-backup-status-badge');
-  const lastRun = document.getElementById('cloud-backup-last-run');
-  const nextRun = document.getElementById('cloud-backup-next-run');
-  const lastDuration = document.getElementById('cloud-backup-last-duration');
   const runBtn = document.getElementById('cloud-backup-run-btn');
-  const runSpinner = document.getElementById('cloud-backup-run-spinner');
-  const statusError = document.getElementById('cloud-backup-status-error');
-  const logLink = document.getElementById('cloud-backup-log-link');
 
   const configForm = document.getElementById('cloud-backup-config-form');
   const saveBtn = document.getElementById('cloud-backup-save-btn');
-  const saveSpinner = document.getElementById('cloud-backup-save-spinner');
-  const configError = document.getElementById('cloud-backup-config-error');
-  const configSuccess = document.getElementById('cloud-backup-config-success');
-  const configSuccessMessage = document.getElementById('config-success-message');
 
-  // Config fields
   const modeMega = document.getElementById('cloudModeMega');
   const modeAdvanced = document.getElementById('cloudModeAdvanced');
   const megaFields = document.getElementById('megaConfigFields');
@@ -72,37 +79,9 @@ document.addEventListener('DOMContentLoaded', function () {
   const backupTime = document.getElementById('backupTime');
   const bandwidthLimit = document.getElementById('bandwidthLimit');
 
-  // Modal elements
-  const megaFolderPickerModal = new bootstrap.Modal(document.getElementById('megaFolderPickerModal'));
-  const megaPickerCurrentPath = document.getElementById('megaPickerCurrentPath');
-  const megaPickerDirsList = document.getElementById('megaPickerDirsList');
-  const megaPickerUpBtn = document.getElementById('megaPickerUpBtn');
-  const megaPickerCreateFolderBtn = document.getElementById('megaPickerCreateFolderBtn');
-  const megaPickerNewFolderName = document.getElementById('megaPickerNewFolderName');
-  const megaPickerSaveNewFolderBtn = document.getElementById('megaPickerSaveNewFolderBtn');
-  const megaPickerError = document.getElementById('megaPickerError');
-  const megaPickerSelectCurrentBtn = document.getElementById('megaPickerSelectCurrentBtn');
-
-  // --- Schedule (Backup Time & Bandwidth) ---
   const scheduleForm = document.getElementById('cloud-backup-schedule-form');
   const scheduleSaveBtn = document.getElementById('cloud-backup-schedule-save-btn');
-  const scheduleSaveSpinner = document.getElementById('cloud-backup-schedule-save-spinner');
-  const scheduleError = document.getElementById('cloud-backup-schedule-error');
-  const scheduleSuccess = document.getElementById('cloud-backup-schedule-success');
-  const scheduleSuccessMessage = document.getElementById('schedule-success-message');
 
-  let lastSavedSchedule = { backup_cloud_time: '', bandwidth_limit: '' };
-
-  // Function to show temporary success message
-  function showTemporarySuccess(element, message, duration = 3000) {
-    element.textContent = message;
-    element.classList.remove('d-none');
-    setTimeout(() => {
-      element.classList.add('d-none');
-    }, duration);
-  }
-
-  // Add showPicker logic for backupTime field (like setup wizard)
   if (backupTime) {
     const showTimePicker = () => {
       if (typeof backupTime.showPicker === 'function') {
@@ -113,7 +92,12 @@ document.addEventListener('DOMContentLoaded', function () {
     backupTime.addEventListener('click', showTimePicker);
   }
 
-  // Add Enter key handler for MEGA password field
+  if (runBtn) {
+    runBtn.addEventListener('click', function () {
+      runBackupNow();
+    });
+  }
+
   if (megaPassword) {
     megaPassword.addEventListener('keydown', function(e) {
       if (e.key === 'Enter' && !megaSaveCredsBtn.classList.contains('d-none')) {
@@ -126,15 +110,9 @@ document.addEventListener('DOMContentLoaded', function () {
   function fillScheduleForm(cfg) {
     backupTime.value = (cfg.backup_cloud_time || '').padStart(5, '0');
     bandwidthLimit.value = cfg.bandwidth_limit || '';
-    lastSavedSchedule = {
-      backup_cloud_time: backupTime.value,
-      bandwidth_limit: bandwidthLimit.value
-    };
   }
 
   function loadSchedule() {
-    scheduleError.classList.add('d-none');
-    scheduleSuccess.classList.add('d-none');
     fetch('/api/cloud_backup/config')
       .then(r => r.json())
       .then(data => {
@@ -142,28 +120,20 @@ document.addEventListener('DOMContentLoaded', function () {
         fillScheduleForm(data.config);
       })
       .catch(e => {
-        scheduleError.textContent = e.message || 'Could not load schedule.';
-        scheduleError.classList.remove('d-none');
+        showAlert(e.message || 'Could not load schedule.', 'danger');
       });
   }
 
   scheduleForm.addEventListener('submit', function (e) {
     e.preventDefault();
-    scheduleError.classList.add('d-none');
-    scheduleSuccess.classList.add('d-none');
-    scheduleSaveBtn.disabled = true;
-    scheduleSaveSpinner.classList.remove('d-none');
-    // Validate
     let valid = true;
     if (!backupTime.value) {
       backupTime.classList.add('is-invalid'); valid = false;
     } else { backupTime.classList.remove('is-invalid'); }
-    // Bandwidth is optional, but if present, must be a string (no strict validation here)
     if (!valid) {
-      scheduleSaveBtn.disabled = false;
-      scheduleSaveSpinner.classList.add('d-none');
       return;
     }
+    window.AsyncButtonState.start(scheduleSaveBtn);
     fetch('/api/cloud_backup/schedule', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -175,22 +145,17 @@ document.addEventListener('DOMContentLoaded', function () {
       .then(r => r.json())
       .then(data => {
         if (!data.success) throw new Error(data.error || 'Failed to save schedule');
-        showTemporarySuccess(scheduleSuccessMessage, 'Schedule saved successfully!');
+        window.AsyncButtonState.success(scheduleSaveBtn);
+        showAlert('Schedule saved successfully!', 'success');
         loadSchedule();
-        loadStatus(); // update next run time
+        loadStatus();
       })
       .catch(e => {
-        scheduleError.textContent = e.message || 'Could not save schedule.';
-        scheduleError.classList.remove('d-none');
-      })
-      .finally(() => {
-        scheduleSaveBtn.disabled = false;
-        scheduleSaveSpinner.classList.add('d-none');
+        window.AsyncButtonState.error(scheduleSaveBtn);
+        showAlert(e.message || 'Could not save schedule.', 'danger');
       });
   });
 
-  // --- Main Config (MEGA/rclone) ---
-  // Mode switching
   function showModeFields(mode) {
     if (mode === 'mega') {
       megaFields.classList.remove('d-none');
@@ -198,7 +163,6 @@ document.addEventListener('DOMContentLoaded', function () {
     } else {
       megaFields.classList.add('d-none');
       advancedFields.classList.remove('d-none');
-      // If switching to advanced and current config is MEGA, auto-populate remote name
       if (modeMega.checked === false && megaEmail.value && megaFolderPath.value) {
         remoteName.value = `mega:${megaFolderPath.value}`;
       }
@@ -207,12 +171,10 @@ document.addEventListener('DOMContentLoaded', function () {
   modeMega.addEventListener('change', () => showModeFields('mega'));
   modeAdvanced.addEventListener('change', () => showModeFields('advanced'));
 
-  // --- MEGA Credential Locking & Status ---
   const megaChangeCredsBtn = document.getElementById('megaChangeCredsBtn');
   const megaCredStatus = document.getElementById('megaCredStatus');
   const megaSaveCredsBtn = document.getElementById('megaSaveCredsBtn');
   let megaCredsLocked = false;
-  let megaPickerAuth = { email: '', password: '' };
 
   function setMegaCredsLocked(locked, email, showStatus) {
     megaCredsLocked = locked;
@@ -227,8 +189,8 @@ document.addEventListener('DOMContentLoaded', function () {
       if (showStatus) {
         megaCredStatus.textContent = 'Connection successful. You are signed in.';
         megaCredStatus.classList.remove('d-none');
-        megaCredStatus.classList.remove('alert-danger');
-        megaCredStatus.classList.add('alert-success');
+        megaCredStatus.className = 'alert alert-success mt-2';
+        megaCredStatus.style.fontSize = 'var(--text-sm)';
       }
     } else {
       megaPassword.value = '';
@@ -250,7 +212,6 @@ document.addEventListener('DOMContentLoaded', function () {
   });
 
   megaSaveCredsBtn.addEventListener('click', function () {
-    // Validate and save credentials
     const email = megaEmail.value.trim();
     const password = megaPassword.value;
     if (!email.match(/^[^@\s]+@[^@\s]+\.[^@\s]+$/)) {
@@ -265,8 +226,7 @@ document.addEventListener('DOMContentLoaded', function () {
     } else {
       megaPassword.classList.remove('is-invalid');
     }
-    megaSaveCredsBtn.disabled = true;
-    megaSaveCredsBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Saving...';
+    window.AsyncButtonState.start(megaSaveCredsBtn);
     fetch('/api/cloud_backup/mega/validate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -274,32 +234,29 @@ document.addEventListener('DOMContentLoaded', function () {
     })
       .then(r => r.json())
       .then(data => {
-        megaSaveCredsBtn.disabled = false;
-        megaSaveCredsBtn.innerHTML = 'Save Credentials';
         if (data.success) {
+          window.AsyncButtonState.success(megaSaveCredsBtn);
           setMegaCredsLocked(true, email, true);
         } else {
+          window.AsyncButtonState.error(megaSaveCredsBtn);
           megaCredStatus.textContent = data.error || 'Could not validate credentials.';
           megaCredStatus.classList.remove('d-none');
-          megaCredStatus.classList.replace('alert-success', 'alert-danger');
+          megaCredStatus.className = 'alert alert-danger mt-2';
+          megaCredStatus.style.fontSize = 'var(--text-sm)';
         }
       })
       .catch(e => {
-        megaSaveCredsBtn.disabled = false;
-        megaSaveCredsBtn.innerHTML = 'Save Credentials';
+        window.AsyncButtonState.error(megaSaveCredsBtn);
         megaCredStatus.textContent = e.message || 'Could not validate credentials.';
         megaCredStatus.classList.remove('d-none');
-        megaCredStatus.classList.replace('alert-success', 'alert-danger');
+        megaCredStatus.className = 'alert alert-danger mt-2';
+        megaCredStatus.style.fontSize = 'var(--text-sm)';
       });
   });
 
-  // Update fillConfigForm to lock creds if present/valid
   function fillConfigForm(cfg) {
     if (!cfg) return;
-    
-    // Always populate rclone config field with current config (for switching between modes)
     rcloneConfig.value = cfg.rclone_config || '';
-    
     if (cfg.cloud_mode === 'mega') {
       modeMega.checked = true;
       showModeFields('mega');
@@ -307,7 +264,6 @@ document.addEventListener('DOMContentLoaded', function () {
       megaPassword.value = '';
       megaFolderPath.value = cfg.mega_folder || '';
       megaFolderWarning.classList.toggle('d-none', !cfg.mega_folder);
-      // Lock creds if present and valid (simulate valid for now)
       if (cfg.mega_email && cfg.mega_folder) {
         setMegaCredsLocked(true, cfg.mega_email, true);
       } else {
@@ -326,7 +282,6 @@ document.addEventListener('DOMContentLoaded', function () {
     const data = { cloud_mode: mode };
     if (mode === 'mega') {
       data.mega_email = megaEmail.value.trim();
-      // Only send password if credentials are not locked (i.e., password field is not empty)
       if (megaPassword.value && megaPassword.value !== '********') {
         data.mega_password = megaPassword.value;
       }
@@ -339,8 +294,6 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   function loadConfig() {
-    configError.classList.add('d-none');
-    configSuccess.classList.add('d-none');
     fetch('/api/cloud_backup/config')
       .then(r => r.json())
       .then(data => {
@@ -348,14 +301,13 @@ document.addEventListener('DOMContentLoaded', function () {
         fillConfigForm(data.config);
       })
       .catch(e => {
-        configError.textContent = e.message || 'Could not load backup settings.';
-        configError.classList.remove('d-none');
+        showAlert(e.message || 'Could not load backup settings.', 'danger');
       });
   }
 
   function validateRemoteName() {
     const value = remoteName.value.trim();
-    const regex = /^[a-zA-Z0-9_-]+:(?:\/[^\s]*)?$/; // e.g., myremote: or myremote:/backups
+    const regex = /^[a-zA-Z0-9_-]+:(?:\/[^\s]*)?$/;
     if (!regex.test(value)) {
       remoteName.classList.add('is-invalid');
       return false;
@@ -365,24 +317,14 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   }
 
-  // --- Undo ---
-  // The undo functionality is removed as per the edit hint.
-
-  // --- Save ---
-  // On save, if MEGA, validate and lock creds on success
   configForm.addEventListener('submit', function (e) {
     e.preventDefault();
-    configError.classList.add('d-none');
-    configSuccess.classList.add('d-none');
-    saveBtn.disabled = true;
-    // Validate
     const data = getConfigFormData();
     let valid = true;
     if (data.cloud_mode === 'mega') {
       if (!data.mega_email.match(/^[^@\s]+@[^@\s]+\.[^@\s]+$/)) {
         megaEmail.classList.add('is-invalid'); valid = false;
       } else { megaEmail.classList.remove('is-invalid'); }
-      // Only validate password if credentials are not locked (password field is not empty)
       if (megaPassword.value && megaPassword.value !== '********' && !data.mega_password) {
         megaPassword.classList.add('is-invalid'); valid = false;
       } else { megaPassword.classList.remove('is-invalid'); }
@@ -398,9 +340,9 @@ document.addEventListener('DOMContentLoaded', function () {
       }
     }
     if (!valid) {
-      saveBtn.disabled = false;
       return;
     }
+    window.AsyncButtonState.start(saveBtn);
     fetch('/api/cloud_backup/config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -409,22 +351,18 @@ document.addEventListener('DOMContentLoaded', function () {
       .then(r => r.json())
       .then(data => {
         if (!data.success) throw new Error(data.error || 'Failed to save settings');
-        showTemporarySuccess(configSuccessMessage, 'Cloud backup settings saved successfully!');
-        // Lock creds if MEGA
+        window.AsyncButtonState.success(saveBtn);
+        showAlert('Cloud backup settings saved successfully!', 'success');
         if (data.config && data.config.cloud_mode === 'mega') {
           setMegaCredsLocked(true, data.config.mega_email, true);
         }
       })
       .catch(e => {
-        configError.textContent = e.message || 'Could not save backup settings.';
-        configError.classList.remove('d-none');
-      })
-      .finally(() => {
-        saveBtn.disabled = false;
+        window.AsyncButtonState.error(saveBtn);
+        showAlert(e.message || 'Could not save backup settings.', 'danger');
       });
   });
 
-  // --- MEGA Folder Picker ---
   megaBrowseBtn.addEventListener('click', function () {
     openMegaFolderPicker({
       getCredentials: () => {
@@ -440,17 +378,17 @@ document.addEventListener('DOMContentLoaded', function () {
         megaFolderPath.value = folderPath;
         megaFolderWarning.classList.remove('d-none');
       },
-      modalSelector: '#megaFolderPickerModal'
+      modalId: 'megaFolderPickerModal',
+      listUrl: '/api/cloud_backup/mega/list_folders',
+      createUrl: '/api/cloud_backup/mega/create_folder'
     });
   });
 
-  // Add validation event listeners
   if (remoteName) {
     remoteName.addEventListener('blur', validateRemoteName);
     remoteName.addEventListener('input', validateRemoteName);
   }
 
-  // Add mode switching event listeners
   if (modeMega) {
     modeMega.addEventListener('change', function() {
       if (this.checked) showModeFields('mega');
@@ -462,8 +400,7 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
-  // --- Init ---
   loadStatus();
   loadConfig();
   loadSchedule();
-}); 
+});

@@ -1,4 +1,5 @@
 telemetry.csv
+.dev-data/
 
 # Python
 __pycache__/

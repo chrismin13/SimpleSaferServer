@@ -5,13 +5,13 @@ The Cloud Backup page manages cloud backup settings, schedules, and status.
 ## Status Card
 - **Cloud Backup Status**: Shows current status, last backup, next scheduled backup, and duration.
 - **View Log**: Link to the backup task log.
-- **Run Backup Now**: Button to start a backup immediately (shows spinner while running).
+- **Run Backup Now**: Button to start a backup immediately by disabling during the request.
 - **Error Feedback**: Inline error messages for backup issues.
 
 ## Backup Schedule & Bandwidth
 - **Backup Time**: Set the daily backup time.
 - **Bandwidth Limit**: (Optional) Limit backup bandwidth (e.g., 4M for 4 MB/s).
-- **Save**: Button to save schedule settings (shows spinner while saving).
+- **Save**: Button to save schedule settings by disabling during the request.
 - **Error/Success Feedback**: Inline messages for save actions.
 
 ## Cloud Backup Settings
@@ -30,7 +30,7 @@ The Cloud Backup page manages cloud backup settings, schedules, and status.
 - **Remote Name and Path**: Enter in the format `remotename:/path`.
 - **Warning**: rclone will synchronize the remote path to match the local backup directory.
 
-- **Save**: Button to save backup configuration (shows spinner while saving).
+- **Save**: Button to save backup configuration by disabling during the request.
 - **Error/Success Feedback**: Inline messages for save actions.
 
 ## Modal
