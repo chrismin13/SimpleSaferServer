@@ -220,9 +220,12 @@ class FakeState:
             "Cloud Backup": 0,
         }
         offset = offsets.get(task_name, 0)
-        next_run = datetime.now().replace(hour=backup_hour, minute=backup_minute, second=0, microsecond=0)
+        now = datetime.now()
+        next_run = now.replace(hour=backup_hour, minute=backup_minute, second=0, microsecond=0)
+        if next_run <= now:
+            next_run += timedelta(days=1)
         next_run += timedelta(minutes=offset)
-        if next_run <= datetime.now():
+        if next_run <= now:
             next_run += timedelta(days=1)
         return next_run.strftime("%Y-%m-%d %H:%M:%S")
 
