@@ -203,17 +203,43 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   function renderTaskRow(task) {
-    const name = escapeHtml(task.name);
     const url = `/task/${encodeURIComponent(task.name)}`;
-    const lastRun = escapeHtml(task.last_run || '');
-    const nextRun = escapeHtml(task.next_run || '');
-    return `
-      <tr class="clickable-row" data-href="${url}" data-task-name="${name}" tabindex="0" role="link" aria-label="Open ${name} details">
-        <td class="fw-medium">${name}</td>
-        <td>${renderTaskStatusBadge(task.status)}</td>
-        <td class="text-mono task-time-cell" style="font-size: var(--text-xs);" data-timestamp="${lastRun}">${lastRun || '—'}</td>
-        <td class="text-mono task-time-cell" style="font-size: var(--text-xs);" data-timestamp="${nextRun}" data-future="true">${nextRun || '—'}</td>
-      </tr>`;
+    const lastRun = task.last_run || '';
+    const nextRun = task.next_run || '';
+
+    const row = document.createElement('tr');
+    row.className = 'clickable-row';
+    row.dataset.href = url;
+    row.dataset.taskName = task.name;
+    row.tabIndex = 0;
+    row.setAttribute('role', 'link');
+    row.setAttribute('aria-label', `Open ${task.name} details`);
+
+    const tdName = document.createElement('td');
+    tdName.className = 'fw-medium';
+    tdName.textContent = task.name;
+    row.appendChild(tdName);
+
+    const tdStatus = document.createElement('td');
+    tdStatus.innerHTML = renderTaskStatusBadge(task.status);
+    row.appendChild(tdStatus);
+
+    const tdLastRun = document.createElement('td');
+    tdLastRun.className = 'text-mono task-time-cell';
+    tdLastRun.style.fontSize = 'var(--text-xs)';
+    tdLastRun.dataset.timestamp = lastRun;
+    tdLastRun.textContent = lastRun || '—';
+    row.appendChild(tdLastRun);
+
+    const tdNextRun = document.createElement('td');
+    tdNextRun.className = 'text-mono task-time-cell';
+    tdNextRun.style.fontSize = 'var(--text-xs)';
+    tdNextRun.dataset.timestamp = nextRun;
+    tdNextRun.dataset.future = 'true';
+    tdNextRun.textContent = nextRun || '—';
+    row.appendChild(tdNextRun);
+
+    return row;
   }
 
   function hideTaskContextMenu() {
@@ -278,7 +304,8 @@ document.addEventListener('DOMContentLoaded', function() {
         throw new Error(data.error || 'Could not refresh task schedule.');
       }
 
-      tasksBody.innerHTML = data.tasks.map(renderTaskRow).join('');
+      tasksBody.innerHTML = '';
+      data.tasks.forEach(task => tasksBody.appendChild(renderTaskRow(task)));
       bindInteractiveRows();
       applyRelativeTaskTimes();
     } catch (error) {

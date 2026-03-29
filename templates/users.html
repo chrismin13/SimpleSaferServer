@@ -199,7 +199,7 @@ function renderUsersTable() {
       <td class="text-end">
         <div class="btn-group">
           <button class="btn btn-ghost btn-sm" onclick="openEditUserModal('${user.username}')"><i class="fas fa-edit me-1"></i>Edit</button>
-          <button class="btn btn-ghost btn-sm text-danger" onclick="deleteUser('${user.username}')" ${user.username === '{{ username }}' ? 'disabled' : ''}><i class="fas fa-trash me-1"></i>Delete</button>
+          <button class="btn btn-ghost btn-sm text-danger" onclick="deleteUser(event, '${user.username}')" ${user.username === '{{ username }}' ? 'disabled' : ''}><i class="fas fa-trash me-1"></i>Delete</button>
         </div>
       </td>`;
     tbody.appendChild(row);
@@ -229,7 +229,7 @@ async function editUserAPI(username, password, isAdmin) {
   } catch (error) { return { success: false, error: 'Network error' }; }
 }
 
-function deleteUser(username) {
+function deleteUser(event, username) {
   if (username === '{{ username }}') { showError('You cannot delete your own account'); return; }
   if (!confirm(`Are you sure you want to delete user "${username}"?`)) return;
   const button = event.target.closest('button');
