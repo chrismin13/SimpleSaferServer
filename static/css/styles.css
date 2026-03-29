@@ -196,23 +196,24 @@ h1, h2, h3, h4, h5, h6 { font-family: var(--font-display); font-weight: var(--we
   font-weight: var(--weight-bold);
 }
 
-.page-alerts {
+.toast-stack {
+  position: fixed;
+  top: var(--sp-4);
+  right: var(--sp-4);
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);
-  margin-bottom: var(--sp-6);
+  width: min(420px, calc(100vw - var(--sp-8)));
+  z-index: var(--z-toast);
+  pointer-events: none;
 }
 
-.page-alerts .alert {
-  align-items: center;
-}
-
-.page-alerts .alert i {
-  flex-shrink: 0;
-}
-
-.page-alerts:empty {
+.toast-stack:empty {
   display: none;
+}
+
+body.fake-mode-active .toast-stack {
+  top: calc(var(--sp-4) + 40px);
 }
 
 /* ── Mobile nav toggle ──────────────────────────────────────── */
@@ -268,6 +269,12 @@ h1, h2, h3, h4, h5, h6 { font-family: var(--font-display); font-weight: var(--we
 
   .fake-mode-banner {
     padding-left: calc(var(--sp-4) + 42px + var(--sp-3));
+  }
+
+  .toast-stack {
+    left: var(--sp-4);
+    right: var(--sp-4);
+    width: auto;
   }
 }
 
@@ -400,9 +407,13 @@ h1, h2, h3, h4, h5, h6 { font-family: var(--font-display); font-weight: var(--we
   text-decoration: none;
 }
 
-.btn:disabled, .btn.disabled {
+.btn:disabled,
+.btn.disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.btn.disabled {
   pointer-events: none;
 }
 
@@ -775,10 +786,76 @@ table .text-end { text-align: right; }
   line-height: var(--leading-normal);
 }
 
+.alert-content {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  min-width: 0;
+  flex: 1;
+}
+
+.alert-content i {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.alert-message {
+  min-width: 0;
+}
+
 .alert-success { background: var(--success-subtle); color: var(--success-text); border: 1px solid hsla(152,58%,46%,0.2); }
 .alert-warning { background: var(--warning-subtle); color: var(--warning-text); border: 1px solid hsla(38,90%,55%,0.2); }
 .alert-danger  { background: var(--danger-subtle);  color: var(--danger-text);  border: 1px solid hsla(0,68%,56%,0.2); }
 .alert-info    { background: var(--info-subtle);    color: var(--info-text);    border: 1px solid hsla(200,70%,52%,0.2); }
+
+.toast-notification {
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(10px);
+  pointer-events: auto;
+  opacity: 0;
+  transform: translateY(-8px);
+  transition: opacity var(--dur-normal) var(--ease-default), transform var(--dur-normal) var(--ease-default);
+}
+
+.toast-notification .alert-content {
+  align-items: center;
+}
+
+.toast-notification .alert-content i {
+  margin-top: 0;
+}
+
+.toast-notification.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.toast-notification.is-hiding {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
+.toast-close {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  opacity: 0.7;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  align-self: center;
+}
+
+.toast-close:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.06);
+}
 
 /* ── Spinner ────────────────────────────────────────────────── */
 .spinner {
@@ -1496,7 +1573,8 @@ pre code {
   color: var(--text-primary);
 }
 
-.task-context-menu {
+.task-context-menu,
+.action-context-menu {
   position: fixed;
   top: 0;
   left: 0;
@@ -1510,14 +1588,17 @@ pre code {
   z-index: var(--z-modal);
 }
 
-.task-context-menu.visible {
+.task-context-menu.visible,
+.action-context-menu.visible {
   display: block;
 }
 
-.task-context-menu-item {
+.task-context-menu-item,
+.action-context-menu-item {
   width: 100%;
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: var(--sp-2);
   padding: var(--sp-2) var(--sp-3);
   background: transparent;
@@ -1526,11 +1607,27 @@ pre code {
   color: var(--text-secondary);
   font-size: var(--text-sm);
   text-align: left;
+  cursor: pointer;
 }
 
-.task-context-menu-item:hover {
+.task-context-menu-item:hover,
+.action-context-menu-item:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
+}
+
+.action-context-menu-item.danger {
+  color: var(--danger);
+}
+
+.action-context-menu-item:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.action-context-menu-item:disabled:hover {
+  background: transparent;
+  color: inherit;
 }
 
 /* ── Radio group styled ─────────────────────────────────────── */

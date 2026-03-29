@@ -15,13 +15,11 @@ function loadStatus() {
   const lastRun = document.getElementById('cloud-backup-last-run');
   const nextRun = document.getElementById('cloud-backup-next-run');
   const lastDuration = document.getElementById('cloud-backup-last-duration');
-  const statusError = document.getElementById('cloud-backup-status-error');
 
   statusBadge.innerHTML = '<span class="spinner"></span>';
   lastRun.textContent = '-';
   nextRun.textContent = '-';
   lastDuration.textContent = '-';
-  statusError.classList.add('d-none');
   fetch('/api/cloud_backup/status')
     .then(r => r.json())
     .then(data => {
@@ -36,17 +34,14 @@ function loadStatus() {
     })
     .catch(e => {
       statusBadge.innerHTML = renderStatusBadge('Error');
-      statusError.textContent = e.message || 'Could not load backup status.';
-      statusError.classList.remove('d-none');
+      showAlert(e.message || 'Could not load backup status.', 'danger');
     });
 }
 
 function runBackupNow() {
   const runBtn = document.getElementById('cloud-backup-run-btn');
   const runSpinner = document.getElementById('cloud-backup-run-spinner');
-  const statusError = document.getElementById('cloud-backup-status-error');
 
-  statusError.classList.add('d-none');
   runBtn.disabled = true;
   runSpinner.classList.remove('d-none');
 
@@ -57,11 +52,11 @@ function runBackupNow() {
     .then(r => r.json())
     .then(data => {
       if (!data.success) throw new Error(data.error || 'Failed to start backup');
+      showAlert(data.message || 'Cloud backup started.', 'success');
       loadStatus();
     })
     .catch(e => {
-      statusError.textContent = e.message || 'Could not start backup.';
-      statusError.classList.remove('d-none');
+      showAlert(e.message || 'Could not start backup.', 'danger');
     })
     .finally(() => {
       runBtn.disabled = false;
@@ -70,20 +65,11 @@ function runBackupNow() {
 }
 
 document.addEventListener('DOMContentLoaded', function () {
-  const statusBadge = document.getElementById('cloud-backup-status-badge');
-  const lastRun = document.getElementById('cloud-backup-last-run');
-  const nextRun = document.getElementById('cloud-backup-next-run');
-  const lastDuration = document.getElementById('cloud-backup-last-duration');
   const runBtn = document.getElementById('cloud-backup-run-btn');
-  const runSpinner = document.getElementById('cloud-backup-run-spinner');
-  const statusError = document.getElementById('cloud-backup-status-error');
 
   const configForm = document.getElementById('cloud-backup-config-form');
   const saveBtn = document.getElementById('cloud-backup-save-btn');
   const saveSpinner = document.getElementById('cloud-backup-save-spinner');
-  const configError = document.getElementById('cloud-backup-config-error');
-  const configSuccess = document.getElementById('cloud-backup-config-success');
-  const configSuccessMessage = document.getElementById('config-success-message');
 
   const modeMega = document.getElementById('cloudModeMega');
   const modeAdvanced = document.getElementById('cloudModeAdvanced');
@@ -102,19 +88,6 @@ document.addEventListener('DOMContentLoaded', function () {
   const scheduleForm = document.getElementById('cloud-backup-schedule-form');
   const scheduleSaveBtn = document.getElementById('cloud-backup-schedule-save-btn');
   const scheduleSaveSpinner = document.getElementById('cloud-backup-schedule-save-spinner');
-  const scheduleError = document.getElementById('cloud-backup-schedule-error');
-  const scheduleSuccess = document.getElementById('cloud-backup-schedule-success');
-  const scheduleSuccessMessage = document.getElementById('schedule-success-message');
-
-  let lastSavedSchedule = { backup_cloud_time: '', bandwidth_limit: '' };
-
-  function showTemporarySuccess(element, message, duration = 3000) {
-    element.textContent = message;
-    element.classList.remove('d-none');
-    setTimeout(() => {
-      element.classList.add('d-none');
-    }, duration);
-  }
 
   if (backupTime) {
     const showTimePicker = () => {
@@ -144,15 +117,9 @@ document.addEventListener('DOMContentLoaded', function () {
   function fillScheduleForm(cfg) {
     backupTime.value = (cfg.backup_cloud_time || '').padStart(5, '0');
     bandwidthLimit.value = cfg.bandwidth_limit || '';
-    lastSavedSchedule = {
-      backup_cloud_time: backupTime.value,
-      bandwidth_limit: bandwidthLimit.value
-    };
   }
 
   function loadSchedule() {
-    scheduleError.classList.add('d-none');
-    scheduleSuccess.classList.add('d-none');
     fetch('/api/cloud_backup/config')
       .then(r => r.json())
       .then(data => {
@@ -160,15 +127,12 @@ document.addEventListener('DOMContentLoaded', function () {
         fillScheduleForm(data.config);
       })
       .catch(e => {
-        scheduleError.textContent = e.message || 'Could not load schedule.';
-        scheduleError.classList.remove('d-none');
+        showAlert(e.message || 'Could not load schedule.', 'danger');
       });
   }
 
   scheduleForm.addEventListener('submit', function (e) {
     e.preventDefault();
-    scheduleError.classList.add('d-none');
-    scheduleSuccess.classList.add('d-none');
     scheduleSaveBtn.disabled = true;
     scheduleSaveSpinner.classList.remove('d-none');
     let valid = true;
@@ -191,13 +155,12 @@ document.addEventListener('DOMContentLoaded', function () {
       .then(r => r.json())
       .then(data => {
         if (!data.success) throw new Error(data.error || 'Failed to save schedule');
-        showTemporarySuccess(scheduleSuccessMessage, 'Schedule saved successfully!');
+        showAlert('Schedule saved successfully!', 'success');
         loadSchedule();
         loadStatus();
       })
       .catch(e => {
-        scheduleError.textContent = e.message || 'Could not save schedule.';
-        scheduleError.classList.remove('d-none');
+        showAlert(e.message || 'Could not save schedule.', 'danger');
       })
       .finally(() => {
         scheduleSaveBtn.disabled = false;
@@ -345,8 +308,6 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   function loadConfig() {
-    configError.classList.add('d-none');
-    configSuccess.classList.add('d-none');
     fetch('/api/cloud_backup/config')
       .then(r => r.json())
       .then(data => {
@@ -354,8 +315,7 @@ document.addEventListener('DOMContentLoaded', function () {
         fillConfigForm(data.config);
       })
       .catch(e => {
-        configError.textContent = e.message || 'Could not load backup settings.';
-        configError.classList.remove('d-none');
+        showAlert(e.message || 'Could not load backup settings.', 'danger');
       });
   }
 
@@ -373,8 +333,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
   configForm.addEventListener('submit', function (e) {
     e.preventDefault();
-    configError.classList.add('d-none');
-    configSuccess.classList.add('d-none');
     saveBtn.disabled = true;
     const data = getConfigFormData();
     let valid = true;
@@ -408,14 +366,13 @@ document.addEventListener('DOMContentLoaded', function () {
       .then(r => r.json())
       .then(data => {
         if (!data.success) throw new Error(data.error || 'Failed to save settings');
-        showTemporarySuccess(configSuccessMessage, 'Cloud backup settings saved successfully!');
+        showAlert('Cloud backup settings saved successfully!', 'success');
         if (data.config && data.config.cloud_mode === 'mega') {
           setMegaCredsLocked(true, data.config.mega_email, true);
         }
       })
       .catch(e => {
-        configError.textContent = e.message || 'Could not save backup settings.';
-        configError.classList.remove('d-none');
+        showAlert(e.message || 'Could not save backup settings.', 'danger');
       })
       .finally(() => {
         saveBtn.disabled = false;

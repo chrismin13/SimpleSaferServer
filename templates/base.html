@@ -83,11 +83,11 @@
                 <h1>{% block header %}{% endblock %}</h1>
             </div>
 
-            <div class="page-alerts"></div>
-
             {% block content %}{% endblock %}
         </main>
     </div>
+
+    <div class="toast-stack" id="toastStack" aria-live="polite" aria-atomic="false"></div>
 
     <!-- Confirmation Modal -->
     <div class="modal-overlay" id="confirmationModal">

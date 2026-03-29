@@ -32,16 +32,6 @@
   </table>
 </div>
 
-<!-- Success/Error inline alerts -->
-<div id="successAlert" class="alert alert-success d-none mt-4">
-  <i class="fas fa-check-circle"></i>
-  <span id="successMessage"></span>
-</div>
-<div id="errorAlert" class="alert alert-danger d-none mt-4">
-  <i class="fas fa-exclamation-circle"></i>
-  <span id="errorMessage"></span>
-</div>
-
 <!-- Add User Modal -->
 <div class="modal-overlay" id="addUserModal">
   <div class="modal-container">
@@ -114,17 +104,11 @@ let currentUsers = [];
 let editingUsername = null;
 
 function showSuccess(message) {
-  document.getElementById('successMessage').textContent = message;
-  const el = document.getElementById('successAlert');
-  el.classList.remove('d-none');
-  setTimeout(() => el.classList.add('d-none'), 5000);
+  showAlert(message, 'success');
 }
 
 function showError(message) {
-  document.getElementById('errorMessage').textContent = message;
-  const el = document.getElementById('errorAlert');
-  el.classList.remove('d-none');
-  setTimeout(() => el.classList.add('d-none'), 5000);
+  showAlert(message, 'danger');
 }
 
 function showModalError(modalId, message) {
@@ -138,6 +122,7 @@ function hideModalError(modalId) {
 }
 
 function setButtonLoading(button, isLoading, loadingText = 'Processing…') {
+  if (!button) return;
   if (isLoading) {
     button.disabled = true;
     button.dataset.originalText = button.innerHTML;
@@ -183,6 +168,23 @@ async function deleteUserAPI(username) {
   } catch (error) { return { success: false, error: 'Network error' }; }
 }
 
+function getUserRowActions(user) {
+  return [
+    {
+      label: 'Edit',
+      iconClass: 'fas fa-edit',
+      onSelect: function() { openEditUserModal(user.username); }
+    },
+    {
+      label: 'Delete',
+      iconClass: 'fas fa-trash',
+      destructive: true,
+      disabled: user.username === '{{ username }}',
+      onSelect: function() { requestDeleteUser(user.username); }
+    }
+  ];
+}
+
 function renderUsersTable() {
   const tbody = document.getElementById('usersTableBody');
   tbody.innerHTML = '';
@@ -198,10 +200,23 @@ function renderUsersTable() {
       <td class="text-muted" style="font-size: var(--text-xs);">${lastLoginDate}</td>
       <td class="text-end">
         <div class="btn-group btn-group-end">
-          <button type="button" class="btn btn-ghost btn-sm" onclick="openEditUserModal('${user.username}')"><i class="fas fa-edit me-1"></i>Edit</button>
-          <button type="button" class="btn btn-ghost btn-sm text-danger" onclick="deleteUser(this, '${user.username}')" ${user.username === '{{ username }}' ? 'disabled' : ''}><i class="fas fa-trash me-1"></i>Delete</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-user-action="edit"><i class="fas fa-edit me-1"></i>Edit</button>
+          <button type="button" class="btn btn-ghost btn-sm text-danger" data-user-action="delete" ${user.username === '{{ username }}' ? 'disabled' : ''}><i class="fas fa-trash me-1"></i>Delete</button>
         </div>
       </td>`;
+
+    const editButton = row.querySelector('[data-user-action="edit"]');
+    const deleteButton = row.querySelector('[data-user-action="delete"]');
+
+    editButton.addEventListener('click', function() { openEditUserModal(user.username); });
+    deleteButton.addEventListener('click', function() { requestDeleteUser(user.username, deleteButton); });
+
+    if (window.ActionContextMenu) {
+      window.ActionContextMenu.bind(row, function() {
+        return getUserRowActions(user);
+      });
+    }
+
     tbody.appendChild(row);
   });
 }
@@ -229,7 +244,7 @@ async function editUserAPI(username, password, isAdmin) {
   } catch (error) { return { success: false, error: 'Network error' }; }
 }
 
-async function deleteUser(button, username) {
+async function requestDeleteUser(username, button = null) {
   if (username === '{{ username }}') { showError('You cannot delete your own account'); return; }
   const confirmed = await window.showConfirmationDialog({
     title: 'Delete User',

@@ -1198,7 +1198,7 @@ def api_delete_user(username):
     
     success, message = user_manager.delete_user(username)
     if success:
-        return jsonify({'message': f'User {username} deleted successfully'})
+        return jsonify({'success': True, 'message': f'User {username} deleted successfully'})
     else:
         return jsonify({'error': f'Failed to delete user {username}: {message}'}), 400
 

@@ -8,7 +8,6 @@
 <section class="mb-8">
   <h2 class="mb-4" style="font-size: var(--text-lg);"><i class="fas fa-envelope me-2 text-muted"></i>Email Alert Configuration</h2>
   <form id="emailConfigForm">
-    <div id="emailConfigError" class="alert alert-danger d-none"></div>
     <div class="form-group mb-4">
       <label class="form-label">Email Address</label>
       <input type="email" id="emailAddress" class="form-control" placeholder="your@email.com">
@@ -203,18 +202,7 @@ function saveEmailConfig() {
 }
 
 function showEmailError(message) {
-  const errorDiv = document.getElementById('emailConfigError');
-  // Clear existing content and safely insert icon and text
-  errorDiv.textContent = '';
-  const icon = document.createElement('i');
-  icon.className = 'fas fa-exclamation-triangle';
-  errorDiv.appendChild(icon);
-  errorDiv.appendChild(document.createTextNode(' '));
-  const textSpan = document.createElement('span');
-  textSpan.textContent = message;
-  errorDiv.appendChild(textSpan);
-  errorDiv.classList.remove('d-none');
-  setTimeout(() => errorDiv.classList.add('d-none'), 5000);
+  showAlert(message, 'danger');
 }
 
 function loadAlerts() {

@@ -226,34 +226,190 @@ document.addEventListener('DOMContentLoaded', () => {
 
 /* ── Alert / Toast Utility ──────────────────────────────────── */
 window.showAlert = function showAlert(message, type = 'success', container = null) {
+  const normalizedType = type === 'error' ? 'danger' : type;
   const alertDiv = document.createElement('div');
-  alertDiv.className = `alert alert-${type}`;
+  alertDiv.className = `alert alert-${normalizedType}`;
+  let isDismissed = false;
+
+  const content = document.createElement('div');
+  content.className = 'alert-content';
 
   const icon = document.createElement('i');
   icon.className = `fas ${
-    type === 'success'
+    normalizedType === 'success'
       ? 'fa-check-circle'
-      : type === 'danger'
+      : normalizedType === 'danger'
       ? 'fa-exclamation-triangle'
-      : type === 'warning'
+      : normalizedType === 'warning'
       ? 'fa-exclamation-circle'
       : 'fa-info-circle'
   }`;
 
   const messageSpan = document.createElement('span');
+  messageSpan.className = 'alert-message';
   messageSpan.textContent = message;
 
-  alertDiv.appendChild(icon);
-  alertDiv.appendChild(messageSpan);
-  const target = container || document.querySelector('.page-alerts') || document.querySelector('.main-content') || document.body;
-  target.prepend(alertDiv);
+  content.appendChild(icon);
+  content.appendChild(messageSpan);
+  alertDiv.appendChild(content);
 
-  setTimeout(() => {
-    alertDiv.style.opacity = '0';
-    alertDiv.style.transition = 'opacity 300ms';
-    setTimeout(() => alertDiv.remove(), 300);
-  }, 4000);
+  const dismiss = () => {
+    if (isDismissed) return;
+    isDismissed = true;
+    alertDiv.classList.add('is-hiding');
+    setTimeout(() => alertDiv.remove(), 200);
+  };
+
+  if (container) {
+    container.prepend(alertDiv);
+    setTimeout(dismiss, 4000);
+    return alertDiv;
+  }
+
+  alertDiv.classList.add('toast-notification');
+  alertDiv.setAttribute('role', normalizedType === 'danger' || normalizedType === 'warning' ? 'alert' : 'status');
+
+  const closeButton = document.createElement('button');
+  closeButton.type = 'button';
+  closeButton.className = 'toast-close';
+  closeButton.setAttribute('aria-label', 'Dismiss notification');
+  closeButton.innerHTML = '<i class="fas fa-xmark"></i>';
+  closeButton.addEventListener('click', dismiss);
+  alertDiv.appendChild(closeButton);
+
+  const target = document.getElementById('toastStack') || document.body;
+  target.appendChild(alertDiv);
+
+  requestAnimationFrame(() => {
+    alertDiv.classList.add('visible');
+  });
+
+  let timeoutId = setTimeout(dismiss, 4000);
+  alertDiv.addEventListener('mouseenter', () => {
+    clearTimeout(timeoutId);
+  });
+  alertDiv.addEventListener('mouseleave', () => {
+    timeoutId = setTimeout(dismiss, 2500);
+  });
+
+  return alertDiv;
 };
+
+
+/* ── Action Context Menu ─────────────────────────────────────── */
+window.ActionContextMenu = (() => {
+  let menuEl = null;
+  let activeItems = [];
+
+  // Rule: if a list/table row exposes row-level actions in an Actions column,
+  // expose the same actions on right-click via this helper as well.
+  function ensureMenu() {
+    if (menuEl) return menuEl;
+
+    menuEl = document.createElement('div');
+    menuEl.id = 'globalActionContextMenu';
+    menuEl.className = 'action-context-menu';
+    menuEl.setAttribute('role', 'menu');
+    menuEl.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(menuEl);
+
+    menuEl.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-context-menu-index]');
+      if (!button || button.disabled) return;
+
+      const item = activeItems[Number(button.dataset.contextMenuIndex)];
+      hide();
+      if (item && typeof item.onSelect === 'function') {
+        item.onSelect();
+      }
+    });
+
+    document.addEventListener('click', (event) => {
+      if (!event.target.closest('#globalActionContextMenu')) {
+        hide();
+      }
+    });
+    document.addEventListener('scroll', hide, true);
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') hide();
+    });
+    window.addEventListener('resize', hide);
+
+    return menuEl;
+  }
+
+  function renderItems(items) {
+    const el = ensureMenu();
+    el.innerHTML = '';
+    activeItems = items;
+
+    items.forEach((item, index) => {
+      if (!item || item.hidden) return;
+
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'action-context-menu-item';
+      if (item.destructive) button.classList.add('danger');
+      button.dataset.contextMenuIndex = String(index);
+      button.setAttribute('role', 'menuitem');
+      button.disabled = Boolean(item.disabled);
+
+      if (item.iconClass) {
+        const icon = document.createElement('i');
+        icon.className = item.iconClass;
+        button.appendChild(icon);
+      }
+
+      button.appendChild(document.createTextNode(item.label || 'Action'));
+      el.appendChild(button);
+    });
+  }
+
+  function show(items, clientX, clientY) {
+    const visibleItems = (items || []).filter((item) => item && !item.hidden);
+    if (!visibleItems.length) return;
+
+    const el = ensureMenu();
+    renderItems(visibleItems);
+    el.classList.add('visible');
+    el.setAttribute('aria-hidden', 'false');
+
+    const { innerWidth, innerHeight } = window;
+    const menuWidth = el.offsetWidth;
+    const menuHeight = el.offsetHeight;
+    const left = Math.min(clientX, innerWidth - menuWidth - 8);
+    const top = Math.min(clientY, innerHeight - menuHeight - 8);
+
+    el.style.left = `${Math.max(8, left)}px`;
+    el.style.top = `${Math.max(8, top)}px`;
+  }
+
+  function hide() {
+    if (!menuEl) return;
+    menuEl.classList.remove('visible');
+    menuEl.setAttribute('aria-hidden', 'true');
+    activeItems = [];
+  }
+
+  function bind(triggerEl, getItems) {
+    if (!triggerEl || typeof getItems !== 'function') return;
+
+    triggerEl.addEventListener('contextmenu', (event) => {
+      const items = getItems(event) || [];
+      const visibleItems = items.filter((item) => item && !item.hidden);
+      if (!visibleItems.length) return;
+
+      event.preventDefault();
+      show(visibleItems, event.clientX, event.clientY);
+    });
+  }
+
+  return {
+    bind,
+    hide,
+    show
+  };
+})();
 
 
 /* ── Time Formatting ─────────────────────────────────────────── */

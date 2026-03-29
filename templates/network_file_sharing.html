@@ -387,6 +387,22 @@ function populateUserSelects() {
   if (editEl) editEl.innerHTML = makeCheckboxes('edit');
 }
 
+function getShareRowActions(share) {
+  return [
+    {
+      label: 'Edit',
+      iconClass: 'fas fa-edit',
+      onSelect: function() { editShare(share.name); }
+    },
+    {
+      label: 'Delete',
+      iconClass: 'fas fa-trash',
+      destructive: true,
+      onSelect: function() { confirmDeleteShare(share.name); }
+    }
+  ];
+}
+
 function renderSharesTable() {
   const tbody = document.getElementById('sharesTableBody');
   if (!tbody) return;
@@ -468,6 +484,12 @@ function renderSharesTable() {
     btnGroup.appendChild(deleteBtn);
     actionsTd.appendChild(btnGroup);
     tr.appendChild(actionsTd);
+
+    if (window.ActionContextMenu) {
+      window.ActionContextMenu.bind(tr, function() {
+        return getShareRowActions(share);
+      });
+    }
 
     tbody.appendChild(tr);
   });
