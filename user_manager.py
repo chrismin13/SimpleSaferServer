@@ -253,7 +253,7 @@ class UserManager:
             if data.get('is_admin', False):
                 return username
 
-        return next(iter(self.users), None)
+        return None
 
     def user_exists_in_samba(self, username):
         """Check if user exists in Samba database"""

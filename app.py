@@ -545,7 +545,7 @@ def auto_login_fake_mode_user():
         return None
 
     username = get_auto_login_username()
-    if username:
+    if username and user_manager.is_admin(username):
         session['username'] = username
         session['auto_logged_in'] = True
     return None
