@@ -389,29 +389,88 @@ function populateUserSelects() {
 
 function renderSharesTable() {
   const tbody = document.getElementById('sharesTableBody');
+  if (!tbody) return;
+
+  tbody.innerHTML = '';
+
   if (shares.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted" style="padding: var(--sp-6);">No shares configured</td></tr>';
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 6;
+    td.className = 'text-center text-muted';
+    td.style.padding = 'var(--sp-6)';
+    td.textContent = 'No shares configured';
+    tr.appendChild(td);
+    tbody.appendChild(tr);
     return;
   }
-  tbody.innerHTML = shares.map(share => {
+
+  shares.forEach(function(share) {
+    const tr = document.createElement('tr');
+
+    const nameTd = document.createElement('td');
+    nameTd.className = 'fw-medium';
+    nameTd.textContent = share.name;
+    tr.appendChild(nameTd);
+
+    const pathTd = document.createElement('td');
+    const codeEl = document.createElement('code');
+    codeEl.textContent = share.path;
+    pathTd.appendChild(codeEl);
+    tr.appendChild(pathTd);
+
+    const writableTd = document.createElement('td');
+    const writableSpan = document.createElement('span');
+    writableSpan.className = 'badge ' + (share.writable ? 'badge-success' : 'badge-neutral');
+    writableSpan.textContent = share.writable ? 'Yes' : 'No';
+    writableTd.appendChild(writableSpan);
+    tr.appendChild(writableTd);
+
+    const commentTd = document.createElement('td');
+    commentTd.className = 'text-muted';
+    commentTd.textContent = share.comment || '—';
+    tr.appendChild(commentTd);
+
+    const userTd = document.createElement('td');
+    userTd.className = 'text-muted';
+    userTd.style.fontSize = 'var(--text-xs)';
     const userList = share.valid_users && share.valid_users.length > 0
       ? share.valid_users.join(', ')
       : 'All users';
-    return `
-    <tr>
-      <td class="fw-medium">${share.name}</td>
-      <td><code>${share.path}</code></td>
-      <td><span class="badge ${share.writable ? 'badge-success' : 'badge-neutral'}">${share.writable ? 'Yes' : 'No'}</span></td>
-      <td class="text-muted">${share.comment || '—'}</td>
-      <td class="text-muted" style="font-size: var(--text-xs);">${userList}</td>
-      <td class="text-end">
-        <div class="btn-group">
-          <button class="btn btn-ghost btn-sm" onclick="editShare('${share.name}')"><i class="fas fa-edit me-1"></i>Edit</button>
-          <button class="btn btn-ghost btn-sm text-danger" onclick="confirmDeleteShare('${share.name}')"><i class="fas fa-trash me-1"></i>Delete</button>
-        </div>
-      </td>
-    </tr>`;
-  }).join('');
+    userTd.textContent = userList;
+    tr.appendChild(userTd);
+
+    const actionsTd = document.createElement('td');
+    actionsTd.className = 'text-end';
+
+    const btnGroup = document.createElement('div');
+    btnGroup.className = 'btn-group';
+
+    const editBtn = document.createElement('button');
+    editBtn.type = 'button';
+    editBtn.className = 'btn btn-ghost btn-sm';
+    editBtn.addEventListener('click', function() { editShare(share.name); });
+    const editIcon = document.createElement('i');
+    editIcon.className = 'fas fa-edit me-1';
+    editBtn.appendChild(editIcon);
+    editBtn.appendChild(document.createTextNode('Edit'));
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.className = 'btn btn-ghost btn-sm text-danger';
+    deleteBtn.addEventListener('click', function() { confirmDeleteShare(share.name); });
+    const deleteIcon = document.createElement('i');
+    deleteIcon.className = 'fas fa-trash me-1';
+    deleteBtn.appendChild(deleteIcon);
+    deleteBtn.appendChild(document.createTextNode('Delete'));
+
+    btnGroup.appendChild(editBtn);
+    btnGroup.appendChild(deleteBtn);
+    actionsTd.appendChild(btnGroup);
+    tr.appendChild(actionsTd);
+
+    tbody.appendChild(tr);
+  });
 }
 
 function addShare() {

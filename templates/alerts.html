@@ -232,9 +232,16 @@ function loadAlerts() {
       if (data.success) {
         if (data.alerts.length === 0) { noAlerts.classList.remove('d-none'); }
         else { displayAlerts(data.alerts); alertsList.classList.remove('d-none'); }
+      } else {
+        noAlerts.classList.remove('d-none');
+        showAlert(data.message || 'Failed to load alerts. Please try again.', 'danger');
       }
     })
-    .catch(() => { loading.classList.add('d-none'); });
+    .catch(() => {
+      loading.classList.add('d-none');
+      noAlerts.classList.remove('d-none');
+      showAlert('Could not load alerts due to a network error.', 'danger');
+    });
 }
 
 function getTypeBadge(type) {
@@ -345,15 +352,29 @@ document.getElementById('refreshAlertsBtn').addEventListener('click', loadAlerts
 
 document.getElementById('clearAlertsBtn').addEventListener('click', function() {
   // Handled by data-confirm attribute
+  const btn = this;
+  btn.disabled = true;
   fetch('/api/alerts/clear', { method: 'POST' })
     .then(r => r.json())
-    .then(data => { if (data.success) loadAlerts(); });
+    .then(data => {
+      btn.disabled = false;
+      if (data.success) loadAlerts();
+      else showAlert(data.message || 'Failed to clear alerts.', 'danger');
+    })
+    .catch(() => { btn.disabled = false; showAlert('Network error while clearing alerts.', 'danger'); });
 });
 
 document.getElementById('markAllReadBtn').addEventListener('click', function() {
+  const btn = this;
+  btn.disabled = true;
   fetch('/api/alerts/mark-all-read', { method: 'POST' })
     .then(r => r.json())
-    .then(data => { if (data.success) loadAlerts(); });
+    .then(data => {
+      btn.disabled = false;
+      if (data.success) loadAlerts();
+      else showAlert(data.message || 'Failed to mark alerts as read.', 'danger');
+    })
+    .catch(() => { btn.disabled = false; showAlert('Network error while marking alerts as read.', 'danger'); });
 });
 </script>
 {% endblock %}

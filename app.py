@@ -662,7 +662,9 @@ def start_task(task_name):
             return jsonify({"success": True, "message": f"Started {task_name}."})
         return redirect(url_for("task_detail", task_name=task_name))
     except Exception as e:
-        return jsonify({"success": False, "message": str(e)}), 500
+        if request.accept_mimetypes.best == 'application/json':
+            return jsonify({"success": False, "message": str(e)}), 500
+        abort(500)
 
 
 @app.route("/task/<task_name>/stop", methods=["POST"])
@@ -679,7 +681,9 @@ def stop_task(task_name):
             return jsonify({"success": True, "message": f"Stopped {task_name}."})
         return redirect(url_for("task_detail", task_name=task_name))
     except Exception as e:
-        return jsonify({"success": False, "message": str(e)}), 500
+        if request.accept_mimetypes.best == 'application/json':
+            return jsonify({"success": False, "message": str(e)}), 500
+        abort(500)
 
 
 # API route for running a task
