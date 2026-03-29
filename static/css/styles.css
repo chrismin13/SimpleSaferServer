@@ -495,7 +495,11 @@ h1, h2, h3, h4, h5, h6 { font-family: var(--font-display); font-weight: var(--we
 }
 
 .btn-group-end {
+  width: max-content;
+  margin-left: auto;
   justify-content: flex-end;
+  flex-wrap: nowrap;
+  white-space: nowrap;
 }
 
 /* ── Forms ──────────────────────────────────────────────────── */

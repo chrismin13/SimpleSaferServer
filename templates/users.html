@@ -198,8 +198,8 @@ function renderUsersTable() {
       <td class="text-muted" style="font-size: var(--text-xs);">${lastLoginDate}</td>
       <td class="text-end">
         <div class="btn-group btn-group-end">
-          <button class="btn btn-ghost btn-sm" onclick="openEditUserModal('${user.username}')"><i class="fas fa-edit me-1"></i>Edit</button>
-          <button class="btn btn-ghost btn-sm text-danger" onclick="deleteUser(event, '${user.username}')" ${user.username === '{{ username }}' ? 'disabled' : ''}><i class="fas fa-trash me-1"></i>Delete</button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="openEditUserModal('${user.username}')"><i class="fas fa-edit me-1"></i>Edit</button>
+          <button type="button" class="btn btn-ghost btn-sm text-danger" onclick="deleteUser(this, '${user.username}')" ${user.username === '{{ username }}' ? 'disabled' : ''}><i class="fas fa-trash me-1"></i>Delete</button>
         </div>
       </td>`;
     tbody.appendChild(row);
@@ -229,10 +229,15 @@ async function editUserAPI(username, password, isAdmin) {
   } catch (error) { return { success: false, error: 'Network error' }; }
 }
 
-function deleteUser(event, username) {
+async function deleteUser(button, username) {
   if (username === '{{ username }}') { showError('You cannot delete your own account'); return; }
-  if (!confirm(`Are you sure you want to delete user "${username}"?`)) return;
-  const button = event.target.closest('button');
+  const confirmed = await window.showConfirmationDialog({
+    title: 'Delete User',
+    message: `Are you sure you want to delete user "${username}"?`,
+    confirmLabel: 'Delete',
+    confirmClass: 'btn-danger'
+  });
+  if (!confirmed) return;
   setButtonLoading(button, true, 'Deleting…');
   deleteUserAPI(username).then(data => {
     setButtonLoading(button, false);
