@@ -168,10 +168,13 @@ document.addEventListener('DOMContentLoaded', function () {
       }
     }
 
-    // Update Tab Buttons
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-      btn.classList.toggle('active', btn.getAttribute('data-tab') === mode);
-    });
+    // Update Tab Buttons (scoped to cloud backup config form)
+    const configForm = document.getElementById('cloud-backup-config-form');
+    if (configForm) {
+      configForm.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.getAttribute('data-tab') === mode);
+      });
+    }
 
     // Sync Hidden Radio Inputs (to keep save/submit logic happy)
     if (mode === 'mega' && modeMega) {
@@ -181,13 +184,16 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   }
 
-  // Bind Custom Tabs
-  document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.addEventListener('click', function() {
-      const mode = this.getAttribute('data-tab');
-      if (mode) showModeFields(mode);
+  // Bind Custom Tabs (scoped to cloud backup config form)
+  const configForm = document.getElementById('cloud-backup-config-form');
+  if (configForm) {
+    configForm.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', function() {
+        const mode = this.getAttribute('data-tab');
+        if (mode) showModeFields(mode);
+      });
     });
-  });
+  }
 
   const megaChangeCredsBtn = document.getElementById('megaChangeCredsBtn');
   const megaCredStatus = document.getElementById('megaCredStatus');

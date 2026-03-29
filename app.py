@@ -1081,7 +1081,9 @@ def alerts():
 @app.route('/api/alerts/generate-test', methods=['POST'])
 @admin_required
 def api_generate_test_alerts():
-    """Debug route: Generate test alerts for UI testing."""
+    """Debug route: Generate test alerts for UI testing. Only available in fake/dev mode."""
+    if not runtime.is_fake:
+        return jsonify({'success': False, 'error': 'Not available in production mode'}), 403
     try:
         config_manager.log_alert("Test Error", "This is a simulated error message to verify UI styling.", alert_type="error", source="System Test")
         config_manager.log_alert("Test Warning", "This is a simulated warning message. Things might be wrong.", alert_type="warning", source="System Test")
@@ -1090,7 +1092,7 @@ def api_generate_test_alerts():
         return jsonify({'success': True})
     except Exception as e:
         current_app.logger.error(f"Error generating test alerts: {e}")
-        return jsonify({'success': False, 'error': str(e)})
+        return jsonify({'success': False, 'error': 'Failed to generate test alerts'}), 500
 
 @app.route('/api/alerts', methods=['GET'])
 @login_required

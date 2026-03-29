@@ -6,9 +6,11 @@
 {% block content %}
 <!-- Actions Row -->
 <div class="alerts-header-actions mb-4">
+  {% if runtime_mode == 'fake' %}
   <button class="btn btn-outline-secondary btn-sm" id="generateTestAlertsBtn" title="Debug: Generate Test Alerts">
     <i class="fas fa-bug"></i> Generate Tests
   </button>
+  {% endif %}
   <button class="btn btn-secondary btn-sm" id="toggleSettingsBtn">
     <i class="fas fa-cog me-2"></i> Email Settings
   </button>
