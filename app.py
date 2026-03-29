@@ -651,9 +651,13 @@ def task_logs(task_name):
 def start_task(task_name):
     task = get_task(task_name)
     if not task:
+        if request.accept_mimetypes.best == 'application/json':
+            return jsonify({"success": False, "message": "Task not found"}), 404
         abort(404)
     try:
         task.start()
+        if request.accept_mimetypes.best == 'application/json':
+            return jsonify({"success": True, "message": f"Started {task_name}."})
         return redirect(url_for("task_detail", task_name=task_name))
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
@@ -664,9 +668,13 @@ def start_task(task_name):
 def stop_task(task_name):
     task = get_task(task_name)
     if not task:
+        if request.accept_mimetypes.best == 'application/json':
+            return jsonify({"success": False, "message": "Task not found"}), 404
         abort(404)
     try:
         task.stop()
+        if request.accept_mimetypes.best == 'application/json':
+            return jsonify({"success": True, "message": f"Stopped {task_name}."})
         return redirect(url_for("task_detail", task_name=task_name))
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500

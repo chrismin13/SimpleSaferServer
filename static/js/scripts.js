@@ -1,56 +1,37 @@
-console.log("Setup wizard JS loaded");
-// Wait for the DOM to load
+/* ============================================================
+   SCRIPTS.JS — Setup Wizard Logic + Task Detail Auto-Refresh
+   (Mobile nav is now handled by common.js)
+   ============================================================ */
+
 document.addEventListener("DOMContentLoaded", function () {
 
-  // Mobile Navigation
-  const sidebar = document.getElementById('sidebarMenu');
-  const navbarToggler = document.querySelector('.navbar-toggler');
-  
-  if (navbarToggler && sidebar) {
-    navbarToggler.addEventListener('click', function() {
-      sidebar.classList.toggle('show');
-    });
-
-    // Close sidebar when clicking outside
-    document.addEventListener('click', function(event) {
-      const isClickInside = sidebar.contains(event.target) || navbarToggler.contains(event.target);
-      
-      if (!isClickInside && sidebar.classList.contains('show')) {
-        sidebar.classList.remove('show');
-      }
-    });
-
-    // Close sidebar when clicking a nav link on mobile
-    const navLinks = sidebar.querySelectorAll('.nav-link');
-    navLinks.forEach(link => {
-      link.addEventListener('click', function() {
-        if (window.innerWidth < 768) {
-          sidebar.classList.remove('show');
-        }
-      });
-    });
-  }
-
-  // Auto-refresh logs on the task detail page
+  // --- Auto-refresh logs on the task detail page ---
   const autoRefreshCheckbox = document.getElementById("auto-refresh");
   if (autoRefreshCheckbox) {
-    const logContainer = document.querySelector("pre.logs");
+    const logContainer = document.querySelector(".log-viewer");
     const taskName = autoRefreshCheckbox.getAttribute("data-task-name");
     let intervalId;
     let initialLoad = true;
 
     function scrollToBottom() {
-      logContainer.scrollTop = logContainer.scrollHeight;
+      if (logContainer) logContainer.scrollTop = logContainer.scrollHeight;
     }
 
     function fetchLogs() {
+      const distanceFromBottom = logContainer
+        ? logContainer.scrollHeight - logContainer.scrollTop - logContainer.clientHeight
+        : 0;
+      const stickToBottom = distanceFromBottom < 48;
+
       return fetch(`/task/${encodeURIComponent(taskName)}/logs`)
         .then((resp) => resp.text())
         .then((text) => {
-          logContainer.textContent = text;
+          if (logContainer) logContainer.textContent = text;
           if (initialLoad) {
             scrollToBottom();
             initialLoad = false;
+          } else if (logContainer && stickToBottom) {
+            scrollToBottom();
           }
         })
         .catch((err) => console.error(err));
@@ -76,7 +57,6 @@ document.addEventListener("DOMContentLoaded", function () {
       }
     });
 
-    // Scroll to bottom of existing logs and start polling by default
     scrollToBottom();
     start();
   }
@@ -94,7 +74,6 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   }
 
-  // Listen for backup mode changes
   const backupModeRadios = document.getElementsByName('backupMode');
   if (backupModeRadios && backupModeRadios.length > 0) {
     backupModeRadios.forEach(radio => {
@@ -121,7 +100,6 @@ document.addEventListener("DOMContentLoaded", function () {
 
   function updateSaveBackupConfigState() {
     const saveBtn = document.getElementById('saveBackupConfigBtn');
-    const megaConnectBtn = document.getElementById('megaConnectBtn');
     const modeRadio = document.querySelector('input[name="backupMode"]:checked');
     if (!saveBtn || !modeRadio) return;
     const mode = modeRadio.value;
@@ -194,11 +172,10 @@ document.addEventListener("DOMContentLoaded", function () {
         },
         onSelect: (folderPath) => {
           document.getElementById('megaFolderPath').value = folderPath;
-          // Show warning if needed
           const warning = document.getElementById('megaFolderWarning');
           if (warning) warning.classList.remove('d-none');
         },
-        modalSelector: '#megaFolderPickerModal',
+        modalId: 'megaFolderPickerModal',
         listUrl: '/api/setup/mega/list_folders',
         createUrl: '/api/setup/mega/create_folder'
       });
@@ -216,12 +193,10 @@ document.addEventListener("DOMContentLoaded", function () {
       backupConfigError.textContent = '';
     }
     const saveBtn = document.getElementById('saveBackupConfigBtn');
-    let saveSpinner = saveBtn ? saveBtn.querySelector('.spinner-border') : null;
+    let saveSpinner = saveBtn ? saveBtn.querySelector('.spinner') : null;
     if (saveBtn && !saveSpinner) {
       saveSpinner = document.createElement('span');
-      saveSpinner.className = 'spinner-border spinner-border-sm ms-2';
-      saveSpinner.setAttribute('role', 'status');
-      saveSpinner.setAttribute('aria-hidden', 'true');
+      saveSpinner.className = 'spinner ms-2';
       saveSpinner.style.display = 'none';
       saveBtn.appendChild(saveSpinner);
     }
@@ -276,6 +251,7 @@ document.addEventListener("DOMContentLoaded", function () {
           backupConfigError.classList.remove('d-none');
         }
       });
+      return;
     }
     const configField = document.getElementById('rcloneConfig');
     const remoteNameField = document.getElementById('remoteName');
@@ -330,6 +306,5 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
 
-  // Initially disable Save button
   updateSaveBackupConfigState();
 });
