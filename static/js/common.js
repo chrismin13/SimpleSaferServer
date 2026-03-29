@@ -228,11 +228,23 @@ document.addEventListener('DOMContentLoaded', () => {
 window.showAlert = function showAlert(message, type = 'success', container = null) {
   const alertDiv = document.createElement('div');
   alertDiv.className = `alert alert-${type}`;
-  alertDiv.innerHTML = `
-    <i class="fas ${type === 'success' ? 'fa-check-circle' : type === 'danger' ? 'fa-exclamation-triangle' : type === 'warning' ? 'fa-exclamation-circle' : 'fa-info-circle'}"></i>
-    <span>${message}</span>
-  `;
 
+  const icon = document.createElement('i');
+  icon.className = `fas ${
+    type === 'success'
+      ? 'fa-check-circle'
+      : type === 'danger'
+      ? 'fa-exclamation-triangle'
+      : type === 'warning'
+      ? 'fa-exclamation-circle'
+      : 'fa-info-circle'
+  }`;
+
+  const messageSpan = document.createElement('span');
+  messageSpan.textContent = message;
+
+  alertDiv.appendChild(icon);
+  alertDiv.appendChild(messageSpan);
   const target = container || document.querySelector('.page-alerts') || document.querySelector('.main-content') || document.body;
   target.prepend(alertDiv);
 
