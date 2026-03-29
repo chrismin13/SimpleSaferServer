@@ -71,7 +71,16 @@ window.openMegaFolderPicker = function openMegaFolderPicker(options) {
           data.folders.forEach(folder => {
             const item = document.createElement('div');
             item.className = 'folder-list-item';
-            item.innerHTML = `<i class="fas fa-folder"></i> <span>${folder}</span>`;
+
+            const icon = document.createElement('i');
+            icon.className = 'fas fa-folder';
+
+            const nameSpan = document.createElement('span');
+            nameSpan.textContent = folder;
+
+            item.appendChild(icon);
+            item.appendChild(document.createTextNode(' '));
+            item.appendChild(nameSpan);
             item.title = folder;
             item.setAttribute('role', 'button');
             item.setAttribute('tabindex', '0');
