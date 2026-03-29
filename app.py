@@ -1079,7 +1079,7 @@ def alerts():
 
 # Alerts API endpoints
 @app.route('/api/alerts/generate-test', methods=['POST'])
-@login_required
+@admin_required
 def api_generate_test_alerts():
     """Debug route: Generate test alerts for UI testing."""
     try:

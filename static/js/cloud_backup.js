@@ -163,7 +163,7 @@ document.addEventListener('DOMContentLoaded', function () {
     } else {
       megaFields.classList.remove('active');
       advancedFields.classList.add('active');
-      if (modeMega.checked === false && megaEmail.value && megaFolderPath.value) {
+      if (megaEmail.value && megaFolderPath.value && !remoteName.value.trim()) {
         remoteName.value = `mega:${megaFolderPath.value}`;
       }
     }
