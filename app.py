@@ -24,7 +24,7 @@ try:
     import pandas as pd
     from xgboost import XGBClassifier
     import joblib
-except ModuleNotFoundError:
+except (ImportError, OSError):
     pd = None
     XGBClassifier = None
     joblib = None
