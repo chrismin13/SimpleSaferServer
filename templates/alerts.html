@@ -204,7 +204,15 @@ function saveEmailConfig() {
 
 function showEmailError(message) {
   const errorDiv = document.getElementById('emailConfigError');
-  errorDiv.innerHTML = `<i class="fas fa-exclamation-triangle"></i> <span>${message}</span>`;
+  // Clear existing content and safely insert icon and text
+  errorDiv.textContent = '';
+  const icon = document.createElement('i');
+  icon.className = 'fas fa-exclamation-triangle';
+  errorDiv.appendChild(icon);
+  errorDiv.appendChild(document.createTextNode(' '));
+  const textSpan = document.createElement('span');
+  textSpan.textContent = message;
+  errorDiv.appendChild(textSpan);
   errorDiv.classList.remove('d-none');
   setTimeout(() => errorDiv.classList.add('d-none'), 5000);
 }
