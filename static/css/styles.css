@@ -820,7 +820,7 @@ table td {
   background: var(--bg-surface);
 }
 
-table tr:nth-child(even) td { background: var(--bg-root); }
+table tbody tr:nth-child(even) td { background: var(--bg-root); }
 table tr:last-child td { border-bottom: none; }
 table tr:hover td { background: var(--bg-hover); }
 
