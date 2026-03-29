@@ -605,6 +605,7 @@ def dashboard():
             })
     # Get system metrics
     mount_point = config_manager.get_value('backup', 'mount_point', runtime.default_mount_point)
+    mounted = system_utils.is_mounted(mount_point)
     try:
         disk = psutil.disk_usage(mount_point)
     except Exception:
@@ -620,6 +621,7 @@ def dashboard():
         hdd_temp='35',  # Just the number, template will add °C
         cpu_usage=f"{cpu_percent}%",
         ram_usage=f"{ram_percent}%",
+        mount_info={'is_mounted': mounted, 'mount_point': mount_point},
         tasks=tasks
     )
 

@@ -203,6 +203,14 @@ h1, h2, h3, h4, h5, h6 { font-family: var(--font-display); font-weight: var(--we
   margin-bottom: var(--sp-6);
 }
 
+.page-alerts .alert {
+  align-items: center;
+}
+
+.page-alerts .alert i {
+  flex-shrink: 0;
+}
+
 .page-alerts:empty {
   display: none;
 }

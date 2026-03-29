@@ -126,7 +126,7 @@
   <h2 class="mb-4" style="font-size: var(--text-lg);">System Actions</h2>
   <div class="d-flex gap-3 flex-wrap">
     {% if mount_info and mount_info.is_mounted %}
-    <form method="post" action="{{ url_for('unmount_drive') }}" class="d-inline dashboard-action-form" data-success-action="reload">
+    <form method="post" action="{{ url_for('unmount') }}" class="d-inline dashboard-action-form" data-success-action="reload">
       <button type="submit" class="btn btn-warning btn-sm"
         data-confirm="Are you sure you want to unmount the backup drive?"
         data-confirm-title="Unmount Drive"
