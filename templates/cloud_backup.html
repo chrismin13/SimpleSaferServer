@@ -188,15 +188,38 @@
 <script src="{{ url_for('static', filename='js/cloud_backup.js') }}"></script>
 <script>
 // Radio option visual selection
-document.addEventListener('DOMContentLoaded', function() {
-  document.querySelectorAll('.radio-option input[type="radio"]').forEach(radio => {
-    radio.addEventListener('change', function() {
-      document.querySelectorAll('.radio-option').forEach(opt => opt.classList.remove('selected'));
-      if (this.checked) this.closest('.radio-option').classList.add('selected');
+(function() {
+  function updateRadioOptionSelection() {
+    // Clear existing selection classes
+    document.querySelectorAll('.radio-option').forEach(function(opt) {
+      opt.classList.remove('selected');
+    });
+    // Apply selection based on currently checked radios
+    document.querySelectorAll('.radio-option input[type="radio"]').forEach(function(radio) {
+      if (radio.checked) {
+        var container = radio.closest('.radio-option');
+        if (container) {
+          container.classList.add('selected');
+        }
+      }
+    });
+  }
+
+  function attachRadioOptionHandlers() {
+    document.querySelectorAll('.radio-option input[type="radio"]').forEach(function(radio) {
+      radio.addEventListener('change', updateRadioOptionSelection);
     });
     // Set initial state
-    if (radio.checked) radio.closest('.radio-option').classList.add('selected');
-  });
-});
+    updateRadioOptionSelection();
+  }
+
+  // Expose so other scripts (e.g., cloud_backup.js) can resync visuals after changing checked state
+  window.updateRadioOptionSelection = updateRadioOptionSelection;
+
+  document.addEventListener('DOMContentLoaded', attachRadioOptionHandlers);
+
+  // Allow external code to trigger a resync via a custom event when config is applied
+  document.addEventListener('cloudBackupConfigApplied', updateRadioOptionSelection);
+})();
 </script>
 {% endblock %}
