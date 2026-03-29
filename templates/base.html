@@ -19,6 +19,8 @@
     {% block extra_css %}{% endblock %}
 </head>
 <body class="{% block body_class %}{% endblock %}{% if runtime_mode == 'fake' %} fake-mode-active{% endif %}">
+    {% include 'partials/app_bg.html' %}
+
     {% if runtime_mode == 'fake' %}
     <div class="fake-mode-banner">
         <i class="fas fa-flask me-1"></i> Fake mode — system services and destructive actions are simulated

@@ -1,5 +1,9 @@
 # Internal UI Patterns
 
+## Bunker Aesthetic
+- **Frosted Glass Components:** Use a dark frosted-glass treatment (for example, `hsla(220, 16%, 12%, 0.75–0.85)` with `backdrop-filter: blur(20–32px)` and matching `-webkit-backdrop-filter`) for main interface structures (e.g., `.card`, `.sidebar`, `.status-tile`, `.modal-container`). Individual components may tune opacity and blur within this range to meet contrast and legibility requirements.
+- **Global Background:** The animated `app-bg-container` creates an ambient textured environment behind the translucent glass elements.
+
 ## Layout Stability
 
 Interactive controls should stay anchored when nearby status, validation, or warning UI appears.
@@ -8,7 +12,7 @@ Rules:
 
 - Do not place volatile banners above primary action buttons if those banners can appear after a click.
 - Prefer global toasts for transient feedback when inline placement is not required.
-- When inline feedback is required, reserve space with a feedback slot so forms, modal footers, and action rows do not jump.
+- When inline feedback is required, do NOT artificially reserve empty whitespace ahead of time. Use a naturally collapsing `.feedback-slot` so the interface remains densely packed and only shifts slightly when an error absolutely must be displayed.
 - In modals, prefer a compact footer status line for modal-level errors instead of inserting a full alert above the fields.
 - Keep button rows and action bars in a stable position across empty, loading, success, and error states.
 - Treat layout shift as a bug. The UI should not move around as the user clicks through normal flows unless movement is necessary for the task itself.

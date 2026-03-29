@@ -610,3 +610,47 @@ window.renderPathBreadcrumbs = function renderPathBreadcrumbs(container, value, 
     appendPart(segment, currentPath, index === segments.length - 1);
   });
 };
+
+
+/* ── Feedback-slot .is-empty sync ───────────────────────────── */
+// Marks .feedback-slot elements as .is-empty when all their children are
+// hidden (.d-none), so CSS can collapse the slot even in browsers that
+// don't support :has(). Runs on DOMContentLoaded and re-evaluates whenever
+// a child's class changes (via MutationObserver).
+(function initFeedbackSlotSync() {
+  function hasVisibleChild(slot) {
+    for (const child of slot.children) {
+      if (!child.classList.contains('d-none')) return true;
+    }
+    return false;
+  }
+
+  function syncSlot(slot) {
+    const empty = slot.children.length === 0 || !hasVisibleChild(slot);
+    slot.classList.toggle('is-empty', empty);
+  }
+
+  const observer = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      const slot = mutation.target.closest('.feedback-slot');
+      if (slot) syncSlot(slot);
+    });
+  });
+
+  function init() {
+    document.querySelectorAll('.feedback-slot').forEach((slot) => {
+      syncSlot(slot);
+      observer.observe(slot, {
+        childList: true,
+        subtree: true,
+        attributeFilter: ['class'],
+      });
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+}());
