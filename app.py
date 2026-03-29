@@ -1078,6 +1078,20 @@ def alerts():
     return render_template('alerts.html', username=session.get('username'))
 
 # Alerts API endpoints
+@app.route('/api/alerts/generate-test', methods=['POST'])
+@login_required
+def api_generate_test_alerts():
+    """Debug route: Generate test alerts for UI testing."""
+    try:
+        config_manager.log_alert("Test Error", "This is a simulated error message to verify UI styling.", alert_type="error", source="System Test")
+        config_manager.log_alert("Test Warning", "This is a simulated warning message. Things might be wrong.", alert_type="warning", source="System Test")
+        config_manager.log_alert("Test Success", "This is a simulated success message. Everything is great!", alert_type="success", source="System Test")
+        config_manager.log_alert("Test Info", "This is a simulated info message just letting you know something happened.", alert_type="info", source="System Test")
+        return jsonify({'success': True})
+    except Exception as e:
+        current_app.logger.error(f"Error generating test alerts: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
 @app.route('/api/alerts', methods=['GET'])
 @login_required
 def api_get_alerts():

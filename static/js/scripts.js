@@ -69,17 +69,37 @@ document.addEventListener("DOMContentLoaded", function () {
     const megaConfigFields = document.getElementById('megaConfigFields');
     const advancedConfigFields = document.getElementById('advancedConfigFields');
     if (megaConfigFields && advancedConfigFields) {
-      megaConfigFields.classList.toggle('d-none', mode !== 'mega');
-      advancedConfigFields.classList.toggle('d-none', mode !== 'advanced');
+      megaConfigFields.classList.toggle('active', mode === 'mega');
+      advancedConfigFields.classList.toggle('active', mode === 'advanced');
     }
+
+    document.querySelectorAll('#step4 .tab-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.getAttribute('data-tab') === mode);
+    });
   }
 
   const backupModeRadios = document.getElementsByName('backupMode');
   if (backupModeRadios && backupModeRadios.length > 0) {
     backupModeRadios.forEach(radio => {
-      radio.addEventListener('change', showBackupModeFields);
+      radio.addEventListener('change', () => {
+        showBackupModeFields();
+        updateSaveBackupConfigState();
+      });
     });
   }
+
+  // Bind Custom Tabs for Setup
+  document.querySelectorAll('#step4 .tab-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+      const mode = this.getAttribute('data-tab');
+      const radio = document.querySelector(`input[name="backupMode"][value="${mode}"]`);
+      if (radio) {
+        radio.checked = true;
+        showBackupModeFields();
+        updateSaveBackupConfigState();
+      }
+    });
+  });
 
   // --- MEGA Connect: Pressing Enter in Password triggers Connect ---
   const megaPassword = document.getElementById('megaPassword');

@@ -4,8 +4,18 @@
 {% block header %}Alerts{% endblock %}
 
 {% block content %}
-<!-- Email Configuration -->
-<section class="mb-8">
+<!-- Actions Row -->
+<div class="alerts-header-actions mb-4">
+  <button class="btn btn-outline-secondary btn-sm" id="generateTestAlertsBtn" title="Debug: Generate Test Alerts">
+    <i class="fas fa-bug"></i> Generate Tests
+  </button>
+  <button class="btn btn-secondary btn-sm" id="toggleSettingsBtn">
+    <i class="fas fa-cog me-2"></i> Email Settings
+  </button>
+</div>
+
+<!-- Email Configuration (Collapsible) -->
+<div id="emailConfigPane" class="alerts-settings-pane">
   <h2 class="mb-4" style="font-size: var(--text-lg);"><i class="fas fa-envelope me-2 text-muted"></i>Email Alert Configuration</h2>
   <form id="emailConfigForm">
     <div class="form-group mb-4">
@@ -46,12 +56,12 @@
       <button type="submit" class="btn btn-primary" id="saveEmailBtn">Save Email Configuration</button>
     </div>
   </form>
-</section>
+</div>
 
 <!-- Past Alerts -->
 <section>
   <div class="d-flex items-center justify-between mb-4 flex-wrap gap-3">
-    <h2 style="font-size: var(--text-lg); margin: 0;"><i class="fas fa-bell me-2 text-muted"></i>Past Alerts</h2>
+    <h2 style="font-size: var(--text-lg); margin: 0;"><i class="fas fa-bell me-2 text-muted"></i>Recent Alerts</h2>
     <div class="btn-group">
       <button class="btn btn-secondary btn-sm" id="refreshAlertsBtn">
         <i class="fas fa-rotate-right me-1"></i>Refresh
@@ -77,9 +87,9 @@
 
   <!-- No alerts -->
   <div id="noAlertsMessage" class="empty-state d-none">
-    <i class="fas fa-check-circle text-success"></i>
-    <h4>No Alerts</h4>
-    <p class="text-muted">No alerts have been generated yet. Your system is running smoothly!</p>
+    <i class="fas fa-check-circle text-success" style="filter: drop-shadow(0 0 12px var(--success)); margin-bottom: var(--sp-6);"></i>
+    <h4>All Clear</h4>
+    <p class="text-muted">No alerts have been generated recently. Your system is running smoothly!</p>
   </div>
 
   <!-- Alerts table -->
@@ -138,6 +148,46 @@ let currentAlertId = null;
 document.addEventListener('DOMContentLoaded', function() {
   loadEmailConfig();
   loadAlerts();
+
+  document.getElementById('toggleSettingsBtn').addEventListener('click', function() {
+    const pane = document.getElementById('emailConfigPane');
+    pane.classList.toggle('expanded');
+    const isExpanded = pane.classList.contains('expanded');
+    this.innerHTML = isExpanded
+      ? '<i class="fas fa-times me-2"></i> Close Settings'
+      : '<i class="fas fa-cog me-2"></i> Email Settings';
+    if(isExpanded) {
+      this.classList.add('btn-primary');
+      this.classList.remove('btn-secondary');
+    } else {
+      this.classList.remove('btn-primary');
+      this.classList.add('btn-secondary');
+    }
+  });
+
+  document.getElementById('generateTestAlertsBtn').addEventListener('click', function() {
+    const btn = this;
+    const originalHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>';
+
+    fetch('/api/alerts/generate-test', { method: 'POST' })
+      .then(r => r.json())
+      .then(data => {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+        if (data.success) {
+          loadAlerts();
+        } else {
+          showAlert(data.error || 'Failed to generate test alerts', 'danger');
+        }
+      })
+      .catch(() => {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+        showAlert('Network error while generating test alerts', 'danger');
+      });
+  });
 });
 
 function loadEmailConfig() {
@@ -241,6 +291,7 @@ function getTypeBadge(type) {
 }
 
 function truncateText(text, maxLength) {
+  if (!text) return text;
   if (text.length <= maxLength) return text;
   return text.substring(0, maxLength) + '…';
 }

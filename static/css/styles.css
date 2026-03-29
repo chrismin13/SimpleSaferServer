@@ -158,6 +158,10 @@ body.fake-mode-active .setup-page {
   min-height: 0;
 }
 
+body.fake-mode-active .sidebar {
+  top: 40px;
+}
+
 /* ── Sidebar ────────────────────────────────────────────────── */
 .sidebar {
   position: fixed;
@@ -827,6 +831,82 @@ table tr:hover td { background: var(--bg-hover); }
 table .text-center { text-align: center; }
 table .text-end { text-align: right; }
 
+/* ── Tabs ────────────────────────────────────────────────────── */
+.tabs-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  width: 100%;
+}
+
+.tabs-nav {
+  display: flex;
+  gap: var(--sp-2);
+  padding: var(--sp-1);
+  background: hsla(220, 16%, 12%, 0.4);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+  width: max-content;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.tabs-nav::-webkit-scrollbar {
+  display: none;
+}
+
+.tab-btn {
+  background: transparent;
+  color: hsla(0, 0%, 100%, 0.6);
+  border: 1px solid transparent;
+  padding: var(--sp-2) var(--sp-6);
+  border-radius: 999px;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold, 600);
+  cursor: pointer;
+  transition: all var(--dur-normal) cubic-bezier(0.4, 0, 0.2, 1);
+  white-space: nowrap;
+}
+
+.tab-btn:hover {
+  color: #fff;
+  background: hsla(0, 0%, 100%, 0.05);
+}
+
+.tab-btn.active {
+  color: #fff;
+  background: hsla(220, 16%, 36%, 0.5);
+  border-color: hsla(0, 0%, 100%, 0.1);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+
+.tab-content {
+  position: relative;
+  padding: var(--sp-4) 0;
+}
+
+.tab-pane {
+  display: none;
+  animation: tabFadeIn var(--dur-normal) var(--ease-default);
+}
+
+.tab-pane.active {
+  display: block;
+}
+
+@keyframes tabFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* ── Modal ──────────────────────────────────────────────────── */
 .modal-overlay {
   display: none;
@@ -1250,12 +1330,19 @@ pre code {
 
 /* ── Fake mode banner ───────────────────────────────────────── */
 .fake-mode-banner {
-  background: var(--info-subtle);
+  background: hsla(200, 70%, 52%, 0.15);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   color: var(--info-text);
   font-size: var(--text-sm);
-  padding: var(--sp-2) var(--sp-4);
-  text-align: center;
+  padding: 0 var(--sp-4);
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border-bottom: 1px solid hsla(200, 70%, 52%, 0.2);
+  position: relative;
+  z-index: var(--z-toast);
 }
 
 /* ============================================================
@@ -1985,4 +2072,40 @@ body.task-detail-body .page-header {
   .task-log-header .form-check {
     margin-right: 0;
   }
+}
+
+/* ============================================================
+   ALERTS PAGE
+   ============================================================ */
+
+.alerts-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+}
+
+.alerts-settings-pane {
+  background: hsla(220, 16%, 12%, 0.4);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  padding: 0;
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: all var(--dur-normal) var(--ease-default);
+  margin-bottom: 0;
+}
+
+.alerts-settings-pane.expanded {
+  max-height: 1000px;
+  opacity: 1;
+  padding: var(--sp-6);
+  margin-bottom: var(--sp-8);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-lg);
+  overflow: visible;
 }

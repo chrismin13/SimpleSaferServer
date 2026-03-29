@@ -185,69 +185,71 @@
                             <div class="feedback-slot feedback-slot-compact mb-4">
                                 <div id="backupConfigError" class="alert alert-danger d-none"></div>
                             </div>
-                            <div class="form-group mb-5">
-                                <label class="form-label">How do you want to configure cloud backup?</label>
-                                <div class="radio-group mt-2">
-                                    <label class="radio-option selected">
-                                        <input type="radio" name="backupMode" id="backupModeMega" value="mega" checked>
-                                        <span>MEGA (Simple)</span>
-                                    </label>
-                                    <label class="radio-option">
-                                        <input type="radio" name="backupMode" id="backupModeAdvanced" value="advanced">
-                                        <span>Advanced (rclone)</span>
-                                    </label>
+                            <div class="tabs-container mb-4">
+                                <div class="tabs-nav">
+                                    <button type="button" class="tab-btn active" data-tab="mega">MEGA (Simple)</button>
+                                    <button type="button" class="tab-btn" data-tab="advanced">Advanced (rclone)</button>
                                 </div>
-                            </div>
-                            <!-- MEGA Fields -->
-                            <div id="megaConfigFields">
-                                <div class="mb-4">
-                                    <img src="/static/img/mega-logo.svg" alt="MEGA logo" style="height: 48px; margin-bottom: var(--sp-2);">
-                                    <div class="fw-semi" style="font-size: var(--text-md);">Sign in to your MEGA account</div>
-                                    <a href="https://mega.io/register" target="_blank" rel="noopener" class="mt-1 d-inline-block" style="font-size: var(--text-sm);">Don't have a MEGA account? Create one here</a>
+
+                                <!-- Hidden radio inputs to maintain logic compatibility -->
+                                <div class="d-none">
+                                    <input type="radio" name="backupMode" id="backupModeMega" value="mega" checked>
+                                    <input type="radio" name="backupMode" id="backupModeAdvanced" value="advanced">
                                 </div>
-                                <div class="form-group mb-3">
-                                    <label class="form-label">MEGA Email</label>
-                                    <input type="email" id="megaEmail" class="form-control" placeholder="your@email.com">
-                                    <div class="invalid-feedback">Please enter a valid MEGA email.</div>
-                                </div>
-                                <div class="form-group mb-3">
-                                    <label class="form-label">MEGA Password</label>
-                                    <input type="password" id="megaPassword" class="form-control" placeholder="Password">
-                                    <div class="invalid-feedback">Please enter your MEGA password.</div>
-                                </div>
-                                <div class="mb-3">
-                                    <button id="megaConnectBtn" class="btn btn-primary btn-sm" type="button">
-                                        Connect &amp; Choose Folder
-                                    </button>
-                                </div>
-                                <div id="megaFolderPathArea" class="d-none mb-3">
-                                    <div class="form-group mb-3">
-                                        <label class="form-label">MEGA Folder Path</label>
-                                        <div class="input-group">
-                                            <input type="text" id="megaFolderPath" class="form-control" placeholder="/backups" readonly>
-                                            <button id="megaBrowseBtn" class="btn btn-secondary" type="button"><i class="fas fa-folder-open"></i> Browse</button>
+
+                                <div class="tab-content">
+                                    <!-- MEGA Fields -->
+                                    <div id="megaConfigFields" class="tab-pane active">
+                                        <div class="mb-4">
+                                            <img src="/static/img/mega-logo.svg" alt="MEGA logo" style="height: 48px; margin-bottom: var(--sp-2);">
+                                            <div class="fw-semi" style="font-size: var(--text-md);">Sign in to your MEGA account</div>
+                                            <a href="https://mega.io/register" target="_blank" rel="noopener" class="mt-1 d-inline-block" style="font-size: var(--text-sm);">Don't have a MEGA account? Create one here</a>
                                         </div>
-                                        <div class="invalid-feedback">Please select a folder.</div>
+                                        <div class="form-group mb-3">
+                                            <label class="form-label">MEGA Email</label>
+                                            <input type="email" id="megaEmail" class="form-control" placeholder="your@email.com">
+                                            <div class="invalid-feedback">Please enter a valid MEGA email.</div>
+                                        </div>
+                                        <div class="form-group mb-3">
+                                            <label class="form-label">MEGA Password</label>
+                                            <input type="password" id="megaPassword" class="form-control" placeholder="Password">
+                                            <div class="invalid-feedback">Please enter your MEGA password.</div>
+                                        </div>
+                                        <div class="mb-3">
+                                            <button id="megaConnectBtn" class="btn btn-primary btn-sm" type="button">
+                                                Connect &amp; Choose Folder
+                                            </button>
+                                        </div>
+                                        <div id="megaFolderPathArea" class="d-none mb-3">
+                                            <div class="form-group mb-3">
+                                                <label class="form-label">MEGA Folder Path</label>
+                                                <div class="input-group">
+                                                    <input type="text" id="megaFolderPath" class="form-control" placeholder="/backups" readonly>
+                                                    <button id="megaBrowseBtn" class="btn btn-secondary" type="button"><i class="fas fa-folder-open"></i> Browse</button>
+                                                </div>
+                                                <div class="invalid-feedback">Please select a folder.</div>
+                                            </div>
+                                            <div id="megaFolderWarning" class="alert alert-warning" style="font-size: var(--text-sm);">
+                                                <div><strong>Warning:</strong> When you run a backup, <strong>all files and folders in the selected MEGA directory will be overwritten or deleted to match your local backup.</strong></div>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div id="megaFolderWarning" class="alert alert-warning" style="font-size: var(--text-sm);">
-                                        <div><strong>Warning:</strong> When you run a backup, <strong>all files and folders in the selected MEGA directory will be overwritten or deleted to match your local backup.</strong></div>
+                                    <!-- Advanced rclone Fields -->
+                                    <div id="advancedConfigFields" class="tab-pane">
+                                        <div class="form-group mb-3">
+                                            <label class="form-label">Rclone Configuration</label>
+                                            <textarea id="rcloneConfig" rows="7" class="form-control" placeholder="Paste your rclone configuration here…"></textarea>
+                                            <div class="invalid-feedback">Rclone configuration is required.</div>
+                                        </div>
+                                        <div class="form-group mb-3">
+                                            <label class="form-label">Remote Name and Path</label>
+                                            <input type="text" id="remoteName" class="form-control" placeholder="e.g., myremote:/backups">
+                                            <div class="invalid-feedback">Remote name and path is required. Use format: remotename:/path</div>
+                                        </div>
+                                        <div class="alert alert-warning" style="font-size: var(--text-sm);">
+                                            <div><strong>Warning:</strong> rclone will synchronize the remote path to match your local backup directory. Files may be <strong>overwritten or deleted</strong>.</div>
+                                        </div>
                                     </div>
-                                </div>
-                            </div>
-                            <!-- Advanced rclone Fields -->
-                            <div id="advancedConfigFields" class="d-none">
-                                <div class="form-group mb-3">
-                                    <label class="form-label">Rclone Configuration</label>
-                                    <textarea id="rcloneConfig" rows="7" class="form-control" placeholder="Paste your rclone configuration here…"></textarea>
-                                    <div class="invalid-feedback">Rclone configuration is required.</div>
-                                </div>
-                                <div class="form-group mb-3">
-                                    <label class="form-label">Remote Name and Path</label>
-                                    <input type="text" id="remoteName" class="form-control" placeholder="e.g., myremote:/backups">
-                                    <div class="invalid-feedback">Remote name and path is required. Use format: remotename:/path</div>
-                                </div>
-                                <div class="alert alert-warning" style="font-size: var(--text-sm);">
-                                    <div><strong>Warning:</strong> rclone will synchronize the remote path to match your local backup directory. Files may be <strong>overwritten or deleted</strong>.</div>
                                 </div>
                             </div>
                             <div class="setup-actions">
