@@ -831,7 +831,7 @@ table td {
 
 table tbody tr:nth-child(even) td { background: var(--bg-root); }
 table tr:last-child td { border-bottom: none; }
-table tr:hover td { background: var(--bg-hover); }
+table tbody tr:hover td { background: var(--bg-hover); }
 
 table .text-center { text-align: center; }
 table .text-end { text-align: right; }
