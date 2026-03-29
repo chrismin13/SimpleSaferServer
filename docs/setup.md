@@ -5,7 +5,7 @@ The Setup Wizard guides you through the initial configuration of your backup sys
 ## Navigation and Progress
 - **Progress Bar**: Shows current step and allows navigation between steps.
 - **Validation**: Inline feedback for all fields.
-- **Spinners**: Buttons show spinners during processing.
+- **Async Buttons**: Buttons disable while work is in progress.
 
 ## Step 1: Create Admin Account
 - **Username**: Enter a username (3-32 characters, letters, numbers, underscores, hyphens).

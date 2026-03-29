@@ -377,11 +377,9 @@ document.addEventListener('DOMContentLoaded', function() {
       form.addEventListener('submit', async (event) => {
         event.preventDefault();
         const submitButton = form.querySelector('button[type="submit"]');
-        const originalLabel = submitButton ? submitButton.innerHTML : '';
 
         if (submitButton) {
-          submitButton.disabled = true;
-          submitButton.innerHTML = '<span class="spinner me-1"></span> Working…';
+          window.AsyncButtonState.start(submitButton);
         }
 
         try {
@@ -395,17 +393,18 @@ document.addEventListener('DOMContentLoaded', function() {
             throw new Error(data.message || data.error || 'Action failed.');
           }
 
+          if (submitButton) {
+            window.AsyncButtonState.success(submitButton);
+          }
           showAlert(data.message || 'Action completed successfully.', 'success');
           if (form.dataset.successAction === 'refresh-drive-ui') {
             window.setTimeout(refreshDriveUi, 150);
           }
         } catch (error) {
-          showAlert(error.message || 'Action failed.', 'danger');
-        } finally {
           if (submitButton) {
-            submitButton.disabled = false;
-            submitButton.innerHTML = originalLabel;
+            window.AsyncButtonState.error(submitButton);
           }
+          showAlert(error.message || 'Action failed.', 'danger');
         }
       });
     });

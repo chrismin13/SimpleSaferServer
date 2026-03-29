@@ -78,6 +78,31 @@ if XGBClassifier is not None and joblib is not None:
         optimal_threshold = 0.5
 
 
+def read_msmtp_config():
+    """Read the current msmtp config and return the parsed values that this app manages."""
+    msmtp_config = {}
+    try:
+        with open(runtime.msmtp_config_path, 'r') as f:
+            content = f.read()
+    except FileNotFoundError:
+        return msmtp_config
+
+    for line in content.split('\n'):
+        line = line.strip()
+        if line.startswith('host '):
+            msmtp_config['smtp_server'] = line.split(' ', 1)[1]
+        elif line.startswith('port '):
+            msmtp_config['smtp_port'] = line.split(' ', 1)[1]
+        elif line.startswith('from '):
+            msmtp_config['from_address'] = line.split(' ', 1)[1]
+        elif line.startswith('user '):
+            msmtp_config['smtp_username'] = line.split(' ', 1)[1]
+        elif line.startswith('password '):
+            msmtp_config['smtp_password'] = line.split(' ', 1)[1]
+
+    return msmtp_config
+
+
 def predict_failure_probability(smart):
     if model is not None and pd is not None:
         df = pd.DataFrame([smart])
@@ -317,11 +342,14 @@ class Task:
             with fake_task_lock:
                 thread = fake_task_threads.get(self.name)
                 cancel_event = fake_task_cancel_events.get(self.name)
-                if not thread or not thread.is_alive() or not cancel_event:
-                    raise RuntimeError(f'{self.name} is not running.')
-                cancel_event.set()
-            fake_state.append_task_log(self.name, f"Stopped {self.name} in fake mode.")
-            # Map fake-mode stop to a UI-supported status so it renders correctly
+                is_running = bool(thread and thread.is_alive() and cancel_event)
+                if is_running:
+                    cancel_event.set()
+            if is_running:
+                fake_state.append_task_log(self.name, f"Stopped {self.name} in fake mode.")
+            else:
+                fake_state.append_task_log(self.name, f"Stop requested for {self.name}, but it was not running.")
+            # Keep stop idempotent in fake mode so the UI does not fail on repeated clicks.
             fake_state.set_task_state(self.name, status=Status.STOPPED)
             return
         try:
@@ -689,9 +717,10 @@ def stop_task(task_name):
             return jsonify({"success": True, "message": f"Stopped {task_name}."})
         return redirect(url_for("task_detail", task_name=task_name))
     except Exception as e:
+        app.logger.exception("Failed to stop task %s", task_name)
         if request.accept_mimetypes.best == 'application/json':
             return jsonify({"success": False, "message": str(e)}), 500
-        abort(500)
+        return redirect(url_for("task_detail", task_name=task_name))
 
 
 # API route for running a task
@@ -1115,27 +1144,7 @@ def api_mark_all_alerts_read():
 def api_get_email_config():
     """Get current email configuration"""
     try:
-        # Read msmtp config file to get current settings
-        msmtp_config = {}
-        try:
-            with open(runtime.msmtp_config_path, 'r') as f:
-                content = f.read()
-            # Parse the msmtp config to extract settings
-            lines = content.split('\n')
-            for line in lines:
-                line = line.strip()
-                if line.startswith('host '):
-                    msmtp_config['smtp_server'] = line.split(' ', 1)[1]
-                elif line.startswith('port '):
-                    msmtp_config['smtp_port'] = line.split(' ', 1)[1]
-                elif line.startswith('from '):
-                    msmtp_config['from_address'] = line.split(' ', 1)[1]
-                elif line.startswith('user '):
-                    msmtp_config['smtp_username'] = line.split(' ', 1)[1]
-                elif line.startswith('password '):
-                    msmtp_config['smtp_password'] = line.split(' ', 1)[1]
-        except FileNotFoundError:
-            pass  # msmtp config doesn't exist yet
+        msmtp_config = read_msmtp_config()
         # Get email address and from address from config manager as well
         email_address = config_manager.get_value('backup', 'email_address', '')
         from_address = config_manager.get_value('backup', 'from_address', '')
@@ -1143,8 +1152,11 @@ def api_get_email_config():
             msmtp_config['email_address'] = email_address
         if from_address and 'from_address' not in msmtp_config:
             msmtp_config['from_address'] = from_address
-        
-        return jsonify({'success': True, 'config': msmtp_config})
+
+        has_smtp_password = bool(msmtp_config.get('smtp_password'))
+        msmtp_config.pop('smtp_password', None)
+
+        return jsonify({'success': True, 'config': msmtp_config, 'has_smtp_password': has_smtp_password})
     except Exception as e:
         current_app.logger.error(f"Error getting email config: {e}")
         return jsonify({'success': False, 'error': str(e)})
@@ -1160,9 +1172,16 @@ def api_set_email_config():
         smtp_server = data.get('smtp_server')
         smtp_port = data.get('smtp_port')
         smtp_username = data.get('smtp_username')
-        smtp_password = data.get('smtp_password')
-        if not all([email, from_address, smtp_server, smtp_port, smtp_username, smtp_password]):
-            return jsonify({'success': False, 'error': 'All email fields are required'})
+        smtp_password = (data.get('smtp_password') or '').strip()
+
+        if not all([email, from_address, smtp_server, smtp_port, smtp_username]):
+            return jsonify({'success': False, 'error': 'Email, from address, SMTP server, port, and username are required'})
+
+        if not smtp_password:
+            smtp_password = read_msmtp_config().get('smtp_password', '')
+        if not smtp_password:
+            return jsonify({'success': False, 'error': 'SMTP password is required'})
+
         # Save email and from address to config
         config_manager.set_value('backup', 'email_address', email)
         config_manager.set_value('backup', 'from_address', from_address)

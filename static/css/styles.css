@@ -784,10 +784,41 @@ table .text-end { text-align: right; }
 .modal-footer {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
   gap: var(--sp-3);
   padding: var(--sp-4) var(--sp-5);
   border-top: 1px solid var(--border-subtle);
+}
+
+.modal-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+
+.modal-footer-message {
+  min-height: 1.5rem;
+  flex: 1 1 220px;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--text-xs);
+  color: var(--danger-text);
+  opacity: 0;
+  transform: translateY(2px);
+  transition: opacity var(--dur-fast) var(--ease-default), transform var(--dur-fast) var(--ease-default);
+}
+
+.modal-footer-message.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.modal-footer-message i {
+  flex-shrink: 0;
 }
 
 /* ── Alerts / toasts ────────────────────────────────────────── */
@@ -822,6 +853,40 @@ table .text-end { text-align: right; }
 .alert-warning { background: var(--warning-subtle); color: var(--warning-text); border: 1px solid hsla(38,90%,55%,0.2); }
 .alert-danger  { background: var(--danger-subtle);  color: var(--danger-text);  border: 1px solid hsla(0,68%,56%,0.2); }
 .alert-info    { background: var(--info-subtle);    color: var(--info-text);    border: 1px solid hsla(200,70%,52%,0.2); }
+
+.page-feedback-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.feedback-slot {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+
+.feedback-slot > .alert {
+  margin: 0;
+}
+
+.feedback-slot-compact {
+  min-height: 3rem;
+}
+
+.feedback-slot-medium {
+  min-height: 5rem;
+}
+
+.drive-health-result-panel {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-5);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
 
 .toast-notification {
   align-items: center;
@@ -916,6 +981,14 @@ table .text-end { text-align: right; }
   justify-content: space-between;
   gap: var(--sp-3);
   flex-wrap: wrap;
+}
+
+.task-detail-back-link {
+  flex-shrink: 0;
+}
+
+.task-detail-toolbar-actions {
+  margin-left: auto;
 }
 
 .task-log-panel {
@@ -1274,14 +1347,14 @@ pre code {
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-xl);
-  padding: var(--sp-8) var(--sp-6);
+  padding: var(--sp-6) var(--sp-6);
   position: relative;
   z-index: 1;
 }
 
 .login-brand {
   text-align: center;
-  margin-bottom: var(--sp-8);
+  margin-bottom: var(--sp-5);
 }
 
 .login-brand-icon {
@@ -1294,7 +1367,7 @@ pre code {
   justify-content: center;
   color: var(--accent);
   font-size: var(--text-xl);
-  margin-bottom: var(--sp-4);
+  margin-bottom: var(--sp-3);
 }
 
 .login-brand h2 {
@@ -1314,6 +1387,10 @@ pre code {
   gap: var(--sp-5);
 }
 
+.login-feedback-slot {
+  min-height: 2.5rem;
+}
+
 .login-error {
   background: var(--danger-subtle);
   color: var(--danger-text);
@@ -1321,6 +1398,15 @@ pre code {
   border-radius: var(--radius-md);
   font-size: var(--text-sm);
   border: 1px solid hsla(0, 68%, 56%, 0.2);
+}
+
+.login-success {
+  background: var(--success-subtle);
+  color: var(--success-text);
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  border: 1px solid hsla(152, 58%, 46%, 0.2);
 }
 
 /* ============================================================
@@ -1507,7 +1593,7 @@ pre code {
 
 /* ── Folder picker list ─────────────────────────────────────── */
 .folder-list {
-  max-height: 350px;
+  height: clamp(15rem, 42vh, 21rem);
   overflow-y: auto;
   overflow-x: hidden;
   border: 1px solid var(--border-subtle);
@@ -1723,6 +1809,14 @@ body.task-detail-body .page-header {
 }
 
 @media (max-width: 768px) {
+  .drive-health-result-panel {
+    align-items: flex-start;
+  }
+
+  .folder-list {
+    height: min(16rem, 38vh);
+  }
+
   body.task-detail-body {
     overflow: auto;
   }
@@ -1735,6 +1829,10 @@ body.task-detail-body .page-header {
   .task-log-panel,
   .task-log-viewer {
     min-height: auto;
+  }
+
+  .task-detail-toolbar-actions {
+    margin-left: 0;
   }
 
   .task-log-viewer {

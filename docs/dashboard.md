@@ -21,7 +21,7 @@ Four cards display real-time status:
 - **Shutdown System**: Opens a modal to confirm and shut down the system.
 
 ## Modals
-- **Unmount, Mount, Restart, Shutdown**: Each action has a confirmation modal with status, spinner, and feedback.
+- **Unmount, Mount, Restart, Shutdown**: Each action temporarily disables its button and uses existing completion/error messaging.
 
 ## Live Updates
 - Status cards and system resources update live using background API calls.

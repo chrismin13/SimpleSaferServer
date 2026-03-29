@@ -40,10 +40,7 @@ function loadStatus() {
 
 function runBackupNow() {
   const runBtn = document.getElementById('cloud-backup-run-btn');
-  const runSpinner = document.getElementById('cloud-backup-run-spinner');
-
-  runBtn.disabled = true;
-  runSpinner.classList.remove('d-none');
+  window.AsyncButtonState.start(runBtn);
 
   fetch('/api/cloud_backup/run', {
     method: 'POST',
@@ -52,15 +49,13 @@ function runBackupNow() {
     .then(r => r.json())
     .then(data => {
       if (!data.success) throw new Error(data.error || 'Failed to start backup');
+      window.AsyncButtonState.success(runBtn);
       showAlert(data.message || 'Cloud backup started.', 'success');
       loadStatus();
     })
     .catch(e => {
+      window.AsyncButtonState.error(runBtn);
       showAlert(e.message || 'Could not start backup.', 'danger');
-    })
-    .finally(() => {
-      runBtn.disabled = false;
-      runSpinner.classList.add('d-none');
     });
 }
 
@@ -69,7 +64,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
   const configForm = document.getElementById('cloud-backup-config-form');
   const saveBtn = document.getElementById('cloud-backup-save-btn');
-  const saveSpinner = document.getElementById('cloud-backup-save-spinner');
 
   const modeMega = document.getElementById('cloudModeMega');
   const modeAdvanced = document.getElementById('cloudModeAdvanced');
@@ -87,7 +81,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
   const scheduleForm = document.getElementById('cloud-backup-schedule-form');
   const scheduleSaveBtn = document.getElementById('cloud-backup-schedule-save-btn');
-  const scheduleSaveSpinner = document.getElementById('cloud-backup-schedule-save-spinner');
 
   if (backupTime) {
     const showTimePicker = () => {
@@ -133,17 +126,14 @@ document.addEventListener('DOMContentLoaded', function () {
 
   scheduleForm.addEventListener('submit', function (e) {
     e.preventDefault();
-    scheduleSaveBtn.disabled = true;
-    scheduleSaveSpinner.classList.remove('d-none');
     let valid = true;
     if (!backupTime.value) {
       backupTime.classList.add('is-invalid'); valid = false;
     } else { backupTime.classList.remove('is-invalid'); }
     if (!valid) {
-      scheduleSaveBtn.disabled = false;
-      scheduleSaveSpinner.classList.add('d-none');
       return;
     }
+    window.AsyncButtonState.start(scheduleSaveBtn);
     fetch('/api/cloud_backup/schedule', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -155,16 +145,14 @@ document.addEventListener('DOMContentLoaded', function () {
       .then(r => r.json())
       .then(data => {
         if (!data.success) throw new Error(data.error || 'Failed to save schedule');
+        window.AsyncButtonState.success(scheduleSaveBtn);
         showAlert('Schedule saved successfully!', 'success');
         loadSchedule();
         loadStatus();
       })
       .catch(e => {
+        window.AsyncButtonState.error(scheduleSaveBtn);
         showAlert(e.message || 'Could not save schedule.', 'danger');
-      })
-      .finally(() => {
-        scheduleSaveBtn.disabled = false;
-        scheduleSaveSpinner.classList.add('d-none');
       });
   });
 
@@ -238,8 +226,7 @@ document.addEventListener('DOMContentLoaded', function () {
     } else {
       megaPassword.classList.remove('is-invalid');
     }
-    megaSaveCredsBtn.disabled = true;
-    megaSaveCredsBtn.innerHTML = '<span class="spinner me-2"></span>Saving...';
+    window.AsyncButtonState.start(megaSaveCredsBtn);
     fetch('/api/cloud_backup/mega/validate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -247,11 +234,11 @@ document.addEventListener('DOMContentLoaded', function () {
     })
       .then(r => r.json())
       .then(data => {
-        megaSaveCredsBtn.disabled = false;
-        megaSaveCredsBtn.innerHTML = 'Save Credentials';
         if (data.success) {
+          window.AsyncButtonState.success(megaSaveCredsBtn);
           setMegaCredsLocked(true, email, true);
         } else {
+          window.AsyncButtonState.error(megaSaveCredsBtn);
           megaCredStatus.textContent = data.error || 'Could not validate credentials.';
           megaCredStatus.classList.remove('d-none');
           megaCredStatus.className = 'alert alert-danger mt-2';
@@ -259,8 +246,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
       })
       .catch(e => {
-        megaSaveCredsBtn.disabled = false;
-        megaSaveCredsBtn.innerHTML = 'Save Credentials';
+        window.AsyncButtonState.error(megaSaveCredsBtn);
         megaCredStatus.textContent = e.message || 'Could not validate credentials.';
         megaCredStatus.classList.remove('d-none');
         megaCredStatus.className = 'alert alert-danger mt-2';
@@ -333,7 +319,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
   configForm.addEventListener('submit', function (e) {
     e.preventDefault();
-    saveBtn.disabled = true;
     const data = getConfigFormData();
     let valid = true;
     if (data.cloud_mode === 'mega') {
@@ -355,9 +340,9 @@ document.addEventListener('DOMContentLoaded', function () {
       }
     }
     if (!valid) {
-      saveBtn.disabled = false;
       return;
     }
+    window.AsyncButtonState.start(saveBtn);
     fetch('/api/cloud_backup/config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -366,16 +351,15 @@ document.addEventListener('DOMContentLoaded', function () {
       .then(r => r.json())
       .then(data => {
         if (!data.success) throw new Error(data.error || 'Failed to save settings');
+        window.AsyncButtonState.success(saveBtn);
         showAlert('Cloud backup settings saved successfully!', 'success');
         if (data.config && data.config.cloud_mode === 'mega') {
           setMegaCredsLocked(true, data.config.mega_email, true);
         }
       })
       .catch(e => {
+        window.AsyncButtonState.error(saveBtn);
         showAlert(e.message || 'Could not save backup settings.', 'danger');
-      })
-      .finally(() => {
-        saveBtn.disabled = false;
       });
   });
 

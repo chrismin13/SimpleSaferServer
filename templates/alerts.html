@@ -38,15 +38,12 @@
       </div>
       <div class="form-group">
         <label class="form-label">Password</label>
-        <input type="password" id="smtpPassword" class="form-control">
-        <div class="invalid-feedback">SMTP password is required.</div>
+        <input type="password" id="smtpPassword" class="form-control" placeholder="Leave blank to keep current password" autocomplete="new-password">
+        <div class="invalid-feedback">SMTP password is required when no password is currently stored.</div>
       </div>
     </div>
     <div class="d-flex justify-end">
-      <button type="submit" class="btn btn-primary" id="saveEmailBtn">
-        <span class="spinner d-none me-2"></span>
-        Save Email Configuration
-      </button>
+      <button type="submit" class="btn btn-primary" id="saveEmailBtn">Save Email Configuration</button>
     </div>
   </form>
 </section>
@@ -153,7 +150,7 @@ function loadEmailConfig() {
         document.getElementById('smtpServer').value = data.config.smtp_server || '';
         document.getElementById('smtpPort').value = data.config.smtp_port || '';
         document.getElementById('smtpUsername').value = data.config.smtp_username || '';
-        document.getElementById('smtpPassword').value = data.config.smtp_password || '';
+        document.getElementById('smtpPassword').value = '';
       }
     })
     .catch(e => console.error('Error loading email config:', e));
@@ -172,8 +169,8 @@ function saveEmailConfig() {
   const smtpUsername = document.getElementById('smtpUsername').value.trim();
   const smtpPassword = document.getElementById('smtpPassword').value;
 
-  if (!emailAddress || !fromAddress || !smtpServer || !smtpPort || !smtpUsername || !smtpPassword) {
-    showEmailError('All fields are required'); return;
+  if (!emailAddress || !fromAddress || !smtpServer || !smtpPort || !smtpUsername) {
+    showEmailError('Email, from address, SMTP server, port, and username are required'); return;
   }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailAddress)) { showEmailError('Please enter a valid email address'); return; }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fromAddress)) { showEmailError('Please enter a valid from address'); return; }
@@ -181,9 +178,7 @@ function saveEmailConfig() {
   if (isNaN(portNum) || portNum < 1 || portNum > 65535) { showEmailError('SMTP port must be between 1 and 65535'); return; }
 
   const saveBtn = document.getElementById('saveEmailBtn');
-  const spinner = saveBtn.querySelector('.spinner');
-  saveBtn.disabled = true;
-  spinner.classList.remove('d-none');
+  window.AsyncButtonState.start(saveBtn);
 
   fetch('/api/alerts/email-config', {
     method: 'POST',
@@ -193,12 +188,15 @@ function saveEmailConfig() {
     .then(r => r.json())
     .then(data => {
       if (data.success) {
+        window.AsyncButtonState.success(saveBtn);
         showAlert('Email configuration saved successfully', 'success');
         document.getElementById('smtpPassword').value = '';
-      } else showEmailError(data.error || 'Failed to save email configuration');
+      } else {
+        window.AsyncButtonState.error(saveBtn);
+        showEmailError(data.error || 'Failed to save email configuration');
+      }
     })
-    .catch(() => showEmailError('An error occurred while saving'))
-    .finally(() => { saveBtn.disabled = false; spinner.classList.add('d-none'); });
+    .catch(() => { window.AsyncButtonState.error(saveBtn); showEmailError('An error occurred while saving'); });
 }
 
 function showEmailError(message) {

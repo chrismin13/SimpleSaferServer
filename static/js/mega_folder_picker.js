@@ -33,12 +33,14 @@ window.openMegaFolderPicker = function openMegaFolderPicker(options) {
 
   function showError(msg) {
     if (errorEl) {
-      errorEl.textContent = msg;
-      errorEl.classList.remove('d-none');
+      errorEl.innerHTML = `<i class="fas fa-circle-exclamation"></i><span>${msg}</span>`;
+      errorEl.classList.add('visible');
     }
   }
   function clearError() {
-    if (errorEl) errorEl.classList.add('d-none');
+    if (!errorEl) return;
+    errorEl.textContent = '';
+    errorEl.classList.remove('visible');
   }
 
   function parseJsonResponse(response) {
@@ -120,8 +122,7 @@ window.openMegaFolderPicker = function openMegaFolderPicker(options) {
       return;
     }
     newFolderNameEl.classList.remove('is-invalid');
-    saveNewFolderBtn.disabled = true;
-    saveNewFolderBtn.innerHTML = '<span class="spinner me-2"></span>Creating...';
+    window.AsyncButtonState.start(saveNewFolderBtn);
     const creds = getCredentials();
     fetch(createUrl, {
       method: 'POST',
@@ -130,25 +131,28 @@ window.openMegaFolderPicker = function openMegaFolderPicker(options) {
     })
       .then(parseJsonResponse)
       .then(data => {
-        saveNewFolderBtn.disabled = false;
-        saveNewFolderBtn.innerHTML = 'Create';
         if (data.success) {
+          window.AsyncButtonState.success(saveNewFolderBtn);
           newFolderNameEl.value = '';
           newFolderNameEl.classList.add('d-none');
           saveNewFolderBtn.classList.add('d-none');
           loadDirs(currentPath);
         } else {
+          window.AsyncButtonState.error(saveNewFolderBtn);
           showError(data.error || 'Failed to create folder.');
         }
       })
       .catch(e => {
-        saveNewFolderBtn.disabled = false;
-        saveNewFolderBtn.innerHTML = 'Create';
+        window.AsyncButtonState.error(saveNewFolderBtn);
         showError(e.message || 'Error creating folder.');
       });
   };
 
   // Start at root
+  if (!modalEl.dataset.megaPickerErrorBound) {
+    modalEl.addEventListener('modal:hidden', clearError);
+    modalEl.dataset.megaPickerErrorBound = 'true';
+  }
   loadDirs('/');
   BunkerModal.show(resolvedId);
 };

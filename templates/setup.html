@@ -73,7 +73,9 @@
                     <div id="step1" class="setup-step active">
                         <div class="setup-card">
                             <h3>Create Admin Account</h3>
-                            <div id="adminError" class="alert alert-danger d-none mb-4"></div>
+                            <div class="feedback-slot feedback-slot-compact mb-4">
+                                <div id="adminError" class="alert alert-danger d-none"></div>
+                            </div>
                             <div class="form-group mb-4">
                                 <label class="form-label">Username</label>
                                 <input type="text" id="username" class="form-control" placeholder="Enter username">
@@ -179,7 +181,9 @@
                     <div id="step4" class="setup-step">
                         <div class="setup-card">
                             <h3>Cloud Backup Configuration</h3>
-                            <div id="backupConfigError" class="alert alert-danger d-none mb-4"></div>
+                            <div class="feedback-slot feedback-slot-compact mb-4">
+                                <div id="backupConfigError" class="alert alert-danger d-none"></div>
+                            </div>
                             <div class="form-group mb-5">
                                 <label class="form-label">How do you want to configure cloud backup?</label>
                                 <div class="radio-group mt-2">
@@ -212,7 +216,6 @@
                                 </div>
                                 <div class="mb-3">
                                     <button id="megaConnectBtn" class="btn btn-primary btn-sm" type="button">
-                                        <span id="megaConnectSpinner" class="spinner d-none"></span>
                                         Connect &amp; Choose Folder
                                     </button>
                                 </div>
@@ -258,7 +261,9 @@
                     <div id="step5" class="setup-step">
                         <div class="setup-card">
                             <h3>Email Alert Setup</h3>
-                            <div id="emailError" class="alert alert-danger d-none mb-4"></div>
+                            <div class="feedback-slot feedback-slot-compact mb-4">
+                                <div id="emailError" class="alert alert-danger d-none"></div>
+                            </div>
                             <div class="form-group mb-4">
                                 <label class="form-label">Email Address</label>
                                 <input type="email" id="emailAddress" class="form-control" placeholder="your@email.com">
@@ -305,7 +310,9 @@
                     <div id="step6" class="setup-step">
                         <div class="setup-card">
                             <h3>Backup Schedule</h3>
-                            <div id="scheduleError" class="alert alert-danger d-none mb-4"></div>
+                            <div class="feedback-slot feedback-slot-compact mb-4">
+                                <div id="scheduleError" class="alert alert-danger d-none"></div>
+                            </div>
                             <div class="form-group mb-4">
                                 <label class="form-label">Backup Time</label>
                                 <input type="time" id="backupTime" class="form-control">
@@ -517,28 +524,17 @@
             }
         }
 
-        function setButtonLoading(btn, isLoading, loadingText = 'Processing…') {
-            if (!btn) return;
-            if (isLoading) {
-                btn.disabled = true;
-                btn.dataset.originalText = btn.innerHTML;
-                btn.innerHTML = `<span class="spinner me-2"></span>${loadingText}`;
-            } else {
-                btn.disabled = false;
-                if (btn.dataset.originalText) { btn.innerHTML = btn.dataset.originalText; delete btn.dataset.originalText; }
-            }
-        }
-
         async function formatDrive() {
             const formatBtn = document.getElementById('formatDriveBtn');
-            setButtonLoading(formatBtn, true, 'Formatting…');
             const drive = document.getElementById('formatDriveSelect').value;
-            if (!drive) { showFormatError('Please select a drive first'); setDriveStatus('Please select a drive first.', 'warning'); setButtonLoading(formatBtn, false); return; }
+            if (!drive) { showFormatError('Please select a drive first'); setDriveStatus('Please select a drive first.', 'warning'); return; }
+            window.AsyncButtonState.start(formatBtn);
             setDriveStatus('Formatting drive…', 'info');
             try {
                 const response = await fetch('/api/setup/format', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ drive }) });
                 const data = await response.json();
                 if (data.success) {
+                    window.AsyncButtonState.success(formatBtn);
                     localStorage.setItem('formatSuccess', '1');
                     nextStep();
                     hideFormatError();
@@ -546,24 +542,22 @@
                     await loadDrives();
                     const formatSelect = document.getElementById('formatDriveSelect');
                     for (let i = 0; i < formatSelect.options.length; i++) { if (formatSelect.options[i].value === drive) { formatSelect.selectedIndex = i; break; } }
-                } else { setDriveStatus('Failed to format drive.', 'error'); showFormatError(data.error, data.details, data.can_unmount); }
-            } catch (error) { setDriveStatus('An error occurred.', 'error'); showFormatError('An error occurred while formatting the drive'); }
-            finally { setButtonLoading(formatBtn, false); }
+                } else { window.AsyncButtonState.error(formatBtn); setDriveStatus('Failed to format drive.', 'error'); showFormatError(data.error, data.details, data.can_unmount); }
+            } catch (error) { window.AsyncButtonState.error(formatBtn); setDriveStatus('An error occurred.', 'error'); showFormatError('An error occurred while formatting the drive'); }
         }
 
         async function unmountDrive() {
             const unmountBtn = document.getElementById('unmountDriveBtn');
-            setButtonLoading(unmountBtn, true, 'Unmounting…');
             const drive = document.getElementById('formatDriveSelect').value;
-            if (!drive) { showFormatError('Please select a drive first'); setDriveStatus('Please select a drive first.', 'warning'); setButtonLoading(unmountBtn, false); return; }
+            if (!drive) { showFormatError('Please select a drive first'); setDriveStatus('Please select a drive first.', 'warning'); return; }
+            window.AsyncButtonState.start(unmountBtn);
             setDriveStatus('Unmounting drive…', 'info');
             try {
                 const response = await fetch('/api/setup/unmount', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ drive }) });
                 const data = await response.json();
-                if (data.success) { hideFormatError(); setDriveStatus('Drive unmounted successfully.', 'success'); await loadDrives(); const formatSelect = document.getElementById('formatDriveSelect'); for (let i = 0; i < formatSelect.options.length; i++) { if (formatSelect.options[i].value === drive) { formatSelect.selectedIndex = i; break; } } }
-                else { setDriveStatus('Failed to unmount drive.', 'error'); showFormatError(data.error, data.details); }
-            } catch (error) { setDriveStatus('An error occurred.', 'error'); showFormatError('An error occurred while unmounting the drive'); }
-            finally { setButtonLoading(unmountBtn, false); }
+                if (data.success) { window.AsyncButtonState.success(unmountBtn); hideFormatError(); setDriveStatus('Drive unmounted successfully.', 'success'); await loadDrives(); const formatSelect = document.getElementById('formatDriveSelect'); for (let i = 0; i < formatSelect.options.length; i++) { if (formatSelect.options[i].value === drive) { formatSelect.selectedIndex = i; break; } } }
+                else { window.AsyncButtonState.error(unmountBtn); setDriveStatus('Failed to unmount drive.', 'error'); showFormatError(data.error, data.details); }
+            } catch (error) { window.AsyncButtonState.error(unmountBtn); setDriveStatus('An error occurred.', 'error'); showFormatError('An error occurred while unmounting the drive'); }
         }
 
         function showFormatError(error, details = null) {
@@ -588,34 +582,32 @@
 
         async function mountDrive() {
             const mountBtn = document.getElementById('mountDriveBtn');
-            setButtonLoading(mountBtn, true, 'Mounting…');
             const drive = document.getElementById('mountDriveSelect').value;
             const mountPoint = document.getElementById('mountPoint').value;
             const autoMount = document.getElementById('autoMount').checked;
-            if (!drive) { showMountError('Please select a drive to mount'); setMountStatus('Please select a drive.', 'warning'); setButtonLoading(mountBtn, false); return; }
+            if (!drive) { showMountError('Please select a drive to mount'); setMountStatus('Please select a drive.', 'warning'); return; }
+            window.AsyncButtonState.start(mountBtn);
             setMountStatus('Mounting drive…', 'info');
             try {
                 const response = await fetch('/api/setup/mount', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ drive, mount_point: mountPoint, auto_mount: autoMount }) });
                 const data = await response.json();
-                if (data.success) { localStorage.setItem('mountSuccess', '1'); nextStep(); hideMountError(); setMountStatus('Drive mounted successfully.', 'success'); await loadDrives(); }
-                else { setMountStatus('Failed to mount drive.', 'error'); showMountError(data.error, data.details); }
-            } catch (error) { setMountStatus('An error occurred.', 'error'); showMountError('An error occurred while mounting the drive'); }
-            finally { setButtonLoading(mountBtn, false); }
+                if (data.success) { window.AsyncButtonState.success(mountBtn); localStorage.setItem('mountSuccess', '1'); nextStep(); hideMountError(); setMountStatus('Drive mounted successfully.', 'success'); await loadDrives(); }
+                else { window.AsyncButtonState.error(mountBtn); setMountStatus('Failed to mount drive.', 'error'); showMountError(data.error, data.details); }
+            } catch (error) { window.AsyncButtonState.error(mountBtn); setMountStatus('An error occurred.', 'error'); showMountError('An error occurred while mounting the drive'); }
         }
 
         async function unmountMountDrive() {
             const unmountMountBtn = document.getElementById('unmountMountDriveBtn');
-            setButtonLoading(unmountMountBtn, true, 'Unmounting…');
             const drive = document.getElementById('mountDriveSelect').value;
-            if (!drive) { showMountError('Please select a drive'); setMountStatus('Please select a drive.', 'warning'); setButtonLoading(unmountMountBtn, false); return; }
+            if (!drive) { showMountError('Please select a drive'); setMountStatus('Please select a drive.', 'warning'); return; }
+            window.AsyncButtonState.start(unmountMountBtn);
             setMountStatus('Unmounting drive…', 'info');
             try {
                 const response = await fetch('/api/setup/unmount', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ drive }) });
                 const data = await response.json();
-                if (data.success) { hideMountError(); setMountStatus('Drive unmounted successfully.', 'success'); await loadDrives(); }
-                else { setMountStatus('Failed to unmount drive.', 'error'); showMountError(data.error, data.details); }
-            } catch (error) { setMountStatus('An error occurred.', 'error'); showMountError('An error occurred while unmounting the drive'); }
-            finally { setButtonLoading(unmountMountBtn, false); }
+                if (data.success) { window.AsyncButtonState.success(unmountMountBtn); hideMountError(); setMountStatus('Drive unmounted successfully.', 'success'); await loadDrives(); }
+                else { window.AsyncButtonState.error(unmountMountBtn); setMountStatus('Failed to unmount drive.', 'error'); showMountError(data.error, data.details); }
+            } catch (error) { window.AsyncButtonState.error(unmountMountBtn); setMountStatus('An error occurred.', 'error'); showMountError('An error occurred while unmounting the drive'); }
         }
 
         function showMountError(error, details = null) {
@@ -655,17 +647,18 @@
             const bandwidthLimit = document.getElementById('bandwidthLimit').value;
             if (!time) { showError('Please select a backup time.'); return; }
             const saveBtn = document.querySelector('button[onclick="saveSchedule()"]');
-            setButtonLoading(saveBtn, true, 'Completing setup…');
+            window.AsyncButtonState.start(saveBtn);
             try {
                 const response = await fetch('/api/setup/schedule', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ time, bandwidth_limit: bandwidthLimit }) });
                 const data = await response.json();
                 if (data.success) {
                     hideError();
                     const completed = await completeSetup();
-                    if (!completed) setButtonLoading(saveBtn, false);
+                    if (completed) window.AsyncButtonState.success(saveBtn);
+                    else window.AsyncButtonState.error(saveBtn);
                 }
-                else { showError(data.error || 'Failed to save schedule'); setButtonLoading(saveBtn, false); }
-            } catch (error) { showError('Error saving schedule: ' + error); setButtonLoading(saveBtn, false); }
+                else { window.AsyncButtonState.error(saveBtn); showError(data.error || 'Failed to save schedule'); }
+            } catch (error) { window.AsyncButtonState.error(saveBtn); showError('Error saving schedule: ' + error); }
         }
 
         // --- Complete ---
@@ -730,6 +723,8 @@
             const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
             const serverName = document.getElementById('serverName').value;
+            const createUserBtn = document.querySelector('button[onclick="createUser()"]');
+            window.AsyncButtonState.start(createUserBtn);
             try {
                 const response = await fetch('/api/setup/user', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
                 const data = await response.json();
@@ -737,11 +732,12 @@
                     try {
                         const sysResp = await fetch('/api/setup/system', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, server_name: serverName }) });
                         const sysData = await sysResp.json();
-                        if (!sysData.success) { showError('Error saving system info: ' + sysData.error, 'adminError'); return; }
-                    } catch (err) { showError('An error occurred while saving system info', 'adminError'); return; }
+                        if (!sysData.success) { window.AsyncButtonState.error(createUserBtn); showError('Error saving system info: ' + sysData.error, 'adminError'); return; }
+                    } catch (err) { window.AsyncButtonState.error(createUserBtn); showError('An error occurred while saving system info', 'adminError'); return; }
+                    window.AsyncButtonState.success(createUserBtn);
                     nextStep();
-                } else showError('Error creating user: ' + data.error, 'adminError');
-            } catch (error) { showError('An error occurred while creating the user', 'adminError'); }
+                } else { window.AsyncButtonState.error(createUserBtn); showError('Error creating user: ' + data.error, 'adminError'); }
+            } catch (error) { window.AsyncButtonState.error(createUserBtn); showError('An error occurred while creating the user', 'adminError'); }
         }
 
         function showPersistentStepSuccess() {

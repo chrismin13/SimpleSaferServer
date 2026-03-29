@@ -25,13 +25,15 @@
             </div>
 
             {% with messages = get_flashed_messages(with_categories=true) %}
-                {% if messages %}
-                    {% for category, message in messages %}
-                        <div class="{% if category == 'error' %}login-error{% else %}alert alert-success{% endif %} mb-4">
-                            {{ message }}
-                        </div>
-                    {% endfor %}
-                {% endif %}
+                <div class="login-feedback-slot mb-4">
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="{% if category == 'error' %}login-error{% else %}login-success{% endif %}">
+                                {{ message }}
+                            </div>
+                        {% endfor %}
+                    {% endif %}
+                </div>
             {% endwith %}
 
             <form class="login-form" action="{{ url_for('login') }}" method="POST">

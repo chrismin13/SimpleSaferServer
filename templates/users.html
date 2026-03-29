@@ -40,7 +40,6 @@
       <button class="modal-close" data-modal-close><i class="fas fa-xmark"></i></button>
     </div>
     <div class="modal-body">
-      <div id="addUserError" class="alert alert-danger d-none"></div>
       <form id="addUserForm">
         <div class="form-group mb-4">
           <label for="addUsername" class="form-label">Username</label>
@@ -59,8 +58,11 @@
       </form>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-secondary" data-modal-close>Cancel</button>
-      <button type="submit" class="btn btn-primary" form="addUserForm">Add User</button>
+      <div id="addUserError" class="modal-footer-message" role="alert" aria-live="polite"></div>
+      <div class="modal-footer-actions">
+        <button class="btn btn-secondary" data-modal-close>Cancel</button>
+        <button type="submit" class="btn btn-primary" form="addUserForm">Add User</button>
+      </div>
     </div>
   </div>
 </div>
@@ -73,7 +75,6 @@
       <button class="modal-close" data-modal-close><i class="fas fa-xmark"></i></button>
     </div>
     <div class="modal-body">
-      <div id="editUserError" class="alert alert-danger d-none"></div>
       <form id="editUserForm">
         <div class="form-group mb-4">
           <label for="editUsername" class="form-label">Username</label>
@@ -91,8 +92,11 @@
       </form>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-secondary" data-modal-close>Cancel</button>
-      <button type="submit" class="btn btn-primary" form="editUserForm">Save Changes</button>
+      <div id="editUserError" class="modal-footer-message" role="alert" aria-live="polite"></div>
+      <div class="modal-footer-actions">
+        <button class="btn btn-secondary" data-modal-close>Cancel</button>
+        <button type="submit" class="btn btn-primary" form="editUserForm">Save Changes</button>
+      </div>
     </div>
   </div>
 </div>
@@ -113,27 +117,14 @@ function showError(message) {
 
 function showModalError(modalId, message) {
   const errorDiv = document.getElementById(modalId);
-  errorDiv.textContent = message;
-  errorDiv.classList.remove('d-none');
+  errorDiv.innerHTML = `<i class="fas fa-circle-exclamation"></i><span>${message}</span>`;
+  errorDiv.classList.add('visible');
 }
 
 function hideModalError(modalId) {
-  document.getElementById(modalId).classList.add('d-none');
-}
-
-function setButtonLoading(button, isLoading, loadingText = 'Processing…') {
-  if (!button) return;
-  if (isLoading) {
-    button.disabled = true;
-    button.dataset.originalText = button.innerHTML;
-    button.innerHTML = `<span class="spinner me-2"></span>${loadingText}`;
-  } else {
-    button.disabled = false;
-    if (button.dataset.originalText) {
-      button.innerHTML = button.dataset.originalText;
-      delete button.dataset.originalText;
-    }
-  }
+  const errorDiv = document.getElementById(modalId);
+  errorDiv.textContent = '';
+  errorDiv.classList.remove('visible');
 }
 
 function validateUsername(username) {
@@ -253,13 +244,21 @@ async function requestDeleteUser(username, button = null) {
     confirmClass: 'btn-danger'
   });
   if (!confirmed) return;
-  setButtonLoading(button, true, 'Deleting…');
+  window.AsyncButtonState.start(button);
   deleteUserAPI(username).then(data => {
-    setButtonLoading(button, false);
+    if (data.success) {
+      window.AsyncButtonState.success(button);
+    } else {
+      window.AsyncButtonState.error(button);
+    }
     loadUsers();
     if (data.success) showSuccess(`User "${username}" deleted successfully`);
     else showError('Failed to delete user: ' + (data.error || 'Unknown error'));
-  }).catch(() => { setButtonLoading(button, false); loadUsers(); showError('Network error'); });
+  }).catch(() => {
+    window.AsyncButtonState.error(button);
+    loadUsers();
+    showError('Network error');
+  });
 }
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -276,9 +275,13 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('addPassword').classList.remove('is-invalid');
     if (currentUsers.some(u => u.username === username)) { showModalError('addUserError', 'Username already exists'); return; }
     const submitButton = document.querySelector('#addUserModal .modal-footer .btn-primary');
-    setButtonLoading(submitButton, true, 'Adding…');
+    window.AsyncButtonState.start(submitButton);
     const result = await addUser(username, password, isAdmin);
-    setButtonLoading(submitButton, false);
+    if (result.success) {
+      window.AsyncButtonState.success(submitButton);
+    } else {
+      window.AsyncButtonState.error(submitButton);
+    }
     if (result.success) {
       showSuccess(`User "${username}" added successfully`);
       document.getElementById('addUserForm').reset();
@@ -294,9 +297,13 @@ document.addEventListener('DOMContentLoaded', function() {
     if (password && !validatePassword(password)) { document.getElementById('editPassword').classList.add('is-invalid'); return; }
     document.getElementById('editPassword').classList.remove('is-invalid');
     const submitButton = document.querySelector('#editUserModal .modal-footer .btn-primary');
-    setButtonLoading(submitButton, true, 'Saving…');
+    window.AsyncButtonState.start(submitButton);
     const result = await editUserAPI(editingUsername, password || null, isAdmin);
-    setButtonLoading(submitButton, false);
+    if (result.success) {
+      window.AsyncButtonState.success(submitButton);
+    } else {
+      window.AsyncButtonState.error(submitButton);
+    }
     if (result.success) {
       showSuccess(`User "${editingUsername}" updated successfully`);
       BunkerModal.hide('editUserModal');

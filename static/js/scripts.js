@@ -93,7 +93,6 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   // --- Update MEGA Connect logic ---
-  const megaConnectSpinner = document.getElementById('megaConnectSpinner');
   const megaFolderPathArea = document.getElementById('megaFolderPathArea');
   const megaFolderPath = document.getElementById('megaFolderPath');
   const megaBrowseBtn = document.getElementById('megaBrowseBtn');
@@ -128,7 +127,7 @@ document.addEventListener("DOMContentLoaded", function () {
       }
       email.classList.remove('is-invalid');
       password.classList.remove('is-invalid');
-      if (megaConnectSpinner) megaConnectSpinner.classList.remove('d-none');
+      window.AsyncButtonState.start(megaConnectBtn);
       megaConnectBtn.disabled = true;
       fetch('/api/setup/mega/connect', {
         method: 'POST',
@@ -137,8 +136,11 @@ document.addEventListener("DOMContentLoaded", function () {
       })
       .then(resp => resp.json())
       .then(data => {
-        if (megaConnectSpinner) megaConnectSpinner.classList.add('d-none');
-        megaConnectBtn.disabled = false;
+        if (data.success) {
+          window.AsyncButtonState.success(megaConnectBtn);
+        } else {
+          window.AsyncButtonState.error(megaConnectBtn);
+        }
         const backupConfigError = document.getElementById('backupConfigError');
         if (data.success) {
           if (megaFolderPathArea) megaFolderPathArea.classList.remove('d-none');
@@ -150,8 +152,7 @@ document.addEventListener("DOMContentLoaded", function () {
         }
       })
       .catch(err => {
-        if (megaConnectSpinner) megaConnectSpinner.classList.add('d-none');
-        megaConnectBtn.disabled = false;
+        window.AsyncButtonState.error(megaConnectBtn);
         const backupConfigError = document.getElementById('backupConfigError');
         if (backupConfigError) {
           backupConfigError.textContent = 'Error connecting to MEGA.';
@@ -193,16 +194,11 @@ document.addEventListener("DOMContentLoaded", function () {
       backupConfigError.textContent = '';
     }
     const saveBtn = document.getElementById('saveBackupConfigBtn');
-    let saveSpinner = saveBtn ? saveBtn.querySelector('.spinner') : null;
-    if (saveBtn && !saveSpinner) {
-      saveSpinner = document.createElement('span');
-      saveSpinner.className = 'spinner ms-2';
-      saveSpinner.style.display = 'none';
-      saveBtn.appendChild(saveSpinner);
-    }
     function setSaving(saving) {
-      if (saveBtn) saveBtn.disabled = saving;
-      if (saveSpinner) saveSpinner.style.display = saving ? '' : 'none';
+      if (!saveBtn) return;
+      if (saving) {
+        window.AsyncButtonState.start(saveBtn);
+      }
     }
     if (mode === 'mega') {
       const emailField = document.getElementById('megaEmail');
@@ -236,16 +232,17 @@ document.addEventListener("DOMContentLoaded", function () {
       })
       .then(resp => resp.json())
       .then(data => {
-        setSaving(false);
         if (data.success) {
+          window.AsyncButtonState.success(saveBtn);
           if (typeof nextStep === 'function') nextStep();
         } else if (backupConfigError) {
+          window.AsyncButtonState.error(saveBtn);
           backupConfigError.textContent = data.error || 'Failed to save MEGA config.';
           backupConfigError.classList.remove('d-none');
         }
       })
       .catch(err => {
-        setSaving(false);
+        window.AsyncButtonState.error(saveBtn);
         if (backupConfigError) {
           backupConfigError.textContent = 'Error saving MEGA config.';
           backupConfigError.classList.remove('d-none');
@@ -277,16 +274,17 @@ document.addEventListener("DOMContentLoaded", function () {
     })
     .then(resp => resp.json())
     .then(data => {
-      setSaving(false);
       if (data.success) {
+        window.AsyncButtonState.success(saveBtn);
         if (typeof nextStep === 'function') nextStep();
       } else if (backupConfigError) {
+        window.AsyncButtonState.error(saveBtn);
         backupConfigError.textContent = data.error || 'Failed to save rclone config.';
         backupConfigError.classList.remove('d-none');
       }
     })
     .catch(err => {
-      setSaving(false);
+      window.AsyncButtonState.error(saveBtn);
       if (backupConfigError) {
         backupConfigError.textContent = 'Error saving rclone config.';
         backupConfigError.classList.remove('d-none');

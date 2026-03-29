@@ -128,8 +128,11 @@
       </form>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-secondary" data-modal-close>Cancel</button>
-      <button class="btn btn-primary" id="saveShareBtn">Add Share</button>
+      <div class="modal-footer-message" data-modal-error role="alert" aria-live="polite"></div>
+      <div class="modal-footer-actions">
+        <button class="btn btn-secondary" data-modal-close>Cancel</button>
+        <button class="btn btn-primary" id="saveShareBtn">Add Share</button>
+      </div>
     </div>
   </div>
 </div>
@@ -174,8 +177,11 @@
       </form>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-secondary" data-modal-close>Cancel</button>
-      <button class="btn btn-primary" id="updateShareBtn">Update Share</button>
+      <div class="modal-footer-message" data-modal-error role="alert" aria-live="polite"></div>
+      <div class="modal-footer-actions">
+        <button class="btn btn-secondary" data-modal-close>Cancel</button>
+        <button class="btn btn-primary" id="updateShareBtn">Update Share</button>
+      </div>
     </div>
   </div>
 </div>
@@ -219,11 +225,13 @@
         </button>
       </div>
       <div id="pickerDirsList" class="folder-list mb-3"></div>
-      <div id="pickerError" class="alert alert-danger d-none"></div>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-secondary" data-modal-close>Cancel</button>
-      <button class="btn btn-outline-primary" id="pickerSelectCurrentBtn">Select This Folder</button>
+      <div id="pickerError" class="modal-footer-message" role="alert" aria-live="polite"></div>
+      <div class="modal-footer-actions">
+        <button class="btn btn-secondary" data-modal-close>Cancel</button>
+        <button class="btn btn-outline-primary" id="pickerSelectCurrentBtn">Select This Folder</button>
+      </div>
     </div>
   </div>
 </div>
@@ -278,6 +286,15 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('addShareModal').addEventListener('modal:hidden', function() {
     const pathInput = document.getElementById('sharePath');
     if (!pathInput.value) pathInput.value = '{{ backup_mount_point }}';
+    clearModalError('addShareModal');
+  });
+
+  document.getElementById('editShareModal').addEventListener('modal:hidden', function() {
+    clearModalError('editShareModal');
+  });
+
+  document.getElementById('folderPickerModal').addEventListener('modal:hidden', function() {
+    clearFolderPickerError();
   });
 
   // Folder picker handlers
@@ -305,7 +322,7 @@ function loadFolderPicker(path) {
   const pathEl = document.getElementById('pickerCurrentPath');
   const errorEl = document.getElementById('pickerError');
   const normalizedPath = path || '/';
-  errorEl.classList.add('d-none');
+  clearFolderPickerError();
   dirsEl.innerHTML = '<span class="spinner"></span>';
 
   fetch(`/api/list_dirs?path=${encodeURIComponent(normalizedPath)}`)
@@ -342,9 +359,16 @@ function loadFolderPicker(path) {
     })
     .catch(e => {
       dirsEl.innerHTML = '';
-      errorEl.textContent = e.message || 'Could not load directories.';
-      errorEl.classList.remove('d-none');
+      errorEl.innerHTML = `<i class="fas fa-circle-exclamation"></i><span>${e.message || 'Could not load directories.'}</span>`;
+      errorEl.classList.add('visible');
     });
+}
+
+function clearFolderPickerError() {
+  const errorEl = document.getElementById('pickerError');
+  if (!errorEl) return;
+  errorEl.textContent = '';
+  errorEl.classList.remove('visible');
 }
 
 function loadShares() {
@@ -507,18 +531,15 @@ function addShare() {
   if (!path.startsWith('/')) { document.getElementById('sharePath').classList.add('is-invalid'); showModalError('addShareModal', 'Path must start with /'); return; }
 
   const selectedUsers = Array.from(document.querySelectorAll('#shareUsersCheckboxes input[type="checkbox"]:checked')).map(c => c.value);
-  const originalText = saveBtn.innerHTML;
-  saveBtn.disabled = true;
-  saveBtn.innerHTML = '<span class="spinner me-2"></span>Adding…';
+  window.AsyncButtonState.start(saveBtn);
 
   fetch('/api/smb/shares', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, path, comment, writable, valid_users: selectedUsers }) })
     .then(r => r.json())
     .then(data => {
-      if (data.error) { showModalError('addShareModal', data.error); }
-      else { showAlert('Share added successfully', 'success'); BunkerModal.hide('addShareModal'); form.reset(); document.getElementById('shareWritable').checked = true; loadShares(); }
+      if (data.error) { window.AsyncButtonState.error(saveBtn); showModalError('addShareModal', data.error); }
+      else { window.AsyncButtonState.success(saveBtn); showAlert('Share added successfully', 'success'); BunkerModal.hide('addShareModal'); form.reset(); document.getElementById('shareWritable').checked = true; loadShares(); }
     })
-    .catch(() => showAlert('Failed to add share', 'danger'))
-    .finally(() => { saveBtn.disabled = false; saveBtn.innerHTML = originalText; });
+    .catch(() => { window.AsyncButtonState.error(saveBtn); showAlert('Failed to add share', 'danger'); });
 }
 
 function editShare(shareName) {
@@ -548,18 +569,15 @@ function updateShare() {
   if (!path.startsWith('/')) { document.getElementById('editSharePath').classList.add('is-invalid'); return; }
 
   const selectedUsers = Array.from(document.querySelectorAll('#editShareUsersCheckboxes input[type="checkbox"]:checked')).map(c => c.value);
-  const originalText = updateBtn.innerHTML;
-  updateBtn.disabled = true;
-  updateBtn.innerHTML = '<span class="spinner me-2"></span>Updating…';
+  window.AsyncButtonState.start(updateBtn);
 
   fetch(`/api/smb/shares/${encodeURIComponent(originalName)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, path, comment, writable, valid_users: selectedUsers }) })
     .then(r => r.json())
     .then(data => {
-      if (data.error) { showModalError('editShareModal', data.error); }
-      else { showAlert('Share updated successfully', 'success'); BunkerModal.hide('editShareModal'); loadShares(); }
+      if (data.error) { window.AsyncButtonState.error(updateBtn); showModalError('editShareModal', data.error); }
+      else { window.AsyncButtonState.success(updateBtn); showAlert('Share updated successfully', 'success'); BunkerModal.hide('editShareModal'); loadShares(); }
     })
-    .catch(() => showAlert('Failed to update share', 'danger'))
-    .finally(() => { updateBtn.disabled = false; updateBtn.innerHTML = originalText; });
+    .catch(() => { window.AsyncButtonState.error(updateBtn); showAlert('Failed to update share', 'danger'); });
 }
 
 function confirmDeleteShare(shareName) {
@@ -571,18 +589,15 @@ function confirmDeleteShare(shareName) {
 function deleteShare() {
   if (!currentDeleteShare) return;
   const deleteBtn = document.getElementById('confirmDeleteShareBtn');
-  const originalText = deleteBtn.innerHTML;
-  deleteBtn.disabled = true;
-  deleteBtn.innerHTML = '<span class="spinner me-2"></span>Deleting…';
+  window.AsyncButtonState.start(deleteBtn);
 
   fetch(`/api/smb/shares/${encodeURIComponent(currentDeleteShare)}`, { method: 'DELETE' })
     .then(r => r.json())
     .then(data => {
-      if (data.error) { showAlert('Error: ' + data.error, 'danger'); }
-      else { showAlert('Share deleted', 'success'); BunkerModal.hide('deleteShareModal'); currentDeleteShare = null; loadShares(); }
+      if (data.error) { window.AsyncButtonState.error(deleteBtn); showAlert('Error: ' + data.error, 'danger'); }
+      else { window.AsyncButtonState.success(deleteBtn); showAlert('Share deleted', 'success'); BunkerModal.hide('deleteShareModal'); currentDeleteShare = null; loadShares(); }
     })
-    .catch(() => showAlert('Failed to delete share', 'danger'))
-    .finally(() => { deleteBtn.disabled = false; deleteBtn.innerHTML = originalText; });
+    .catch(() => { window.AsyncButtonState.error(deleteBtn); showAlert('Failed to delete share', 'danger'); });
 }
 
 function loadSMBStatus() {
@@ -614,28 +629,38 @@ function updateOverallStatus(status, title, message) {
 
 function restartSMB() {
   const btn = document.getElementById('restartSMB');
-  const orig = btn.innerHTML;
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner me-1"></span> Restarting…';
+  window.AsyncButtonState.start(btn);
   fetch('/api/smb/restart', { method: 'POST' })
     .then(r => r.json())
     .then(data => {
-      if (data.error) showAlert('Error: ' + data.error, 'danger');
-      else { showAlert('Services restarted', 'success'); setTimeout(loadSMBStatus, 2000); }
+      if (data.error) { window.AsyncButtonState.error(btn); showAlert('Error: ' + data.error, 'danger'); }
+      else { window.AsyncButtonState.success(btn); showAlert('Services restarted', 'success'); setTimeout(loadSMBStatus, 2000); }
     })
-    .catch(() => showAlert('Failed to restart', 'danger'))
-    .finally(() => { btn.disabled = false; btn.innerHTML = orig; });
+    .catch(() => { window.AsyncButtonState.error(btn); showAlert('Failed to restart', 'danger'); });
 }
 
 function showModalError(modalId, message) {
   const modal = document.getElementById(modalId);
-  const body = modal.querySelector('.modal-body');
-  body.querySelectorAll('.alert-danger').forEach(a => a.remove());
-  const alertDiv = document.createElement('div');
-  alertDiv.className = 'alert alert-danger mb-3';
-  alertDiv.innerHTML = `<i class="fas fa-exclamation-triangle"></i> <span>${message}</span>`;
-  body.insertBefore(alertDiv, body.firstChild);
-  setTimeout(() => alertDiv.remove(), 5000);
+  const errorEl = modal.querySelector('[data-modal-error]');
+  if (!errorEl) {
+    showAlert(message, 'danger');
+    return;
+  }
+  errorEl.innerHTML = `<i class="fas fa-circle-exclamation"></i><span>${message}</span>`;
+  errorEl.classList.add('visible');
+  window.clearTimeout(errorEl._dismissTimer);
+  errorEl._dismissTimer = window.setTimeout(() => {
+    clearModalError(modalId);
+  }, 5000);
+}
+
+function clearModalError(modalId) {
+  const modal = document.getElementById(modalId);
+  const errorEl = modal ? modal.querySelector('[data-modal-error]') : null;
+  if (!errorEl) return;
+  window.clearTimeout(errorEl._dismissTimer);
+  errorEl.textContent = '';
+  errorEl.classList.remove('visible');
 }
 </script>
 {% endblock %}

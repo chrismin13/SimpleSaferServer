@@ -296,6 +296,86 @@ window.showAlert = function showAlert(message, type = 'success', container = nul
 };
 
 
+/* ── Async Button State ─────────────────────────────────────── */
+window.AsyncButtonState = (() => {
+  const stateMap = new WeakMap();
+
+  function clearTimers(state) {
+    if (!state) return;
+    window.clearTimeout(state.settleTimer);
+  }
+
+  function restoreButton(button, state, restoreDisabled) {
+    button.classList.remove('is-async-pending');
+    button.removeAttribute('aria-busy');
+
+    if (restoreDisabled !== false && state) {
+      button.disabled = state.wasDisabled;
+    }
+
+    stateMap.delete(button);
+  }
+
+  function start(button, options = {}) {
+    if (!button) return;
+
+    const existing = stateMap.get(button);
+    if (existing) {
+      clearTimers(existing);
+      restoreButton(button, existing, false);
+    }
+
+    const state = {
+      minPendingVisible: options.minPendingVisible ?? 180,
+      wasDisabled: button.disabled,
+      startedAt: performance.now(),
+      settleTimer: null
+    };
+
+    button.disabled = true;
+    button.classList.add('is-async-pending');
+    button.setAttribute('aria-busy', 'true');
+
+    stateMap.set(button, state);
+  }
+
+  function settle(button, options = {}) {
+    const state = stateMap.get(button);
+    if (!button || !state) return;
+
+    clearTimers(state);
+    const elapsed = performance.now() - state.startedAt;
+    const waitTime = Math.max(0, state.minPendingVisible - elapsed);
+
+    state.settleTimer = window.setTimeout(() => {
+      restoreButton(button, state, options.restoreDisabled);
+    }, waitTime);
+  }
+
+  function success(button, options = {}) {
+    settle(button, options);
+  }
+
+  function error(button, options = {}) {
+    settle(button, options);
+  }
+
+  function reset(button, options = {}) {
+    const state = stateMap.get(button);
+    if (!button || !state) return;
+    clearTimers(state);
+    restoreButton(button, state, options.restoreDisabled);
+  }
+
+  return {
+    start,
+    success,
+    error,
+    reset
+  };
+})();
+
+
 /* ── Action Context Menu ─────────────────────────────────────── */
 window.ActionContextMenu = (() => {
   let menuEl = null;

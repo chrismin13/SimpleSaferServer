@@ -4,46 +4,6 @@
 {% block header %}Drive Health{% endblock %}
 
 {% block content %}
-{% if error %}
-  <div class="alert alert-danger mb-5">
-    <i class="fas fa-exclamation-triangle"></i>
-    <span>{{ error }}</span>
-  </div>
-{% endif %}
-
-{% if prediction is not none %}
-  <div class="d-flex items-center gap-4 mb-6 p-5" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg);">
-    {% if prediction == 0 %}
-      <i class="fas fa-circle-check text-success" style="font-size: var(--text-3xl);"></i>
-      <div>
-        <div style="font-size: var(--text-xl); font-weight: var(--weight-bold);" class="text-success">No Failure Detected</div>
-        <div class="text-muted mt-1">Failure probability: {{ '%.2f'|format(probability*100) }}%</div>
-      </div>
-    {% else %}
-      <i class="fas fa-circle-xmark text-danger" style="font-size: var(--text-3xl);"></i>
-      <div>
-        <div style="font-size: var(--text-xl); font-weight: var(--weight-bold);" class="text-danger">Failure Predicted</div>
-        <div class="text-muted mt-1">Failure probability: {{ '%.2f'|format(probability*100) }}%</div>
-      </div>
-    {% endif %}
-  </div>
-{% endif %}
-
-{% if missing_attrs %}
-  <div class="alert alert-warning mb-5">
-    <div>
-      <strong><i class="fas fa-exclamation-triangle me-1"></i> Missing SMART Attributes</strong>
-      <p class="mt-2 mb-2">The following attributes are not available and use default values:</p>
-      <ul style="list-style: disc; padding-left: var(--sp-5); margin: 0;">
-        {% for attr in missing_attrs %}
-          <li><code>{{ attr }}</code> — {{ smart_fields[attr].name }}</li>
-        {% endfor %}
-      </ul>
-      <p class="mt-2 mb-0 text-muted" style="font-size: var(--text-xs);">This may affect prediction accuracy.</p>
-    </div>
-  </div>
-{% endif %}
-
 <div class="action-bar mb-6">
   <form method="post">
     <button type="submit" class="btn btn-secondary btn-sm action-bar-btn">
@@ -56,6 +16,48 @@
   <a href="mailto:c.miniotis@acg.edu?subject=SMART%20Telemetry" class="btn btn-secondary btn-sm action-bar-btn" target="_blank">
     <i class="fas fa-envelope me-1"></i> Send Telemetry
   </a>
+</div>
+
+<div class="page-feedback-stack mb-6">
+  {% if error %}
+    <div class="alert alert-danger">
+      <i class="fas fa-exclamation-triangle"></i>
+      <span>{{ error }}</span>
+    </div>
+  {% endif %}
+
+  {% if prediction is not none %}
+    <div class="drive-health-result-panel">
+      {% if prediction == 0 %}
+        <i class="fas fa-circle-check text-success" style="font-size: var(--text-3xl);"></i>
+        <div>
+          <div style="font-size: var(--text-xl); font-weight: var(--weight-bold);" class="text-success">No Failure Detected</div>
+          <div class="text-muted mt-1">Failure probability: {{ '%.2f'|format(probability*100) }}%</div>
+        </div>
+      {% else %}
+        <i class="fas fa-circle-xmark text-danger" style="font-size: var(--text-3xl);"></i>
+        <div>
+          <div style="font-size: var(--text-xl); font-weight: var(--weight-bold);" class="text-danger">Failure Predicted</div>
+          <div class="text-muted mt-1">Failure probability: {{ '%.2f'|format(probability*100) }}%</div>
+        </div>
+      {% endif %}
+    </div>
+  {% endif %}
+
+  {% if missing_attrs %}
+    <div class="alert alert-warning">
+      <div>
+        <strong><i class="fas fa-exclamation-triangle me-1"></i> Missing SMART Attributes</strong>
+        <p class="mt-2 mb-2">The following attributes are not available and use default values:</p>
+        <ul style="list-style: disc; padding-left: var(--sp-5); margin: 0;">
+          {% for attr in missing_attrs %}
+            <li><code>{{ attr }}</code> — {{ smart_fields[attr].name }}</li>
+          {% endfor %}
+        </ul>
+        <p class="mt-2 mb-0 text-muted" style="font-size: var(--text-xs);">This may affect prediction accuracy.</p>
+      </div>
+    </div>
+  {% endif %}
 </div>
 
 {% if smart %}
