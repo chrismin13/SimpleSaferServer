@@ -1,6 +1,6 @@
 /* ============================================================
    COMMON.JS — Vanilla JS UI System (replaces Bootstrap JS)
-   Modal, Collapse, Tooltip, and Confirmation Dialog
+   Modal, Collapse, and Confirmation Dialog
    ============================================================ */
 
 /* ── Modal System ───────────────────────────────────────────── */
