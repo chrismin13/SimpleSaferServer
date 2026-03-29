@@ -262,13 +262,52 @@ function displayAlerts(alerts) {
     const statusBadge = alert.read
       ? '<span class="badge badge-neutral">Read</span>'
       : '<span class="badge badge-accent">New</span>';
-    row.innerHTML = `
-      <td class="text-mono" style="font-size: var(--text-xs);">${time}</td>
-      <td>${getTypeBadge(alert.type)}</td>
-      <td><a href="#" onclick="showAlertDetail(${alert.id}); return false;" class="fw-medium">${alert.title}</a></td>
-      <td class="text-muted" style="font-size: var(--text-xs);">${truncateText(alert.message, 50)}</td>
-      <td><span class="badge badge-info">${alert.source}</span></td>
-      <td>${statusBadge}</td>`;
+
+    // Time cell (text only)
+    const tdTime = document.createElement('td');
+    tdTime.className = 'text-mono';
+    tdTime.style.fontSize = 'var(--text-xs)';
+    tdTime.textContent = time;
+
+    // Type badge cell (controlled HTML)
+    const tdType = document.createElement('td');
+    tdType.innerHTML = getTypeBadge(alert.type);
+
+    // Title cell with clickable link (text only)
+    const tdTitle = document.createElement('td');
+    const titleLink = document.createElement('a');
+    titleLink.href = '#';
+    titleLink.className = 'fw-medium';
+    titleLink.textContent = alert.title;
+    titleLink.addEventListener('click', function (event) {
+      event.preventDefault();
+      showAlertDetail(alert.id);
+    });
+    tdTitle.appendChild(titleLink);
+
+    // Message cell (text only, truncated)
+    const tdMessage = document.createElement('td');
+    tdMessage.className = 'text-muted';
+    tdMessage.style.fontSize = 'var(--text-xs)';
+    tdMessage.textContent = truncateText(alert.message, 50);
+
+   // Source cell (text only, wrapped in badge styling via class)
+    const tdSource = document.createElement('td');
+    const sourceBadge = document.createElement('span');
+    sourceBadge.className = 'badge badge-info';
+    sourceBadge.textContent = alert.source;
+    tdSource.appendChild(sourceBadge);
+
+    // Status badge cell (controlled HTML)
+    const tdStatus = document.createElement('td');
+    tdStatus.innerHTML = statusBadge;
+
+    row.appendChild(tdTime);
+    row.appendChild(tdType);
+    row.appendChild(tdTitle);
+    row.appendChild(tdMessage);
+    row.appendChild(tdSource);
+    row.appendChild(tdStatus);
     tbody.appendChild(row);
   });
 }
