@@ -139,6 +139,18 @@ h1, h2, h3, h4, h5, h6 { font-family: var(--font-display); font-weight: var(--we
     mix-blend-mode: overlay;
 }
 
+@media (prefers-reduced-motion: reduce) {
+    .login-body .app-bg-orbs,
+    .setup-body .app-bg-orbs {
+        animation: none;
+    }
+    .orb-1, .orb-2 {
+        animation: none;
+    }
+    .app-bg-grid {
+        animation: none;
+    }
+}
 
 body.fake-mode-active .app-layout,
 body.fake-mode-active .setup-page {
