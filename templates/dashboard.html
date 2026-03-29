@@ -108,6 +108,8 @@
               <span class="badge badge-warning"><i class="fas fa-circle-exclamation"></i> {{ task.status }}</span>
             {% elif task.status == 'Not Run Yet' %}
               <span class="badge badge-neutral"><i class="fas fa-clock"></i> {{ task.status }}</span>
+            {% elif task.status == 'Stopped' %}
+              <span class="badge badge-neutral"><i class="fas fa-circle-stop"></i> {{ task.status }}</span>
             {% else %}
               <span class="badge badge-warning">{{ task.status }}</span>
             {% endif %}
