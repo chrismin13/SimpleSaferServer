@@ -185,7 +185,6 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   // Bind Custom Tabs (scoped to cloud backup config form)
-  const configForm = document.getElementById('cloud-backup-config-form');
   if (configForm) {
     configForm.querySelectorAll('.tab-btn').forEach(btn => {
       btn.addEventListener('click', function() {

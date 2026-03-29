@@ -55,7 +55,14 @@ window.openMegaFolderPicker = function openMegaFolderPicker(options) {
 
   function loadDirs(path) {
     clearError();
-    if (dirsListEl) dirsListEl.innerHTML = '<span class="spinner"></span> <span class="text-muted" style="margin-left:8px;">Loading...</span>';
+    if (dirsListEl) {
+      dirsListEl.innerHTML = `
+        <div class="folder-list-loading" aria-live="polite">
+          <span class="spinner" aria-hidden="true"></span>
+          <span class="text-muted">Loading...</span>
+        </div>
+      `;
+    }
     const creds = getCredentials();
     fetch(listUrl, {
       method: 'POST',

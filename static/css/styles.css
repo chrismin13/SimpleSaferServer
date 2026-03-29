@@ -681,6 +681,11 @@ body.fake-mode-active .toast-stack {
   color: var(--text-secondary);
 }
 
+.form-control.form-control-picker:read-only {
+  background: var(--bg-input);
+  color: var(--text-primary);
+}
+
 .form-control.is-invalid { border-color: var(--danger); }
 .form-control.is-valid { border-color: var(--success); }
 .invalid-feedback { color: var(--danger-text); font-size: var(--text-xs); display: none; }
@@ -1823,6 +1828,16 @@ pre code {
   overflow-x: hidden;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
+}
+
+.folder-list-loading {
+  min-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  padding: var(--sp-5);
+  text-align: center;
 }
 
 .folder-list-item {
