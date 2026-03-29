@@ -879,17 +879,12 @@ def run_fake_task(task_name: str):
     try:
         if task_name == 'Check Mount':
             mount_point = config_manager.get_value('backup', 'mount_point', runtime.default_mount_point)
-            if runtime.is_fake:
-                if not os.path.isdir(mount_point):
-                    raise RuntimeError(f'Backup source folder not found: {mount_point}')
-                if not fake_state.is_mounted(mount_point):
-                    fake_state.set_mount(True, mount_point=mount_point)
-                    fake_state.append_task_log(task_name, f'Found local backup source at {mount_point}; marking it as connected.')
-                fake_state.append_task_log(task_name, f'Backup source available at {mount_point}.')
-            elif system_utils.is_mounted(mount_point):
-                fake_state.append_task_log(task_name, f'Backup source available at {mount_point}.')
-            else:
-                raise RuntimeError('Backup source is not mounted.')
+            if not os.path.isdir(mount_point):
+                raise RuntimeError(f'Backup source folder not found: {mount_point}')
+            if not fake_state.is_mounted(mount_point):
+                fake_state.set_mount(True, mount_point=mount_point)
+                fake_state.append_task_log(task_name, f'Found local backup source at {mount_point}; marking it as connected.')
+            fake_state.append_task_log(task_name, f'Backup source available at {mount_point}.')
         elif task_name == 'Drive Health Check':
             smart, _ = get_smart_attributes()
             probability = predict_failure_probability(smart)
