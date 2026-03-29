@@ -318,7 +318,8 @@ class Task:
                 if cancel_event:
                     cancel_event.set()
             fake_state.append_task_log(self.name, f"Stopped {self.name} in fake mode.")
-            fake_state.set_task_state(self.name, status=Status.STOPPED)
+            # Map fake-mode stop to a UI-supported status so it renders correctly
+            fake_state.set_task_state(self.name, status=Status.FAILURE)
             return
         try:
             subprocess.Popen(
