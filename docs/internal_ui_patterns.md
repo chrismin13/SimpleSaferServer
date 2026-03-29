@@ -1,7 +1,7 @@
 # Internal UI Patterns
 
 ## Bunker Aesthetic
-- **Frosted Glass Components:** Use `hsla(220, 16%, 12%, 0.75)` with `backdrop-filter: blur(20px)` and `-webkit-backdrop-filter` for main interface structures (e.g., `.card`, `.sidebar`, `.status-tile`, `.modal-container`).
+- **Frosted Glass Components:** Use a dark frosted-glass treatment (for example, `hsla(220, 16%, 12%, 0.75–0.85)` with `backdrop-filter: blur(20–32px)` and matching `-webkit-backdrop-filter`) for main interface structures (e.g., `.card`, `.sidebar`, `.status-tile`, `.modal-container`). Individual components may tune opacity and blur within this range to meet contrast and legibility requirements.
 - **Global Background:** The animated `app-bg-container` creates an ambient textured environment behind the translucent glass elements.
 
 ## Layout Stability
