@@ -47,7 +47,98 @@ h1, h2, h3, h4, h5, h6 { font-family: var(--font-display); font-weight: var(--we
 .app-layout {
   display: flex;
   min-height: 100vh;
+  position: relative;
+  z-index: 1;
 }
+
+/* ── Global Animated Background ────────────────────────────── */
+.app-bg-container {
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    z-index: 0;
+    pointer-events: none;
+    background: var(--bg-root);
+}
+
+.app-bg-orbs {
+    display: none; /* Hidden globally to maximize legibility on dashboards */
+}
+
+/* Exception to show glowing orbs strictly on standalone login and setup pages */
+.login-body .app-bg-orbs,
+.setup-body .app-bg-orbs {
+    display: block;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 150vw;
+    height: 150vw;
+    transform: translate(-50%, -50%);
+    animation: rotateOrbs 60s linear infinite;
+    opacity: 1.0;
+}
+
+.orb {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(120px);
+    opacity: 0.5;
+}
+
+.orb-1 {
+    top: 20%;
+    left: 30%;
+    width: 45vw;
+    height: 45vw;
+    background: var(--accent); /* Amber */
+    animation: pulseOrb 20s ease-in-out infinite alternate;
+}
+
+.orb-2 {
+    bottom: 20%;
+    right: 20%;
+    width: 60vw;
+    height: 60vw;
+    background: hsl(220, 80%, 35%); /* Intense deep blue */
+    animation: pulseOrb 28s ease-in-out infinite alternate-reverse;
+}
+
+@keyframes rotateOrbs {
+    0% { transform: translate(-50%, -50%) rotate(0deg); }
+    100% { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+@keyframes pulseOrb {
+    0% { transform: scale(0.8); opacity: 0.3; }
+    100% { transform: scale(1.2); opacity: 0.7; }
+}
+
+.app-bg-grid {
+    position: absolute;
+    inset: -100px; /* Buffer for scrolling */
+    background-image: 
+        linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+    background-size: 50px 50px;
+    animation: scrollGrid 30s linear infinite;
+    mask-image: radial-gradient(circle at center, black 30%, transparent 80%);
+    -webkit-mask-image: radial-gradient(circle at center, black 30%, transparent 80%);
+}
+
+@keyframes scrollGrid {
+    0% { transform: translateY(0); }
+    100% { transform: translateY(50px); }
+}
+
+.app-bg-noise {
+    position: absolute;
+    inset: 0;
+    background: url('data:image/svg+xml,%3Csvg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"%3E%3Cfilter id="noiseFilter"%3E%3CfeTurbulence type="fractalNoise" baseFrequency="0.75" numOctaves="3" stitchTiles="stitch"/%3E%3C/filter%3E%3Crect width="100%25" height="100%25" filter="url(%23noiseFilter)"/%3E%3C/svg%3E');
+    opacity: 0.15;
+    mix-blend-mode: overlay;
+}
+
 
 body.fake-mode-active .app-layout,
 body.fake-mode-active .setup-page {
@@ -62,8 +153,14 @@ body.fake-mode-active .setup-page {
   left: 0;
   bottom: 0;
   width: var(--sidebar-width);
-  background: var(--bg-sidebar);
-  border-right: 1px solid var(--border-subtle);
+  background: linear-gradient(
+    160deg, 
+    hsla(220, 16%, 14%, 0.85) 0%, 
+    hsla(220, 18%, 10%, 0.65) 100%
+  );
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-right: 1px solid var(--border-default);
   z-index: var(--z-sidebar);
   display: flex;
   flex-direction: column;
@@ -299,10 +396,13 @@ body.fake-mode-active .toast-stack {
 
 /* ── Card ───────────────────────────────────────────────────── */
 .card {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
+  background: hsla(220, 16%, 12%, 0.78);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border-default);
   border-radius: var(--radius-lg);
   overflow: hidden;
+  box-shadow: var(--shadow-md);
 }
 
 .card-header {
@@ -340,17 +440,16 @@ body.fake-mode-active .toast-stack {
 }
 
 .status-tile {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
+  background: hsla(220, 16%, 12%, 0.78);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border-default);
   border-radius: var(--radius-lg);
   padding: var(--sp-5);
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);
-  transition: border-color var(--dur-fast) var(--ease-default);
 }
-
-.status-tile:hover { border-color: var(--border-default); }
 
 .status-tile-header {
   display: flex;
@@ -678,7 +777,9 @@ textarea.form-control {
 .table-container {
   overflow-x: auto;
   border-radius: var(--radius-lg);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-sm);
 }
 
 table {
@@ -704,8 +805,10 @@ table td {
   font-size: var(--text-sm);
   border-bottom: 1px solid var(--border-subtle);
   vertical-align: middle;
+  background: var(--bg-surface);
 }
 
+table tr:nth-child(even) td { background: var(--bg-root); }
 table tr:last-child td { border-bottom: none; }
 table tr:hover td { background: var(--bg-hover); }
 
@@ -730,8 +833,10 @@ table .text-end { text-align: right; }
 }
 
 .modal-container {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-default);
+  background: hsla(220, 16%, 12%, 0.85);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-xl);
   width: 100%;
   max-width: 540px;
@@ -870,12 +975,16 @@ table .text-end { text-align: right; }
   margin: 0;
 }
 
-.feedback-slot-compact {
-  min-height: 3rem;
+/* Eliminate forced whitespace when empty */
+.feedback-slot-compact,
+.feedback-slot-medium {
+  min-height: 0;
 }
 
-.feedback-slot-medium {
-  min-height: 5rem;
+/* Completely vanish from document flow if the inner alert is hidden (prevents margin stacking) */
+.feedback-slot:empty,
+.feedback-slot:has(> .d-none:only-child) {
+  display: none !important;
 }
 
 .drive-health-result-panel {
@@ -1135,16 +1244,25 @@ pre code {
 
 .setup-page {
   min-height: 100vh;
-  background: var(--bg-root);
+  background: transparent;
   display: flex;
   align-items: flex-start;
   justify-content: center;
   padding: var(--sp-6);
+  position: relative;
+  z-index: 1;
 }
 
 .setup-container {
   width: 100%;
   max-width: 1000px;
+  background: hsla(220, 16%, 12%, 0.85); /* Solid & legible frosted data pane */
+  backdrop-filter: blur(32px);
+  -webkit-backdrop-filter: blur(32px);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  padding: var(--sp-8);
+  box-shadow: var(--shadow-xl);
 }
 
 .setup-header {
