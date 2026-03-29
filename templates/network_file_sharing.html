@@ -324,7 +324,15 @@ function loadFolderPicker(path) {
         data.dirs.forEach(dir => {
           const item = document.createElement('div');
           item.className = 'folder-list-item';
-          item.innerHTML = `<i class="fas fa-folder"></i> <span>${dir}</span>`;
+
+          const icon = document.createElement('i');
+          icon.className = 'fas fa-folder';
+          item.appendChild(icon);
+
+          const label = document.createElement('span');
+          label.textContent = dir;
+          item.appendChild(document.createTextNode(' '));
+          item.appendChild(label);
           item.addEventListener('click', () => loadFolderPicker(data.path.replace(/\/$/, '') + '/' + dir));
           dirsEl.appendChild(item);
         });
