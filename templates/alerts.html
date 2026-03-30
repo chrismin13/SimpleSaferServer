@@ -17,7 +17,7 @@
 </div>
 
 <!-- Email Configuration (Collapsible) -->
-<div id="emailConfigPane" class="alerts-settings-pane">
+<div id="emailConfigPane" class="alerts-settings-pane" inert>
   <h2 class="mb-4" style="font-size: var(--text-lg);"><i class="fas fa-envelope me-2 text-muted"></i>Email Alert Configuration</h2>
   <form id="emailConfigForm">
     <div class="form-group mb-4">
@@ -156,6 +156,11 @@ document.addEventListener('DOMContentLoaded', function() {
     pane.classList.toggle('expanded');
     const isExpanded = pane.classList.contains('expanded');
     this.setAttribute('aria-expanded', isExpanded);
+    if (isExpanded) {
+      pane.removeAttribute('inert');
+    } else {
+      pane.setAttribute('inert', '');
+    }
     this.innerHTML = isExpanded
       ? '<i class="fas fa-times me-2"></i> Close Settings'
       : '<i class="fas fa-cog me-2"></i> Email Settings';
