@@ -1091,7 +1091,7 @@ def api_generate_test_alerts():
         config_manager.log_alert("Test Info", "This is a simulated info message just letting you know something happened.", alert_type="info", source="System Test")
         return jsonify({'success': True})
     except Exception as e:
-        current_app.logger.error(f"Error generating test alerts: {e}")
+        current_app.logger.exception("Error generating test alerts")
         return jsonify({'success': False, 'error': 'Failed to generate test alerts'}), 500
 
 @app.route('/api/alerts', methods=['GET'])

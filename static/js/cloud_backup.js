@@ -169,10 +169,11 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // Update Tab Buttons (scoped to cloud backup config form)
-    const configForm = document.getElementById('cloud-backup-config-form');
     if (configForm) {
       configForm.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.getAttribute('data-tab') === mode);
+        const isActive = btn.getAttribute('data-tab') === mode;
+        btn.classList.toggle('active', isActive);
+        btn.setAttribute('aria-selected', isActive);
       });
     }
 

@@ -186,9 +186,9 @@
                                 <div id="backupConfigError" class="alert alert-danger d-none"></div>
                             </div>
                             <div class="tabs-container mb-4">
-                                <div class="tabs-nav">
-                                    <button type="button" class="tab-btn active" data-tab="mega">MEGA (Simple)</button>
-                                    <button type="button" class="tab-btn" data-tab="advanced">Advanced (rclone)</button>
+                                <div class="tabs-nav" role="tablist" aria-label="Cloud backup mode">
+                                    <button type="button" class="tab-btn active" data-tab="mega" role="tab" aria-selected="true" aria-controls="megaConfigFields">MEGA (Simple)</button>
+                                    <button type="button" class="tab-btn" data-tab="advanced" role="tab" aria-selected="false" aria-controls="advancedConfigFields">Advanced (rclone)</button>
                                 </div>
 
                                 <!-- Hidden radio inputs to maintain logic compatibility -->
@@ -199,7 +199,7 @@
 
                                 <div class="tab-content">
                                     <!-- MEGA Fields -->
-                                    <div id="megaConfigFields" class="tab-pane active">
+                                    <div id="megaConfigFields" class="tab-pane active" role="tabpanel">
                                         <div class="mb-4">
                                             <img src="/static/img/mega-logo.svg" alt="MEGA logo" style="height: 48px; margin-bottom: var(--sp-2);">
                                             <div class="fw-semi" style="font-size: var(--text-md);">Sign in to your MEGA account</div>
@@ -235,7 +235,7 @@
                                         </div>
                                     </div>
                                     <!-- Advanced rclone Fields -->
-                                    <div id="advancedConfigFields" class="tab-pane">
+                                    <div id="advancedConfigFields" class="tab-pane" role="tabpanel">
                                         <div class="form-group mb-3">
                                             <label class="form-label">Rclone Configuration</label>
                                             <textarea id="rcloneConfig" rows="7" class="form-control" placeholder="Paste your rclone configuration here…"></textarea>

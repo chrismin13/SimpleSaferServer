@@ -74,7 +74,9 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     document.querySelectorAll('#step4 .tab-btn').forEach(btn => {
-      btn.classList.toggle('active', btn.getAttribute('data-tab') === mode);
+      const isActive = btn.getAttribute('data-tab') === mode;
+      btn.classList.toggle('active', isActive);
+      btn.setAttribute('aria-selected', isActive);
     });
   }
 
