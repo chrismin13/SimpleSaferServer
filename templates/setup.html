@@ -64,7 +64,7 @@
                     <div class="stepper-connector"></div>
                     <div class="stepper-item" data-step="6" onclick="goToStep(6)">
                         <div class="stepper-dot">6</div>
-                        <span class="stepper-label">Schedule</span>
+                        <span class="stepper-label">Backup Settings</span>
                     </div>
                 </div>
 
@@ -312,7 +312,7 @@
                     <!-- Step 6: Schedule -->
                     <div id="step6" class="setup-step">
                         <div class="setup-card">
-                            <h3>Backup Schedule</h3>
+                            <h3>Schedule & Bandwidth</h3>
                             <div class="feedback-slot feedback-slot-compact mb-4">
                                 <div id="scheduleError" class="alert alert-danger d-none"></div>
                             </div>
@@ -386,6 +386,7 @@
     <script src="{{ url_for('static', filename='js/mega_folder_picker.js') }}"></script>
     <script src="{{ url_for('static', filename='js/common.js') }}"></script>
     <script src="{{ url_for('static', filename='js/scripts.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/timepicker.js') }}"></script>
     <script>
         let currentStep = 1;
         const totalSteps = 6;

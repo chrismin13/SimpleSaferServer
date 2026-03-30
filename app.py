@@ -1840,7 +1840,7 @@ def api_cloud_backup_get_schedule():
         })
     except Exception as e:
         current_app.logger.error(f"Error getting backup schedule: {e}")
-        return jsonify({'success': False, 'error': 'Could not load schedule.'})
+        return jsonify({'success': False, 'error': 'Could not load backup settings.'})
 
 @app.route('/api/cloud_backup/schedule', methods=['POST'])
 @login_required
@@ -1874,7 +1874,7 @@ def api_cloud_backup_set_schedule():
         return jsonify({'success': True})
     except Exception as e:
         current_app.logger.error(f"Error saving backup schedule: {e}")
-        return jsonify({'success': False, 'error': 'Could not save schedule.'})
+        return jsonify({'success': False, 'error': 'Could not save backup settings.'})
 
 @app.route('/api/cloud_backup/mega/validate', methods=['POST'])
 @login_required

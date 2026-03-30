@@ -535,7 +535,7 @@ def save_schedule():
         logger.info(f"Schedule saved: daily at {time}, bandwidth limit: {bandwidth_limit}")
         return jsonify({
             'success': True,
-            'message': 'Schedule saved successfully'
+            'message': 'Backup settings saved successfully'
         })
 
     except Exception as e:

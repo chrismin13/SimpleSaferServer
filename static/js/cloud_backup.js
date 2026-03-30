@@ -144,9 +144,9 @@ document.addEventListener('DOMContentLoaded', function () {
     })
       .then(r => r.json())
       .then(data => {
-        if (!data.success) throw new Error(data.error || 'Failed to save schedule');
+        if (!data.success) throw new Error(data.error || 'Failed to save backup settings');
         window.AsyncButtonState.success(scheduleSaveBtn);
-        showAlert('Schedule saved successfully!', 'success');
+        showAlert('Backup settings saved successfully!', 'success');
         loadSchedule();
         loadStatus();
       })
