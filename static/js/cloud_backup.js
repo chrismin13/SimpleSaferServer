@@ -144,9 +144,9 @@ document.addEventListener('DOMContentLoaded', function () {
     })
       .then(r => r.json())
       .then(data => {
-        if (!data.success) throw new Error(data.error || 'Failed to save schedule');
+        if (!data.success) throw new Error(data.error || 'Failed to save backup settings');
         window.AsyncButtonState.success(scheduleSaveBtn);
-        showAlert('Schedule saved successfully!', 'success');
+        showAlert('Backup settings saved successfully!', 'success');
         loadSchedule();
         loadStatus();
       })
@@ -158,18 +158,42 @@ document.addEventListener('DOMContentLoaded', function () {
 
   function showModeFields(mode) {
     if (mode === 'mega') {
-      megaFields.classList.remove('d-none');
-      advancedFields.classList.add('d-none');
+      megaFields.classList.add('active');
+      advancedFields.classList.remove('active');
     } else {
-      megaFields.classList.add('d-none');
-      advancedFields.classList.remove('d-none');
-      if (modeMega.checked === false && megaEmail.value && megaFolderPath.value) {
+      megaFields.classList.remove('active');
+      advancedFields.classList.add('active');
+      if (megaEmail.value && megaFolderPath.value && !remoteName.value.trim()) {
         remoteName.value = `mega:${megaFolderPath.value}`;
       }
     }
+
+    // Update Tab Buttons (scoped to cloud backup config form)
+    if (configForm) {
+      configForm.querySelectorAll('.tab-btn').forEach(btn => {
+        const isActive = btn.getAttribute('data-tab') === mode;
+        btn.classList.toggle('active', isActive);
+        btn.setAttribute('aria-selected', isActive);
+      });
+    }
+
+    // Sync Hidden Radio Inputs (to keep save/submit logic happy)
+    if (mode === 'mega' && modeMega) {
+      modeMega.checked = true;
+    } else if (modeAdvanced) {
+      modeAdvanced.checked = true;
+    }
   }
-  modeMega.addEventListener('change', () => showModeFields('mega'));
-  modeAdvanced.addEventListener('change', () => showModeFields('advanced'));
+
+  // Bind Custom Tabs (scoped to cloud backup config form)
+  if (configForm) {
+    configForm.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', function() {
+        const mode = this.getAttribute('data-tab');
+        if (mode) showModeFields(mode);
+      });
+    });
+  }
 
   const megaChangeCredsBtn = document.getElementById('megaChangeCredsBtn');
   const megaCredStatus = document.getElementById('megaCredStatus');
