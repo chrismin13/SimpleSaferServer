@@ -46,6 +46,66 @@ APP_DIR="/opt/SimpleSaferServer"
 SCRIPTS_DIR="$APP_DIR/scripts"
 MODEL_DIR="/opt/SimpleSaferServer/harddrive_model"
 SERVICE_FILE="/etc/systemd/system/simple_safer_server_web.service"
+HDSENTINEL_BIN="/usr/local/bin/hdsentinel"
+
+install_hdsentinel() {
+    local arch=""
+    local machine=""
+    local url=""
+    local tmpdir=""
+
+    if command -v dpkg >/dev/null 2>&1; then
+        arch=$(dpkg --print-architecture 2>/dev/null || true)
+    fi
+
+    if [ -z "$arch" ]; then
+        machine=$(uname -m)
+        case "$machine" in
+            x86_64|amd64)
+                arch="amd64"
+                ;;
+            aarch64|arm64)
+                arch="arm64"
+                ;;
+        esac
+    fi
+
+    case "$arch" in
+        amd64)
+            url="https://www.hdsentinel.com/hdslin/hdsentinel-020c-x64.zip"
+            ;;
+        arm64)
+            url="https://www.hdsentinel.com/hdslin/hdsentinel-armv8.zip"
+            ;;
+        *)
+            echo -e "${YELLOW}HDSentinel auto-install skipped: unsupported architecture '${arch:-unknown}'.${NC}"
+            return 0
+            ;;
+    esac
+
+    tmpdir=$(mktemp -d)
+    if ! curl -L --fail --output "$tmpdir/hdsentinel.zip" "$url"; then
+        echo -e "${YELLOW}HDSentinel download failed. Continuing without it.${NC}"
+        rm -rf "$tmpdir"
+        return 0
+    fi
+
+    if ! unzip -o "$tmpdir/hdsentinel.zip" -d "$tmpdir" >/dev/null; then
+        echo -e "${YELLOW}HDSentinel extraction failed. Continuing without it.${NC}"
+        rm -rf "$tmpdir"
+        return 0
+    fi
+
+    if [ ! -f "$tmpdir/HDSentinel" ]; then
+        echo -e "${YELLOW}HDSentinel binary not found in downloaded archive. Continuing without it.${NC}"
+        rm -rf "$tmpdir"
+        return 0
+    fi
+
+    install -m 755 "$tmpdir/HDSentinel" "$HDSENTINEL_BIN"
+    rm -rf "$tmpdir"
+    echo -e "${GREEN}✔ HDSentinel installed to $HDSENTINEL_BIN.${NC}\n"
+}
 
 # 1. Install system dependencies and Python packages using apt
 #    We use apt for Python packages to avoid conflicts with Debian's externally managed Python environment.
@@ -54,7 +114,7 @@ echo -e "${YELLOW}Step 1: Installing system and Python dependencies...${NC}"
 apt-get update
 # Preseed AppArmor prompt for msmtp only to ensure non-interactive install
 echo "msmtp msmtp/apply_apparmor boolean true" | debconf-set-selections
-DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-pip python3-flask python3-flask-socketio python3-psutil python3-xgboost python3-joblib python3-pandas python3-sklearn python3-cryptography smartmontools samba msmtp
+DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-pip python3-flask python3-flask-socketio python3-psutil python3-xgboost python3-joblib python3-pandas python3-sklearn python3-cryptography smartmontools samba msmtp curl unzip rsync
 
 echo -e "${GREEN}✔ System and Python dependencies installed.${NC}\n"
 
@@ -70,20 +130,24 @@ sudo sh -c "bash $TMPFILE || true"
 rm -f "$TMPFILE"
 echo -e "${GREEN}✔ rclone installed.${NC}\n"
 
-# 3. Copy/update application files (excluding /etc/SimpleSaferServer/)
-echo -e "${YELLOW}Step 3: Copying application files...${NC}"
+# 3. Install HDSentinel for supported architectures
+echo -e "${YELLOW}Step 3: Installing HDSentinel...${NC}"
+install_hdsentinel
+
+# 4. Copy/update application files (excluding /etc/SimpleSaferServer/)
+echo -e "${YELLOW}Step 4: Copying application files...${NC}"
 mkdir -p "$APP_DIR"
 rsync -a --exclude='venv' --exclude='__pycache__' --exclude='*.pyc' --exclude='*.pyo' --exclude='*.log' --exclude='telemetry.csv' --exclude='harddrive_model' --exclude='static' --exclude='templates' ./ "$APP_DIR/"
 echo -e "${GREEN}✔ Application files copied.${NC}\n"
 
-# 4. Copy static and templates directories
-echo -e "${YELLOW}Step 4: Copying static assets and templates...${NC}"
+# 5. Copy static and templates directories
+echo -e "${YELLOW}Step 5: Copying static assets and templates...${NC}"
 rsync -a static "$APP_DIR/"
 rsync -a templates "$APP_DIR/"
 echo -e "${GREEN}✔ Static assets and templates copied.${NC}\n"
 
-# 5. Copy scripts to /opt/SimpleSaferServer/scripts and set permissions
-echo -e "${YELLOW}Step 5: Installing scripts...${NC}"
+# 6. Copy scripts to /opt/SimpleSaferServer/scripts and set permissions
+echo -e "${YELLOW}Step 6: Installing scripts...${NC}"
 mkdir -p "$SCRIPTS_DIR"
 for script in scripts/*.sh scripts/*.py; do
   cp "$script" "$SCRIPTS_DIR/"
@@ -91,22 +155,22 @@ for script in scripts/*.sh scripts/*.py; do
 done
 echo -e "${GREEN}✔ Scripts installed to $SCRIPTS_DIR.${NC}\n"
 
-# 6. Copy model files
-echo -e "${YELLOW}Step 6: Copying model files...${NC}"
+# 7. Copy model files
+echo -e "${YELLOW}Step 7: Copying model files...${NC}"
 mkdir -p "$MODEL_DIR"
 cp harddrive_model/* "$MODEL_DIR/"
 echo -e "${GREEN}✔ Model files copied.${NC}\n"
 
-# 7. Install/refresh systemd service for Flask app
-echo -e "${YELLOW}Step 7: Setting up systemd service...${NC}"
+# 8. Install/refresh systemd service for Flask app
+echo -e "${YELLOW}Step 8: Setting up systemd service...${NC}"
 cp simple_safer_server_web.service "$SERVICE_FILE"
 systemctl daemon-reload
 systemctl enable simple_safer_server_web.service
 systemctl restart simple_safer_server_web.service
 echo -e "${GREEN}✔ Systemd service enabled and started.${NC}\n"
 
-# 8. Open port 5000 in firewall if active
-echo -e "${YELLOW}Step 8: Configuring firewall (if active)...${NC}"
+# 9. Open port 5000 in firewall if active
+echo -e "${YELLOW}Step 9: Configuring firewall (if active)...${NC}"
 if command -v ufw >/dev/null 2>&1 && ufw status | grep -q 'Status: active'; then
   ufw allow 5000/tcp
 echo -e "${GREEN}✔ Port 5000 opened in ufw.${NC}"
@@ -122,7 +186,7 @@ echo -e "${YELLOW}No active firewall detected or configured. Skipping firewall s
 fi
 echo
 
-# 9. Print all network interface IPs for user access
+# 10. Print all network interface IPs for user access
 echo -e "${BLUE}==============================================="
 echo -e "  SimpleSaferServer Web UI Access URLs"
 echo -e "===============================================${NC}"

@@ -169,7 +169,7 @@ account default : simplesaferserver
             scripts_dest_dir.mkdir(parents=True, exist_ok=True)
             
             # Copy and configure each script
-            script_files = ['check_mount.sh', 'check_health.sh', 'backup_cloud.sh', 'predict_health.py', 'log_alert.py']
+            script_files = ['check_mount.sh', 'check_health.sh', 'check_health.py', 'backup_cloud.sh', 'predict_health.py', 'log_alert.py']
             
             for script_file in script_files:
                 source_path = scripts_source_dir / script_file
@@ -238,6 +238,7 @@ account default : simplesaferserver
             backup_config = config.get('backup', {})
             system_config = config.get('system', {})
             schedule_config = config.get('schedule', {})
+            hdsentinel_config = config.get('hdsentinel', {})
 
             config_content = f"""[system]
 username = {system_config.get('username', '')}
@@ -258,6 +259,10 @@ mega_folder = {backup_config.get('mega_folder', '')}
 
 [schedule]
 backup_cloud_time = {schedule_config.get('backup_cloud_time', '')}
+
+[hdsentinel]
+enabled = {hdsentinel_config.get('enabled', 'true')}
+health_change_alert = {hdsentinel_config.get('health_change_alert', 'true')}
 """
             # Create the config directory
             config_dir = self.runtime.config_dir
@@ -314,12 +319,12 @@ StandardError=journal
 WantedBy=multi-user.target
 """,
                 'check_health.service': f"""[Unit]
-Description=Drive Health Check using XGBoost Model
+Description=Drive Health Check
 After=network.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/check_health.sh
+ExecStart=/usr/local/bin/check_health.py
 User=root
 StandardOutput=journal
 StandardError=journal
