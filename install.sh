@@ -8,7 +8,6 @@ BLUE='\033[1;34m'
 NC='\033[0m' # No Color
 
 # Welcome banner
-clear
 echo -e "${BLUE}==============================================="
 echo -e "   SimpleSaferServer Installer"
 echo -e "===============================================${NC}\n"
