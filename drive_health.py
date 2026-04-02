@@ -23,6 +23,10 @@ except (ImportError, OSError):
 
 
 LOGGER = logging.getLogger(__name__)
+SMARTCTL_JSON_UPGRADE_MESSAGE = (
+    "The installed smartctl version does not support JSON output required for SMART-based health prediction. "
+    "Upgrade smartmontools on this machine to enable SMART prediction."
+)
 
 SMART_FIELDS = {
     "smart_1_raw": {
@@ -121,6 +125,18 @@ def get_fake_smart_attributes():
 
 
 @lru_cache(maxsize=1)
+def get_smartctl_json_support():
+    if not shutil.which("smartctl"):
+        return False, "smartctl is not installed on this machine."
+
+    result = subprocess.run(["smartctl", "-h"], capture_output=True, text=True)
+    help_output = "\n".join(part for part in [result.stdout, result.stderr] if part)
+    if "-j" in help_output or "--json" in help_output:
+        return True, None
+    return False, SMARTCTL_JSON_UPGRADE_MESSAGE
+
+
+@lru_cache(maxsize=1)
 def _load_model_and_threshold(model_path: str, threshold_path: str):
     if XGBClassifier is None or joblib is None:
         return None, 0.5
@@ -208,63 +224,35 @@ def resolve_backup_parent_device(config_manager, system_utils, runtime=None):
 def get_smart_attributes(config_manager, system_utils, device=None, runtime=None):
     runtime = runtime or get_runtime()
     if runtime.is_fake:
-        return get_fake_smart_attributes()
+        attrs, missing = get_fake_smart_attributes()
+        return attrs, missing, None
 
     try:
+        smartctl_json_supported, smartctl_json_error = get_smartctl_json_support()
+        if not smartctl_json_supported:
+            LOGGER.warning(smartctl_json_error)
+            return None, None, smartctl_json_error
+
         if device is None:
-            device, partition_device, error = resolve_backup_parent_device(config_manager, system_utils, runtime=runtime)
+            device, _, error = resolve_backup_parent_device(config_manager, system_utils, runtime=runtime)
             if error:
                 LOGGER.warning(error)
-                return None, None
-        else:
-            partition_device = None
+                return None, None, error
 
-        candidate_devices = [device]
-        if partition_device and partition_device not in candidate_devices:
-            candidate_devices.append(partition_device)
+        command = ["smartctl", "-A", "-j", device]
+        if os.geteuid() != 0 and shutil.which("sudo"):
+            command.insert(0, "sudo")
 
-        transport_attempts = [
-            [],
-            ["-d", "sat"],
-            ["-d", "sat,12"],
-            ["-d", "sat,16"],
-            ["-d", "scsi"],
-        ]
+        result = subprocess.run(command, capture_output=True, text=True)
+        stdout = (result.stdout or "").strip()
+        stderr = (result.stderr or "").strip()
 
-        data = None
-        attempt_errors = []
-        for candidate_device in candidate_devices:
-            for transport_args in transport_attempts:
-                command = ["smartctl", "-A", "-j"] + transport_args + [candidate_device]
-                if os.geteuid() != 0 and shutil.which("sudo"):
-                    command.insert(0, "sudo")
+        if not stdout:
+            error_message = stderr or "smartctl returned no JSON output"
+            LOGGER.warning("Failed to retrieve SMART JSON: %s", error_message)
+            return None, None, error_message
 
-                result = subprocess.run(command, capture_output=True, text=True)
-                stdout = (result.stdout or "").strip()
-                stderr = (result.stderr or "").strip()
-
-                if stdout:
-                    try:
-                        parsed = json.loads(stdout)
-                        data = parsed
-                        device = candidate_device
-                        break
-                    except json.JSONDecodeError as exc:
-                        attempt_errors.append(
-                            "{}: invalid JSON output ({})".format(" ".join(command), exc)
-                        )
-                        continue
-
-                error_text = stderr or "smartctl returned no JSON output"
-                attempt_errors.append("{}: {}".format(" ".join(command), error_text))
-
-            if data is not None:
-                break
-
-        if data is None:
-            if attempt_errors:
-                LOGGER.warning("Failed to retrieve SMART JSON:\n%s", "\n".join(attempt_errors))
-            return None, None
+        data = json.loads(stdout)
 
         attrs = {field: info["default"] for field, info in SMART_FIELDS.items()}
         missing_attrs = set(SMART_FIELDS.keys())
@@ -282,13 +270,13 @@ def get_smart_attributes(config_manager, system_utils, device=None, runtime=None
             except (ValueError, KeyError, TypeError):
                 LOGGER.warning("Could not parse SMART value for %s", field_name)
 
-        return attrs, list(missing_attrs)
+        return attrs, list(missing_attrs), None
     except json.JSONDecodeError as exc:
         LOGGER.warning("Failed to parse smartctl JSON output: %s", exc)
-        return None, None
+        return None, None, SMARTCTL_JSON_UPGRADE_MESSAGE
     except Exception as exc:
         LOGGER.warning("Unexpected SMART read error: %s", exc)
-        return None, None
+        return None, None, str(exc)
 
 
 def append_telemetry(data_dict, prediction, runtime=None):
