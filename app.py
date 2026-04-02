@@ -661,12 +661,14 @@ def drives():
                     health_change_alert=request.form.get("hdsentinel_health_change_alert") == "on",
                 )
                 hdsentinel_settings = get_hdsentinel_settings(config_manager)
-                if runtime.is_fake or not hdsentinel_settings["enabled"]:
-                    hdsentinel_snapshot = collect_hdsentinel_snapshot(
-                        config_manager,
-                        system_utils,
-                        runtime=runtime,
-                    )
+                # Refresh the snapshot after saving settings so the UI immediately
+                # reflects the current monitoring state (including when monitoring
+                # has just been enabled).
+                hdsentinel_snapshot = collect_hdsentinel_snapshot(
+                    config_manager,
+                    system_utils,
+                    runtime=runtime,
+                )
                 settings_message = "HDSentinel settings saved successfully."
             except Exception as exc:
                 settings_error = f"Failed to save HDSentinel settings: {exc}"
