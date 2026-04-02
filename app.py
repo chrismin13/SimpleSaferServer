@@ -666,9 +666,10 @@ def drives():
     can_manage_backup_drive = user_manager.is_admin(session.get('username'))
 
     smart_support_warning = None
-    smartctl_json_supported, smartctl_json_error = get_smartctl_json_support()
-    if not smartctl_json_supported:
-        smart_support_warning = smartctl_json_error
+    if not runtime.is_fake:
+        smartctl_json_supported, smartctl_json_error = get_smartctl_json_support()
+        if not smartctl_json_supported:
+            smart_support_warning = smartctl_json_error
 
     if request.method == "POST":
         form_action = request.form.get("form_action", "run_health_check")
