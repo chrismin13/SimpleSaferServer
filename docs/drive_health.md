@@ -24,6 +24,10 @@ The Drive Health page combines two views of the configured backup drive:
 - It updates only the SimpleSaferServer-managed backup mount entry in `/etc/fstab`.
 - If the app finds multiple managed entries or a conflicting non-SimpleSaferServer entry using the same UUID or mount point, it stops and asks for manual cleanup.
 
+What "SimpleSaferServer-managed" means:
+- It refers to the backup drive line in `/etc/fstab` that ends with the marker comment `# SimpleSaferServer managed backup drive`.
+- The app does not treat unrelated `/etc/fstab` lines as its own unless they carry that backup-drive marker (or the older legacy marker).
+
 ## Manual Recovery
 If you need to inspect or repair the backup drive configuration manually, start here:
 
@@ -44,8 +48,14 @@ sudo findmnt --verify
 Manual recovery rules:
 - Update `/etc/SimpleSaferServer/config.conf` only if you know the correct `mount_point`, `uuid`, and `usb_id` values.
 - Update only the SimpleSaferServer-managed line in `/etc/fstab`.
+- If the mount point changes, also check the backup share path in `/etc/samba/smb.conf`.
 - Do not modify unrelated `/etc/fstab` entries.
 - Create a backup of `/etc/fstab` before editing it.
+
+Important file locations:
+- App config: `/etc/SimpleSaferServer/config.conf`
+- Managed mount entry: `/etc/fstab`
+- Samba share config: `/etc/samba/smb.conf`
 
 Example managed `/etc/fstab` entry:
 

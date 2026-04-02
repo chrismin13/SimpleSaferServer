@@ -285,10 +285,10 @@
       <div class="mb-4">
         <strong>What this updates:</strong>
         <ul style="list-style: disc; padding-left: var(--sp-5); margin: var(--sp-2) 0 0 0;">
-          <li>the backup drive mount point in SimpleSaferServer config</li>
+          <li>the backup drive mount point in <code>/etc/SimpleSaferServer/config.conf</code></li>
           <li>the stored backup drive UUID and USB ID</li>
-          <li>the SimpleSaferServer-managed <code>/etc/fstab</code> entry for the backup drive</li>
-          <li>the Samba backup share path if the mount point changed</li>
+          <li>the SimpleSaferServer-managed line in <code>/etc/fstab</code> for the backup drive</li>
+          <li>the Samba backup share path in <code>/etc/samba/smb.conf</code> if the mount point changed</li>
         </ul>
       </div>
 
@@ -299,6 +299,17 @@
           <li>it will stop and ask for manual cleanup if it finds conflicting or ambiguous mount entries</li>
           <li>it is not a general-purpose disk management tool</li>
         </ul>
+      </div>
+
+      <div class="mt-4">
+        <strong>What “SimpleSaferServer-managed” means:</strong>
+        <p class="text-muted mt-2" style="line-height: 1.6;">
+          The app only updates the backup drive line in <code>/etc/fstab</code> that ends with its marker comment. That marker is just the trailing comment <code># SimpleSaferServer managed backup drive</code>.
+        </p>
+        <div class="mt-2">
+          <strong>Example:</strong>
+          <div class="mt-2"><code>UUID=2CD49023D48FED80 /media/backup ntfs-3g defaults,nofail 0 0 # SimpleSaferServer managed backup drive</code></div>
+        </div>
       </div>
     </div>
     <div class="modal-footer">
