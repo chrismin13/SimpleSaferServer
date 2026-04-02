@@ -650,6 +650,11 @@ def drives():
         system_utils,
         runtime=runtime,
     )
+    drive_config = {
+        'mount_point': config_manager.get_value('backup', 'mount_point', runtime.default_mount_point),
+        'uuid': config_manager.get_value('backup', 'uuid', ''),
+        'usb_id': config_manager.get_value('backup', 'usb_id', ''),
+    }
 
     if request.method == "POST":
         form_action = request.form.get("form_action", "run_health_check")
@@ -672,6 +677,28 @@ def drives():
                 settings_message = "HDSentinel settings saved successfully."
             except Exception as exc:
                 settings_error = f"Failed to save HDSentinel settings: {exc}"
+        elif form_action == "save_drive_identifiers":
+            mount_point = request.form.get("mount_point", "").strip()
+            uuid = request.form.get("uuid", "").strip()
+            usb_id = request.form.get("usb_id", "").strip()
+
+            if not mount_point:
+                settings_error = "Mount point is required."
+            elif not uuid:
+                settings_error = "Drive UUID is required."
+            else:
+                try:
+                    config_manager.set_value('backup', 'mount_point', mount_point)
+                    config_manager.set_value('backup', 'uuid', uuid)
+                    config_manager.set_value('backup', 'usb_id', usb_id)
+                    drive_config = {
+                        'mount_point': mount_point,
+                        'uuid': uuid,
+                        'usb_id': usb_id,
+                    }
+                    settings_message = "Backup drive identification saved successfully."
+                except Exception as exc:
+                    settings_error = f"Failed to save backup drive identification: {exc}"
         else:
             smart, missing_attrs = get_smart_attributes(
                 config_manager,
@@ -706,6 +733,7 @@ def drives():
         smart_fields=SMART_FIELDS,
         hdsentinel_settings=hdsentinel_settings,
         hdsentinel_snapshot=hdsentinel_snapshot,
+        drive_config=drive_config,
         settings_message=settings_message,
         settings_error=settings_error,
     )

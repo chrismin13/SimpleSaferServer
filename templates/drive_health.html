@@ -77,6 +77,52 @@
 
 <section class="mb-6">
   <div class="d-flex items-center justify-between mb-4 flex-wrap gap-3">
+    <h2 style="font-size: var(--text-lg); margin: 0;">Backup Drive Identification</h2>
+  </div>
+
+  <div class="alert alert-info mb-4">
+    <div>
+      <strong>What these mean:</strong>
+      UUID identifies the backup partition itself. USB ID identifies the attached USB device in `vendor:product` form, such as `0480:a202`.
+    </div>
+  </div>
+
+  <form method="post">
+    <input type="hidden" name="form_action" value="save_drive_identifiers">
+    <div class="form-row mb-4">
+      <div class="form-group">
+        <label class="form-label" for="mountPoint">Mount Point</label>
+        <input type="text" class="form-control text-mono" id="mountPoint" name="mount_point" value="{{ drive_config.mount_point }}" placeholder="/media/backup" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="driveUuid">Drive UUID</label>
+        <input type="text" class="form-control text-mono" id="driveUuid" name="uuid" value="{{ drive_config.uuid }}" placeholder="2CD49023D48FED80" required>
+      </div>
+    </div>
+
+    <div class="form-row mb-4">
+      <div class="form-group">
+        <label class="form-label" for="usbId">USB ID <span class="text-muted">(optional)</span></label>
+        <input type="text" class="form-control text-mono" id="usbId" name="usb_id" value="{{ drive_config.usb_id }}" placeholder="0480:a202">
+      </div>
+      <div class="form-group">
+        <label class="form-label">How To Find Them</label>
+        <div class="text-muted" style="font-size: var(--text-sm); line-height: 1.6;">
+          UUID: <code>blkid -s UUID -o value /dev/sdX1</code><br>
+          USB ID: <code>lsusb</code><br>
+          Leave USB ID blank to skip the USB presence check.
+        </div>
+      </div>
+    </div>
+
+    <div class="d-flex justify-end">
+      <button type="submit" class="btn btn-primary btn-sm">Save Drive Identification</button>
+    </div>
+  </form>
+</section>
+
+<section class="mb-6">
+  <div class="d-flex items-center justify-between mb-4 flex-wrap gap-3">
     <h2 style="font-size: var(--text-lg); margin: 0;">HDSentinel Monitoring</h2>
     {% if not hdsentinel_settings.enabled %}
       <span class="badge badge-neutral"><i class="fas fa-pause"></i> Disabled</span>

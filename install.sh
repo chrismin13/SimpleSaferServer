@@ -53,6 +53,7 @@ install_hdsentinel() {
     local machine=""
     local url=""
     local tmpdir=""
+    local candidate=""
 
     if command -v dpkg >/dev/null 2>&1; then
         arch=$(dpkg --print-architecture 2>/dev/null || true)
@@ -96,13 +97,20 @@ install_hdsentinel() {
         return 0
     fi
 
-    if [ ! -f "$tmpdir/HDSentinel" ]; then
+    for extracted in "$tmpdir"/HDSentinel*; do
+        if [ -f "$extracted" ]; then
+            candidate="$extracted"
+            break
+        fi
+    done
+
+    if [ -z "$candidate" ]; then
         echo -e "${YELLOW}HDSentinel binary not found in downloaded archive. Continuing without it.${NC}"
         rm -rf "$tmpdir"
         return 0
     fi
 
-    install -m 755 "$tmpdir/HDSentinel" "$HDSENTINEL_BIN"
+    install -m 755 "$candidate" "$HDSENTINEL_BIN"
     rm -rf "$tmpdir"
     echo -e "${GREEN}✔ HDSentinel installed to $HDSENTINEL_BIN.${NC}\n"
 }
