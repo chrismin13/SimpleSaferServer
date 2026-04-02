@@ -214,7 +214,7 @@ def list_available_drives(runtime=None):
         return fake_state.get_virtual_drives()
 
     lsblk_result = subprocess.run(
-        ['lsblk', '-J', '-o', 'PATH,FSTYPE,LABEL,SIZE,MODEL,MOUNTPOINT,TYPE'],
+        ['lsblk', '-J', '-o', 'NAME,PATH,FSTYPE,LABEL,SIZE,MODEL,MOUNTPOINT,TYPE'],
         capture_output=True,
         text=True,
     )
