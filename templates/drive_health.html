@@ -389,7 +389,7 @@
     function showDriveSetupError(message) {
       errorEl.textContent = message;
       errorEl.classList.remove('d-none');
-      setDriveSetupStatus(message, 'error');
+      setDriveSetupStatus('', 'info');
     }
 
     function hideDriveSetupError() {
