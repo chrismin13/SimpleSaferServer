@@ -75,76 +75,6 @@
   {% endif %}
 </div>
 
-{% if can_manage_backup_drive %}
-<section class="mb-6">
-  <details>
-    <summary><strong>Advanced: Re-run Backup Drive Setup</strong></summary>
-    <div class="mt-4">
-      <div class="alert alert-warning mb-4">
-        <div>
-          <strong>Warning:</strong> Use this only if the backup drive changed or the original drive identifiers were detected incorrectly. This updates the SimpleSaferServer-managed backup mount configuration.
-        </div>
-      </div>
-
-      <div class="table-container mb-4">
-        <table>
-          <tbody>
-            <tr>
-              <th>Configured Mount Point</th>
-              <td><code>{{ drive_config.mount_point }}</code></td>
-            </tr>
-            <tr>
-              <th>Configured UUID</th>
-              <td><code>{{ drive_config.uuid or '—' }}</code></td>
-            </tr>
-            <tr>
-              <th>Configured USB ID</th>
-              <td><code>{{ drive_config.usb_id or '—' }}</code></td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <div id="driveSetupStatus" class="text-muted mb-3" style="min-height: 1.5rem;"></div>
-      <div id="driveSetupError" class="alert alert-danger d-none mb-4"></div>
-
-      <div class="d-flex gap-2 mb-4 flex-wrap">
-        <button type="button" id="scanBackupDrivesBtn" class="btn btn-secondary btn-sm">Scan Connected Drives</button>
-      </div>
-
-      <div class="form-row mb-4">
-        <div class="form-group">
-          <label class="form-label" for="backupDriveSelect">Backup Drive Partition</label>
-          <select class="form-control" id="backupDriveSelect">
-            <option value="">Scan connected drives first</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label" for="backupDriveMountPoint">Mount Point</label>
-          <input type="text" class="form-control text-mono" id="backupDriveMountPoint" value="{{ drive_config.mount_point }}" placeholder="/media/backup">
-        </div>
-      </div>
-
-      <div class="form-group mb-4">
-        <label class="form-check-label" for="backupDriveAutoMount">
-          <input type="checkbox" class="form-check-input" id="backupDriveAutoMount" checked>
-          Update the SimpleSaferServer-managed `/etc/fstab` entry so this drive mounts automatically at boot
-        </label>
-      </div>
-
-      <div class="text-muted mb-4" style="font-size: var(--text-sm); line-height: 1.6;">
-        If the current drive is still mounted, unmount it first here or from the dashboard before applying the new selection. For fully manual recovery steps, use the documentation linked from the project website.
-      </div>
-
-      <div class="d-flex gap-2 justify-end flex-wrap">
-        <button type="button" id="unmountBackupDriveBtn" class="btn btn-secondary btn-sm">Unmount Selected Drive</button>
-        <button type="button" id="applyBackupDriveBtn" class="btn btn-primary btn-sm">Apply Backup Drive Setup</button>
-      </div>
-    </div>
-  </details>
-</section>
-{% endif %}
-
 <section class="mb-6">
   <div class="d-flex items-center justify-between mb-4 flex-wrap gap-3">
     <h2 style="font-size: var(--text-lg); margin: 0;">HDSentinel Monitoring</h2>
@@ -248,6 +178,135 @@
     </form>
   </details>
 </section>
+
+{% if can_manage_backup_drive %}
+<section class="mb-6">
+  <details>
+    <summary><strong>Advanced: Re-run Backup Drive Setup</strong></summary>
+    <div class="mt-4">
+      <div class="d-flex items-center justify-between mb-4 flex-wrap gap-3">
+        <div class="text-muted" style="font-size: var(--text-sm); line-height: 1.6; max-width: 52rem;">
+          Use this only when the backup drive changed or the original drive detection was wrong. It re-runs the drive setup portion of onboarding for the backup disk only.
+        </div>
+        <button type="button" class="btn btn-secondary btn-sm" data-modal-target="backupDriveSetupHelpModal">
+          <i class="fas fa-circle-info me-1"></i> When Should I Use This?
+        </button>
+      </div>
+
+      <div class="alert alert-warning mb-4">
+        <div>
+          <strong>Warning:</strong> This will update the SimpleSaferServer-managed backup drive configuration, including the stored drive identifiers and the SimpleSaferServer-managed `/etc/fstab` entry.
+        </div>
+      </div>
+
+      <div class="table-container mb-4">
+        <table>
+          <tbody>
+            <tr>
+              <th>Configured Mount Point</th>
+              <td><code>{{ drive_config.mount_point }}</code></td>
+            </tr>
+            <tr>
+              <th>Configured UUID</th>
+              <td><code>{{ drive_config.uuid or '—' }}</code></td>
+            </tr>
+            <tr>
+              <th>Configured USB ID</th>
+              <td><code>{{ drive_config.usb_id or '—' }}</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div id="driveSetupStatus" class="text-muted mb-3" style="min-height: 1.5rem;"></div>
+      <div id="driveSetupError" class="alert alert-danger d-none mb-4"></div>
+
+      <div class="d-flex gap-2 mb-4 flex-wrap">
+        <button type="button" id="scanBackupDrivesBtn" class="btn btn-secondary btn-sm">Scan Connected Drives</button>
+      </div>
+
+      <div class="form-row mb-4">
+        <div class="form-group">
+          <label class="form-label" for="backupDriveSelect">Backup Drive Partition</label>
+          <select class="form-control" id="backupDriveSelect">
+            <option value="">Scan connected drives first</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="backupDriveMountPoint">Mount Point</label>
+          <input type="text" class="form-control text-mono" id="backupDriveMountPoint" value="{{ drive_config.mount_point }}" placeholder="/media/backup">
+        </div>
+      </div>
+
+      <div class="form-group mb-4">
+        <label class="form-check-label" for="backupDriveAutoMount">
+          <input type="checkbox" class="form-check-input" id="backupDriveAutoMount" checked>
+          Update the SimpleSaferServer-managed `/etc/fstab` entry so this drive mounts automatically at boot
+        </label>
+      </div>
+
+      <div class="text-muted mb-4" style="font-size: var(--text-sm); line-height: 1.6;">
+        Scan drives, select the correct backup partition, unmount it first if needed, then apply the updated backup drive setup. Do not use this for unrelated system storage changes.
+      </div>
+
+      <div class="d-flex gap-2 justify-end flex-wrap">
+        <button type="button" id="unmountBackupDriveBtn" class="btn btn-secondary btn-sm">Unmount Selected Drive</button>
+        <button type="button" id="applyBackupDriveBtn" class="btn btn-primary btn-sm">Apply Backup Drive Setup</button>
+      </div>
+    </div>
+  </details>
+</section>
+
+<div class="modal-overlay" id="backupDriveSetupHelpModal">
+  <div class="modal-container modal-lg">
+    <div class="modal-header">
+      <h5>About Backup Drive Setup</h5>
+      <button class="modal-close" data-modal-close><i class="fas fa-xmark"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="mb-4">
+        <strong>Use this when:</strong>
+        <ul style="list-style: disc; padding-left: var(--sp-5); margin: var(--sp-2) 0 0 0;">
+          <li>you replaced the backup drive with a different physical disk</li>
+          <li>the original UUID or USB ID was detected incorrectly during setup or migration</li>
+          <li>you need to point the backup system at the correct backup partition again</li>
+        </ul>
+      </div>
+
+      <div class="mb-4">
+        <strong>Do not use this when:</strong>
+        <ul style="list-style: disc; padding-left: var(--sp-5); margin: var(--sp-2) 0 0 0;">
+          <li>you are only changing cloud backup settings or schedules</li>
+          <li>you are trying to manage unrelated disks or other `/etc/fstab` entries</li>
+          <li>the system is already configured correctly and the drive has not changed</li>
+        </ul>
+      </div>
+
+      <div class="mb-4">
+        <strong>What this updates:</strong>
+        <ul style="list-style: disc; padding-left: var(--sp-5); margin: var(--sp-2) 0 0 0;">
+          <li>the backup drive mount point in SimpleSaferServer config</li>
+          <li>the stored backup drive UUID and USB ID</li>
+          <li>the SimpleSaferServer-managed `/etc/fstab` entry for the backup drive</li>
+          <li>the Samba backup share path if the mount point changed</li>
+        </ul>
+      </div>
+
+      <div>
+        <strong>What it will not do:</strong>
+        <ul style="list-style: disc; padding-left: var(--sp-5); margin: var(--sp-2) 0 0 0;">
+          <li>it will not modify unrelated `/etc/fstab` entries</li>
+          <li>it will stop and ask for manual cleanup if it finds conflicting or ambiguous mount entries</li>
+          <li>it is not a general-purpose disk management tool</li>
+        </ul>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-modal-close>Close</button>
+    </div>
+  </div>
+</div>
+{% endif %}
 
 {% if smart %}
 <section>
