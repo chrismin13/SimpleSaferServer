@@ -73,18 +73,6 @@ def _backup_file(path, runtime, prefix):
 
 
 def _validate_fstab_file(path):
-    if shutil.which('findmnt'):
-        result = subprocess.run(
-            ['findmnt', '--verify', '--tab-file', str(path)],
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode == 0:
-            return True, None, None
-        summary = (result.stderr or result.stdout or 'findmnt validation failed').strip().splitlines()[0]
-        details = '\n'.join(part for part in [result.stdout.strip(), result.stderr.strip()] if part).strip()
-        return False, summary, details
-
     if shutil.which('mount'):
         result = subprocess.run(
             ['mount', '-fav', '-T', str(path)],
@@ -94,6 +82,18 @@ def _validate_fstab_file(path):
         if result.returncode == 0:
             return True, None, None
         summary = (result.stderr or result.stdout or 'mount validation failed').strip().splitlines()[0]
+        details = '\n'.join(part for part in [result.stdout.strip(), result.stderr.strip()] if part).strip()
+        return False, summary, details
+
+    if shutil.which('findmnt'):
+        result = subprocess.run(
+            ['findmnt', '--verify', '--tab-file', str(path)],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0:
+            return True, None, None
+        summary = (result.stderr or result.stdout or 'findmnt validation failed').strip().splitlines()[0]
         details = '\n'.join(part for part in [result.stdout.strip(), result.stderr.strip()] if part).strip()
         return False, summary, details
 
