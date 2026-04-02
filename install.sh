@@ -150,7 +150,7 @@ echo -e "${GREEN}✔ Static assets and templates copied.${NC}\n"
 echo -e "${YELLOW}Step 6: Setting up Python virtualenv...${NC}"
 python3 -m venv --system-site-packages "$VENV_DIR"
 "$VENV_DIR/bin/pip" install --upgrade pip wheel
-"$VENV_DIR/bin/pip" install Flask-SocketIO
+"$VENV_DIR/bin/pip" install "Flask-SocketIO==5.4.1"
 if ! "$VENV_DIR/bin/pip" install -r "$APP_DIR/requirements-ml.txt"; then
   echo -e "${YELLOW}ML package installation failed. Continuing without the optional SMART prediction stack.${NC}"
 fi
