@@ -1715,6 +1715,14 @@ pre code {
 .text-warning   { color: var(--warning-text) !important; }
 .text-danger    { color: var(--danger-text) !important; }
 .text-info      { color: var(--info-text) !important; }
+.drive-setup-status {
+  display: flex;
+  align-items: center;
+  min-height: 2rem;
+  flex: 0 1 auto;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
 .text-center    { text-align: center !important; }
 .text-end       { text-align: right !important; }
 .text-mono      { font-family: var(--font-mono) !important; }

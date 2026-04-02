@@ -351,6 +351,10 @@ def apply_backup_drive_configuration(drive, mount_point, auto_mount, config_mana
     if not mount_point or not mount_point.startswith('/'):
         raise BackupDriveSetupError('Mount point must be an absolute path.')
 
+    previous_mount_point = config_manager.get_value('backup', 'mount_point', runtime.default_mount_point)
+    previous_uuid = config_manager.get_value('backup', 'uuid', '')
+    previous_usb_id = config_manager.get_value('backup', 'usb_id', '')
+
     if runtime.is_fake:
         selected_path = Path(os.path.abspath(mount_point or runtime.default_mount_point))
         if not selected_path.exists():
@@ -364,16 +368,60 @@ def apply_backup_drive_configuration(drive, mount_point, auto_mount, config_mana
         if not selected_path.is_dir():
             raise BackupDriveSetupError('Source path must be a directory.')
 
-        config_manager.set_value('backup', 'mount_point', str(selected_path))
-        config_manager.set_value('backup', 'uuid', 'FAKE-UUID-0001')
-        config_manager.set_value('backup', 'usb_id', 'FAKE:0001')
-        fake_state.set_mount(True, mount_point=str(selected_path), drive=drive or '/dev/fakebackup1')
-        return {
-            'message': 'Successfully selected local backup source at {}'.format(selected_path),
-            'uuid': 'FAKE-UUID-0001',
-            'usb_id': 'FAKE:0001',
-            'mount_point': str(selected_path),
-        }
+        uuid = 'FAKE-UUID-0001'
+        usb_id = 'FAKE:0001'
+        selected_path_str = str(selected_path)
+        fstab_backup = None
+        share_backup = None
+        config_updated = False
+
+        try:
+            fstab_backup = update_managed_fstab(uuid, selected_path_str, bool(auto_mount), runtime=runtime)
+
+            backup_share = None
+            for share in smb_manager.get_shares():
+                if share.get('name') == 'backup':
+                    backup_share = share
+                    break
+
+            if backup_share and backup_share.get('path') != selected_path_str:
+                share_backup = backup_share
+                _sync_backup_share_path(smb_manager, selected_path_str)
+
+            config_manager.set_value('backup', 'mount_point', selected_path_str)
+            config_manager.set_value('backup', 'uuid', uuid)
+            config_manager.set_value('backup', 'usb_id', usb_id)
+            config_updated = True
+            fake_state.set_mount(True, mount_point=selected_path_str, drive=drive or '/dev/fakebackup1')
+            return {
+                'message': 'Successfully selected local backup source at {}'.format(selected_path),
+                'uuid': uuid,
+                'usb_id': usb_id,
+                'mount_point': selected_path_str,
+            }
+        except Exception:
+            if fstab_backup:
+                restore_fstab_backup(fstab_backup, runtime=runtime)
+            if share_backup:
+                try:
+                    smb_manager.update_share(
+                        old_name='backup',
+                        new_name='backup',
+                        path=share_backup.get('path', previous_mount_point),
+                        writable=share_backup.get('writable', True),
+                        comment=share_backup.get('comment', ''),
+                        valid_users=share_backup.get('valid_users', []),
+                    )
+                except Exception as share_exc:
+                    LOGGER.error('Failed to restore fake backup share after drive setup error: %s', share_exc)
+            if config_updated:
+                try:
+                    config_manager.set_value('backup', 'mount_point', previous_mount_point)
+                    config_manager.set_value('backup', 'uuid', previous_uuid)
+                    config_manager.set_value('backup', 'usb_id', previous_usb_id)
+                except Exception as config_exc:
+                    LOGGER.error('Failed to restore fake backup config after drive setup error: %s', config_exc)
+            raise
 
     if not drive:
         raise BackupDriveSetupError('No drive selected.')
@@ -388,10 +436,6 @@ def apply_backup_drive_configuration(drive, mount_point, auto_mount, config_mana
 
     uuid = get_drive_uuid(drive)
     usb_id = get_drive_usb_id(drive)
-
-    previous_mount_point = config_manager.get_value('backup', 'mount_point', runtime.default_mount_point)
-    previous_uuid = config_manager.get_value('backup', 'uuid', '')
-    previous_usb_id = config_manager.get_value('backup', 'usb_id', '')
 
     os.makedirs(mount_point, exist_ok=True)
 
