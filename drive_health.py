@@ -212,16 +212,59 @@ def get_smart_attributes(config_manager, system_utils, device=None, runtime=None
 
     try:
         if device is None:
-            device, _, error = resolve_backup_parent_device(config_manager, system_utils, runtime=runtime)
+            device, partition_device, error = resolve_backup_parent_device(config_manager, system_utils, runtime=runtime)
             if error:
                 LOGGER.warning(error)
                 return None, None
+        else:
+            partition_device = None
 
-        command = ["smartctl", "-A", "-j", device]
-        if os.geteuid() != 0 and shutil.which("sudo"):
-            command.insert(0, "sudo")
-        result = subprocess.run(command, capture_output=True, text=True, check=True)
-        data = json.loads(result.stdout)
+        candidate_devices = [device]
+        if partition_device and partition_device not in candidate_devices:
+            candidate_devices.append(partition_device)
+
+        transport_attempts = [
+            [],
+            ["-d", "sat"],
+            ["-d", "sat,12"],
+            ["-d", "sat,16"],
+            ["-d", "scsi"],
+        ]
+
+        data = None
+        attempt_errors = []
+        for candidate_device in candidate_devices:
+            for transport_args in transport_attempts:
+                command = ["smartctl", "-A", "-j"] + transport_args + [candidate_device]
+                if os.geteuid() != 0 and shutil.which("sudo"):
+                    command.insert(0, "sudo")
+
+                result = subprocess.run(command, capture_output=True, text=True)
+                stdout = (result.stdout or "").strip()
+                stderr = (result.stderr or "").strip()
+
+                if stdout:
+                    try:
+                        parsed = json.loads(stdout)
+                        data = parsed
+                        device = candidate_device
+                        break
+                    except json.JSONDecodeError as exc:
+                        attempt_errors.append(
+                            "{}: invalid JSON output ({})".format(" ".join(command), exc)
+                        )
+                        continue
+
+                error_text = stderr or "smartctl returned no JSON output"
+                attempt_errors.append("{}: {}".format(" ".join(command), error_text))
+
+            if data is not None:
+                break
+
+        if data is None:
+            if attempt_errors:
+                LOGGER.warning("Failed to retrieve SMART JSON:\n%s", "\n".join(attempt_errors))
+            return None, None
 
         attrs = {field: info["default"] for field, info in SMART_FIELDS.items()}
         missing_attrs = set(SMART_FIELDS.keys())
@@ -240,9 +283,6 @@ def get_smart_attributes(config_manager, system_utils, device=None, runtime=None
                 LOGGER.warning("Could not parse SMART value for %s", field_name)
 
         return attrs, list(missing_attrs)
-    except subprocess.CalledProcessError as exc:
-        LOGGER.warning("Failed to execute smartctl: %s", exc)
-        return None, None
     except json.JSONDecodeError as exc:
         LOGGER.warning("Failed to parse smartctl JSON output: %s", exc)
         return None, None
