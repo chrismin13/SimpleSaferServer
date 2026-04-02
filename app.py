@@ -1379,7 +1379,13 @@ def api_drive_health_summary():
                 'temperature': temperature
             }
             hdsentinel_snapshot = get_hdsentinel_display_snapshot(config_manager, system_utils, runtime=runtime)
-            if hdsentinel_snapshot and hdsentinel_snapshot.get('available'):
+            hdsentinel_settings = get_hdsentinel_settings(config_manager)
+            hdsentinel_enabled = False
+            if isinstance(hdsentinel_settings, dict):
+                hdsentinel_enabled = bool(hdsentinel_settings.get('enabled'))
+            else:
+                hdsentinel_enabled = bool(getattr(hdsentinel_settings, 'enabled', False))
+            if hdsentinel_enabled and hdsentinel_snapshot and hdsentinel_snapshot.get('available'):
                 response['hdsentinel_health'] = hdsentinel_snapshot.get('health_pct')
                 response['hdsentinel_performance'] = hdsentinel_snapshot.get('performance_pct')
             return jsonify(response)
