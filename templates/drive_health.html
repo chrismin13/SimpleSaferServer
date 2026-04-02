@@ -204,15 +204,15 @@
           <tbody>
             <tr>
               <th>Configured Mount Point</th>
-              <td><code>{{ drive_config.mount_point }}</code></td>
+              <td><code id="configuredMountPointValue">{{ drive_config.mount_point }}</code></td>
             </tr>
             <tr>
               <th>Configured UUID</th>
-              <td><code>{{ drive_config.uuid or '—' }}</code></td>
+              <td><code id="configuredUuidValue">{{ drive_config.uuid or '—' }}</code></td>
             </tr>
             <tr>
               <th>Configured USB ID</th>
-              <td><code>{{ drive_config.usb_id or '—' }}</code></td>
+              <td><code id="configuredUsbIdValue">{{ drive_config.usb_id or '—' }}</code></td>
             </tr>
           </tbody>
         </table>
@@ -398,6 +398,9 @@
     const driveSelect = document.getElementById('backupDriveSelect');
     const mountPointInput = document.getElementById('backupDriveMountPoint');
     const autoMountInput = document.getElementById('backupDriveAutoMount');
+    const configuredMountPointValue = document.getElementById('configuredMountPointValue');
+    const configuredUuidValue = document.getElementById('configuredUuidValue');
+    const configuredUsbIdValue = document.getElementById('configuredUsbIdValue');
     let currentDriveSetupErrorDetails = '';
 
     function setDriveSetupStatus(message, type) {
@@ -547,9 +550,15 @@
           error.details = data.details || '';
           throw error;
         }
-        setDriveSetupStatus((data.result && data.result.message) || 'Backup drive setup updated successfully.', 'success');
+        const result = data.result || {};
+        setDriveSetupStatus(result.message || 'Backup drive setup updated successfully.', 'success');
+        if (configuredMountPointValue) configuredMountPointValue.textContent = result.mount_point || mountPointInput.value.trim();
+        if (configuredUuidValue) configuredUuidValue.textContent = result.uuid || '—';
+        if (configuredUsbIdValue) configuredUsbIdValue.textContent = result.usb_id || '—';
+        if (window.showAlert) {
+          window.showAlert(result.message || 'Backup drive setup updated successfully.', 'success');
+        }
         if (window.AsyncButtonState && applyBtn) window.AsyncButtonState.success(applyBtn);
-        window.location.reload();
       } catch (error) {
         showDriveSetupError(error.message || 'Failed to apply backup drive setup.', error.details);
         if (window.AsyncButtonState && applyBtn) window.AsyncButtonState.error(applyBtn);
