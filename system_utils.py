@@ -324,7 +324,7 @@ After=network.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/check_health.py
+ExecStart=/usr/local/bin/check_health.sh
 User=root
 StandardOutput=journal
 StandardError=journal

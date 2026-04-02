@@ -45,6 +45,7 @@ set -e
 APP_DIR="/opt/SimpleSaferServer"
 SCRIPTS_DIR="$APP_DIR/scripts"
 MODEL_DIR="/opt/SimpleSaferServer/harddrive_model"
+VENV_DIR="$APP_DIR/venv"
 SERVICE_FILE="/etc/systemd/system/simple_safer_server_web.service"
 HDSENTINEL_BIN="/usr/local/bin/hdsentinel"
 
@@ -107,14 +108,14 @@ install_hdsentinel() {
     echo -e "${GREEN}✔ HDSentinel installed to $HDSENTINEL_BIN.${NC}\n"
 }
 
-# 1. Install system dependencies and Python packages using apt
-#    We use apt for Python packages to avoid conflicts with Debian's externally managed Python environment.
-#    Do NOT use pip system-wide on Debian/Ubuntu unless absolutely necessary.
+# 1. Install system dependencies and the base Python runtime using apt.
+#    The app itself runs from a dedicated virtualenv so older Debian releases
+#    are not blocked by missing distro packages like python3-flask-socketio.
 echo -e "${YELLOW}Step 1: Installing system and Python dependencies...${NC}"
 apt-get update
 # Preseed AppArmor prompt for msmtp only to ensure non-interactive install
 echo "msmtp msmtp/apply_apparmor boolean true" | debconf-set-selections
-DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-pip python3-flask python3-flask-socketio python3-psutil python3-xgboost python3-joblib python3-pandas python3-sklearn python3-cryptography smartmontools samba msmtp curl unzip rsync
+DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-pip python3-venv python3-flask python3-psutil python3-cryptography smartmontools samba msmtp curl unzip rsync ntfs-3g
 
 echo -e "${GREEN}✔ System and Python dependencies installed.${NC}\n"
 
@@ -146,8 +147,18 @@ rsync -a static "$APP_DIR/"
 rsync -a templates "$APP_DIR/"
 echo -e "${GREEN}✔ Static assets and templates copied.${NC}\n"
 
-# 6. Copy scripts to /opt/SimpleSaferServer/scripts and set permissions
-echo -e "${YELLOW}Step 6: Installing scripts...${NC}"
+# 6. Create the dedicated app virtualenv and install Python packages.
+echo -e "${YELLOW}Step 6: Setting up Python virtualenv...${NC}"
+python3 -m venv --system-site-packages "$VENV_DIR"
+"$VENV_DIR/bin/pip" install --upgrade pip wheel
+"$VENV_DIR/bin/pip" install Flask-SocketIO
+if ! "$VENV_DIR/bin/pip" install -r "$APP_DIR/requirements-ml.txt"; then
+  echo -e "${YELLOW}ML package installation failed. Continuing without the optional SMART prediction stack.${NC}"
+fi
+echo -e "${GREEN}✔ Python virtualenv ready at $VENV_DIR.${NC}\n"
+
+# 7. Copy scripts to /opt/SimpleSaferServer/scripts and set permissions
+echo -e "${YELLOW}Step 7: Installing scripts...${NC}"
 mkdir -p "$SCRIPTS_DIR"
 for script in scripts/*.sh scripts/*.py; do
   cp "$script" "$SCRIPTS_DIR/"
@@ -155,22 +166,22 @@ for script in scripts/*.sh scripts/*.py; do
 done
 echo -e "${GREEN}✔ Scripts installed to $SCRIPTS_DIR.${NC}\n"
 
-# 7. Copy model files
-echo -e "${YELLOW}Step 7: Copying model files...${NC}"
+# 8. Copy model files
+echo -e "${YELLOW}Step 8: Copying model files...${NC}"
 mkdir -p "$MODEL_DIR"
 cp harddrive_model/* "$MODEL_DIR/"
 echo -e "${GREEN}✔ Model files copied.${NC}\n"
 
-# 8. Install/refresh systemd service for Flask app
-echo -e "${YELLOW}Step 8: Setting up systemd service...${NC}"
+# 9. Install/refresh systemd service for Flask app
+echo -e "${YELLOW}Step 9: Setting up systemd service...${NC}"
 cp simple_safer_server_web.service "$SERVICE_FILE"
 systemctl daemon-reload
 systemctl enable simple_safer_server_web.service
 systemctl restart simple_safer_server_web.service
 echo -e "${GREEN}✔ Systemd service enabled and started.${NC}\n"
 
-# 9. Open port 5000 in firewall if active
-echo -e "${YELLOW}Step 9: Configuring firewall (if active)...${NC}"
+# 10. Open port 5000 in firewall if active
+echo -e "${YELLOW}Step 10: Configuring firewall (if active)...${NC}"
 if command -v ufw >/dev/null 2>&1 && ufw status | grep -q 'Status: active'; then
   ufw allow 5000/tcp
 echo -e "${GREEN}✔ Port 5000 opened in ufw.${NC}"
@@ -186,7 +197,7 @@ echo -e "${YELLOW}No active firewall detected or configured. Skipping firewall s
 fi
 echo
 
-# 10. Print all network interface IPs for user access
+# 11. Print all network interface IPs for user access
 echo -e "${BLUE}==============================================="
 echo -e "  SimpleSaferServer Web UI Access URLs"
 echo -e "===============================================${NC}"

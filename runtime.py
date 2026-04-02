@@ -5,7 +5,7 @@ import threading
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 
 @dataclass(frozen=True)
@@ -68,7 +68,7 @@ class FakeState:
         if not self.runtime.state_path.exists():
             self.save(self.default_state())
 
-    def default_state(self) -> dict[str, Any]:
+    def default_state(self) -> Dict[str, Any]:
         return {
             "mounted": False,
             "mount_point": str(self.runtime.backup_drive_dir),
@@ -87,7 +87,7 @@ class FakeState:
             },
         }
 
-    def load(self) -> dict[str, Any]:
+    def load(self) -> Dict[str, Any]:
         try:
             return json.loads(self.runtime.state_path.read_text())
         except Exception:
@@ -95,7 +95,7 @@ class FakeState:
             self.save(state)
             return state
 
-    def _write_state(self, state: dict[str, Any]) -> None:
+    def _write_state(self, state: Dict[str, Any]) -> None:
         """Write state atomically via a unique temp file and rename to avoid partial writes."""
         with tempfile.NamedTemporaryFile(
             "w",
@@ -109,11 +109,11 @@ class FakeState:
             tmp_path = Path(tmp_file.name)
         tmp_path.replace(self.runtime.state_path)
 
-    def save(self, state: dict[str, Any]) -> None:
+    def save(self, state: Dict[str, Any]) -> None:
         with self._lock:
             self._write_state(state)
 
-    def get_virtual_drives(self) -> list[dict[str, Any]]:
+    def get_virtual_drives(self) -> List[Dict[str, Any]]:
         state = self.load()
         mount_point = state.get("mount_point", str(self.runtime.backup_drive_dir))
         partition_mount = mount_point if state.get("mounted") else ""
@@ -135,7 +135,7 @@ class FakeState:
             }
         ]
 
-    def set_mount(self, mounted: bool, mount_point: str | None = None, drive: str | None = None) -> None:
+    def set_mount(self, mounted: bool, mount_point: Optional[str] = None, drive: Optional[str] = None) -> None:
         with self._lock:
             state = self.load()
             state["mounted"] = mounted
@@ -145,7 +145,7 @@ class FakeState:
                 state["selected_drive"] = drive
             self.save(state)
 
-    def is_mounted(self, mount_point: str | None = None) -> bool:
+    def is_mounted(self, mount_point: Optional[str] = None) -> bool:
         state = self.load()
         if mount_point and state.get("mount_point") != mount_point:
             return False
@@ -160,17 +160,17 @@ class FakeState:
             state["smb_services"] = {"smbd": smbd, "nmbd": nmbd}
             self.save(state)
 
-    def get_smb_services(self) -> dict[str, str]:
+    def get_smb_services(self) -> Dict[str, str]:
         return self.load().get("smb_services", {"smbd": "active", "nmbd": "active"})
 
     def set_task_state(
         self,
         task_name: str,
         *,
-        status: str | None = None,
-        last_run: str | None = None,
-        last_run_duration: str | None = None,
-        log: str | None = None,
+        status: Optional[str] = None,
+        last_run: Optional[str] = None,
+        last_run_duration: Optional[str] = None,
+        log: Optional[str] = None,
     ) -> None:
         with self._lock:
             state = self.load()
@@ -201,7 +201,7 @@ class FakeState:
         task_state = state.setdefault("tasks", {}).setdefault(task_name, {})
         return task_state.get("log", "") or "No logs yet."
 
-    def get_task_state(self, task_name: str) -> dict[str, Any]:
+    def get_task_state(self, task_name: str) -> Dict[str, Any]:
         state = self.load()
         return state.setdefault("tasks", {}).setdefault(
             task_name,
@@ -230,8 +230,8 @@ class FakeState:
         return next_run.strftime("%Y-%m-%d %H:%M:%S")
 
 
-_runtime: Runtime | None = None
-_fake_state: FakeState | None = None
+_runtime: Optional[Runtime] = None
+_fake_state: Optional[FakeState] = None
 
 
 def _repo_root() -> Path:

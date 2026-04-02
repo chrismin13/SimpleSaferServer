@@ -1,4 +1,3 @@
-# sudo apt install python3-flask python3-psutil python3-xgboost python3-joblib python3-pandas smartmontools python3-sklearn python3-flask-socketio
 from flask import Flask, render_template, jsonify, request, abort, url_for, redirect, send_file, session, flash, current_app, make_response, send_from_directory
 import subprocess
 import psutil
@@ -27,6 +26,7 @@ from flask_socketio import SocketIO
 from logging.handlers import RotatingFileHandler
 import sys
 import time
+from typing import Dict, List, Tuple
 from system_utils import SystemUtils
 from smb_manager import SMBManager
 from tempfile import NamedTemporaryFile
@@ -747,7 +747,7 @@ def run_fake_cloud_backup(cancel_event: threading.Event):
         text=True,
         bufsize=1,
     )
-    output_queue: queue.Queue[tuple[str, str]] = queue.Queue()
+    output_queue: queue.Queue[Tuple[str, str]] = queue.Queue()
 
     def _drain_stream(stream, stream_name: str):
         try:
@@ -771,8 +771,8 @@ def run_fake_cloud_backup(cancel_event: threading.Event):
     stdout_thread.start()
     stderr_thread.start()
 
-    stdout_chunks: list[str] = []
-    stderr_chunks: list[str] = []
+    stdout_chunks: List[str] = []
+    stderr_chunks: List[str] = []
     while True:
         while True:
             try:
@@ -817,8 +817,8 @@ def run_fake_cloud_backup(cancel_event: threading.Event):
         raise RuntimeError(output.strip() or 'Cloud backup failed.')
 
 
-fake_task_threads: dict[str, threading.Thread] = {}
-fake_task_cancel_events: dict[str, threading.Event] = {}
+fake_task_threads: Dict[str, threading.Thread] = {}
+fake_task_cancel_events: Dict[str, threading.Event] = {}
 fake_task_lock = threading.Lock()
 
 

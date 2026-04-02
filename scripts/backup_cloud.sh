@@ -1,6 +1,11 @@
 #!/bin/bash
 
 CONFIG_FILE="/etc/SimpleSaferServer/config.conf"
+PYTHON_BIN="/opt/SimpleSaferServer/venv/bin/python"
+
+if [ ! -x "$PYTHON_BIN" ]; then
+    PYTHON_BIN="/usr/bin/python3"
+fi
 
 get_config_value() {
     section=$1
@@ -24,7 +29,7 @@ function send_email {
     echo "$1 - $2" # Log the status
     echo -e "Subject: $1 - $SERVER_NAME\nFrom: $FROM_ADDRESS\n\n$2" | msmtp --from=$FROM_ADDRESS $EMAIL_ADDRESS
     # Log alert using the standalone script
-    python3 /opt/SimpleSaferServer/scripts/log_alert.py "$1" "$2" "error" "backup_cloud"
+    "$PYTHON_BIN" /opt/SimpleSaferServer/scripts/log_alert.py "$1" "$2" "error" "backup_cloud"
 }
 
 echo "Starting cloud backup process..."
