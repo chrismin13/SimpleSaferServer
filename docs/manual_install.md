@@ -10,7 +10,7 @@ Open a terminal and run:
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y python3 python3-pip python3-flask python3-flask-socketio python3-psutil python3-xgboost python3-joblib python3-pandas python3-sklearn python3-cryptography smartmontools samba msmtp rsync curl
+sudo apt-get install -y python3 python3-pip python3-flask python3-flask-socketio python3-psutil python3-xgboost python3-joblib python3-pandas python3-sklearn python3-cryptography smartmontools samba msmtp rsync curl unzip
 ```
 
 ## 2. Install rclone (Official Script)
@@ -25,7 +25,24 @@ sudo sh -c "bash $TMPFILE || true"
 rm -f "$TMPFILE"
 ```
 
-## 3. Download and Copy Application Files
+## 3. Install HDSentinel
+
+Install the vendor binary to `/usr/local/bin/hdsentinel`.
+
+- `amd64`: `https://www.hdsentinel.com/hdslin/hdsentinel-020c-x64.zip`
+- `arm64`: `https://www.hdsentinel.com/hdslin/hdsentinel-armv8.zip`
+
+Example for `amd64`:
+
+```bash
+TMPDIR=$(mktemp -d)
+curl -L --fail -o "$TMPDIR/hdsentinel.zip" "https://www.hdsentinel.com/hdslin/hdsentinel-020c-x64.zip"
+unzip -o "$TMPDIR/hdsentinel.zip" -d "$TMPDIR"
+sudo install -m 755 "$TMPDIR/HDSentinel" /usr/local/bin/hdsentinel
+rm -rf "$TMPDIR"
+```
+
+## 4. Download and Copy Application Files
 
 Clone the repository and copy files to `/opt/SimpleSaferServer`:
 
@@ -38,7 +55,7 @@ sudo rsync -a static /opt/SimpleSaferServer/
 sudo rsync -a templates /opt/SimpleSaferServer/
 ```
 
-## 4. Install Scripts and Model Files
+## 5. Install Scripts and Model Files
 
 ```bash
 sudo mkdir -p /usr/local/bin
@@ -50,7 +67,7 @@ sudo mkdir -p /opt/SimpleSaferServer/harddrive_model
 sudo cp harddrive_model/* /opt/SimpleSaferServer/harddrive_model/
 ```
 
-## 5. Set Up the Systemd Service
+## 6. Set Up the Systemd Service
 
 ## Email Setup
 - **Email Address**: Enter the address for alerts.
@@ -67,7 +84,7 @@ sudo systemctl enable simple_safer_server_web.service
 sudo systemctl restart simple_safer_server_web.service
 ```
 
-## 6. (Optional) Open Firewall Port 5000
+## 7. (Optional) Open Firewall Port 5000
 
 If you use a firewall, open port 5000:
 
@@ -85,7 +102,7 @@ If you use a firewall, open port 5000:
   sudo iptables -C INPUT -p tcp --dport 5000 -j ACCEPT 2>/dev/null || sudo iptables -A INPUT -p tcp --dport 5000 -j ACCEPT
   ```
 
-## 7. Access the Web UI
+## 8. Access the Web UI
 
 After installation, open a browser on any device in your network and go to:
 

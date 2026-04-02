@@ -6,6 +6,7 @@
 {% block content %}
 <div class="action-bar mb-6">
   <form method="post">
+    <input type="hidden" name="form_action" value="run_health_check">
     <button type="submit" class="btn btn-secondary btn-sm action-bar-btn">
       <i class="fas fa-stethoscope me-1"></i> Run Health Check
     </button>
@@ -23,6 +24,20 @@
     <div class="alert alert-danger">
       <i class="fas fa-exclamation-triangle"></i>
       <span>{{ error }}</span>
+    </div>
+  {% endif %}
+
+  {% if settings_message %}
+    <div class="alert alert-success">
+      <i class="fas fa-circle-check"></i>
+      <span>{{ settings_message }}</span>
+    </div>
+  {% endif %}
+
+  {% if settings_error %}
+    <div class="alert alert-danger">
+      <i class="fas fa-exclamation-triangle"></i>
+      <span>{{ settings_error }}</span>
     </div>
   {% endif %}
 
@@ -59,6 +74,110 @@
     </div>
   {% endif %}
 </div>
+
+<section class="mb-6">
+  <div class="d-flex items-center justify-between mb-4 flex-wrap gap-3">
+    <h2 style="font-size: var(--text-lg); margin: 0;">HDSentinel Monitoring</h2>
+    {% if not hdsentinel_settings.enabled %}
+      <span class="badge badge-neutral"><i class="fas fa-pause"></i> Disabled</span>
+    {% elif hdsentinel_snapshot and hdsentinel_snapshot.available %}
+      <span class="badge badge-success"><i class="fas fa-shield-heart"></i> Active</span>
+    {% elif hdsentinel_snapshot and not hdsentinel_snapshot.installed %}
+      <span class="badge badge-warning"><i class="fas fa-download"></i> Not Installed</span>
+    {% else %}
+      <span class="badge badge-neutral"><i class="fas fa-circle-question"></i> Unavailable</span>
+    {% endif %}
+  </div>
+
+  {% if hdsentinel_snapshot and hdsentinel_snapshot.error and hdsentinel_settings.enabled %}
+    <div class="alert alert-warning mb-4">
+      <i class="fas fa-triangle-exclamation"></i>
+      <span>{{ hdsentinel_snapshot.error }}</span>
+    </div>
+  {% endif %}
+
+  <div class="table-container mb-4">
+    <table>
+      <tbody>
+        <tr>
+          <th>Installed</th>
+          <td>
+            {% if hdsentinel_snapshot and hdsentinel_snapshot.installed %}
+              <span class="badge badge-success"><i class="fas fa-check"></i> Yes</span>
+            {% elif hdsentinel_snapshot %}
+              <span class="badge badge-warning"><i class="fas fa-xmark"></i> No</span>
+            {% else %}
+              <span class="badge badge-neutral"><i class="fas fa-circle-question"></i> Unknown</span>
+            {% endif %}
+          </td>
+        </tr>
+        <tr>
+          <th>Binary Path</th>
+          <td><code>{{ hdsentinel_snapshot.binary_path if hdsentinel_snapshot else '/usr/local/bin/hdsentinel' }}</code></td>
+        </tr>
+        <tr>
+          <th>Health</th>
+          <td>{{ hdsentinel_snapshot.health_pct ~ '%' if hdsentinel_snapshot and hdsentinel_snapshot.health_pct is not none else '—' }}</td>
+        </tr>
+        <tr>
+          <th>Performance</th>
+          <td>{{ hdsentinel_snapshot.performance_pct ~ '%' if hdsentinel_snapshot and hdsentinel_snapshot.performance_pct is not none else '—' }}</td>
+        </tr>
+        <tr>
+          <th>Temperature</th>
+          <td>{{ hdsentinel_snapshot.temperature_c ~ ' C' if hdsentinel_snapshot and hdsentinel_snapshot.temperature_c is not none else '—' }}</td>
+        </tr>
+        <tr>
+          <th>Drive</th>
+          <td>{{ hdsentinel_snapshot.model if hdsentinel_snapshot and hdsentinel_snapshot.model else '—' }}</td>
+        </tr>
+        <tr>
+          <th>Serial</th>
+          <td>{{ hdsentinel_snapshot.serial if hdsentinel_snapshot and hdsentinel_snapshot.serial else '—' }}</td>
+        </tr>
+        <tr>
+          <th>Device</th>
+          <td><code>{{ hdsentinel_snapshot.device if hdsentinel_snapshot and hdsentinel_snapshot.device else '—' }}</code></td>
+        </tr>
+        <tr>
+          <th>Size</th>
+          <td>{{ hdsentinel_snapshot.size_text if hdsentinel_snapshot and hdsentinel_snapshot.size_text else '—' }}</td>
+        </tr>
+        <tr>
+          <th>Power-On Time</th>
+          <td>{{ hdsentinel_snapshot.power_on_time_text if hdsentinel_snapshot and hdsentinel_snapshot.power_on_time_text else '—' }}</td>
+        </tr>
+        <tr>
+          <th>Last Checked</th>
+          <td>{{ hdsentinel_snapshot.last_checked if hdsentinel_snapshot and hdsentinel_snapshot.last_checked else 'Never' }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <details>
+    <summary><strong>Advanced HDSentinel Settings</strong></summary>
+    <form method="post" class="mt-4">
+      <input type="hidden" name="form_action" value="save_hdsentinel_settings">
+      <div class="form-group mb-4">
+        <label class="form-check-label" for="hdsentinelEnabled">
+          <input type="checkbox" class="form-check-input" id="hdsentinelEnabled" name="hdsentinel_enabled" {% if hdsentinel_settings.enabled %}checked{% endif %}>
+          Enable HDSentinel monitoring for the configured backup drive
+        </label>
+      </div>
+      <div class="form-group mb-4">
+        <label class="form-check-label" for="hdsentinelHealthChangeAlert">
+          <input type="checkbox" class="form-check-input" id="hdsentinelHealthChangeAlert" name="hdsentinel_health_change_alert" {% if hdsentinel_settings.health_change_alert %}checked{% endif %}>
+          Send alerts when HDSentinel health changes between scheduled checks
+        </label>
+        <div class="text-muted mt-2">Temperature is displayed for visibility but does not trigger alerts.</div>
+      </div>
+      <div class="d-flex justify-end">
+        <button type="submit" class="btn btn-primary btn-sm">Save HDSentinel Settings</button>
+      </div>
+    </form>
+  </details>
+</section>
 
 {% if smart %}
 <section>

@@ -74,7 +74,12 @@ class ConfigManager:
         self.config['schedule'] = {
             'backup_cloud_time': '3:00'
         }
-        
+
+        self.config['hdsentinel'] = {
+            'enabled': 'true',
+            'health_change_alert': 'true'
+        }
+
         self.save_config()
 
     def save_config(self):

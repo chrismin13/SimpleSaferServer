@@ -5,10 +5,21 @@ import psutil
 from datetime import datetime, timedelta
 import json
 import os
-import csv
 import queue
 import threading
 from config_manager import ConfigManager
+from drive_health import (
+    SMART_FIELDS,
+    append_telemetry,
+    collect_hdsentinel_snapshot,
+    get_hdsentinel_display_snapshot,
+    get_hdsentinel_settings,
+    get_optimal_threshold,
+    get_smart_attributes,
+    predict_failure_probability,
+    run_scheduled_drive_health_check,
+    save_hdsentinel_settings,
+)
 from setup_wizard import setup, install_systemd_tasks
 import logging
 from user_manager import UserManager, login_required, admin_required
@@ -20,15 +31,6 @@ from system_utils import SystemUtils
 from smb_manager import SMBManager
 from tempfile import NamedTemporaryFile
 from runtime import get_runtime, get_fake_state
-
-try:
-    import pandas as pd
-    from xgboost import XGBClassifier
-    import joblib
-except (ImportError, OSError):
-    pd = None
-    XGBClassifier = None
-    joblib = None
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)  # Required for session management
@@ -60,22 +62,7 @@ config_manager = ConfigManager(runtime=runtime)
 # Register setup blueprint
 app.register_blueprint(setup)
 
-# Paths for the XGBoost model and threshold
-MODEL_PATH = str(runtime.model_dir / "xgb_model.json")
-THRESHOLD_PATH = str(runtime.model_dir / "optimal_threshold_xgb.pkl")
-
-# Load model and threshold once on startup
-model = None
-optimal_threshold = 0.5
-if XGBClassifier is not None and joblib is not None:
-    model = XGBClassifier()
-    try:
-        model.load_model(MODEL_PATH)
-        optimal_threshold = joblib.load(THRESHOLD_PATH)
-    except Exception as exc:
-        print(f"Failed to load model: {exc}")
-        model = None
-        optimal_threshold = 0.5
+optimal_threshold = get_optimal_threshold(runtime)
 
 
 def read_msmtp_config():
@@ -102,186 +89,6 @@ def read_msmtp_config():
 
     return msmtp_config
 
-
-def predict_failure_probability(smart):
-    if model is not None and pd is not None:
-        df = pd.DataFrame([smart])
-        probabilities = model.predict_proba(df)
-        return float(probabilities[0, 1])
-
-    if runtime.is_fake:
-        temperature = float(smart.get('smart_194_raw', 30.0) or 30.0)
-        reallocated = float(smart.get('smart_5_raw', 0.0) or 0.0)
-        pending = float(smart.get('smart_197_raw', 0.0) or 0.0)
-        probability = 0.03 + min(0.25, reallocated * 0.02) + min(0.25, pending * 0.05)
-        if temperature > 40:
-            probability += min(0.15, (temperature - 40) * 0.01)
-        return min(0.95, probability)
-
-    return None
-
-# SMART attributes used for telemetry/model with their default values and descriptions
-SMART_FIELDS = {
-    "smart_1_raw": {
-        "default": 0.0,
-        "name": "Read Error Rate",
-        "description": "The rate of hardware read errors that occurred when reading data from the disk surface. A non-zero value may indicate problems with the disk surface or read/write heads.",
-        "short_desc": "Rate of hardware read errors"
-    },
-    "smart_3_raw": {
-        "default": 0.0,
-        "name": "Spin-Up Time",
-        "description": "Average time (in milliseconds) for the disk to spin up from a stopped state to full speed. Higher values may indicate mechanical problems.",
-        "short_desc": "Time to reach full speed"
-    },
-    "smart_4_raw": {
-        "default": 0.0,
-        "name": "Start/Stop Count",
-        "description": "The number of times the disk has been powered on and off. This is a lifetime counter that increases with each power cycle.",
-        "short_desc": "Number of power cycles"
-    },
-    "smart_5_raw": {
-        "default": 0.0,
-        "name": "Reallocated Sectors Count",
-        "description": "The number of bad sectors that have been found and remapped. A non-zero value indicates the disk has had some problems, and the value should not increase over time.",
-        "short_desc": "Number of remapped sectors"
-    },
-    "smart_7_raw": {
-        "default": 0.0,
-        "name": "Seek Error Rate",
-        "description": "The rate of seek errors that occur when the drive's heads try to position themselves over a track. Higher values may indicate mechanical problems.",
-        "short_desc": "Rate of positioning errors"
-    },
-    "smart_10_raw": {
-        "default": 0.0,
-        "name": "Spin Retry Count",
-        "description": "The number of times the drive had to retry spinning up. A non-zero value indicates problems with the drive's motor or power supply.",
-        "short_desc": "Number of spin-up retries"
-    },
-    "smart_192_raw": {
-        "default": 0.0,
-        "name": "Emergency Retract Count",
-        "description": "The number of times the drive's heads were retracted due to power loss or other emergency conditions. High values may indicate power problems.",
-        "short_desc": "Number of emergency head retractions"
-    },
-    "smart_193_raw": {
-        "default": 0.0,
-        "name": "Load Cycle Count",
-        "description": "The number of times the drive's heads have been loaded and unloaded. This is a lifetime counter that increases with each load/unload cycle.",
-        "short_desc": "Number of head load/unload cycles"
-    },
-    "smart_194_raw": {
-        "default": 25.0,
-        "name": "Temperature",
-        "description": "The current temperature of the drive in Celsius. Normal operating temperature is typically between 30-50°C. Higher temperatures may indicate cooling problems.",
-        "short_desc": "Current drive temperature"
-    },
-    "smart_197_raw": {
-        "default": 0.0,
-        "name": "Current Pending Sectors",
-        "description": "The number of sectors that are waiting to be remapped. A non-zero value indicates the drive has found bad sectors that it hasn't been able to remap yet.",
-        "short_desc": "Number of sectors waiting to be remapped"
-    },
-    "smart_198_raw": {
-        "default": 0.0,
-        "name": "Offline Uncorrectable",
-        "description": "The number of sectors that could not be corrected during offline testing. A non-zero value indicates the drive has sectors that are permanently damaged.",
-        "short_desc": "Number of uncorrectable sectors"
-    }
-}
-
-
-def get_fake_smart_attributes():
-    attrs = {field: info["default"] for field, info in SMART_FIELDS.items()}
-    attrs.update({
-        "smart_1_raw": 0.0,
-        "smart_3_raw": 1420.0,
-        "smart_4_raw": 321.0,
-        "smart_5_raw": 0.0,
-        "smart_7_raw": 0.0,
-        "smart_10_raw": 0.0,
-        "smart_192_raw": 2.0,
-        "smart_193_raw": 145.0,
-        "smart_194_raw": 31.0,
-        "smart_197_raw": 0.0,
-        "smart_198_raw": 0.0,
-    })
-    return attrs, []
-
-
-def get_smart_attributes(device=None):
-    """Return SMART attributes as a dictionary using smartctl JSON output."""
-    if runtime.is_fake:
-        return get_fake_smart_attributes()
-    try:
-        # If device is not specified, get UUID from config and resolve to device
-        if device is None:
-            uuid = config_manager.get_value('backup', 'uuid', None)
-            if not uuid:
-                print("No UUID found in config for backup partition.")
-                return None, None
-            # Find the partition device with this UUID
-            blkid_out = subprocess.run(['blkid', '-t', f'UUID={uuid}', '-o', 'device'], capture_output=True, text=True)
-            partition_device = blkid_out.stdout.strip()
-            if not partition_device:
-                print(f"No partition found with UUID {uuid}")
-                return None, None
-            # Get the parent drive (e.g. /dev/sda)
-            device = system_utils.get_parent_device(partition_device)
-            if not device:
-                print(f"Could not determine parent device for partition {partition_device}")
-                return None, None
-        result = subprocess.run(
-            ["sudo", "smartctl", "-A", "-j", device], capture_output=True, text=True, check=True
-        )
-        data = json.loads(result.stdout)
-        
-        # Initialize dictionary with default values for all required SMART fields
-        attrs = {field: info["default"] for field, info in SMART_FIELDS.items()}
-        missing_attrs = set(SMART_FIELDS.keys())
-        
-        # Update with actual values from smartctl output
-        for item in data.get("ata_smart_attributes", {}).get("table", []):
-            field_name = f"smart_{item['id']}_raw"
-            if field_name in SMART_FIELDS:
-                try:
-                    # Temperature is a special case, it is a 16 bit value, but we only want the lowest byte
-                    # Extract the lowest byte for smart_194_raw (Temperature)
-                    if field_name == "smart_194_raw":
-                        attrs[field_name] = float(int(item["raw"]["value"]) & 0xFF)
-                    else:
-                        attrs[field_name] = float(item["raw"]["value"])
-                    missing_attrs.remove(field_name)
-                except (ValueError, KeyError, TypeError):
-                    print(f"Warning: Could not parse value for {field_name}")
-                    continue
-        
-        return attrs, list(missing_attrs)
-    except subprocess.CalledProcessError as e:
-        print(f"Failed to execute smartctl: {e}")
-        return None, None
-    except json.JSONDecodeError as e:
-        print(f"Failed to parse smartctl JSON output: {e}")
-        return None, None
-    except Exception as e:
-        print(f"Unexpected error reading SMART data: {e}")
-        return None, None
-
-
-def append_telemetry(data_dict, prediction):
-    """Append SMART data and prediction to telemetry.csv."""
-    if not data_dict:
-        return
-    telemetry_path = runtime.telemetry_path
-    telemetry_path.parent.mkdir(parents=True, exist_ok=True)
-    file_exists = telemetry_path.exists()
-    with open(telemetry_path, "a", newline="") as csvfile:
-        writer = csv.writer(csvfile)
-        if not file_exists:
-            writer.writerow(list(SMART_FIELDS.keys()) + ["failure"])
-        row = [data_dict.get(field, "") for field in SMART_FIELDS.keys()]
-        row.append(prediction)
-        writer.writerow(row)
 
 # a service can either be running right now, or could have succeeded or failed last time it ran
 class Status:
@@ -834,20 +641,61 @@ def drives():
     probability = None
     error = None
     smart = None
-    missing_attrs = None
+    missing_attrs = []
+    settings_message = None
+    settings_error = None
+    hdsentinel_settings = get_hdsentinel_settings(config_manager)
+    hdsentinel_snapshot = get_hdsentinel_display_snapshot(
+        config_manager,
+        system_utils,
+        runtime=runtime,
+    )
+
     if request.method == "POST":
-        result = get_smart_attributes()
-        if result is None:
-            error = "Could not retrieve SMART data"
+        form_action = request.form.get("form_action", "run_health_check")
+        if form_action == "save_hdsentinel_settings":
+            try:
+                save_hdsentinel_settings(
+                    config_manager,
+                    enabled=request.form.get("hdsentinel_enabled") == "on",
+                    health_change_alert=request.form.get("hdsentinel_health_change_alert") == "on",
+                )
+                hdsentinel_settings = get_hdsentinel_settings(config_manager)
+                # Refresh the snapshot after saving settings so the UI immediately
+                # reflects the current monitoring state (including when monitoring
+                # has just been enabled).
+                hdsentinel_snapshot = collect_hdsentinel_snapshot(
+                    config_manager,
+                    system_utils,
+                    runtime=runtime,
+                )
+                settings_message = "HDSentinel settings saved successfully."
+            except Exception as exc:
+                settings_error = f"Failed to save HDSentinel settings: {exc}"
         else:
-            smart, missing_attrs = result
-            prob = predict_failure_probability(smart)
-            if prob is not None:
-                prediction = int(prob >= optimal_threshold)
-                probability = prob
-                append_telemetry(smart, prediction)
+            smart, missing_attrs = get_smart_attributes(
+                config_manager,
+                system_utils,
+                runtime=runtime,
+            )
+            if smart is None:
+                error = "Could not retrieve SMART data"
             else:
-                error = "Model not loaded"
+                prob = predict_failure_probability(smart, runtime=runtime)
+                if prob is not None:
+                    prediction = int(prob >= optimal_threshold)
+                    probability = prob
+                    append_telemetry(smart, prediction, runtime=runtime)
+                else:
+                    error = "Model not loaded"
+
+            if hdsentinel_settings["enabled"]:
+                hdsentinel_snapshot = collect_hdsentinel_snapshot(
+                    config_manager,
+                    system_utils,
+                    runtime=runtime,
+                )
+
     return render_template(
         "drive_health.html",
         smart=smart,
@@ -856,6 +704,10 @@ def drives():
         error=error,
         missing_attrs=missing_attrs,
         smart_fields=SMART_FIELDS,
+        hdsentinel_settings=hdsentinel_settings,
+        hdsentinel_snapshot=hdsentinel_snapshot,
+        settings_message=settings_message,
+        settings_error=settings_error,
     )
 
 
@@ -1006,14 +858,28 @@ def run_fake_task(task_name: str, cancel_event: threading.Event):
                 fake_state.append_task_log(task_name, f'Found local backup source at {mount_point}; marking it as connected.')
             fake_state.append_task_log(task_name, f'Backup source available at {mount_point}.')
         elif task_name == 'Drive Health Check':
-            smart, _ = get_smart_attributes()
             if cancel_event.is_set():
                 raise RuntimeError('Task was cancelled.')
-            probability = predict_failure_probability(smart)
+            result = run_scheduled_drive_health_check(config_manager, system_utils, runtime=runtime)
+            probability = result.get('probability')
             if probability is not None:
                 fake_state.append_task_log(task_name, f'Drive health probability: {probability:.4f}')
             else:
                 fake_state.append_task_log(task_name, 'Model unavailable; using sample SMART data only.')
+
+            hdsentinel_snapshot = result.get('hdsentinel', {}).get('snapshot')
+            if hdsentinel_snapshot and hdsentinel_snapshot.get('available'):
+                fake_state.append_task_log(
+                    task_name,
+                    (
+                        'HDSentinel status: '
+                        f"health {hdsentinel_snapshot.get('health_pct')}%, "
+                        f"performance {hdsentinel_snapshot.get('performance_pct')}%, "
+                        f"temperature {hdsentinel_snapshot.get('temperature_c')}C"
+                    ),
+                )
+            elif hdsentinel_snapshot and hdsentinel_snapshot.get('error'):
+                fake_state.append_task_log(task_name, f"HDSentinel unavailable: {hdsentinel_snapshot['error']}")
         elif task_name == 'Cloud Backup':
             run_fake_cloud_backup(cancel_event)
 
@@ -1500,18 +1366,29 @@ def api_storage_status():
 @login_required
 def api_drive_health_summary():
     try:
-        smart, missing_attrs = get_smart_attributes()
+        smart, missing_attrs = get_smart_attributes(config_manager, system_utils, runtime=runtime)
         if smart is None:
             return jsonify({'status': 'unknown', 'probability': None, 'temperature': None})
-        prob = predict_failure_probability(smart)
+        prob = predict_failure_probability(smart, runtime=runtime)
         if prob is not None:
             temperature = smart.get('smart_194_raw', None)
             status = 'good' if prob < optimal_threshold else 'warning'
-            return jsonify({
+            response = {
                 'status': status,
                 'probability': prob,
                 'temperature': temperature
-            })
+            }
+            hdsentinel_snapshot = get_hdsentinel_display_snapshot(config_manager, system_utils, runtime=runtime)
+            hdsentinel_settings = get_hdsentinel_settings(config_manager)
+            hdsentinel_enabled = False
+            if isinstance(hdsentinel_settings, dict):
+                hdsentinel_enabled = bool(hdsentinel_settings.get('enabled'))
+            else:
+                hdsentinel_enabled = bool(getattr(hdsentinel_settings, 'enabled', False))
+            if hdsentinel_enabled and hdsentinel_snapshot and hdsentinel_snapshot.get('available'):
+                response['hdsentinel_health'] = hdsentinel_snapshot.get('health_pct')
+                response['hdsentinel_performance'] = hdsentinel_snapshot.get('performance_pct')
+            return jsonify(response)
         else:
             return jsonify({'status': 'unknown', 'probability': None, 'temperature': None})
     except Exception as e:
