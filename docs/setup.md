@@ -8,7 +8,7 @@ The Setup Wizard guides you through the initial configuration of your backup sys
 - **Async Buttons**: Buttons disable while work is in progress.
 
 ## Step 1: Create Admin Account
-- **Username**: Enter a username (3-32 characters, letters, numbers, underscores, hyphens).
+- **Username**: Enter a username using letters, numbers, underscores, or hyphens.
 - **Server Name**: Name your server (required).
 - **Password**: Enter a password (minimum 4 characters).
 - **Confirm Password**: Re-enter the password to confirm.
@@ -30,6 +30,7 @@ The Setup Wizard guides you through the initial configuration of your backup sys
 - **Auto Mount**: Checkbox to mount automatically at boot.
 - **Unmount/Mount Buttons**: Unmount or mount the selected drive.
 - **Status/Error Areas**: Inline feedback for actions.
+- **Later Changes**: If the backup drive changes after setup, use the advanced section on the Drive Health page to re-run this part of the setup flow.
 
 ## Step 4: Backup Configuration
 - **Backup Mode**: Choose between:

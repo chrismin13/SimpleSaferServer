@@ -1,4 +1,10 @@
 from flask import Blueprint, render_template, jsonify, request, redirect, session
+from backup_drive_setup import (
+    BackupDriveSetupError,
+    apply_backup_drive_configuration,
+    list_available_drives as get_available_backup_drives,
+    unmount_selected_drive,
+)
 from config_manager import ConfigManager
 from system_utils import SystemUtils
 from user_manager import UserManager
@@ -86,78 +92,8 @@ def create_user():
 def list_drives():
     """List available drives with detailed information"""
     try:
-        if runtime.is_fake:
-            return jsonify({'success': True, 'drives': fake_state.get_virtual_drives()})
-
-        # Get detailed drive information using lsblk
-        lsblk_result = subprocess.run(['lsblk', '-f', '-o', 'NAME,FSTYPE,LABEL,SIZE,MODEL,MOUNTPOINT,TYPE'], 
-                                    capture_output=True, text=True)
-        
-        if lsblk_result.returncode != 0:
-            return jsonify({'success': False, 'error': 'Failed to list drives'})
-
-        drives = []
-        current_drive = None
-        
-        # Get system drive to exclude it
-        root_mount = subprocess.run(['mount | grep "on / "'], shell=True, capture_output=True, text=True)
-        system_drive = None
-        if root_mount.returncode == 0:
-            system_drive = root_mount.stdout.split()[0]
-        
-        for line in lsblk_result.stdout.splitlines()[1:]:  # Skip header
-            parts = line.split()
-            if not parts:
-                continue
-                
-            name = parts[0]
-            if name.startswith('├─') or name.startswith('└─'):
-                # This is a partition
-                if current_drive:
-                    partition = {
-                        'path': f"/dev/{name[2:]}",  # Remove the tree characters
-                        'type': parts[1] if len(parts) > 1 else 'unknown',
-                        'label': parts[2] if len(parts) > 2 else '',
-                        'size': parts[3] if len(parts) > 3 else '',
-                        'mountpoint': parts[4] if len(parts) > 4 else ''
-                    }
-                    current_drive['partitions'].append(partition)
-            else:
-                # This is a drive
-                if current_drive:
-                    # Only add if it's a physical drive and not the system drive
-                    if current_drive['type'] in ['disk', 'usb'] and current_drive['path'] != system_drive:
-                        drives.append(current_drive)
-                
-                # Get drive model and type using udevadm
-                udev_result = subprocess.run(['udevadm', 'info', '--query=property', f"/dev/{name}"], 
-                                          capture_output=True, text=True)
-                model = 'Unknown Drive'
-                drive_type = 'unknown'
-                if udev_result.returncode == 0:
-                    for line in udev_result.stdout.splitlines():
-                        if line.startswith('ID_MODEL='):
-                            model = line.split('=')[1].strip()
-                        elif line.startswith('ID_TYPE='):
-                            drive_type = line.split('=')[1].strip()
-                
-                current_drive = {
-                    'path': f"/dev/{name}",
-                    'model': model,
-                    'size': parts[3] if len(parts) > 3 else '',
-                    'type': drive_type,
-                    'partitions': []
-                }
-        
-        # Add the last drive if it's a physical drive
-        if current_drive and current_drive['type'] in ['disk', 'usb'] and current_drive['path'] != system_drive:
-            drives.append(current_drive)
-
-        return jsonify({
-            'success': True,
-            'drives': drives
-        })
-
+        drives = get_available_backup_drives(runtime=runtime)
+        return jsonify({'success': True, 'drives': drives})
     except Exception as e:
         logger.error(f"Error listing drives: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
@@ -240,80 +176,14 @@ def format_drive():
 
 @setup.route('/api/setup/unmount', methods=['POST'])
 def unmount_drive():
-    """Unmount the selected drive and clean up fstab entries related to SimpleSaferServer"""
+    """Unmount the selected drive"""
     try:
-        if runtime.is_fake:
-            fake_state.set_mount(False)
-            return jsonify({'success': True, 'message': 'Fake backup source disconnected.'})
-
         data = request.get_json()
         drive = data.get('drive')
-        
-        if not drive:
-            return jsonify({'success': False, 'error': 'No drive selected'})
-
-        # Check if drive is mounted
-        mount_check = subprocess.run(['mount'], capture_output=True, text=True)
-        mounted_partitions = []
-        
-        # Find all mounted partitions for this drive
-        for line in mount_check.stdout.splitlines():
-            if drive in line:
-                parts = line.split()
-                if len(parts) >= 2:
-                    device = parts[0]
-                    mount_point = parts[2]
-                    mounted_partitions.append({
-                        'device': device,
-                        'mount_point': mount_point
-                    })
-
-        if not mounted_partitions:
-            return jsonify({
-                'success': False,
-                'error': f'No mounted partitions found for {drive}',
-                'details': 'The drive might not be mounted or might not have any partitions.'
-            })
-
-        # Try to unmount each partition
-        failed_unmounts = []
-        for partition in mounted_partitions:
-            result = subprocess.run(['umount', partition['device']], capture_output=True, text=True)
-            if result.returncode != 0:
-                error_msg = result.stderr.strip() if result.stderr else 'Unknown error occurred'
-                failed_unmounts.append({
-                    'device': partition['device'],
-                    'error': error_msg
-                })
-
-        if failed_unmounts:
-            error_details = '\n'.join([f"{f['device']}: {f['error']}" for f in failed_unmounts])
-            return jsonify({
-                'success': False,
-                'error': 'Failed to unmount some partitions',
-                'details': f'The following partitions could not be unmounted:\n{error_details}\n\nPlease ensure no applications are using these partitions.'
-            })
-
-        # Remove any fstab entries related to SimpleSaferServer
-        try:
-            with open('/etc/fstab', 'r') as fstab_file:
-                lines = fstab_file.readlines()
-            new_lines = [line for line in lines if 'SimpleSaferServer' not in line]
-            with open('/etc/fstab', 'w') as fstab_file:
-                fstab_file.writelines(new_lines)
-        except Exception as e:
-            logger.error(f"Error cleaning up fstab: {e}")
-            return jsonify({
-                'success': False,
-                'error': f'Error cleaning up fstab: {e}',
-                'details': 'Unmount succeeded, but failed to clean up /etc/fstab.'
-            })
-
-        return jsonify({
-            'success': True,
-            'message': f'Successfully unmounted {len(mounted_partitions)} partition(s)'
-        })
-
+        message = unmount_selected_drive(drive, runtime=runtime)
+        return jsonify({'success': True, 'message': message})
+    except BackupDriveSetupError as e:
+        return jsonify({'success': False, 'error': str(e)})
     except Exception as e:
         logger.error(f"Error unmounting drive: {str(e)}")
         return jsonify({
@@ -330,115 +200,18 @@ def mount_drive():
         drive = data.get('drive')
         mount_point = data.get('mount_point') or (runtime.default_mount_point if runtime.is_fake else '/media/backup')
         auto_mount = data.get('auto_mount', True)
-
-        if runtime.is_fake:
-            selected_path = Path(os.path.abspath(mount_point or runtime.default_mount_point))
-            if not selected_path.exists():
-                try:
-                    selected_path.relative_to(runtime.data_dir)
-                    selected_path.mkdir(parents=True, exist_ok=True)
-                except ValueError:
-                    return jsonify({
-                        'success': False,
-                        'error': 'Source folder does not exist',
-                        'details': 'In fake mode, choose an existing folder on this machine or a path inside .dev-data that can be created safely.'
-                    })
-            if not selected_path.is_dir():
-                return jsonify({'success': False, 'error': 'Source path must be a directory'})
-
-            config_manager.set_value('backup', 'mount_point', str(selected_path))
-            config_manager.set_value('backup', 'uuid', 'FAKE-UUID-0001')
-            config_manager.set_value('backup', 'usb_id', 'FAKE:0001')
-            fake_state.set_mount(True, mount_point=str(selected_path), drive=drive or '/dev/fakebackup1')
-            logger.info(f"Fake mode: using local backup source at {selected_path}")
-            return jsonify({
-                'success': True,
-                'message': f'Successfully selected local backup source at {selected_path}'
-            })
-
-        if not drive:
-            return jsonify({'success': False, 'error': 'No drive selected'})
-
-        # Check if drive is already mounted
-        mount_check = subprocess.run(['mount'], capture_output=True, text=True)
-        if drive in mount_check.stdout:
-            return jsonify({
-                'success': False,
-                'error': 'Drive is already mounted',
-                'details': 'Please unmount the drive first if you want to change mount settings.'
-            })
-
-        # Create mount point if it doesn't exist
-        os.makedirs(mount_point, exist_ok=True)
-
-        # Mount the drive using ntfs-3g
-        result = subprocess.run(['ntfs-3g', drive, mount_point, '-o', 'rw,uid=1000,gid=1000'], capture_output=True, text=True)
-        
-        if result.returncode != 0:
-            error_msg = result.stderr.strip() if result.stderr else 'Unknown error occurred'
-            return jsonify({
-                'success': False,
-                'error': f'Error mounting drive: {error_msg}',
-                'details': 'Please ensure the drive is not in use and try again.'
-            })
-
-        # Get UUID of the partition
-        uuid_result = subprocess.run(['blkid', '-s', 'UUID', '-o', 'value', drive], capture_output=True, text=True)
-        if uuid_result.returncode != 0:
-            return jsonify({
-                'success': False,
-                'error': 'Failed to get drive UUID',
-                'details': 'Could not determine the drive UUID. Please try again.'
-            })
-        
-        uuid = uuid_result.stdout.strip()
-
-        # Get USB ID of the drive (if available)
-        try:
-            usb_logger = logging.getLogger(__name__)
-            usb_id = ""
-            # Find sysfs path for the block device
-            sys_block_path = f"/sys/class/block/{os.path.basename(drive)}/device"
-            parent = os.path.realpath(sys_block_path)
-            usb_logger.info(f"Starting sysfs walk for USB ID from: {parent}")
-            while parent != "/":
-                id_vendor_path = os.path.join(parent, "idVendor")
-                id_product_path = os.path.join(parent, "idProduct")
-                if os.path.isfile(id_vendor_path) and os.path.isfile(id_product_path):
-                    with open(id_vendor_path) as f:
-                        vendor = f.read().strip()
-                    with open(id_product_path) as f:
-                        product = f.read().strip()
-                    usb_id = f"{vendor}:{product}"
-                    usb_logger.info(f"Found USB ID at {parent}: {usb_id}")
-                    break
-                parent = os.path.dirname(parent)
-            if not usb_id:
-                usb_logger.info("USB ID not found, likely not a USB device or not detected.")
-        except Exception as e:
-            usb_logger.error(f"Error getting USB ID: {e}")
-            usb_id = ""
-
-        # Add to fstab if auto_mount is enabled
-        if auto_mount:
-            fstab_entry = f"UUID={uuid}\t\t{mount_point}\tntfs-3g\tdefaults,nofail\t0\t0 # SimpleSaferServer\n"
-            with open('/etc/fstab', 'a') as f:
-                f.write(fstab_entry)
-
-        # Save to config using ConfigManager
-        config_manager.set_value('backup', 'mount_point', mount_point)
-        config_manager.set_value('backup', 'uuid', uuid)
-        config_manager.set_value('backup', 'usb_id', usb_id)  # Empty string means not a USB device or not detected
-        
-        # Verify the config was saved
-        current_config = config_manager.get_all_config()
-        logger.info(f"Current config after mounting: {current_config}")
-
-        return jsonify({
-            'success': True,
-            'message': f'Successfully mounted {drive} at {mount_point}'
-        })
-
+        result = apply_backup_drive_configuration(
+            drive,
+            mount_point,
+            auto_mount,
+            config_manager,
+            smb_manager,
+            runtime=runtime,
+        )
+        logger.info(f"Current config after mounting: {config_manager.get_all_config()}")
+        return jsonify({'success': True, 'message': result['message']})
+    except BackupDriveSetupError as e:
+        return jsonify({'success': False, 'error': str(e)})
     except Exception as e:
         logger.error(f"Error mounting drive: {str(e)}")
         return jsonify({

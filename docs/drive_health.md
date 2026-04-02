@@ -18,6 +18,50 @@ The Drive Health page combines two views of the configured backup drive:
 - HDSentinel alerts only trigger on health changes between scheduled checks.
 - Temperature is displayed but does not currently trigger alerts.
 
+## Re-running Backup Drive Setup
+- Use the advanced section on the Drive Health page only if the backup drive changed or the original identifiers were detected incorrectly.
+- The flow is designed to re-run the backup drive mount setup safely instead of editing UUID or USB ID fields directly.
+- It updates only the SimpleSaferServer-managed backup mount entry in `/etc/fstab`.
+- If the app finds multiple managed entries or a conflicting non-SimpleSaferServer entry using the same UUID or mount point, it stops and asks for manual cleanup.
+
+## Manual Recovery
+If you need to inspect or repair the backup drive configuration manually, start here:
+
+```bash
+sudo awk '1' /etc/SimpleSaferServer/config.conf
+sudo grep -n 'SimpleSaferServer' /etc/fstab
+```
+
+Useful commands:
+
+```bash
+lsblk -f
+sudo blkid -s UUID -o value /dev/sdX1
+lsusb
+sudo findmnt --verify
+```
+
+Manual recovery rules:
+- Update `/etc/SimpleSaferServer/config.conf` only if you know the correct `mount_point`, `uuid`, and `usb_id` values.
+- Update only the SimpleSaferServer-managed line in `/etc/fstab`.
+- Do not modify unrelated `/etc/fstab` entries.
+- Create a backup of `/etc/fstab` before editing it.
+
+Example managed `/etc/fstab` entry:
+
+```fstab
+UUID=2CD49023D48FED80    /media/backup    ntfs-3g    defaults,nofail    0    0 # SimpleSaferServer managed backup drive
+```
+
+After manual changes, verify the result:
+
+```bash
+sudo findmnt --verify
+sudo mkdir -p /media/backup
+sudo mount -a
+sudo systemctl restart smbd nmbd simple_safer_server_web.service
+```
+
 ---
 
 This page is the main place to inspect the backup drive's current SMART and HDSentinel health data.

@@ -6,6 +6,12 @@ import json
 import os
 import queue
 import threading
+from backup_drive_setup import (
+    BackupDriveSetupError,
+    apply_backup_drive_configuration,
+    list_available_drives,
+    unmount_selected_drive,
+)
 from config_manager import ConfigManager
 from drive_health import (
     SMART_FIELDS,
@@ -655,6 +661,7 @@ def drives():
         'uuid': config_manager.get_value('backup', 'uuid', ''),
         'usb_id': config_manager.get_value('backup', 'usb_id', ''),
     }
+    can_manage_backup_drive = user_manager.is_admin(session.get('username'))
 
     if request.method == "POST":
         form_action = request.form.get("form_action", "run_health_check")
@@ -677,28 +684,6 @@ def drives():
                 settings_message = "HDSentinel settings saved successfully."
             except Exception as exc:
                 settings_error = f"Failed to save HDSentinel settings: {exc}"
-        elif form_action == "save_drive_identifiers":
-            mount_point = request.form.get("mount_point", "").strip()
-            uuid = request.form.get("uuid", "").strip()
-            usb_id = request.form.get("usb_id", "").strip()
-
-            if not mount_point:
-                settings_error = "Mount point is required."
-            elif not uuid:
-                settings_error = "Drive UUID is required."
-            else:
-                try:
-                    config_manager.set_value('backup', 'mount_point', mount_point)
-                    config_manager.set_value('backup', 'uuid', uuid)
-                    config_manager.set_value('backup', 'usb_id', usb_id)
-                    drive_config = {
-                        'mount_point': mount_point,
-                        'uuid': uuid,
-                        'usb_id': usb_id,
-                    }
-                    settings_message = "Backup drive identification saved successfully."
-                except Exception as exc:
-                    settings_error = f"Failed to save backup drive identification: {exc}"
         else:
             smart, missing_attrs = get_smart_attributes(
                 config_manager,
@@ -734,6 +719,7 @@ def drives():
         hdsentinel_settings=hdsentinel_settings,
         hdsentinel_snapshot=hdsentinel_snapshot,
         drive_config=drive_config,
+        can_manage_backup_drive=can_manage_backup_drive,
         settings_message=settings_message,
         settings_error=settings_error,
     )
@@ -1503,6 +1489,54 @@ def api_tasks_schedule():
         return jsonify({'tasks': tasks})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/backup_drive/drives', methods=['GET'])
+@login_required
+@admin_required
+def api_backup_drive_drives():
+    try:
+        return jsonify({'success': True, 'drives': list_available_drives(runtime=runtime)})
+    except Exception as e:
+        current_app.logger.error(f"Error listing backup drives: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/backup_drive/unmount', methods=['POST'])
+@login_required
+@admin_required
+def api_backup_drive_unmount():
+    try:
+        data = request.get_json() or {}
+        message = unmount_selected_drive(data.get('drive'), runtime=runtime)
+        return jsonify({'success': True, 'message': message})
+    except BackupDriveSetupError as e:
+        return jsonify({'success': False, 'error': str(e)})
+    except Exception as e:
+        current_app.logger.error(f"Error unmounting backup drive: {e}")
+        return jsonify({'success': False, 'error': 'Could not unmount the selected drive.'})
+
+
+@app.route('/api/backup_drive/configure', methods=['POST'])
+@login_required
+@admin_required
+def api_backup_drive_configure():
+    try:
+        data = request.get_json() or {}
+        result = apply_backup_drive_configuration(
+            data.get('drive'),
+            data.get('mount_point'),
+            data.get('auto_mount', True),
+            config_manager,
+            smb_manager,
+            runtime=runtime,
+        )
+        return jsonify({'success': True, 'result': result})
+    except BackupDriveSetupError as e:
+        return jsonify({'success': False, 'error': str(e)})
+    except Exception as e:
+        current_app.logger.error(f"Error configuring backup drive: {e}")
+        return jsonify({'success': False, 'error': 'Could not configure the backup drive.'})
 
 @app.route('/api/cloud_backup/config', methods=['GET'])
 @login_required

@@ -75,51 +75,75 @@
   {% endif %}
 </div>
 
+{% if can_manage_backup_drive %}
 <section class="mb-6">
-  <div class="d-flex items-center justify-between mb-4 flex-wrap gap-3">
-    <h2 style="font-size: var(--text-lg); margin: 0;">Backup Drive Identification</h2>
-  </div>
-
-  <div class="alert alert-info mb-4">
-    <div>
-      <strong>What these mean:</strong>
-      UUID identifies the backup partition itself. USB ID identifies the attached USB device in `vendor:product` form, such as `0480:a202`.
-    </div>
-  </div>
-
-  <form method="post">
-    <input type="hidden" name="form_action" value="save_drive_identifiers">
-    <div class="form-row mb-4">
-      <div class="form-group">
-        <label class="form-label" for="mountPoint">Mount Point</label>
-        <input type="text" class="form-control text-mono" id="mountPoint" name="mount_point" value="{{ drive_config.mount_point }}" placeholder="/media/backup" required>
-      </div>
-      <div class="form-group">
-        <label class="form-label" for="driveUuid">Drive UUID</label>
-        <input type="text" class="form-control text-mono" id="driveUuid" name="uuid" value="{{ drive_config.uuid }}" placeholder="2CD49023D48FED80" required>
-      </div>
-    </div>
-
-    <div class="form-row mb-4">
-      <div class="form-group">
-        <label class="form-label" for="usbId">USB ID <span class="text-muted">(optional)</span></label>
-        <input type="text" class="form-control text-mono" id="usbId" name="usb_id" value="{{ drive_config.usb_id }}" placeholder="0480:a202">
-      </div>
-      <div class="form-group">
-        <label class="form-label">How To Find Them</label>
-        <div class="text-muted" style="font-size: var(--text-sm); line-height: 1.6;">
-          UUID: <code>blkid -s UUID -o value /dev/sdX1</code><br>
-          USB ID: <code>lsusb</code><br>
-          Leave USB ID blank to skip the USB presence check.
+  <details>
+    <summary><strong>Advanced: Re-run Backup Drive Setup</strong></summary>
+    <div class="mt-4">
+      <div class="alert alert-warning mb-4">
+        <div>
+          <strong>Warning:</strong> Use this only if the backup drive changed or the original drive identifiers were detected incorrectly. This updates the SimpleSaferServer-managed backup mount configuration.
         </div>
       </div>
-    </div>
 
-    <div class="d-flex justify-end">
-      <button type="submit" class="btn btn-primary btn-sm">Save Drive Identification</button>
+      <div class="table-container mb-4">
+        <table>
+          <tbody>
+            <tr>
+              <th>Configured Mount Point</th>
+              <td><code>{{ drive_config.mount_point }}</code></td>
+            </tr>
+            <tr>
+              <th>Configured UUID</th>
+              <td><code>{{ drive_config.uuid or '—' }}</code></td>
+            </tr>
+            <tr>
+              <th>Configured USB ID</th>
+              <td><code>{{ drive_config.usb_id or '—' }}</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div id="driveSetupStatus" class="text-muted mb-3" style="min-height: 1.5rem;"></div>
+      <div id="driveSetupError" class="alert alert-danger d-none mb-4"></div>
+
+      <div class="d-flex gap-2 mb-4 flex-wrap">
+        <button type="button" id="scanBackupDrivesBtn" class="btn btn-secondary btn-sm">Scan Connected Drives</button>
+      </div>
+
+      <div class="form-row mb-4">
+        <div class="form-group">
+          <label class="form-label" for="backupDriveSelect">Backup Drive Partition</label>
+          <select class="form-control" id="backupDriveSelect">
+            <option value="">Scan connected drives first</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="backupDriveMountPoint">Mount Point</label>
+          <input type="text" class="form-control text-mono" id="backupDriveMountPoint" value="{{ drive_config.mount_point }}" placeholder="/media/backup">
+        </div>
+      </div>
+
+      <div class="form-group mb-4">
+        <label class="form-check-label" for="backupDriveAutoMount">
+          <input type="checkbox" class="form-check-input" id="backupDriveAutoMount" checked>
+          Update the SimpleSaferServer-managed `/etc/fstab` entry so this drive mounts automatically at boot
+        </label>
+      </div>
+
+      <div class="text-muted mb-4" style="font-size: var(--text-sm); line-height: 1.6;">
+        If the current drive is still mounted, unmount it first here or from the dashboard before applying the new selection. For fully manual recovery steps, use the documentation linked from the project website.
+      </div>
+
+      <div class="d-flex gap-2 justify-end flex-wrap">
+        <button type="button" id="unmountBackupDriveBtn" class="btn btn-secondary btn-sm">Unmount Selected Drive</button>
+        <button type="button" id="applyBackupDriveBtn" class="btn btn-primary btn-sm">Apply Backup Drive Setup</button>
+      </div>
     </div>
-  </form>
+  </details>
 </section>
+{% endif %}
 
 <section class="mb-6">
   <div class="d-flex items-center justify-between mb-4 flex-wrap gap-3">
@@ -262,5 +286,152 @@
     </table>
   </div>
 </section>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+{% if can_manage_backup_drive %}
+<script>
+  (function() {
+    const statusEl = document.getElementById('driveSetupStatus');
+    const errorEl = document.getElementById('driveSetupError');
+    const scanBtn = document.getElementById('scanBackupDrivesBtn');
+    const unmountBtn = document.getElementById('unmountBackupDriveBtn');
+    const applyBtn = document.getElementById('applyBackupDriveBtn');
+    const driveSelect = document.getElementById('backupDriveSelect');
+    const mountPointInput = document.getElementById('backupDriveMountPoint');
+    const autoMountInput = document.getElementById('backupDriveAutoMount');
+
+    function setDriveSetupStatus(message, type) {
+      statusEl.textContent = message || '';
+      statusEl.className = 'mb-3';
+      const classMap = {
+        info: 'text-info',
+        success: 'text-success',
+        error: 'text-danger',
+        warning: 'text-warning'
+      };
+      statusEl.classList.add(classMap[type || 'info'] || 'text-muted');
+    }
+
+    function showDriveSetupError(message) {
+      errorEl.textContent = message;
+      errorEl.classList.remove('d-none');
+      setDriveSetupStatus(message, 'error');
+    }
+
+    function hideDriveSetupError() {
+      errorEl.classList.add('d-none');
+      errorEl.textContent = '';
+    }
+
+    function populateDriveSelect(drives) {
+      driveSelect.innerHTML = '';
+      const placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = drives.length ? 'Select a partition' : 'No backup drive partitions found';
+      driveSelect.appendChild(placeholder);
+
+      drives.forEach((drive) => {
+        const group = document.createElement('optgroup');
+        group.label = `${drive.model} (${drive.size || 'unknown size'})`;
+        (drive.partitions || []).forEach((partition) => {
+          const option = document.createElement('option');
+          option.value = partition.path;
+          option.textContent = `${partition.path}${partition.size ? ` (${partition.size})` : ''}`;
+          group.appendChild(option);
+        });
+        if (group.children.length > 0) {
+          driveSelect.appendChild(group);
+        }
+      });
+    }
+
+    async function scanDrives() {
+      hideDriveSetupError();
+      setDriveSetupStatus('Scanning connected drives…', 'info');
+      if (window.AsyncButtonState && scanBtn) window.AsyncButtonState.start(scanBtn);
+      try {
+        const response = await fetch('/api/backup_drive/drives');
+        const data = await response.json();
+        if (!data.success) {
+          throw new Error(data.error || 'Failed to scan connected drives.');
+        }
+        populateDriveSelect(data.drives || []);
+        setDriveSetupStatus('Drive scan complete.', 'success');
+        if (window.AsyncButtonState && scanBtn) window.AsyncButtonState.success(scanBtn);
+      } catch (error) {
+        showDriveSetupError(error.message || 'Failed to scan connected drives.');
+        if (window.AsyncButtonState && scanBtn) window.AsyncButtonState.error(scanBtn);
+      }
+    }
+
+    async function unmountSelectedDrive() {
+      hideDriveSetupError();
+      if (!driveSelect.value) {
+        showDriveSetupError('Select a drive partition to unmount first.');
+        return;
+      }
+      setDriveSetupStatus('Unmounting selected drive…', 'info');
+      if (window.AsyncButtonState && unmountBtn) window.AsyncButtonState.start(unmountBtn);
+      try {
+        const response = await fetch('/api/backup_drive/unmount', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ drive: driveSelect.value })
+        });
+        const data = await response.json();
+        if (!data.success) {
+          throw new Error(data.error || 'Failed to unmount the selected drive.');
+        }
+        setDriveSetupStatus(data.message || 'Drive unmounted successfully.', 'success');
+        if (window.AsyncButtonState && unmountBtn) window.AsyncButtonState.success(unmountBtn);
+      } catch (error) {
+        showDriveSetupError(error.message || 'Failed to unmount the selected drive.');
+        if (window.AsyncButtonState && unmountBtn) window.AsyncButtonState.error(unmountBtn);
+      }
+    }
+
+    async function applyDriveSetup() {
+      hideDriveSetupError();
+      if (!driveSelect.value) {
+        showDriveSetupError('Select a backup drive partition first.');
+        return;
+      }
+      if (!mountPointInput.value.trim()) {
+        showDriveSetupError('Mount point is required.');
+        return;
+      }
+
+      setDriveSetupStatus('Applying backup drive setup…', 'info');
+      if (window.AsyncButtonState && applyBtn) window.AsyncButtonState.start(applyBtn);
+      try {
+        const response = await fetch('/api/backup_drive/configure', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            drive: driveSelect.value,
+            mount_point: mountPointInput.value.trim(),
+            auto_mount: autoMountInput.checked
+          })
+        });
+        const data = await response.json();
+        if (!data.success) {
+          throw new Error(data.error || 'Failed to apply backup drive setup.');
+        }
+        setDriveSetupStatus((data.result && data.result.message) || 'Backup drive setup updated successfully.', 'success');
+        if (window.AsyncButtonState && applyBtn) window.AsyncButtonState.success(applyBtn);
+        window.location.reload();
+      } catch (error) {
+        showDriveSetupError(error.message || 'Failed to apply backup drive setup.');
+        if (window.AsyncButtonState && applyBtn) window.AsyncButtonState.error(applyBtn);
+      }
+    }
+
+    if (scanBtn) scanBtn.addEventListener('click', scanDrives);
+    if (unmountBtn) unmountBtn.addEventListener('click', unmountSelectedDrive);
+    if (applyBtn) applyBtn.addEventListener('click', applyDriveSetup);
+  })();
+</script>
 {% endif %}
 {% endblock %}
