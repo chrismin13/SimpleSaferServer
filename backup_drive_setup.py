@@ -1,4 +1,5 @@
 import logging
+import json
 import os
 import re
 import shutil
@@ -32,7 +33,13 @@ def _is_managed_fstab_line(line):
     stripped = line.strip()
     if not stripped or stripped.startswith('#'):
         return False
-    return LEGACY_FSTAB_MARKER in line
+    if '#' not in line:
+        return False
+    marker = line.split('#', 1)[1].strip()
+    return marker in {
+        FSTAB_MARKER.lstrip('# ').strip(),
+        LEGACY_FSTAB_MARKER,
+    }
 
 
 def _parse_fstab_entry(line):
@@ -207,62 +214,65 @@ def list_available_drives(runtime=None):
         return fake_state.get_virtual_drives()
 
     lsblk_result = subprocess.run(
-        ['lsblk', '-f', '-o', 'NAME,FSTYPE,LABEL,SIZE,MODEL,MOUNTPOINT,TYPE'],
+        ['lsblk', '-J', '-o', 'PATH,FSTYPE,LABEL,SIZE,MODEL,MOUNTPOINT,TYPE'],
         capture_output=True,
         text=True,
     )
     if lsblk_result.returncode != 0:
         raise BackupDriveSetupError('Failed to list drives.')
 
-    root_mount = subprocess.run(['mount | grep "on / "'], shell=True, capture_output=True, text=True)
-    system_drive = root_mount.stdout.split()[0] if root_mount.returncode == 0 and root_mount.stdout.split() else None
+    try:
+        lsblk_data = json.loads(lsblk_result.stdout)
+    except Exception as exc:
+        raise BackupDriveSetupError('Failed to parse drive list.') from exc
+
+    root_mount = subprocess.run(['findmnt', '-n', '-o', 'SOURCE', '/'], capture_output=True, text=True)
+    system_drive = root_mount.stdout.strip() if root_mount.returncode == 0 else None
 
     drives = []
-    current_drive = None
-    for line in lsblk_result.stdout.splitlines()[1:]:
-        parts = line.split()
-        if not parts:
+    for block in lsblk_data.get('blockdevices', []):
+        if block.get('type') != 'disk':
             continue
 
-        name = parts[0]
-        if name.startswith('├─') or name.startswith('└─'):
-            if current_drive:
-                current_drive['partitions'].append({
-                    'path': '/dev/{}'.format(name[2:]),
-                    'type': parts[1] if len(parts) > 1 else 'unknown',
-                    'label': parts[2] if len(parts) > 2 else '',
-                    'size': parts[3] if len(parts) > 3 else '',
-                    'mountpoint': parts[4] if len(parts) > 4 else '',
-                })
+        disk_path = block.get('path')
+        if not disk_path:
             continue
 
-        if current_drive and current_drive['type'] in ['disk', 'usb'] and current_drive['path'] != system_drive:
-            drives.append(current_drive)
+        if system_drive and system_drive.startswith(disk_path):
+            continue
 
-        udev_result = subprocess.run(
-            ['udevadm', 'info', '--query=property', '/dev/{}'.format(name)],
-            capture_output=True,
-            text=True,
-        )
-        model = 'Unknown Drive'
-        drive_type = 'unknown'
-        if udev_result.returncode == 0:
-            for udev_line in udev_result.stdout.splitlines():
-                if udev_line.startswith('ID_MODEL='):
-                    model = udev_line.split('=', 1)[1].strip()
-                elif udev_line.startswith('ID_TYPE='):
-                    drive_type = udev_line.split('=', 1)[1].strip()
+        partitions = []
+        for child in block.get('children', []) or []:
+            child_path = child.get('path')
+            if not child_path:
+                continue
+            partitions.append({
+                'path': child_path,
+                'type': child.get('fstype') or child.get('type') or 'unknown',
+                'label': child.get('label') or '',
+                'size': child.get('size') or '',
+                'mountpoint': child.get('mountpoint') or '',
+            })
 
-        current_drive = {
-            'path': '/dev/{}'.format(name),
-            'model': model,
-            'size': parts[3] if len(parts) > 3 else '',
-            'type': drive_type,
-            'partitions': [],
-        }
+        if not partitions and (block.get('fstype') or block.get('mountpoint')):
+            partitions.append({
+                'path': disk_path,
+                'type': block.get('fstype') or block.get('type') or 'unknown',
+                'label': block.get('label') or '',
+                'size': block.get('size') or '',
+                'mountpoint': block.get('mountpoint') or '',
+            })
 
-    if current_drive and current_drive['type'] in ['disk', 'usb'] and current_drive['path'] != system_drive:
-        drives.append(current_drive)
+        if not partitions:
+            continue
+
+        drives.append({
+            'path': disk_path,
+            'model': (block.get('model') or 'Unknown Drive').strip() or 'Unknown Drive',
+            'size': block.get('size') or '',
+            'type': block.get('type') or 'unknown',
+            'partitions': partitions,
+        })
 
     return drives
 

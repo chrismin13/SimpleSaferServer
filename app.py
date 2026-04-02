@@ -27,7 +27,7 @@ from drive_health import (
 )
 from setup_wizard import setup, install_systemd_tasks
 import logging
-from user_manager import UserManager, login_required, admin_required
+from user_manager import UserManager, login_required, admin_required, api_login_required, api_admin_required
 from flask_socketio import SocketIO
 from logging.handlers import RotatingFileHandler
 import sys
@@ -1492,8 +1492,8 @@ def api_tasks_schedule():
 
 
 @app.route('/api/backup_drive/drives', methods=['GET'])
-@login_required
-@admin_required
+@api_login_required
+@api_admin_required
 def api_backup_drive_drives():
     try:
         return jsonify({'success': True, 'drives': list_available_drives(runtime=runtime)})
@@ -1503,8 +1503,8 @@ def api_backup_drive_drives():
 
 
 @app.route('/api/backup_drive/unmount', methods=['POST'])
-@login_required
-@admin_required
+@api_login_required
+@api_admin_required
 def api_backup_drive_unmount():
     try:
         data = request.get_json() or {}
@@ -1518,8 +1518,8 @@ def api_backup_drive_unmount():
 
 
 @app.route('/api/backup_drive/configure', methods=['POST'])
-@login_required
-@admin_required
+@api_login_required
+@api_admin_required
 def api_backup_drive_configure():
     try:
         data = request.get_json() or {}

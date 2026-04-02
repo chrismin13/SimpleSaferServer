@@ -563,8 +563,10 @@ def collect_hdsentinel_snapshot(config_manager, system_utils, runtime=None, devi
             report_text = report_path.read_text(errors="replace")
             report_data = parse_hdsentinel_report(report_text)
     finally:
-        if report_path.exists():
+        try:
             report_path.unlink()
+        except FileNotFoundError:
+            pass
 
     snapshot.update(solid_data)
     for key, value in report_data.items():
