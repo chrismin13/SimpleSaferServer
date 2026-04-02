@@ -152,6 +152,17 @@ def _backup_existing_file(source: Path, backup_dir: Path, backup_name: str) -> N
     shutil.copy2(source, backup_dir / backup_name)
 
 
+def _is_legacy_shell_config(path: Path) -> bool:
+    if not path.exists():
+        return False
+    for raw_line in path.read_text().splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        return not line.startswith("[")
+    return False
+
+
 def _write_preserved_file(source: Path, target: Path, *, mode: int) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source, target)
@@ -295,19 +306,25 @@ def import_legacy_bundle(bundle_dir: Union[str, Path], *, admin_username: str, a
         raise MigrationError("Legacy import must be run as root.")
 
     bundle = load_legacy_bundle(bundle_dir)
-    config_manager = ConfigManager(runtime=runtime)
-    system_utils = SystemUtils(runtime=runtime)
-    user_manager = UserManager(runtime=runtime)
-    smb_manager = SMBManager(runtime=runtime)
+    config_path = runtime.config_dir / "config.conf"
+    users_path = runtime.config_dir / "users.json"
 
     backup_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_dir = runtime.config_dir / "migration-backups" / backup_timestamp
     backup_dir.mkdir(parents=True, exist_ok=True)
 
-    _backup_existing_file(config_manager.config_path, backup_dir, "config.conf")
-    _backup_existing_file(user_manager.users_file, backup_dir, "users.json")
+    _backup_existing_file(config_path, backup_dir, "config.conf")
+    _backup_existing_file(users_path, backup_dir, "users.json")
     _backup_existing_file(runtime.msmtp_config_path, backup_dir, "msmtprc")
     _backup_existing_file(runtime.rclone_config_dir / "rclone.conf", backup_dir, "rclone.conf")
+
+    if _is_legacy_shell_config(config_path):
+        config_path.unlink()
+
+    config_manager = ConfigManager(runtime=runtime)
+    system_utils = SystemUtils(runtime=runtime)
+    user_manager = UserManager(runtime=runtime)
+    smb_manager = SMBManager(runtime=runtime)
 
     legacy_config = bundle.config
     msmtp_config = _parse_msmtp_config(bundle.msmtp_path)
