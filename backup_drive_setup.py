@@ -73,29 +73,33 @@ def _backup_file(path, runtime, prefix):
 
 
 def _validate_fstab_file(path):
-    if shutil.which('mount'):
-        result = subprocess.run(
-            ['mount', '-fav', '-T', str(path)],
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode == 0:
-            return True, None, None
-        summary = (result.stderr or result.stdout or 'mount validation failed').strip().splitlines()[0]
-        details = '\n'.join(part for part in [result.stdout.strip(), result.stderr.strip()] if part).strip()
-        return False, summary, details
+    issues = []
+    for line_number, raw_line in enumerate(path.read_text().splitlines(), start=1):
+        stripped = raw_line.strip()
+        if not stripped or stripped.startswith('#'):
+            continue
 
-    if shutil.which('findmnt'):
-        result = subprocess.run(
-            ['findmnt', '--verify', '--tab-file', str(path)],
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode == 0:
-            return True, None, None
-        summary = (result.stderr or result.stdout or 'findmnt validation failed').strip().splitlines()[0]
-        details = '\n'.join(part for part in [result.stdout.strip(), result.stderr.strip()] if part).strip()
-        return False, summary, details
+        content = stripped.split('#', 1)[0].strip()
+        if not content:
+            continue
+
+        parts = re.split(r'\s+', content)
+        if len(parts) < 6:
+            issues.append('line {} does not have 6 fstab fields: {}'.format(line_number, raw_line.strip()))
+            continue
+
+        spec, mount_point, fstype = parts[0], parts[1], parts[2]
+        if not mount_point.startswith('/'):
+            issues.append('line {} has a non-absolute mount point: {}'.format(line_number, mount_point))
+        if _is_managed_fstab_line(raw_line):
+            if not spec.startswith('UUID='):
+                issues.append('line {} has an invalid managed UUID spec: {}'.format(line_number, spec))
+            if fstype != 'ntfs-3g':
+                issues.append('line {} has unexpected managed filesystem type: {}'.format(line_number, fstype))
+
+    if issues:
+        details = '\n'.join(issues)
+        return False, issues[0], details
 
     return True, None, None
 
