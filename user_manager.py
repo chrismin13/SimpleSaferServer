@@ -91,8 +91,12 @@ class UserManager:
             
             # Check if user already exists in Samba
             result = subprocess.run(['sudo', 'pdbedit', '-L'], capture_output=True, text=True)
-            existing_users = result.stdout.splitlines()
-            
+            existing_users = {
+                line.split(':', 1)[0].strip()
+                for line in result.stdout.splitlines()
+                if line.strip()
+            }
+
             if username in existing_users:
                 # Update existing user password
                 subprocess.run(['sudo', 'smbpasswd', '-s', '-a', username], 
@@ -261,7 +265,12 @@ class UserManager:
             return username in self.users
         try:
             result = subprocess.run(['sudo', 'pdbedit', '-L'], capture_output=True, text=True)
-            return username in result.stdout.splitlines()
+            existing_users = {
+                line.split(':', 1)[0].strip()
+                for line in result.stdout.splitlines()
+                if line.strip()
+            }
+            return username in existing_users
         except subprocess.CalledProcessError:
             return False
 
