@@ -218,7 +218,12 @@
         </table>
       </div>
 
-      <div id="driveSetupError" class="alert alert-danger d-none mb-4"></div>
+      <div id="driveSetupError" class="alert alert-danger d-none mb-4">
+        <div class="d-flex items-center justify-between gap-3 flex-wrap">
+          <span id="driveSetupErrorText"></span>
+          <button type="button" id="driveSetupErrorDetailsBtn" class="btn btn-secondary btn-sm d-none">Show Details</button>
+        </div>
+      </div>
 
       <div class="d-flex items-center gap-2 mb-4 flex-wrap">
         <button type="button" id="scanBackupDrivesBtn" class="btn btn-secondary btn-sm">Scan Connected Drives</button>
@@ -319,6 +324,23 @@
     </div>
   </div>
 </div>
+
+<div class="modal-overlay" id="backupDriveSetupErrorDetailsModal">
+  <div class="modal-container modal-lg">
+    <div class="modal-header">
+      <h5>Backup Drive Setup Error Details</h5>
+      <button class="modal-close" data-modal-close><i class="fas fa-xmark"></i></button>
+    </div>
+    <div class="modal-body">
+      <pre id="backupDriveSetupErrorDetailsText" style="white-space: pre-wrap; word-break: break-word; margin: 0;"></pre>
+    </div>
+    <div class="modal-footer">
+      <div class="modal-footer-actions">
+        <button class="btn btn-secondary" data-modal-close>Close</button>
+      </div>
+    </div>
+  </div>
+</div>
 {% endif %}
 
 {% if smart %}
@@ -367,12 +389,16 @@
   (function() {
     const statusEl = document.getElementById('driveSetupStatus');
     const errorEl = document.getElementById('driveSetupError');
+    const errorTextEl = document.getElementById('driveSetupErrorText');
+    const errorDetailsBtn = document.getElementById('driveSetupErrorDetailsBtn');
+    const errorDetailsTextEl = document.getElementById('backupDriveSetupErrorDetailsText');
     const scanBtn = document.getElementById('scanBackupDrivesBtn');
     const unmountBtn = document.getElementById('unmountBackupDriveBtn');
     const applyBtn = document.getElementById('applyBackupDriveBtn');
     const driveSelect = document.getElementById('backupDriveSelect');
     const mountPointInput = document.getElementById('backupDriveMountPoint');
     const autoMountInput = document.getElementById('backupDriveAutoMount');
+    let currentDriveSetupErrorDetails = '';
 
     function setDriveSetupStatus(message, type) {
       statusEl.textContent = message || '';
@@ -386,15 +412,23 @@
       statusEl.classList.add(classMap[type || 'info'] || 'text-muted');
     }
 
-    function showDriveSetupError(message) {
-      errorEl.textContent = message;
+    function showDriveSetupError(message, details) {
+      errorTextEl.textContent = message;
       errorEl.classList.remove('d-none');
+      currentDriveSetupErrorDetails = details || '';
+      if (currentDriveSetupErrorDetails) {
+        errorDetailsBtn.classList.remove('d-none');
+      } else {
+        errorDetailsBtn.classList.add('d-none');
+      }
       setDriveSetupStatus('', 'info');
     }
 
     function hideDriveSetupError() {
       errorEl.classList.add('d-none');
-      errorEl.textContent = '';
+      errorTextEl.textContent = '';
+      errorDetailsBtn.classList.add('d-none');
+      currentDriveSetupErrorDetails = '';
     }
 
     async function parseDriveSetupResponse(response) {
@@ -443,13 +477,15 @@
         const response = await fetch('/api/backup_drive/drives');
         const data = await parseDriveSetupResponse(response);
         if (!data.success) {
-          throw new Error(data.error || 'Failed to scan connected drives.');
+          const error = new Error(data.error || 'Failed to scan connected drives.');
+          error.details = data.details || '';
+          throw error;
         }
         populateDriveSelect(data.drives || []);
         setDriveSetupStatus('Drive scan complete.', 'success');
         if (window.AsyncButtonState && scanBtn) window.AsyncButtonState.success(scanBtn);
       } catch (error) {
-        showDriveSetupError(error.message || 'Failed to scan connected drives.');
+        showDriveSetupError(error.message || 'Failed to scan connected drives.', error.details);
         if (window.AsyncButtonState && scanBtn) window.AsyncButtonState.error(scanBtn);
       }
     }
@@ -470,12 +506,14 @@
         });
         const data = await parseDriveSetupResponse(response);
         if (!data.success) {
-          throw new Error(data.error || 'Failed to unmount the selected drive.');
+          const error = new Error(data.error || 'Failed to unmount the selected drive.');
+          error.details = data.details || '';
+          throw error;
         }
         setDriveSetupStatus(data.message || 'Drive unmounted successfully.', 'success');
         if (window.AsyncButtonState && unmountBtn) window.AsyncButtonState.success(unmountBtn);
       } catch (error) {
-        showDriveSetupError(error.message || 'Failed to unmount the selected drive.');
+        showDriveSetupError(error.message || 'Failed to unmount the selected drive.', error.details);
         if (window.AsyncButtonState && unmountBtn) window.AsyncButtonState.error(unmountBtn);
       }
     }
@@ -505,15 +543,26 @@
         });
         const data = await parseDriveSetupResponse(response);
         if (!data.success) {
-          throw new Error(data.error || 'Failed to apply backup drive setup.');
+          const error = new Error(data.error || 'Failed to apply backup drive setup.');
+          error.details = data.details || '';
+          throw error;
         }
         setDriveSetupStatus((data.result && data.result.message) || 'Backup drive setup updated successfully.', 'success');
         if (window.AsyncButtonState && applyBtn) window.AsyncButtonState.success(applyBtn);
         window.location.reload();
       } catch (error) {
-        showDriveSetupError(error.message || 'Failed to apply backup drive setup.');
+        showDriveSetupError(error.message || 'Failed to apply backup drive setup.', error.details);
         if (window.AsyncButtonState && applyBtn) window.AsyncButtonState.error(applyBtn);
       }
+    }
+
+    if (errorDetailsBtn) {
+      errorDetailsBtn.addEventListener('click', () => {
+        errorDetailsTextEl.textContent = currentDriveSetupErrorDetails || 'No additional details available.';
+        if (window.BunkerModal) {
+          window.BunkerModal.show('backupDriveSetupErrorDetailsModal');
+        }
+      });
     }
 
     if (scanBtn) scanBtn.addEventListener('click', scanDrives);

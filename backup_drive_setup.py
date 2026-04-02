@@ -17,7 +17,9 @@ LEGACY_FSTAB_MARKER = "SimpleSaferServer"
 
 
 class BackupDriveSetupError(Exception):
-    pass
+    def __init__(self, message, details=None):
+        super().__init__(message)
+        self.details = details
 
 
 def _get_fstab_path(runtime=None, fstab_path=None):
@@ -78,9 +80,10 @@ def _validate_fstab_file(path):
             text=True,
         )
         if result.returncode == 0:
-            return True, None
-        message = (result.stderr or result.stdout or 'findmnt validation failed').strip()
-        return False, message
+            return True, None, None
+        summary = (result.stderr or result.stdout or 'findmnt validation failed').strip().splitlines()[0]
+        details = '\n'.join(part for part in [result.stdout.strip(), result.stderr.strip()] if part).strip()
+        return False, summary, details
 
     if shutil.which('mount'):
         result = subprocess.run(
@@ -89,11 +92,12 @@ def _validate_fstab_file(path):
             text=True,
         )
         if result.returncode == 0:
-            return True, None
-        message = (result.stderr or result.stdout or 'mount validation failed').strip()
-        return False, message
+            return True, None, None
+        summary = (result.stderr or result.stdout or 'mount validation failed').strip().splitlines()[0]
+        details = '\n'.join(part for part in [result.stdout.strip(), result.stderr.strip()] if part).strip()
+        return False, summary, details
 
-    return True, None
+    return True, None, None
 
 
 def _render_managed_fstab_entry(uuid, mount_point):
@@ -157,11 +161,16 @@ def update_managed_fstab(uuid, mount_point, auto_mount, runtime=None, fstab_path
         handle.writelines(new_lines)
         temp_path = Path(handle.name)
 
-    valid, validation_error = _validate_fstab_file(temp_path)
+    valid, validation_error, validation_details = _validate_fstab_file(temp_path)
     if not valid:
         if temp_path.exists():
             temp_path.unlink()
-        raise BackupDriveSetupError('/etc/fstab validation failed: {}'.format(validation_error))
+        if validation_details:
+            LOGGER.error('Backup drive fstab validation failed for %s:\n%s', temp_path, validation_details)
+        raise BackupDriveSetupError(
+            '/etc/fstab validation failed: {}'.format(validation_error),
+            details=validation_details,
+        )
 
     backup_path = None
     if path.exists():

@@ -1511,7 +1511,7 @@ def api_backup_drive_unmount():
         message = unmount_selected_drive(data.get('drive'), runtime=runtime)
         return jsonify({'success': True, 'message': message})
     except BackupDriveSetupError as e:
-        return jsonify({'success': False, 'error': str(e)})
+        return jsonify({'success': False, 'error': str(e), 'details': e.details})
     except Exception as e:
         current_app.logger.error(f"Error unmounting backup drive: {e}")
         return jsonify({'success': False, 'error': 'Could not unmount the selected drive.'})
@@ -1533,7 +1533,7 @@ def api_backup_drive_configure():
         )
         return jsonify({'success': True, 'result': result})
     except BackupDriveSetupError as e:
-        return jsonify({'success': False, 'error': str(e)})
+        return jsonify({'success': False, 'error': str(e), 'details': e.details})
     except Exception as e:
         current_app.logger.error(f"Error configuring backup drive: {e}")
         return jsonify({'success': False, 'error': 'Could not configure the backup drive.'})
