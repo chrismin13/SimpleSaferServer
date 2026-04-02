@@ -11,10 +11,10 @@
       <i class="fas fa-stethoscope me-1"></i> Run Health Check
     </button>
   </form>
-  <a href="/download_telemetry" class="btn btn-secondary btn-sm action-bar-btn">
+  <a href="/download_telemetry" id="downloadTelemetryBtn" class="btn btn-secondary btn-sm action-bar-btn">
     <i class="fas fa-download me-1"></i> Download Telemetry
   </a>
-  <a href="mailto:c.miniotis@acg.edu?subject=SMART%20Telemetry" class="btn btn-secondary btn-sm action-bar-btn" target="_blank">
+  <a href="mailto:simplesaferserver@chrismin13.com?subject=SMART%20Telemetry" class="btn btn-secondary btn-sm action-bar-btn" target="_blank">
     <i class="fas fa-envelope me-1"></i> Send Telemetry
   </a>
 </div>
@@ -391,6 +391,70 @@
 {% endblock %}
 
 {% block extra_js %}
+<script>
+  (function() {
+    const downloadTelemetryBtn = document.getElementById('downloadTelemetryBtn');
+    if (!downloadTelemetryBtn) {
+      return;
+    }
+
+    function getDownloadFilename(response) {
+      const disposition = response.headers.get('content-disposition') || '';
+      const match = disposition.match(/filename="?([^";]+)"?/i);
+      return match ? match[1] : 'telemetry.csv';
+    }
+
+    async function handleTelemetryDownload(event) {
+      event.preventDefault();
+      if (window.AsyncButtonState) {
+        window.AsyncButtonState.start(downloadTelemetryBtn);
+      }
+
+      try {
+        const response = await fetch(downloadTelemetryBtn.href, {
+          headers: { 'X-Requested-With': 'XMLHttpRequest' },
+          credentials: 'same-origin'
+        });
+
+        if (response.redirected || response.status === 401 || response.status === 403) {
+          throw new Error('Your session expired. Please log in again.');
+        }
+
+        if (response.status === 404) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error(data.error || 'Telemetry has not been generated yet. Run a health check first.');
+        }
+
+        if (!response.ok) {
+          throw new Error('Failed to download telemetry.');
+        }
+
+        const blob = await response.blob();
+        const objectUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = objectUrl;
+        link.download = getDownloadFilename(response);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(objectUrl);
+
+        if (window.AsyncButtonState) {
+          window.AsyncButtonState.success(downloadTelemetryBtn);
+        }
+      } catch (error) {
+        if (window.AsyncButtonState) {
+          window.AsyncButtonState.error(downloadTelemetryBtn);
+        }
+        if (window.showAlert) {
+          window.showAlert(error.message || 'Failed to download telemetry.', 'warning');
+        }
+      }
+    }
+
+    downloadTelemetryBtn.addEventListener('click', handleTelemetryDownload);
+  })();
+</script>
 {% if can_manage_backup_drive %}
 <script>
   (function() {

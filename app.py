@@ -741,6 +741,8 @@ def drives():
 def download_telemetry():
     if runtime.telemetry_path.exists():
         return send_file(runtime.telemetry_path, as_attachment=True)
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({"success": False, "error": "Telemetry has not been generated yet. Run a health check first."}), 404
     abort(404)
 
 

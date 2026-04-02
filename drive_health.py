@@ -743,14 +743,7 @@ def run_scheduled_drive_health_check(config_manager, system_utils, runtime=None)
             }
 
         message = smart_error or f"Could not retrieve SMART data from {device}."
-        _log_and_email_alert(
-            config_manager,
-            runtime,
-            "Drive Health Check Failed - No SMART Data",
-            message,
-            alert_type="error",
-            source="check_health",
-        )
+        LOGGER.warning("Drive health check could not retrieve SMART data: %s", message)
         raise RuntimeError(message)
 
     probability = predict_failure_probability(smart, runtime=runtime)
