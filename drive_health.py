@@ -733,14 +733,28 @@ def run_scheduled_drive_health_check(config_manager, system_utils, runtime=None)
         )
         raise RuntimeError(error)
 
-    smart, missing_attrs = get_smart_attributes(
+    smart, missing_attrs, smart_error = get_smart_attributes(
         config_manager,
         system_utils,
         device=device,
         runtime=runtime,
     )
     if smart is None:
-        message = f"Could not retrieve SMART data from {device}."
+        hdsentinel_result = run_hdsentinel_health_monitor(config_manager, system_utils, runtime=runtime)
+        if smart_error == SMARTCTL_JSON_UPGRADE_MESSAGE and hdsentinel_result.get("snapshot", {}).get("available"):
+            LOGGER.warning(smart_error)
+            return {
+                "device": device,
+                "smart": None,
+                "missing_attrs": None,
+                "probability": None,
+                "prediction": None,
+                "threshold": get_optimal_threshold(runtime),
+                "hdsentinel": hdsentinel_result,
+                "smart_warning": smart_error,
+            }
+
+        message = smart_error or f"Could not retrieve SMART data from {device}."
         _log_and_email_alert(
             config_manager,
             runtime,

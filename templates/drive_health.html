@@ -27,6 +27,13 @@
     </div>
   {% endif %}
 
+  {% if smart_support_warning %}
+    <div class="alert alert-warning">
+      <i class="fas fa-triangle-exclamation"></i>
+      <span>{{ smart_support_warning }}</span>
+    </div>
+  {% endif %}
+
   {% if settings_message %}
     <div class="alert alert-success">
       <i class="fas fa-circle-check"></i>

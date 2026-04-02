@@ -14,12 +14,14 @@ from backup_drive_setup import (
 )
 from config_manager import ConfigManager
 from drive_health import (
+    SMARTCTL_JSON_UPGRADE_MESSAGE,
     SMART_FIELDS,
     append_telemetry,
     collect_hdsentinel_snapshot,
     get_hdsentinel_display_snapshot,
     get_hdsentinel_settings,
     get_optimal_threshold,
+    get_smartctl_json_support,
     get_smart_attributes,
     predict_failure_probability,
     run_scheduled_drive_health_check,
@@ -663,6 +665,11 @@ def drives():
     }
     can_manage_backup_drive = user_manager.is_admin(session.get('username'))
 
+    smart_support_warning = None
+    smartctl_json_supported, smartctl_json_error = get_smartctl_json_support()
+    if not smartctl_json_supported:
+        smart_support_warning = smartctl_json_error
+
     if request.method == "POST":
         form_action = request.form.get("form_action", "run_health_check")
         if form_action == "save_hdsentinel_settings":
@@ -685,13 +692,16 @@ def drives():
             except Exception as exc:
                 settings_error = f"Failed to save HDSentinel settings: {exc}"
         else:
-            smart, missing_attrs = get_smart_attributes(
+            smart, missing_attrs, smart_error = get_smart_attributes(
                 config_manager,
                 system_utils,
                 runtime=runtime,
             )
             if smart is None:
-                error = "Could not retrieve SMART data"
+                if smart_error == SMARTCTL_JSON_UPGRADE_MESSAGE:
+                    smart_support_warning = smart_error
+                else:
+                    error = smart_error or "Could not retrieve SMART data"
             else:
                 prob = predict_failure_probability(smart, runtime=runtime)
                 if prob is not None:
@@ -720,6 +730,7 @@ def drives():
         hdsentinel_snapshot=hdsentinel_snapshot,
         drive_config=drive_config,
         can_manage_backup_drive=can_manage_backup_drive,
+        smart_support_warning=smart_support_warning,
         settings_message=settings_message,
         settings_error=settings_error,
     )
@@ -1380,9 +1391,9 @@ def api_storage_status():
 @login_required
 def api_drive_health_summary():
     try:
-        smart, missing_attrs = get_smart_attributes(config_manager, system_utils, runtime=runtime)
+        smart, missing_attrs, smart_error = get_smart_attributes(config_manager, system_utils, runtime=runtime)
         if smart is None:
-            return jsonify({'status': 'unknown', 'probability': None, 'temperature': None})
+            return jsonify({'status': 'unknown', 'probability': None, 'temperature': None, 'error': smart_error})
         prob = predict_failure_probability(smart, runtime=runtime)
         if prob is not None:
             temperature = smart.get('smart_194_raw', None)
