@@ -80,7 +80,7 @@
                             <div class="form-group mb-4">
                                 <label class="form-label">Username</label>
                                 <input type="text" id="username" class="form-control" placeholder="Enter username">
-                                <div class="invalid-feedback">Username must be 3-32 characters (letters, numbers, hyphens, underscores).</div>
+                                <div class="invalid-feedback">Username may only contain letters, numbers, hyphens, and underscores.</div>
                             </div>
                             <div class="form-group mb-4">
                                 <label class="form-label">Server Name</label>
@@ -759,7 +759,7 @@
         }
 
         // --- Validation ---
-        function validateUsername() { const input = document.getElementById('username'); if (!/^[a-zA-Z0-9_-]{3,32}$/.test(input.value.trim())) { input.classList.add('is-invalid'); return false; } else { input.classList.remove('is-invalid'); return true; } }
+        function validateUsername() { const input = document.getElementById('username'); if (!/^[a-zA-Z0-9_-]+$/.test(input.value.trim())) { input.classList.add('is-invalid'); return false; } else { input.classList.remove('is-invalid'); return true; } }
         function validateServerName() { const input = document.getElementById('serverName'); if (!input.value.trim()) { input.classList.add('is-invalid'); return false; } else { input.classList.remove('is-invalid'); return true; } }
         function validatePassword() { const input = document.getElementById('password'); const help = document.getElementById('passwordHelp'); if (input.value.length < 4) { input.classList.add('is-invalid'); if (help) help.classList.add('text-danger'); return false; } else { input.classList.remove('is-invalid'); if (help) help.classList.remove('text-danger'); return true; } }
         function validateConfirmPassword() { const input = document.getElementById('confirmPassword'); if (input.value !== document.getElementById('password').value || !input.value) { input.classList.add('is-invalid'); return false; } else { input.classList.remove('is-invalid'); return true; } }

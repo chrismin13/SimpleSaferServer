@@ -125,8 +125,8 @@ class UserManager:
     def create_user(self, username, password):
         """Create a new user"""
         # Validate username
-        if not re.match(r'^[a-zA-Z0-9_-]{3,32}$', username):
-            return False, "Username must be 3-32 characters and contain only letters, numbers, underscores, and hyphens"
+        if not re.match(r'^[a-zA-Z0-9_-]+$', username):
+            return False, "Username may only contain letters, numbers, underscores, and hyphens"
         
         if username in self.users:
             return False, "Username already exists"

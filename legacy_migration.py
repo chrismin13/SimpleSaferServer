@@ -161,9 +161,9 @@ def _write_preserved_file(source: Path, target: Path, *, mode: int) -> None:
 def _ensure_admin_user(user_manager: UserManager, username: str, password: str) -> str:
     user_manager.users = user_manager._load_users()
 
-    if not re.match(r"^[a-zA-Z0-9_-]{3,32}$", username):
+    if not re.match(r"^[a-zA-Z0-9_-]+$", username):
         raise MigrationError(
-            "Username must be 3-32 characters and contain only letters, numbers, underscores, and hyphens."
+            "Username may only contain letters, numbers, underscores, and hyphens."
         )
 
     policy = PasswordPolicy()
