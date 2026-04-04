@@ -189,3 +189,19 @@ class SetupWizardTests(unittest.TestCase):
             runtime=self.setup_wizard.runtime,
             power_down=False,
         )
+
+    def test_mount_drive_returns_400_when_body_is_missing(self):
+        # No Content-Type / body at all — get_json() returns None, must not raise AttributeError.
+        with self.app.test_client() as client:
+            response = client.post('/api/setup/mount')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json(), {'success': False, 'error': 'partition is required'})
+
+    def test_mount_drive_returns_400_when_partition_is_absent(self):
+        # Valid JSON body but the required 'partition' key is missing.
+        with self.app.test_client() as client:
+            response = client.post('/api/setup/mount', json={'mount_point': '/media/backup'})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json(), {'success': False, 'error': 'partition is required'})

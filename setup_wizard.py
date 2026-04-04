@@ -334,7 +334,9 @@ def unmount_drive():
 def mount_drive():
     """Mount the selected drive"""
     try:
-        data = request.get_json() or {}
+        # silent=True prevents a 415 exception when Content-Type is absent or
+        # wrong, returning None instead so the `or {}` guard can take over.
+        data = request.get_json(silent=True) or {}
         # Step 3 always selects a filesystem-bearing partition, never a whole
         # disk. That aligns it with the rerun flow on Drive Health.
         partition = data.get('partition')
