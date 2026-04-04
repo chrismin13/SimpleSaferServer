@@ -205,3 +205,28 @@ class SetupWizardTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.get_json(), {'success': False, 'error': 'partition is required'})
+
+    # ------------------------------------------------------------------
+    # get_partition_node helper — NVMe/MMC partition naming
+    # ------------------------------------------------------------------
+
+    def test_get_partition_node_standard_sata_disk(self):
+        # /dev/sdb ends with a letter, so the partition is just /dev/sdb1.
+        self.assertEqual(self.setup_wizard.get_partition_node('/dev/sdb'), '/dev/sdb1')
+
+    def test_get_partition_node_nvme_disk(self):
+        # NVMe paths end with a digit (/dev/nvme0n1), so a 'p' separator is
+        # needed to produce /dev/nvme0n1p1.
+        self.assertEqual(self.setup_wizard.get_partition_node('/dev/nvme0n1'), '/dev/nvme0n1p1')
+
+    def test_get_partition_node_mmc_disk(self):
+        # MMC/SD-card paths also end with a digit (/dev/mmcblk0).
+        self.assertEqual(self.setup_wizard.get_partition_node('/dev/mmcblk0'), '/dev/mmcblk0p1')
+
+    def test_get_partition_node_loop_device(self):
+        # Loop devices end with a digit too (/dev/loop0).
+        self.assertEqual(self.setup_wizard.get_partition_node('/dev/loop0'), '/dev/loop0p1')
+
+    def test_get_partition_node_sda_disk(self):
+        # Another standard disk to confirm the letter-ending branch.
+        self.assertEqual(self.setup_wizard.get_partition_node('/dev/sda'), '/dev/sda1')
