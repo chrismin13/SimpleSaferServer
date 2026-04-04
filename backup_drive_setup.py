@@ -14,6 +14,7 @@ from runtime import get_fake_state, get_runtime
 LOGGER = logging.getLogger(__name__)
 FSTAB_MARKER = "# SimpleSaferServer managed backup drive"
 LEGACY_FSTAB_MARKER = "SimpleSaferServer"
+NTFS_FILESYSTEM_TYPES = {'ntfs', 'ntfs3', 'ntfs-3g'}
 
 
 class BackupDriveSetupError(Exception):
@@ -70,6 +71,22 @@ def _backup_file(path, runtime, prefix):
     backup_path = backup_dir / '{}.{}'.format(prefix, timestamp)
     shutil.copy2(path, backup_path)
     return backup_path
+
+
+def _is_ntfs_filesystem(filesystem_type):
+    return (filesystem_type or '').strip().lower() in NTFS_FILESYSTEM_TYPES
+
+
+def _get_partition_filesystem_type(drive):
+    lsblk_result = subprocess.run(
+        ['lsblk', '-no', 'FSTYPE', drive],
+        capture_output=True,
+        text=True,
+    )
+    if lsblk_result.returncode != 0:
+        error_msg = lsblk_result.stderr.strip() if lsblk_result.stderr else 'Unknown error occurred'
+        raise BackupDriveSetupError('Failed to determine the selected partition filesystem: {}'.format(error_msg))
+    return lsblk_result.stdout.strip()
 
 
 def _validate_fstab_file(path):
@@ -259,18 +276,22 @@ def list_available_drives(runtime=None):
             child_path = child.get('path')
             if not child_path:
                 continue
+            filesystem_type = child.get('fstype') or ''
+            if not _is_ntfs_filesystem(filesystem_type):
+                continue
             partitions.append({
                 'path': child_path,
-                'type': child.get('fstype') or child.get('type') or 'unknown',
+                'type': filesystem_type or child.get('type') or 'unknown',
                 'label': child.get('label') or '',
                 'size': child.get('size') or '',
                 'mountpoint': child.get('mountpoint') or '',
             })
 
-        if not partitions and (block.get('fstype') or block.get('mountpoint')):
+        block_filesystem_type = block.get('fstype') or ''
+        if not partitions and _is_ntfs_filesystem(block_filesystem_type):
             partitions.append({
                 'path': disk_path,
-                'type': block.get('fstype') or block.get('type') or 'unknown',
+                'type': block_filesystem_type or block.get('type') or 'unknown',
                 'label': block.get('label') or '',
                 'size': block.get('size') or '',
                 'mountpoint': block.get('mountpoint') or '',
@@ -304,10 +325,9 @@ def unmount_selected_drive(drive, runtime=None):
     mount_check = subprocess.run(['mount'], capture_output=True, text=True)
     mounted_partitions = []
     for line in mount_check.stdout.splitlines():
-        if drive in line:
-            parts = line.split()
-            if len(parts) >= 3:
-                mounted_partitions.append({'device': parts[0], 'mount_point': parts[2]})
+        parts = line.split()
+        if len(parts) >= 3 and parts[0] == drive:
+            mounted_partitions.append({'device': parts[0], 'mount_point': parts[2]})
 
     if not mounted_partitions:
         raise BackupDriveSetupError('The selected drive is not currently mounted.')
@@ -436,6 +456,9 @@ def apply_backup_drive_configuration(drive, mount_point, auto_mount, config_mana
 
     uuid = get_drive_uuid(drive)
     usb_id = get_drive_usb_id(drive)
+    filesystem_type = _get_partition_filesystem_type(drive)
+    if not _is_ntfs_filesystem(filesystem_type):
+        raise BackupDriveSetupError('The selected drive must be formatted as NTFS.')
 
     os.makedirs(mount_point, exist_ok=True)
 

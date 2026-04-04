@@ -243,6 +243,7 @@
           <select class="form-control" id="backupDriveSelect">
             <option value="">Scan connected drives first</option>
           </select>
+          <div class="form-hint">NTFS only</div>
         </div>
         <div class="form-group">
           <label class="form-label" for="backupDriveMountPoint">Mount Point</label>
@@ -525,7 +526,7 @@
       driveSelect.innerHTML = '';
       const placeholder = document.createElement('option');
       placeholder.value = '';
-      placeholder.textContent = drives.length ? 'Select a partition' : 'No backup drive partitions found';
+      placeholder.textContent = drives.length ? 'Select an NTFS partition' : 'No NTFS backup partitions found';
       driveSelect.appendChild(placeholder);
 
       drives.forEach((drive) => {

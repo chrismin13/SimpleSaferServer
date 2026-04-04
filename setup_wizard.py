@@ -121,15 +121,14 @@ def format_drive():
         
         # Find all mounted partitions for this drive
         for line in mount_check.stdout.splitlines():
-            if drive in line:
-                parts = line.split()
-                if len(parts) >= 2:
-                    device = parts[0]
-                    mount_point = parts[2]
-                    mounted_partitions.append({
-                        'device': device,
-                        'mount_point': mount_point
-                    })
+            parts = line.split()
+            if len(parts) >= 3 and parts[0] == drive:
+                device = parts[0]
+                mount_point = parts[2]
+                mounted_partitions.append({
+                    'device': device,
+                    'mount_point': mount_point
+                })
 
         if mounted_partitions:
             partition_info = '\n'.join([f"- {p['device']} at {p['mount_point']}" for p in mounted_partitions])
