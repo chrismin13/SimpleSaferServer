@@ -1,0 +1,10 @@
+Flask
+Flask-SocketIO
+cryptography
+psutil
+joblib
+pandas
+scikit-learn
+xgboost
+gunicorn
+eventlet
