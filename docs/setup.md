@@ -46,9 +46,10 @@ This step is partition-oriented.
 - The selector uses a dedicated NTFS-partition scan instead of the broader step-2 disk scan.
 - If a mounted `ntfs-3g` partition shows up from `lsblk` as `fuseblk`, the wizard verifies the underlying on-disk type with `blkid` before treating it as NTFS.
 - Partitions reported as `ntfs3`, `ntfs-3g`, or confirmed-NTFS `fuseblk` are all exposed to the wizard as NTFS mount targets.
+- Drive labels prefer `lsblk` transport data such as `TRAN=usb`, with `RM` and `HOTPLUG` as fallbacks, so removable backup targets are not mislabeled as internal disks.
 - The unmount button unmounts only the exact selected partition.
 - That unmount action is temporary preparation for this step. It does not deconfigure the old backup drive by itself.
-- If the selected partition is also the currently configured backup drive and it is live at the managed backup mount point, the same SMB-safe unmount sequence used on Dashboard is needed to clear sharing handles before the partition can be reused.
+- If the exact unmount fails and the selected partition still appears to be the currently configured backup drive, the wizard offers a second explicit SMB-safe retry that may temporarily stop SMB access and the related background backup tasks before retrying the unmount.
 - The mount button mounts that selected NTFS partition at the chosen mount point.
 - Advanced options allow changing the mount point and whether the managed `/etc/fstab` entry should be present.
 
@@ -108,4 +109,4 @@ If the backup drive changes after setup:
 - rerun only the backup-drive configuration portion
 
 That rerun flow is intentionally partition-oriented and does not behave like the whole-disk format step.
-If the selected partition is still the live configured backup share, the rerun flow temporarily disconnects SMB access before unmounting it.
+If the selected partition is still the live configured backup share, the rerun flow can temporarily disconnect SMB access before unmounting it.

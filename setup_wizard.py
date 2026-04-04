@@ -7,6 +7,10 @@ from backup_drive_setup import (
     unmount_disk_partitions,
     unmount_selected_partition,
 )
+from backup_drive_unmount import (
+    is_selected_partition_managed_backup_drive,
+    unmount_managed_backup_drive,
+)
 from config_manager import ConfigManager
 from system_utils import SystemUtils
 from user_manager import UserManager
@@ -28,6 +32,88 @@ system_utils = SystemUtils(runtime=runtime)
 user_manager = UserManager(runtime=runtime)
 smb_manager = SMBManager(runtime=runtime)
 logger = logging.getLogger(__name__)
+MANAGED_UNMOUNT_RETRY_ERROR = (
+    'The selected partition is busy. If it is still serving the backup share over SMB, '
+    'retry with the SMB-safe unmount path.'
+)
+MANAGED_UNMOUNT_RETRY_DETAILS = (
+    'This retry may temporarily stop SMB access and related background backup tasks, '
+    'unmount the configured backup share, and then restart SMB.'
+)
+
+
+def _get_configured_backup_drive_identity():
+    default_mount_point = getattr(runtime, 'default_mount_point', '/media/backup')
+    return (
+        config_manager.get_value('backup', 'mount_point', default_mount_point),
+        config_manager.get_value('backup', 'uuid', ''),
+    )
+
+
+def _is_busy_unmount_error(error):
+    return 'busy' in str(error).lower()
+
+
+def _build_managed_unmount_retry_response(partition, configured_mount_point, configured_uuid):
+    if not is_selected_partition_managed_backup_drive(
+        partition,
+        configured_mount_point,
+        configured_uuid,
+        system_utils,
+        runtime=runtime,
+    ):
+        return None
+
+    # This response only appears after the exact-partition unmount already
+    # failed, so power users can make an explicit choice about stopping SMB.
+    return {
+        'success': False,
+        'error': MANAGED_UNMOUNT_RETRY_ERROR,
+        'details': MANAGED_UNMOUNT_RETRY_DETAILS,
+        'can_retry_managed_unmount': True,
+    }
+
+
+def _unmount_selected_partition_with_managed_retry(partition, force_managed=False):
+    if force_managed:
+        configured_mount_point, configured_uuid = _get_configured_backup_drive_identity()
+        if not is_selected_partition_managed_backup_drive(
+            partition,
+            configured_mount_point,
+            configured_uuid,
+            system_utils,
+            runtime=runtime,
+        ):
+            raise BackupDriveSetupError(
+                'The selected partition is no longer the active configured backup drive.'
+            )
+        unmount_managed_backup_drive(
+            configured_mount_point,
+            configured_uuid,
+            system_utils,
+            runtime=runtime,
+            power_down=False,
+        )
+        return (
+            'Drive unmounted after the SMB-safe retry temporarily stopped SMB access '
+            'and related background backup tasks.'
+        )
+
+    try:
+        return unmount_selected_partition(partition, runtime=runtime)
+    except BackupDriveSetupError as exc:
+        if not _is_busy_unmount_error(exc):
+            raise
+
+        configured_mount_point, configured_uuid = _get_configured_backup_drive_identity()
+        retry_response = _build_managed_unmount_retry_response(
+            partition,
+            configured_mount_point,
+            configured_uuid,
+        )
+        if retry_response is not None:
+            return retry_response
+        raise
 
 @setup.route('/setup')
 def setup_page():
@@ -186,19 +272,26 @@ def format_drive():
 def unmount_drive():
     """Unmount the selected drive"""
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
         # The setup wizard uses this route for two different UI controls:
         # whole-disk unmount before formatting, and exact-partition unmount
         # before mounting an NTFS partition in step 3.
         disk = data.get('disk')
         partition = data.get('partition')
+        force_managed = bool(data.get('force_managed'))
         if disk:
             message = unmount_disk_partitions(disk, runtime=runtime)
         else:
-            message = unmount_selected_partition(partition, runtime=runtime)
+            message = _unmount_selected_partition_with_managed_retry(
+                partition,
+                force_managed=force_managed,
+            )
+
+        if isinstance(message, dict):
+            return jsonify(message)
         return jsonify({'success': True, 'message': message})
     except BackupDriveSetupError as e:
-        return jsonify({'success': False, 'error': str(e)})
+        return jsonify({'success': False, 'error': str(e), 'details': e.details})
     except Exception as e:
         logger.error(f"Error unmounting drive: {str(e)}")
         return jsonify({

@@ -177,6 +177,15 @@
                             <div class="form-hint mb-4">Unmount here is temporary preparation for mounting the selected partition. Backup-drive settings change only when Mount Drive succeeds.</div>
                             <div id="mountError" class="text-danger d-none" style="font-size:var(--text-sm);"></div>
                             <div id="mountDetails" class="text-muted d-none" style="font-size:var(--text-xs);"></div>
+                            <button
+                                id="retryManagedUnmountBtn"
+                                class="btn btn-warning btn-sm d-none mt-3"
+                                data-confirm="Are you sure you want to retry using the SMB-safe unmount path? This may temporarily stop SMB access and related background backup tasks, unmount the configured backup share, and then start SMB again."
+                                data-confirm-button="Retry SMB-safe Unmount"
+                                data-confirm-class="btn-warning"
+                            >
+                                <i class="fas fa-triangle-exclamation me-1"></i> Retry SMB-safe Unmount
+                            </button>
                         </div>
                     </div>
 
@@ -469,6 +478,20 @@
             area.classList.add(colorMap[type] || 'text-info');
         }
         function clearDriveStatus() { setDriveStatus('', 'info'); }
+        let canRetryManagedUnmount = false;
+
+        function getDriveTypeLabel(drive) {
+            if (drive.type === 'usb') return 'USB Drive';
+            if (drive.type === 'removable') return 'Removable Drive';
+            return 'Internal Drive';
+        }
+
+        function setManagedUnmountRetryState(enabled) {
+            canRetryManagedUnmount = enabled;
+            const retryBtn = document.getElementById('retryManagedUnmountBtn');
+            if (!retryBtn) return;
+            retryBtn.classList.toggle('d-none', !enabled);
+        }
 
         function updateDriveMountStatusBadge() {
             const select = document.getElementById('formatDriveSelect');
@@ -488,7 +511,7 @@
             formatSelect.innerHTML = '<option value="">Select a drive…</option>';
             let foundPrev = false;
             drives.forEach(drive => {
-                const driveType = drive.type === 'usb' ? 'USB Drive' : 'Internal Drive';
+                const driveType = getDriveTypeLabel(drive);
                 let isMounted = false;
                 drive.partitions.forEach(partition => { if (partition.mountpoint) isMounted = true; });
                 let label = `${drive.model} (${drive.size}) - ${driveType}`;
@@ -516,7 +539,7 @@
                 drive.partitions.forEach(partition => {
                     const mountStatus = partition.mountpoint ? ` (Mounted at ${partition.mountpoint})` : '';
                     const label = partition.label ? ` - ${partition.label}` : '';
-                    const driveType = drive.type === 'usb' ? 'USB Drive' : 'Internal Drive';
+                    const driveType = getDriveTypeLabel(drive);
                     const option = new Option(
                         `${drive.model} - ${partition.path}${label} (${partition.size}) - ${driveType}${mountStatus}`,
                         partition.path
@@ -554,6 +577,7 @@
                     throw new Error(data.error || 'Failed to load NTFS drives for mounting');
                 }
                 populateMountDriveSelect(data.drives || []);
+                setManagedUnmountRetryState(false);
             } catch (error) {
                 console.error('Error:', error);
                 showMountError('Failed to load NTFS drives for mounting');
@@ -639,28 +663,55 @@
         }
 
         async function unmountMountDrive() {
+            return submitMountUnmountRequest({ forceManaged: false });
+        }
+
+        async function retryManagedUnmount() {
+            return submitMountUnmountRequest({ forceManaged: true });
+        }
+
+        async function submitMountUnmountRequest({ forceManaged }) {
             const unmountMountBtn = document.getElementById('unmountMountDriveBtn');
+            const retryManagedBtn = document.getElementById('retryManagedUnmountBtn');
+            const activeBtn = forceManaged ? retryManagedBtn : unmountMountBtn;
             const partition = document.getElementById('mountDriveSelect').value;
             if (!partition) { showMountError('Please select a drive'); setMountStatus('Please select a drive.', 'warning'); return; }
-            window.AsyncButtonState.start(unmountMountBtn);
-            setMountStatus('Unmounting drive…', 'info');
+            window.AsyncButtonState.start(activeBtn);
+            setMountStatus(forceManaged ? 'Retrying with the SMB-safe unmount path…' : 'Unmounting drive…', 'info');
             try {
-                const response = await fetch('/api/setup/unmount', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ partition }) });
+                const response = await fetch('/api/setup/unmount', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ partition, force_managed: forceManaged }) });
                 const data = await response.json();
                 // This stays temporary on purpose so only a successful mount step
                 // changes the backup-drive settings.
-                if (data.success) { window.AsyncButtonState.success(unmountMountBtn); hideMountError(); setMountStatus('Drive unmounted. You can continue mounting the selected partition.', 'success'); await loadDrives(); }
-                else { window.AsyncButtonState.error(unmountMountBtn); setMountStatus('Failed to unmount drive.', 'error'); showMountError(data.error, data.details); }
-            } catch (error) { window.AsyncButtonState.error(unmountMountBtn); setMountStatus('An error occurred.', 'error'); showMountError('An error occurred while unmounting the drive'); }
+                if (data.success) {
+                    window.AsyncButtonState.success(activeBtn);
+                    hideMountError();
+                    setMountStatus('Drive unmounted. You can continue mounting the selected partition.', 'success');
+                    await loadDrives();
+                } else {
+                    window.AsyncButtonState.error(activeBtn);
+                    setMountStatus('Failed to unmount drive.', 'error');
+                    showMountError(data.error, data.details, { canRetryManagedUnmount: !!data.can_retry_managed_unmount });
+                }
+            } catch (error) {
+                window.AsyncButtonState.error(activeBtn);
+                setMountStatus('An error occurred.', 'error');
+                showMountError('An error occurred while unmounting the drive');
+            }
         }
 
-        function showMountError(error, details = null) {
+        function showMountError(error, details = null, options = {}) {
             const errorDiv = document.getElementById('mountError');
             const detailsDiv = document.getElementById('mountDetails');
             errorDiv.textContent = error; errorDiv.classList.remove('d-none');
             if (details) { detailsDiv.textContent = details; detailsDiv.classList.remove('d-none'); } else { detailsDiv.classList.add('d-none'); }
+            setManagedUnmountRetryState(!!options.canRetryManagedUnmount);
         }
-        function hideMountError() { document.getElementById('mountError').classList.add('d-none'); document.getElementById('mountDetails').classList.add('d-none'); }
+        function hideMountError() {
+            document.getElementById('mountError').classList.add('d-none');
+            document.getElementById('mountDetails').classList.add('d-none');
+            setManagedUnmountRetryState(false);
+        }
 
         // --- Email ---
         async function setupEmail() {
@@ -874,6 +925,12 @@
             if (mountBtn) mountBtn.addEventListener('click', function(e) { if (e.defaultPrevented) return; mountDrive(); });
             const unmountMountBtn = document.getElementById('unmountMountDriveBtn');
             if (unmountMountBtn) unmountMountBtn.addEventListener('click', function(e) { if (e.defaultPrevented) return; unmountMountDrive(); });
+            const retryManagedUnmountBtn = document.getElementById('retryManagedUnmountBtn');
+            if (retryManagedUnmountBtn) retryManagedUnmountBtn.addEventListener('click', function(e) { if (e.defaultPrevented) return; retryManagedUnmount(); });
+            const mountDriveSelect = document.getElementById('mountDriveSelect');
+            if (mountDriveSelect) mountDriveSelect.addEventListener('change', function() {
+                if (canRetryManagedUnmount) hideMountError();
+            });
         });
     </script>
 </body>

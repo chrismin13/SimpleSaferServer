@@ -2,7 +2,7 @@ import unittest
 import importlib
 import sys
 import types
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from flask import Flask
 
@@ -74,4 +74,79 @@ class SetupWizardTests(unittest.TestCase):
         mock_get_available_backup_drives.assert_called_once_with(
             runtime=self.setup_wizard.runtime,
             ntfs_only=True,
+        )
+
+    def test_setup_unmount_offers_managed_retry_after_busy_partition_unmount(self):
+        managed_config = MagicMock()
+        managed_config.get_value.side_effect = ['/media/backup', 'UUID-1']
+
+        with patch.object(self.setup_wizard, 'config_manager', managed_config):
+            with patch.object(
+                self.setup_wizard,
+                'unmount_selected_partition',
+                side_effect=self.setup_wizard.BackupDriveSetupError('Failed to unmount partition: target is busy'),
+            ) as mock_unmount_selected:
+                with patch.object(
+                    self.setup_wizard,
+                    'is_selected_partition_managed_backup_drive',
+                    return_value=True,
+                ) as mock_is_managed:
+                    with self.app.test_client() as client:
+                        response = client.post('/api/setup/unmount', json={'partition': '/dev/sdb1'})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.get_json(),
+            {
+                'success': False,
+                'error': self.setup_wizard.MANAGED_UNMOUNT_RETRY_ERROR,
+                'details': self.setup_wizard.MANAGED_UNMOUNT_RETRY_DETAILS,
+                'can_retry_managed_unmount': True,
+            },
+        )
+        mock_unmount_selected.assert_called_once_with('/dev/sdb1', runtime=self.setup_wizard.runtime)
+        mock_is_managed.assert_called_once_with(
+            '/dev/sdb1',
+            '/media/backup',
+            'UUID-1',
+            self.setup_wizard.system_utils,
+            runtime=self.setup_wizard.runtime,
+        )
+
+    def test_setup_unmount_can_retry_with_managed_backup_path(self):
+        managed_config = MagicMock()
+        managed_config.get_value.side_effect = ['/media/backup', 'UUID-1']
+
+        with patch.object(self.setup_wizard, 'config_manager', managed_config):
+            with patch.object(
+                self.setup_wizard,
+                'is_selected_partition_managed_backup_drive',
+                return_value=True,
+            ) as mock_is_managed:
+                with patch.object(
+                    self.setup_wizard,
+                    'unmount_managed_backup_drive',
+                ) as mock_unmount_managed:
+                    with self.app.test_client() as client:
+                        response = client.post(
+                            '/api/setup/unmount',
+                            json={'partition': '/dev/sdb1', 'force_managed': True},
+                        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()['success'], True)
+        self.assertIn('SMB-safe retry', response.get_json()['message'])
+        mock_is_managed.assert_called_once_with(
+            '/dev/sdb1',
+            '/media/backup',
+            'UUID-1',
+            self.setup_wizard.system_utils,
+            runtime=self.setup_wizard.runtime,
+        )
+        mock_unmount_managed.assert_called_once_with(
+            '/media/backup',
+            'UUID-1',
+            self.setup_wizard.system_utils,
+            runtime=self.setup_wizard.runtime,
+            power_down=False,
         )

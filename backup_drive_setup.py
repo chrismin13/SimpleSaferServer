@@ -117,6 +117,28 @@ def _normalize_device_path(device_path):
     return os.path.realpath(device_path)
 
 
+def _lsblk_flag_is_true(value):
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    return str(value).strip().lower() in {'1', 'true', 'yes', 'y', 'on'}
+
+
+def _get_drive_connection_type(block):
+    transport = (block.get('tran') or '').strip().lower()
+    if transport == 'usb':
+        return 'usb'
+
+    # External-drive enclosures are not perfectly consistent across kernels
+    # and bridge chipsets, so keep a fallback for hotplug/removable signals
+    # rather than assuming every non-USB transport is an internal disk.
+    if _lsblk_flag_is_true(block.get('hotplug')) or _lsblk_flag_is_true(block.get('rm')):
+        return 'removable'
+
+    return 'internal'
+
+
 def _get_current_mounts():
     # Use the live mount table for operation safety checks instead of lsblk's
     # mountpoint field so we always act on what the kernel currently reports.
@@ -133,7 +155,7 @@ def _load_lsblk_devices():
     # Keep one shared inventory source for both setup and rerun flows. The
     # flows differ in target semantics, not in how we discover block devices.
     lsblk_result = subprocess.run(
-        ['lsblk', '-J', '-o', 'NAME,PATH,FSTYPE,LABEL,SIZE,MODEL,MOUNTPOINT,TYPE'],
+        ['lsblk', '-J', '-o', 'NAME,PATH,FSTYPE,LABEL,SIZE,MODEL,MOUNTPOINT,TYPE,TRAN,RM,HOTPLUG'],
         capture_output=True,
         text=True,
     )
@@ -465,7 +487,10 @@ def list_available_drives(runtime=None, ntfs_only=False):
             'path': disk_path,
             'model': (block.get('model') or 'Unknown Drive').strip() or 'Unknown Drive',
             'size': block.get('size') or '',
-            'type': block.get('type') or 'unknown',
+            # The setup UI expects a connection hint here so operators can
+            # distinguish likely external backup targets from internal disks.
+            'type': _get_drive_connection_type(block),
+            'device_type': block.get('type') or 'unknown',
             'partitions': partitions,
         })
 

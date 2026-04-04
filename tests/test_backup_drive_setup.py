@@ -77,6 +77,63 @@ class BackupDriveSetupTests(unittest.TestCase):
 
     @patch('backup_drive_setup._get_system_drive_path', return_value='/dev/sda')
     @patch('backup_drive_setup._load_lsblk_devices')
+    def test_list_available_drives_marks_usb_transport_as_usb_drive(
+        self,
+        mock_load_lsblk_devices,
+        _mock_get_system_drive_path,
+    ):
+        mock_load_lsblk_devices.return_value = [
+            {
+                'type': 'disk',
+                'path': '/dev/sdb',
+                'model': 'USB Backup Disk',
+                'size': '1T',
+                'tran': 'usb',
+                'rm': False,
+                'hotplug': False,
+                'children': [],
+            }
+        ]
+
+        drives = backup_drive_setup.list_available_drives(
+            runtime=SimpleNamespace(is_fake=False),
+            ntfs_only=False,
+        )
+
+        self.assertEqual(len(drives), 1)
+        self.assertEqual(drives[0]['type'], 'usb')
+        self.assertEqual(drives[0]['device_type'], 'disk')
+
+    @patch('backup_drive_setup._get_system_drive_path', return_value='/dev/sda')
+    @patch('backup_drive_setup._load_lsblk_devices')
+    def test_list_available_drives_marks_hotplug_disk_as_removable_when_transport_is_missing(
+        self,
+        mock_load_lsblk_devices,
+        _mock_get_system_drive_path,
+    ):
+        mock_load_lsblk_devices.return_value = [
+            {
+                'type': 'disk',
+                'path': '/dev/sdb',
+                'model': 'Card Reader',
+                'size': '128G',
+                'tran': '',
+                'rm': '1',
+                'hotplug': '1',
+                'children': [],
+            }
+        ]
+
+        drives = backup_drive_setup.list_available_drives(
+            runtime=SimpleNamespace(is_fake=False),
+            ntfs_only=False,
+        )
+
+        self.assertEqual(len(drives), 1)
+        self.assertEqual(drives[0]['type'], 'removable')
+
+    @patch('backup_drive_setup._get_system_drive_path', return_value='/dev/sda')
+    @patch('backup_drive_setup._load_lsblk_devices')
     def test_list_available_drives_skips_fuseblk_partition_when_blkid_is_not_ntfs(
         self,
         mock_load_lsblk_devices,
