@@ -28,12 +28,6 @@ To wipe fake-mode setup state and start over:
 bash reset_fake_mode.sh
 ```
 
-If you also want the full drive-health ML stack locally, install it explicitly:
-
-```bash
-bash install_dev.sh --with-ml
-```
-
 - Fake mode stores its state under `.dev-data/`.
 - `reset_fake_mode.sh` deletes `.dev-data/` so you can rerun setup from a clean fake-mode state.
 - Use the setup wizard's mount step to point the backup source at a local folder on your machine.
