@@ -334,10 +334,12 @@ def unmount_drive():
 def mount_drive():
     """Mount the selected drive"""
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
         # Step 3 always selects a filesystem-bearing partition, never a whole
         # disk. That aligns it with the rerun flow on Drive Health.
         partition = data.get('partition')
+        if not partition:
+            return jsonify({'success': False, 'error': 'partition is required'}), 400
         mount_point = data.get('mount_point') or runtime.default_mount_point
         auto_mount = data.get('auto_mount', True)
         result = apply_backup_drive_configuration(
