@@ -83,6 +83,31 @@ class DriveHealthTests(unittest.TestCase):
         self.assertEqual(attrs["smart_5_raw"], 2.0)
         self.assertIn("smart_1_raw", missing)
 
+    @patch("drive_health.get_smartctl_json_support", return_value=(True, None))
+    @patch("drive_health.subprocess.run")
+    def test_get_smart_attributes_preserves_parse_failure_when_json_supported(self, mock_run, _mock_json_support):
+        runtime = SimpleNamespace(is_fake=False)
+        mock_run.return_value = SimpleNamespace(
+            returncode=2,
+            stdout=(
+                "/dev/sda: Unknown USB bridge [0x1058:0x25ee (0x4009)]\n"
+                "Please specify device type with the -d option."
+            ),
+            stderr="",
+        )
+
+        attrs, missing, error = drive_health.get_smart_attributes(
+            config_manager=None,
+            system_utils=None,
+            device="/dev/sdb",
+            runtime=runtime,
+        )
+
+        self.assertIsNone(attrs)
+        self.assertIsNone(missing)
+        self.assertIn("Unknown USB bridge", error)
+        self.assertNotEqual(error, drive_health.SMARTCTL_JSON_UPGRADE_MESSAGE)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -16,6 +16,21 @@ It combines:
 - Enable or disable HDSentinel monitoring and change alert settings.
 - Download SMART telemetry as CSV.
 
+## SMART Error Reporting
+
+The SMART prediction path uses `smartctl` JSON output when the installed
+`smartctl` version supports `-j`.
+
+- The "upgrade smartmontools" warning is reserved for the explicit case where
+  `smartctl -h` shows that JSON output is unavailable.
+- If `smartctl` advertises JSON support but the actual SMART read still fails,
+  the app preserves the original `smartctl` error instead. This matters because
+  USB bridges, controller quirks, and device read failures can all break SMART
+  collection even on newer smartmontools versions.
+
+That split is easy to forget later because both cases may surface during the
+same troubleshooting session, but they need different remediation.
+
 ## Re-running Backup Drive Setup
 
 Use the advanced backup-drive section only when:

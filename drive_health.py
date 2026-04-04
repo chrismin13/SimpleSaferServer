@@ -286,7 +286,16 @@ def get_smart_attributes(config_manager, system_utils, device=None, runtime=None
         return attrs, list(missing_attrs), None
     except json.JSONDecodeError as exc:
         LOGGER.warning("Failed to parse smartctl JSON output: %s", exc)
-        return None, None, SMARTCTL_JSON_UPGRADE_MESSAGE
+        # We only surface the upgrade warning from the explicit capability
+        # check above. If `-j` is advertised but this invocation still emits
+        # malformed or plain-text output, that usually points to a device,
+        # bridge, or transport problem rather than an outdated binary.
+        error_message = (
+            locals().get("stderr")
+            or locals().get("stdout")
+            or f"Failed to parse smartctl JSON output: {exc}"
+        )
+        return None, None, error_message
     except Exception as exc:
         LOGGER.warning("Unexpected SMART read error: %s", exc)
         return None, None, str(exc)
