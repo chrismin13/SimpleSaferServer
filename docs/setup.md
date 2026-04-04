@@ -28,6 +28,7 @@ The Setup Wizard guides you through the initial configuration of your backup sys
 - **Advanced Options**: Toggle to show mount point and auto-mount at boot.
 - **Mount Point**: Set the mount directory (default: `/media/backup`).
 - **Auto Mount**: Checkbox to mount automatically at boot.
+- **Boot Behavior**: The managed `/etc/fstab` entry uses `nofail`, so the system should still boot if the backup drive is disconnected.
 - **Unmount/Mount Buttons**: Unmount or mount the selected drive.
 - **Status/Error Areas**: Inline feedback for actions.
 - **Later Changes**: If the backup drive changes after setup, use the advanced section on the Drive Health page to re-run this part of the setup flow.
