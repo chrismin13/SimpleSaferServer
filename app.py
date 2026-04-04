@@ -6,6 +6,7 @@ import json
 import os
 import queue
 import threading
+from dashboard_messages import build_dashboard_unmount_success_message
 from backup_drive_setup import (
     BackupDriveSetupError,
     apply_backup_drive_configuration,
@@ -562,6 +563,13 @@ def run_task(task_name):
         return jsonify({"success": False, "message": str(e)}), 500
 
 
+def _get_check_mount_next_run():
+    check_mount_task = get_task('Check Mount')
+    if not check_mount_task:
+        return None
+    return check_mount_task.next_run
+
+
 # API route for unmounting storage
 @app.route("/unmount", methods=["POST"])
 @login_required
@@ -571,7 +579,15 @@ def unmount():
         if runtime.is_fake:
             fake_state.set_mount(False)
             fake_state.append_task_log('Check Mount', f'Backup source disconnected from {mount_point}.')
-            return jsonify({"success": True, "message": "Local backup source disconnected."})
+            return jsonify({
+                "success": True,
+                "message": build_dashboard_unmount_success_message(
+                    'Local backup source disconnected.',
+                    _get_check_mount_next_run(),
+                    availability_phrase='stays available',
+                    remount_verb='reconnect',
+                ),
+            })
 
         # 1. Disconnect all SMB users (if possible)
         try:
@@ -604,7 +620,13 @@ def unmount():
             subprocess.run(["sudo", "systemctl", "start", "nmbd"], check=False)
         except Exception:
             pass
-        return jsonify({"success": True, "message": "Drive unmounted and powered down. It is now safe to remove the drive."})
+        return jsonify({
+            "success": True,
+            "message": build_dashboard_unmount_success_message(
+                'Drive unmounted and powered down. It is now safe to remove the drive.',
+                _get_check_mount_next_run(),
+            ),
+        })
     except subprocess.CalledProcessError as e:
         return jsonify({"success": False, "message": f"Failed to unmount drive: {e}"}), 500
     except Exception as e:
