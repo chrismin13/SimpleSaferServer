@@ -1510,7 +1510,7 @@ def api_tasks_schedule():
 @api_admin_required
 def api_backup_drive_drives():
     try:
-        return jsonify({'success': True, 'drives': list_available_drives(runtime=runtime)})
+        return jsonify({'success': True, 'drives': list_available_drives(runtime=runtime, ntfs_only=True)})
     except Exception as e:
         current_app.logger.error(f"Error listing backup drives: {e}")
         return jsonify({'success': False, 'error': str(e)})

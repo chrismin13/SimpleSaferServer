@@ -3,6 +3,7 @@ from backup_drive_setup import (
     BackupDriveSetupError,
     apply_backup_drive_configuration,
     list_available_drives as get_available_backup_drives,
+    _get_mounted_partitions_for_drive,
     unmount_selected_drive,
 )
 from config_manager import ConfigManager
@@ -92,7 +93,7 @@ def create_user():
 def list_drives():
     """List available drives with detailed information"""
     try:
-        drives = get_available_backup_drives(runtime=runtime)
+        drives = get_available_backup_drives(runtime=runtime, ntfs_only=False)
         return jsonify({'success': True, 'drives': drives})
     except Exception as e:
         logger.error(f"Error listing drives: {str(e)}")
@@ -115,20 +116,7 @@ def format_drive():
         if not drive:
             return jsonify({'success': False, 'error': 'No drive selected'})
 
-        # Check if drive is mounted
-        mount_check = subprocess.run(['mount'], capture_output=True, text=True)
-        mounted_partitions = []
-        
-        # Find all mounted partitions for this drive
-        for line in mount_check.stdout.splitlines():
-            parts = line.split()
-            if len(parts) >= 3 and parts[0] == drive:
-                device = parts[0]
-                mount_point = parts[2]
-                mounted_partitions.append({
-                    'device': device,
-                    'mount_point': mount_point
-                })
+        mounted_partitions = _get_mounted_partitions_for_drive(drive)
 
         if mounted_partitions:
             partition_info = '\n'.join([f"- {p['device']} at {p['mount_point']}" for p in mounted_partitions])

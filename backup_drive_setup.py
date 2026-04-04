@@ -77,6 +77,32 @@ def _is_ntfs_filesystem(filesystem_type):
     return (filesystem_type or '').strip().lower() in NTFS_FILESYSTEM_TYPES
 
 
+def _mount_belongs_to_drive(selected_drive, mounted_device):
+    selected_drive = (selected_drive or '').strip()
+    mounted_device = (mounted_device or '').strip()
+    if not selected_drive or not mounted_device:
+        return False
+    if mounted_device == selected_drive:
+        return True
+
+    base_name = os.path.basename(selected_drive)
+    mounted_name = os.path.basename(mounted_device)
+
+    if re.match(r'^{}p\d+$'.format(re.escape(base_name)), mounted_name):
+        return True
+    return re.match(r'^{}\d+$'.format(re.escape(base_name)), mounted_name) is not None
+
+
+def _get_mounted_partitions_for_drive(drive):
+    mount_check = subprocess.run(['mount'], capture_output=True, text=True)
+    mounted_partitions = []
+    for line in mount_check.stdout.splitlines():
+        parts = line.split()
+        if len(parts) >= 3 and _mount_belongs_to_drive(drive, parts[0]):
+            mounted_partitions.append({'device': parts[0], 'mount_point': parts[2]})
+    return mounted_partitions
+
+
 def _get_partition_filesystem_type(drive):
     lsblk_result = subprocess.run(
         ['lsblk', '-no', 'FSTYPE', drive],
@@ -106,9 +132,9 @@ def _validate_fstab_file(path):
             continue
 
         spec, mount_point, fstype = parts[0], parts[1], parts[2]
-        if not mount_point.startswith('/'):
-            issues.append('line {} has a non-absolute mount point: {}'.format(line_number, mount_point))
         if _is_managed_fstab_line(raw_line):
+            if not mount_point.startswith('/'):
+                issues.append('line {} has a non-absolute managed mount point: {}'.format(line_number, mount_point))
             if not spec.startswith('UUID='):
                 issues.append('line {} has an invalid managed UUID spec: {}'.format(line_number, spec))
             if fstype != 'ntfs-3g':
@@ -236,7 +262,7 @@ def get_drive_usb_id(drive):
     return ''
 
 
-def list_available_drives(runtime=None):
+def list_available_drives(runtime=None, ntfs_only=False):
     runtime = runtime or get_runtime()
     fake_state = get_fake_state() if runtime.is_fake else None
 
@@ -277,7 +303,7 @@ def list_available_drives(runtime=None):
             if not child_path:
                 continue
             filesystem_type = child.get('fstype') or ''
-            if not _is_ntfs_filesystem(filesystem_type):
+            if ntfs_only and not _is_ntfs_filesystem(filesystem_type):
                 continue
             partitions.append({
                 'path': child_path,
@@ -297,7 +323,7 @@ def list_available_drives(runtime=None):
                 'mountpoint': block.get('mountpoint') or '',
             })
 
-        if not partitions:
+        if ntfs_only and not partitions:
             continue
 
         drives.append({
@@ -322,12 +348,7 @@ def unmount_selected_drive(drive, runtime=None):
     if not drive:
         raise BackupDriveSetupError('No drive selected.')
 
-    mount_check = subprocess.run(['mount'], capture_output=True, text=True)
-    mounted_partitions = []
-    for line in mount_check.stdout.splitlines():
-        parts = line.split()
-        if len(parts) >= 3 and parts[0] == drive:
-            mounted_partitions.append({'device': parts[0], 'mount_point': parts[2]})
+    mounted_partitions = _get_mounted_partitions_for_drive(drive)
 
     if not mounted_partitions:
         raise BackupDriveSetupError('The selected drive is not currently mounted.')
@@ -446,13 +467,13 @@ def apply_backup_drive_configuration(drive, mount_point, auto_mount, config_mana
     if not drive:
         raise BackupDriveSetupError('No drive selected.')
 
-    mount_check = subprocess.run(['mount'], capture_output=True, text=True)
-    for line in mount_check.stdout.splitlines():
-        parts = line.split()
-        if len(parts) >= 3 and parts[0] == drive:
-            raise BackupDriveSetupError(
-                'The selected drive is already mounted at {}. Unmount it first before rerunning drive setup.'.format(parts[2])
+    mounted_partitions = _get_mounted_partitions_for_drive(drive)
+    if mounted_partitions:
+        raise BackupDriveSetupError(
+            'The selected drive is already mounted at {}. Unmount it first before rerunning drive setup.'.format(
+                mounted_partitions[0]['mount_point']
             )
+        )
 
     uuid = get_drive_uuid(drive)
     usb_id = get_drive_usb_id(drive)
