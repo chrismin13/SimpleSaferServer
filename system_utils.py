@@ -207,7 +207,7 @@ server_name = {system_config.get('server_name', 'SimpleSaferServer')}
 setup_complete = {system_config.get('setup_complete', 'false')}
 
 [backup]
-mount_point = {backup_config.get('mount_point', '/media/backup')}
+mount_point = {backup_config.get('mount_point', self.runtime.default_mount_point)}
 uuid = {backup_config.get('uuid', '')}
 usb_id = {backup_config.get('usb_id', '')}
 email_address = {backup_config.get('email_address', '')}

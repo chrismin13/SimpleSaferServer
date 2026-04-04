@@ -68,9 +68,8 @@ MANAGED_UNMOUNT_RETRY_DETAILS = (
 
 
 def _get_configured_backup_drive_identity():
-    default_mount_point = getattr(runtime, 'default_mount_point', '/media/backup')
     return (
-        config_manager.get_value('backup', 'mount_point', default_mount_point),
+        config_manager.get_value('backup', 'mount_point', runtime.default_mount_point),
         config_manager.get_value('backup', 'uuid', ''),
     )
 
@@ -335,11 +334,15 @@ def unmount_drive():
 def mount_drive():
     """Mount the selected drive"""
     try:
-        data = request.get_json()
+        # silent=True prevents a 415 exception when Content-Type is absent or
+        # wrong, returning None instead so the `or {}` guard can take over.
+        data = request.get_json(silent=True) or {}
         # Step 3 always selects a filesystem-bearing partition, never a whole
         # disk. That aligns it with the rerun flow on Drive Health.
         partition = data.get('partition')
-        mount_point = data.get('mount_point') or (runtime.default_mount_point if runtime.is_fake else '/media/backup')
+        if not partition:
+            return jsonify({'success': False, 'error': 'partition is required'}), 400
+        mount_point = data.get('mount_point') or runtime.default_mount_point
         auto_mount = data.get('auto_mount', True)
         result = apply_backup_drive_configuration(
             partition,
@@ -493,7 +496,7 @@ def setup_smb_share(config):
     """Set up SMB share configuration"""
     try:
         backup = config.get('backup', {})
-        mount_point = backup.get('mount_point', '/media/backup')
+        mount_point = backup.get('mount_point', runtime.default_mount_point)
         system = config.get('system', {})
         admin_username = system.get('username', 'admin')
 
