@@ -42,7 +42,9 @@ Use the advanced backup-drive section only when:
 This flow is partition-oriented.
 
 - The selector shows NTFS partitions.
+- The selector uses the same NTFS-partition scan as setup wizard step 3.
 - If `lsblk` reports a mounted `ntfs-3g` partition as `fuseblk`, the app double-checks the on-disk type with `blkid` before showing it.
+- Partitions reported as `ntfs3`, `ntfs-3g`, or confirmed-NTFS `fuseblk` are treated as NTFS backup targets by the picker.
 - The unmount action unmounts only the exact selected partition.
 - The configure action mounts only the exact selected partition.
 

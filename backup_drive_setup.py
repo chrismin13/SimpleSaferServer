@@ -92,13 +92,22 @@ def _get_blkid_filesystem_type(device_path):
     return result.stdout.strip().lower()
 
 
-def _is_ntfs_scan_candidate(device_path, filesystem_type):
+def _get_partition_type_for_scan(device_path, filesystem_type, fallback_type='', ntfs_only=False):
     normalized_type = (filesystem_type or '').strip().lower()
+    if not ntfs_only:
+        return filesystem_type or fallback_type or 'unknown'
+
     if _is_ntfs_filesystem(normalized_type):
-        return True
-    if normalized_type != 'fuseblk':
-        return False
-    return _get_blkid_filesystem_type(device_path) == 'ntfs'
+        # The NTFS-only pickers care about "mountable backup target" rather
+        # than which exact driver spelling lsblk reported today.
+        return 'ntfs'
+
+    if normalized_type == 'fuseblk' and _get_blkid_filesystem_type(device_path) == 'ntfs':
+        # This is an API contract for UI consumers, not a claim that the volume
+        # is mounted with the in-kernel NTFS driver.
+        return 'ntfs'
+
+    return None
 
 
 def _normalize_device_path(device_path):
@@ -391,21 +400,38 @@ def list_available_drives(runtime=None, ntfs_only=False):
             if not child_path:
                 continue
             filesystem_type = child.get('fstype') or ''
-            if ntfs_only and not _is_ntfs_scan_candidate(child_path, filesystem_type):
+            partition_type = _get_partition_type_for_scan(
+                child_path,
+                filesystem_type,
+                fallback_type=child.get('type') or 'unknown',
+                ntfs_only=ntfs_only,
+            )
+            if partition_type is None:
                 continue
             partitions.append({
                 'path': child_path,
-                'type': filesystem_type or child.get('type') or 'unknown',
+                'type': partition_type,
                 'label': child.get('label') or '',
                 'size': child.get('size') or '',
                 'mountpoint': child.get('mountpoint') or '',
             })
 
         block_filesystem_type = block.get('fstype') or ''
-        if not partitions and _is_ntfs_scan_candidate(disk_path, block_filesystem_type):
+        should_include_whole_disk_target = ntfs_only or bool(
+            block_filesystem_type or block.get('mountpoint')
+        )
+        block_partition_type = None
+        if should_include_whole_disk_target:
+            block_partition_type = _get_partition_type_for_scan(
+                disk_path,
+                block_filesystem_type,
+                fallback_type=block.get('type') or 'unknown',
+                ntfs_only=ntfs_only,
+            )
+        if not partitions and block_partition_type is not None:
             partitions.append({
                 'path': disk_path,
-                'type': block_filesystem_type or block.get('type') or 'unknown',
+                'type': block_partition_type,
                 'label': block.get('label') or '',
                 'size': block.get('size') or '',
                 'mountpoint': block.get('mountpoint') or '',

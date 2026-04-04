@@ -480,52 +480,86 @@
             }
         }
 
-        async function loadDrives() {
-            try {
-                const response = await fetch('/api/setup/drives');
-                const data = await response.json();
-                const formatSelect = document.getElementById('formatDriveSelect');
-                const prevValue = formatSelect.value;
-                formatSelect.innerHTML = '<option value="">Select a drive…</option>';
-                let foundPrev = false;
-                data.drives.forEach(drive => {
+        function populateFormatDriveSelect(drives) {
+            const formatSelect = document.getElementById('formatDriveSelect');
+            const prevValue = formatSelect.value;
+            formatSelect.innerHTML = '<option value="">Select a drive…</option>';
+            let foundPrev = false;
+            drives.forEach(drive => {
+                const driveType = drive.type === 'usb' ? 'USB Drive' : 'Internal Drive';
+                let isMounted = false;
+                drive.partitions.forEach(partition => { if (partition.mountpoint) isMounted = true; });
+                let label = `${drive.model} (${drive.size}) - ${driveType}`;
+                if (!isMounted) label += ' [unmounted]';
+                const option = new Option(label, drive.path);
+                if (drive.path === prevValue) { option.selected = true; foundPrev = true; }
+                formatSelect.add(option);
+            });
+            if (!foundPrev && prevValue) {
+                const option = new Option(`${prevValue} [unmounted]`, prevValue);
+                option.selected = true;
+                formatSelect.add(option);
+            }
+            updateDriveMountStatusBadge();
+        }
+
+        function populateMountDriveSelect(drives) {
+            const mountSelect = document.getElementById('mountDriveSelect');
+            if (!mountSelect) return;
+
+            const prevValue = mountSelect.value;
+            mountSelect.innerHTML = '<option value="">Select a drive…</option>';
+            let foundPrev = false;
+            drives.forEach(drive => {
+                drive.partitions.forEach(partition => {
+                    const mountStatus = partition.mountpoint ? ` (Mounted at ${partition.mountpoint})` : '';
+                    const label = partition.label ? ` - ${partition.label}` : '';
                     const driveType = drive.type === 'usb' ? 'USB Drive' : 'Internal Drive';
-                    let isMounted = false;
-                    drive.partitions.forEach(partition => { if (partition.mountpoint) isMounted = true; });
-                    let label = `${drive.model} (${drive.size}) - ${driveType}`;
-                    if (!isMounted) label += ' [unmounted]';
-                    const option = new Option(label, drive.path);
-                    if (drive.path === prevValue) { option.selected = true; foundPrev = true; }
-                    formatSelect.add(option);
+                    const option = new Option(
+                        `${drive.model} - ${partition.path}${label} (${partition.size}) - ${driveType}${mountStatus}`,
+                        partition.path
+                    );
+                    if (partition.path === prevValue) { option.selected = true; foundPrev = true; }
+                    mountSelect.add(option);
                 });
-                if (!foundPrev && prevValue) {
-                    const option = new Option(`${prevValue} [unmounted]`, prevValue);
-                    option.selected = true;
-                    formatSelect.add(option);
+            });
+            if (!foundPrev && prevValue) {
+                const option = new Option(prevValue, prevValue);
+                option.selected = true;
+                mountSelect.add(option);
+            }
+        }
+
+        async function loadFormatDrives() {
+            try {
+                const response = await fetch('/api/setup/format-drives');
+                const data = await response.json();
+                if (!data.success) {
+                    throw new Error(data.error || 'Failed to load drives for formatting');
                 }
-                const mountSelect = document.getElementById('mountDriveSelect');
-                if (mountSelect) {
-                    mountSelect.innerHTML = '<option value="">Select a drive…</option>';
-                    data.drives.forEach(drive => {
-                        drive.partitions.forEach(partition => {
-                            if (partition.type === 'ntfs') {
-                                const mountStatus = partition.mountpoint ? ` (Mounted at ${partition.mountpoint})` : '';
-                                const label = partition.label ? ` - ${partition.label}` : '';
-                                const driveType = drive.type === 'usb' ? 'USB Drive' : 'Internal Drive';
-                                const option = new Option(
-                                    `${drive.model} - ${partition.path}${label} (${partition.size}) - ${driveType}${mountStatus}`,
-                                    partition.path
-                                );
-                                mountSelect.add(option);
-                            }
-                        });
-                    });
-                }
-                updateDriveMountStatusBadge();
+                populateFormatDriveSelect(data.drives || []);
             } catch (error) {
                 console.error('Error:', error);
-                showFormatError('Failed to load drives');
+                showFormatError('Failed to load drives for formatting');
             }
+        }
+
+        async function loadMountDrives() {
+            try {
+                const response = await fetch('/api/setup/mount-drives');
+                const data = await response.json();
+                if (!data.success) {
+                    throw new Error(data.error || 'Failed to load NTFS drives for mounting');
+                }
+                populateMountDriveSelect(data.drives || []);
+            } catch (error) {
+                console.error('Error:', error);
+                showMountError('Failed to load NTFS drives for mounting');
+            }
+        }
+
+        async function loadDrives() {
+            await Promise.all([loadFormatDrives(), loadMountDrives()]);
         }
 
         async function formatDrive() {

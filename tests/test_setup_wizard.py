@@ -44,14 +44,30 @@ class SetupWizardTests(unittest.TestCase):
         self.app = Flask(__name__)
         self.app.register_blueprint(self.setup_wizard.setup)
 
-    def test_list_drives_uses_ntfs_only_partition_scan(self):
+    def test_list_format_drives_uses_broad_disk_scan(self):
         with patch.object(
             self.setup_wizard,
             "get_available_backup_drives",
             return_value=[{"path": "/dev/sdb", "partitions": []}],
         ) as mock_get_available_backup_drives:
             with self.app.test_client() as client:
-                response = client.get("/api/setup/drives")
+                response = client.get("/api/setup/format-drives")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["success"], True)
+        mock_get_available_backup_drives.assert_called_once_with(
+            runtime=self.setup_wizard.runtime,
+            ntfs_only=False,
+        )
+
+    def test_list_mount_drives_uses_ntfs_only_partition_scan(self):
+        with patch.object(
+            self.setup_wizard,
+            "get_available_backup_drives",
+            return_value=[{"path": "/dev/sdb", "partitions": []}],
+        ) as mock_get_available_backup_drives:
+            with self.app.test_client() as client:
+                response = client.get("/api/setup/mount-drives")
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json()["success"], True)

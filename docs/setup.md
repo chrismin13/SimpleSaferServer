@@ -25,6 +25,7 @@ That split is important because the safety checks are different.
 This step is disk-oriented.
 
 - The selector shows disks, not partitions.
+- The selector intentionally detects eligible non-system disks whether they are blank, already formatted, or currently formatted with the wrong filesystem.
 - The unmount button unmounts every currently mounted partition that belongs to the selected disk.
 - The format button creates a single partition if needed and formats that partition as NTFS.
 - Formatting erases all existing data on the selected disk.
@@ -33,13 +34,16 @@ Why it works this way:
 
 - Formatting is a whole-disk preparation step.
 - Desktop automounters often mount child partitions such as `/dev/sdb1`, so the wizard checks for mounted child partitions before allowing formatting.
+- This is a simple destructive preparation flow. It is not a partition resizer and it does not try to preserve or rearrange an existing multi-partition layout.
 
 ## Step 3: Drive Mount
 
 This step is partition-oriented.
 
 - The selector shows NTFS partitions, not whole disks.
+- The selector uses a dedicated NTFS-partition scan instead of the broader step-2 disk scan.
 - If a mounted `ntfs-3g` partition shows up from `lsblk` as `fuseblk`, the wizard verifies the underlying on-disk type with `blkid` before treating it as NTFS.
+- Partitions reported as `ntfs3`, `ntfs-3g`, or confirmed-NTFS `fuseblk` are all exposed to the wizard as NTFS mount targets.
 - The unmount button unmounts only the exact selected partition.
 - The mount button mounts that selected NTFS partition at the chosen mount point.
 - Advanced options allow changing the mount point and whether the managed `/etc/fstab` entry should be present.

@@ -90,9 +90,23 @@ def create_user():
         logger.error(f"Error creating user: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
-@setup.route('/api/setup/drives', methods=['GET'])
-def list_drives():
-    """List available drives with detailed information"""
+@setup.route('/api/setup/format-drives', methods=['GET'])
+def list_format_drives():
+    """List disks for the destructive format step."""
+    try:
+        # Step 2 is intentionally broader than the mount pickers because it is
+        # the "prepare or erase this disk" step, not the "pick an NTFS backup
+        # partition" step.
+        drives = get_available_backup_drives(runtime=runtime, ntfs_only=False)
+        return jsonify({'success': True, 'drives': drives})
+    except Exception as e:
+        logger.error(f"Error listing format drives: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@setup.route('/api/setup/mount-drives', methods=['GET'])
+def list_mount_drives():
+    """List NTFS partitions for the mount step."""
     try:
         # Step 3 is partition-oriented and only accepts NTFS backup targets, so
         # it must reuse the same NTFS scan as the Drive Health rerun flow. That
@@ -101,7 +115,7 @@ def list_drives():
         drives = get_available_backup_drives(runtime=runtime, ntfs_only=True)
         return jsonify({'success': True, 'drives': drives})
     except Exception as e:
-        logger.error(f"Error listing drives: {str(e)}")
+        logger.error(f"Error listing mount drives: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
 
 @setup.route('/api/setup/format', methods=['POST'])

@@ -39,7 +39,41 @@ class BackupDriveSetupTests(unittest.TestCase):
 
         self.assertEqual(len(drives), 1)
         self.assertEqual(drives[0]['partitions'][0]['path'], '/dev/sdb1')
+        self.assertEqual(drives[0]['partitions'][0]['type'], 'ntfs')
         mock_blkid.assert_called_once_with('/dev/sdb1')
+
+    @patch('backup_drive_setup._get_system_drive_path', return_value='/dev/sda')
+    @patch('backup_drive_setup._load_lsblk_devices')
+    def test_list_available_drives_normalizes_ntfs3_partition_type_for_ntfs_picker(
+        self,
+        mock_load_lsblk_devices,
+        _mock_get_system_drive_path,
+    ):
+        mock_load_lsblk_devices.return_value = [
+            {
+                'type': 'disk',
+                'path': '/dev/sdb',
+                'model': 'Backup Disk',
+                'size': '1T',
+                'children': [
+                    {
+                        'path': '/dev/sdb1',
+                        'fstype': 'ntfs3',
+                        'label': 'Backup',
+                        'size': '1T',
+                        'mountpoint': '',
+                    }
+                ],
+            }
+        ]
+
+        drives = backup_drive_setup.list_available_drives(
+            runtime=SimpleNamespace(is_fake=False),
+            ntfs_only=True,
+        )
+
+        self.assertEqual(len(drives), 1)
+        self.assertEqual(drives[0]['partitions'][0]['type'], 'ntfs')
 
     @patch('backup_drive_setup._get_system_drive_path', return_value='/dev/sda')
     @patch('backup_drive_setup._load_lsblk_devices')
@@ -101,6 +135,32 @@ class BackupDriveSetupTests(unittest.TestCase):
             mounted,
             [{'device': '/dev/sdb1', 'mount_point': '/media/one'}],
         )
+
+    @patch('backup_drive_setup._get_system_drive_path', return_value='/dev/sda')
+    @patch('backup_drive_setup._load_lsblk_devices')
+    def test_list_available_drives_keeps_blank_disk_for_broad_format_scan(
+        self,
+        mock_load_lsblk_devices,
+        _mock_get_system_drive_path,
+    ):
+        mock_load_lsblk_devices.return_value = [
+            {
+                'type': 'disk',
+                'path': '/dev/sdb',
+                'model': 'Blank Disk',
+                'size': '2T',
+                'children': [],
+            }
+        ]
+
+        drives = backup_drive_setup.list_available_drives(
+            runtime=SimpleNamespace(is_fake=False),
+            ntfs_only=False,
+        )
+
+        self.assertEqual(len(drives), 1)
+        self.assertEqual(drives[0]['path'], '/dev/sdb')
+        self.assertEqual(drives[0]['partitions'], [])
 
     def test_get_mount_for_partition_requires_exact_match(self):
         mounts = [
