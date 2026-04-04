@@ -536,6 +536,10 @@
       });
     }
 
+    function getDriveHealthUnmountConfirmationMessage() {
+      return 'This only unmounts the selected partition temporarily so backup drive setup can continue. If the selected partition is still the configured backup drive, SimpleSaferServer may remount it automatically during a later Check Mount run if the drive stays connected. SMB access to the backup share may disconnect briefly so the unmount can succeed.';
+    }
+
     async function scanDrives() {
       hideDriveSetupError();
       setDriveSetupStatus('Scanning connected drives…', 'info');
@@ -563,6 +567,17 @@
         showDriveSetupError('Select a drive partition to unmount first.');
         return;
       }
+
+      const confirmed = await window.showConfirmationDialog({
+        title: 'Unmount Selected Drive',
+        message: getDriveHealthUnmountConfirmationMessage(),
+        confirmLabel: 'Unmount',
+        confirmClass: 'btn-warning'
+      });
+      if (!confirmed) {
+        return;
+      }
+
       setDriveSetupStatus('Unmounting selected drive…', 'info');
       if (window.AsyncButtonState && unmountBtn) window.AsyncButtonState.start(unmountBtn);
       try {

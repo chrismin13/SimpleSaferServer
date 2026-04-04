@@ -47,6 +47,7 @@ This flow is partition-oriented.
 - Partitions reported as `ntfs3`, `ntfs-3g`, or confirmed-NTFS `fuseblk` are treated as NTFS backup targets by the picker.
 - The unmount action unmounts only the exact selected partition.
 - That unmount action only clears the live mount so the selected partition can be validated and configured again.
+- If the selected partition is still the configured backup drive and it is currently mounted at the managed backup mount point, the app first disconnects SMB access and stops the related background tasks so the unmount is not blocked by busy share handles.
 - The configure action mounts only the exact selected partition.
 
 This is different from setup wizard step 2, which is disk-oriented for formatting.
@@ -56,6 +57,7 @@ It is also different from the main Dashboard `Unmount Drive` action.
 - Dashboard unmount is temporary for the configured backup drive.
 - If that drive stays connected, SimpleSaferServer may remount it automatically during the next scheduled `Check Mount` run.
 - The Drive Health unmount button exists to clear the selected partition so the rerun flow can mount and validate the exact partition you picked.
+- When the selected partition is the live configured backup share, Drive Health uses the same SMB-safe unmount sequence as Dashboard, but it does not power the disk down because the next step is usually to mount and validate it again.
 - The Drive Health unmount button does not clear the stored backup `mount_point`, `uuid`, `usb_id`, or managed `/etc/fstab` entry by itself.
 
 ## What the Rerun Flow Updates
@@ -67,6 +69,7 @@ It is also different from the main Dashboard `Unmount Drive` action.
 - the Samba backup share path if the mount point changed
 
 The rerun flow always refreshes the managed `/etc/fstab` entry with `defaults,nofail`.
+After rewriting the managed `/etc/fstab` entry, the app also runs `systemctl daemon-reload` so the next `Check Mount` run sees the updated systemd-generated mount units immediately.
 
 Persistent backup-drive state changes happen only when the rerun configure step succeeds.
 That separation is intentional because a failed replacement attempt should still be able to fall back to the previously configured backup drive.
@@ -106,6 +109,7 @@ Manual recovery rules:
 
 - Update `/etc/SimpleSaferServer/config.conf` only if you know the correct `mount_point`, `uuid`, and `usb_id`.
 - Update only the SimpleSaferServer-managed `/etc/fstab` entry.
+- Run `sudo systemctl daemon-reload` after manually changing `/etc/fstab` so systemd forgets the old generated mount unit state.
 - If the mount point changes, also check `/etc/samba/smb.conf`.
 - Do not modify unrelated `/etc/fstab` entries.
 - Back up `/etc/fstab` before editing it manually.
@@ -127,6 +131,7 @@ After manual changes, verify the result:
 ```bash
 sudo findmnt --verify
 sudo mkdir -p /media/backup
+sudo systemctl daemon-reload
 sudo mount -a
 sudo systemctl restart smbd nmbd simple_safer_server_web.service
 ```

@@ -13,6 +13,10 @@ from backup_drive_setup import (
     list_available_drives,
     unmount_selected_partition,
 )
+from backup_drive_unmount import (
+    is_selected_partition_managed_backup_drive,
+    unmount_managed_backup_drive,
+)
 from config_manager import ConfigManager
 from drive_health import (
     SMARTCTL_JSON_UPGRADE_MESSAGE,
@@ -575,6 +579,7 @@ def _get_check_mount_next_run():
 @login_required
 def unmount():
     mount_point = config_manager.get_value('backup', 'mount_point', runtime.default_mount_point)
+    configured_uuid = config_manager.get_value('backup', 'uuid', None)
     try:
         if runtime.is_fake:
             fake_state.set_mount(False)
@@ -589,37 +594,13 @@ def unmount():
                 ),
             })
 
-        # 1. Disconnect all SMB users (if possible)
-        try:
-            subprocess.run(["sudo", "smbcontrol", "all", "close-share", mount_point], check=False)
-        except Exception:
-            pass  # Ignore errors, just try to close sessions
-        # 2. Stop all systemd tasks
-        for service in ["check_mount.service", "check_health.service", "backup_cloud.service"]:
-            subprocess.run(["sudo", "systemctl", "stop", service], check=False)
-        # 3. Stop smbd and nmbd
-        subprocess.run(["sudo", "systemctl", "stop", "smbd"], check=False)
-        subprocess.run(["sudo", "systemctl", "stop", "nmbd"], check=False)
-        # 4. Unmount the drive
-        subprocess.run(["sudo", "umount", mount_point], check=True)
-        # 5. Power down the drive (try hdparm, ignore errors if not supported)
-        try:
-            uuid = config_manager.get_value('backup', 'uuid', None)
-            if uuid:
-                blkid_out = subprocess.run(['blkid', '-t', f'UUID={uuid}', '-o', 'device'], capture_output=True, text=True)
-                partition_device = blkid_out.stdout.strip()
-                if partition_device:
-                    parent_device = system_utils.get_parent_device(partition_device)
-                    if parent_device:
-                        subprocess.run(["sudo", "hdparm", "-y", parent_device], check=False)
-        except Exception:
-            pass
-        # 6. Start smbd and nmbd again so network file sharing is available
-        try:
-            subprocess.run(["sudo", "systemctl", "start", "smbd"], check=False)
-            subprocess.run(["sudo", "systemctl", "start", "nmbd"], check=False)
-        except Exception:
-            pass
+        unmount_managed_backup_drive(
+            mount_point,
+            configured_uuid,
+            system_utils,
+            runtime=runtime,
+            power_down=True,
+        )
         return jsonify({
             "success": True,
             "message": build_dashboard_unmount_success_message(
@@ -627,8 +608,8 @@ def unmount():
                 _get_check_mount_next_run(),
             ),
         })
-    except subprocess.CalledProcessError as e:
-        return jsonify({"success": False, "message": f"Failed to unmount drive: {e}"}), 500
+    except BackupDriveSetupError as e:
+        return jsonify({"success": False, "message": str(e)}), 500
     except Exception as e:
         return jsonify({"success": False, "message": f"Unexpected error: {e}"}), 500
 
@@ -1544,7 +1525,30 @@ def api_backup_drive_drives():
 def api_backup_drive_unmount():
     try:
         data = request.get_json() or {}
-        message = unmount_selected_partition(data.get('partition'), runtime=runtime)
+        partition = data.get('partition')
+        configured_mount_point = config_manager.get_value('backup', 'mount_point', runtime.default_mount_point)
+        configured_uuid = config_manager.get_value('backup', 'uuid', '')
+
+        if is_selected_partition_managed_backup_drive(
+            partition,
+            configured_mount_point,
+            configured_uuid,
+            system_utils,
+            runtime=runtime,
+        ):
+            unmount_managed_backup_drive(
+                configured_mount_point,
+                configured_uuid,
+                system_utils,
+                runtime=runtime,
+                power_down=False,
+            )
+            message = build_dashboard_unmount_success_message(
+                'Configured backup drive unmounted so backup drive setup can continue.',
+                _get_check_mount_next_run(),
+            )
+        else:
+            message = unmount_selected_partition(partition, runtime=runtime)
         return jsonify({'success': True, 'message': message})
     except BackupDriveSetupError as e:
         return jsonify({'success': False, 'error': str(e), 'details': e.details})

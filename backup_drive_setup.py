@@ -355,6 +355,27 @@ def restore_fstab_backup(backup_path, runtime=None, fstab_path=None):
     shutil.copy2(backup_path, path)
 
 
+def _reload_systemd_mount_units(runtime=None):
+    runtime = runtime or get_runtime()
+    if runtime.is_fake:
+        return
+
+    # Keep daemon-reload outside update_managed_fstab() so callers can treat
+    # "rewrite /etc/fstab" and "refresh systemd's generated mount units" as
+    # one rollback-aware transaction.
+    result = subprocess.run(
+        ['systemctl', 'daemon-reload'],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise BackupDriveSetupError(
+            'Failed to reload systemd after updating /etc/fstab: {}'.format(
+                result.stderr.strip() if result.stderr else 'unknown error'
+            )
+        )
+
+
 def get_drive_uuid(drive):
     result = subprocess.run(['blkid', '-s', 'UUID', '-o', 'value', drive], capture_output=True, text=True)
     if result.returncode != 0 or not result.stdout.strip():
@@ -561,6 +582,7 @@ def apply_backup_drive_configuration(partition, mount_point, auto_mount, config_
 
         try:
             fstab_backup = update_managed_fstab(uuid, selected_path_str, bool(auto_mount), runtime=runtime)
+            _reload_systemd_mount_units(runtime=runtime)
 
             backup_share = None
             for share in smb_manager.get_shares():
@@ -586,6 +608,7 @@ def apply_backup_drive_configuration(partition, mount_point, auto_mount, config_
         except Exception:
             if fstab_backup:
                 restore_fstab_backup(fstab_backup, runtime=runtime)
+                _reload_systemd_mount_units(runtime=runtime)
             if share_backup:
                 try:
                     smb_manager.update_share(
@@ -635,6 +658,7 @@ def apply_backup_drive_configuration(partition, mount_point, auto_mount, config_
 
     try:
         fstab_backup = update_managed_fstab(uuid, mount_point, bool(auto_mount), runtime=runtime)
+        _reload_systemd_mount_units(runtime=runtime)
 
         mount_result = subprocess.run(
             ['ntfs-3g', partition, mount_point, '-o', 'rw,uid=1000,gid=1000'],
@@ -672,6 +696,7 @@ def apply_backup_drive_configuration(partition, mount_point, auto_mount, config_
             subprocess.run(['umount', partition], check=False)
         if fstab_backup:
             restore_fstab_backup(fstab_backup, runtime=runtime)
+            _reload_systemd_mount_units(runtime=runtime)
         if share_backup:
             try:
                 smb_manager.update_share(

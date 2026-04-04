@@ -48,6 +48,7 @@ This step is partition-oriented.
 - Partitions reported as `ntfs3`, `ntfs-3g`, or confirmed-NTFS `fuseblk` are all exposed to the wizard as NTFS mount targets.
 - The unmount button unmounts only the exact selected partition.
 - That unmount action is temporary preparation for this step. It does not deconfigure the old backup drive by itself.
+- If the selected partition is also the currently configured backup drive and it is live at the managed backup mount point, the same SMB-safe unmount sequence used on Dashboard is needed to clear sharing handles before the partition can be reused.
 - The mount button mounts that selected NTFS partition at the chosen mount point.
 - Advanced options allow changing the mount point and whether the managed `/etc/fstab` entry should be present.
 
@@ -55,6 +56,7 @@ Persistent backup-drive state changes only when the mount/configure step succeed
 
 - `backup.mount_point`, `backup.uuid`, and `backup.usb_id` stay unchanged until a new backup-drive setup is applied successfully.
 - The SimpleSaferServer-managed `/etc/fstab` entry is updated only when the new setup is applied.
+- After the managed `/etc/fstab` entry changes, the app runs `systemctl daemon-reload` so `Check Mount` and the generated mount units immediately follow the new backup-drive definition.
 - If the old backup drive is still the configured backup source and it remains connected, `Check Mount` may mount it again after an unmount-only step.
 
 That NTFS-only scan is shared with the backup-drive rerun flow on Drive Health.
@@ -106,3 +108,4 @@ If the backup drive changes after setup:
 - rerun only the backup-drive configuration portion
 
 That rerun flow is intentionally partition-oriented and does not behave like the whole-disk format step.
+If the selected partition is still the live configured backup share, the rerun flow temporarily disconnects SMB access before unmounting it.

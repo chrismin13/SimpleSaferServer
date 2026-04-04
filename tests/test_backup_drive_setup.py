@@ -207,6 +207,7 @@ class BackupDriveSetupTests(unittest.TestCase):
 
     @patch('backup_drive_setup.subprocess.run')
     @patch('backup_drive_setup.os.makedirs')
+    @patch('backup_drive_setup._reload_systemd_mount_units')
     @patch('backup_drive_setup.update_managed_fstab')
     @patch('backup_drive_setup._get_partition_filesystem_type')
     @patch('backup_drive_setup.get_drive_usb_id')
@@ -219,6 +220,7 @@ class BackupDriveSetupTests(unittest.TestCase):
         mock_get_usb_id,
         mock_get_fstype,
         mock_update_fstab,
+        mock_reload_mount_units,
         mock_makedirs,
         mock_run,
     ):
@@ -246,11 +248,113 @@ class BackupDriveSetupTests(unittest.TestCase):
 
         self.assertEqual(result['uuid'], 'UUID-1')
         mock_get_mount.assert_called_once_with('/dev/sdb1')
+        mock_reload_mount_units.assert_called_once_with(runtime=runtime)
         mock_run.assert_called_once_with(
             ['ntfs-3g', '/dev/sdb1', '/media/backup', '-o', 'rw,uid=1000,gid=1000'],
             capture_output=True,
             text=True,
         )
+
+    @patch('backup_drive_setup.subprocess.run')
+    @patch('backup_drive_setup.restore_fstab_backup')
+    @patch('backup_drive_setup.os.makedirs')
+    @patch('backup_drive_setup._reload_systemd_mount_units')
+    @patch('backup_drive_setup.update_managed_fstab')
+    @patch('backup_drive_setup._get_partition_filesystem_type')
+    @patch('backup_drive_setup.get_drive_usb_id')
+    @patch('backup_drive_setup.get_drive_uuid')
+    @patch('backup_drive_setup._get_mount_for_partition')
+    def test_apply_backup_drive_configuration_restores_and_reloads_fstab_after_mount_failure(
+        self,
+        mock_get_mount,
+        mock_get_uuid,
+        mock_get_usb_id,
+        mock_get_fstype,
+        mock_update_fstab,
+        mock_reload_mount_units,
+        mock_makedirs,
+        mock_restore_fstab_backup,
+        mock_run,
+    ):
+        runtime = SimpleNamespace(is_fake=False, default_mount_point='/media/backup')
+        config_manager = MagicMock()
+        config_manager.get_value.side_effect = ['/media/backup', 'OLD-UUID', '1234:5678']
+        smb_manager = MagicMock()
+        smb_manager.get_shares.return_value = []
+
+        mock_get_mount.return_value = None
+        mock_get_uuid.return_value = 'UUID-1'
+        mock_get_usb_id.return_value = '1234:5678'
+        mock_get_fstype.return_value = 'ntfs'
+        mock_update_fstab.return_value = '/tmp/fstab.backup'
+        mock_run.return_value = SimpleNamespace(returncode=1, stderr='busy', stdout='')
+
+        with self.assertRaisesRegex(backup_drive_setup.BackupDriveSetupError, 'Error mounting drive: busy'):
+            backup_drive_setup.apply_backup_drive_configuration(
+                '/dev/sdb1',
+                '/media/backup',
+                True,
+                config_manager,
+                smb_manager,
+                runtime=runtime,
+            )
+
+        mock_restore_fstab_backup.assert_called_once_with('/tmp/fstab.backup', runtime=runtime)
+        self.assertEqual(mock_reload_mount_units.call_count, 2)
+
+    @patch('backup_drive_setup.subprocess.run')
+    @patch('backup_drive_setup.restore_fstab_backup')
+    @patch('backup_drive_setup.os.makedirs')
+    @patch('backup_drive_setup._reload_systemd_mount_units')
+    @patch('backup_drive_setup.update_managed_fstab')
+    @patch('backup_drive_setup._get_partition_filesystem_type')
+    @patch('backup_drive_setup.get_drive_usb_id')
+    @patch('backup_drive_setup.get_drive_uuid')
+    @patch('backup_drive_setup._get_mount_for_partition')
+    def test_apply_backup_drive_configuration_restores_fstab_when_daemon_reload_fails(
+        self,
+        mock_get_mount,
+        mock_get_uuid,
+        mock_get_usb_id,
+        mock_get_fstype,
+        mock_update_fstab,
+        mock_reload_mount_units,
+        mock_makedirs,
+        mock_restore_fstab_backup,
+        mock_run,
+    ):
+        runtime = SimpleNamespace(is_fake=False, default_mount_point='/media/backup')
+        config_manager = MagicMock()
+        config_manager.get_value.side_effect = ['/media/backup', 'OLD-UUID', '1234:5678']
+        smb_manager = MagicMock()
+        smb_manager.get_shares.return_value = []
+
+        mock_get_mount.return_value = None
+        mock_get_uuid.return_value = 'UUID-1'
+        mock_get_usb_id.return_value = '1234:5678'
+        mock_get_fstype.return_value = 'ntfs'
+        mock_update_fstab.return_value = '/tmp/fstab.backup'
+        mock_reload_mount_units.side_effect = [
+            backup_drive_setup.BackupDriveSetupError('Failed to reload systemd after updating /etc/fstab: bad reload'),
+            None,
+        ]
+
+        with self.assertRaisesRegex(
+            backup_drive_setup.BackupDriveSetupError,
+            'Failed to reload systemd after updating /etc/fstab: bad reload',
+        ):
+            backup_drive_setup.apply_backup_drive_configuration(
+                '/dev/sdb1',
+                '/media/backup',
+                True,
+                config_manager,
+                smb_manager,
+                runtime=runtime,
+            )
+
+        mock_restore_fstab_backup.assert_called_once_with('/tmp/fstab.backup', runtime=runtime)
+        self.assertEqual(mock_reload_mount_units.call_count, 2)
+        mock_run.assert_not_called()
 
 
 if __name__ == '__main__':
