@@ -124,8 +124,10 @@ def get_fake_smart_attributes():
     return attrs, []
 
 
-@lru_cache(maxsize=1)
 def get_smartctl_json_support():
+    # Do not cache this result across the whole process. Operators can install
+    # or upgrade smartmontools while the web service keeps running, and a stale
+    # negative result would keep blocking SMART reads until restart.
     if not shutil.which("smartctl"):
         return False, "smartctl is not installed on this machine."
 

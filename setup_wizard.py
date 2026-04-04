@@ -94,7 +94,11 @@ def create_user():
 def list_drives():
     """List available drives with detailed information"""
     try:
-        drives = get_available_backup_drives(runtime=runtime, ntfs_only=False)
+        # Step 3 is partition-oriented and only accepts NTFS backup targets, so
+        # it must reuse the same NTFS scan as the Drive Health rerun flow. That
+        # includes the blkid fallback when lsblk reports ntfs-3g mounts as
+        # fuseblk, which is easy to miss if this route ever gets "simplified".
+        drives = get_available_backup_drives(runtime=runtime, ntfs_only=True)
         return jsonify({'success': True, 'drives': drives})
     except Exception as e:
         logger.error(f"Error listing drives: {str(e)}")

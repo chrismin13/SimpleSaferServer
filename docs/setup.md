@@ -44,6 +44,11 @@ This step is partition-oriented.
 - The mount button mounts that selected NTFS partition at the chosen mount point.
 - Advanced options allow changing the mount point and whether the managed `/etc/fstab` entry should be present.
 
+That NTFS-only scan is shared with the backup-drive rerun flow on Drive Health.
+This is worth calling out because the setup wizard and the rerun flow need to
+agree about which partitions are selectable, especially for already-mounted
+`ntfs-3g` volumes that appear as `fuseblk`.
+
 Boot behavior:
 
 - The managed `/etc/fstab` entry uses `defaults,nofail`.
