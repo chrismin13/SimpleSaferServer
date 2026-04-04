@@ -1,4 +1,16 @@
 from flask import Blueprint, render_template, jsonify, request, redirect, session
+from backup_drive_setup import (
+    BackupDriveSetupError,
+    apply_backup_drive_configuration,
+    list_available_drives as get_available_backup_drives,
+    _get_mounted_partitions_for_disk,
+    unmount_disk_partitions,
+    unmount_selected_partition,
+)
+from backup_drive_unmount import (
+    is_selected_partition_managed_backup_drive,
+    unmount_managed_backup_drive,
+)
 from config_manager import ConfigManager
 from system_utils import SystemUtils
 from user_manager import UserManager
@@ -8,6 +20,7 @@ import subprocess
 import os
 import re
 from datetime import datetime
+from functools import wraps
 from tempfile import NamedTemporaryFile
 from pathlib import Path
 from runtime import get_runtime, get_fake_state
@@ -20,6 +33,112 @@ system_utils = SystemUtils(runtime=runtime)
 user_manager = UserManager(runtime=runtime)
 smb_manager = SMBManager(runtime=runtime)
 logger = logging.getLogger(__name__)
+
+
+def setup_api_access_required(route_handler):
+    """Allow anonymous setup API access only during first-time onboarding."""
+    @wraps(route_handler)
+    def wrapped(*args, **kwargs):
+        # Once setup is complete these routes become admin maintenance tools,
+        # so old bookmarked setup URLs must not keep working anonymously.
+        if not config_manager.is_setup_complete():
+            return route_handler(*args, **kwargs)
+
+        if 'username' not in session:
+            return jsonify({'success': False, 'error': 'Please log in again.'}), 401
+
+        # Reload user data to ensure we have the latest
+        user_manager.users = user_manager._load_users()
+        if not user_manager.is_admin(session['username']):
+            return jsonify({'success': False, 'error': 'Admin privileges required.'}), 403
+
+        return route_handler(*args, **kwargs)
+
+    return wrapped
+
+
+MANAGED_UNMOUNT_RETRY_ERROR = (
+    'The selected partition is busy. If it is still serving the backup share over SMB, '
+    'retry with the SMB-safe unmount path.'
+)
+MANAGED_UNMOUNT_RETRY_DETAILS = (
+    'This retry may temporarily stop SMB access and related background backup tasks, '
+    'unmount the configured backup share, and then restart SMB.'
+)
+
+
+def _get_configured_backup_drive_identity():
+    default_mount_point = getattr(runtime, 'default_mount_point', '/media/backup')
+    return (
+        config_manager.get_value('backup', 'mount_point', default_mount_point),
+        config_manager.get_value('backup', 'uuid', ''),
+    )
+
+
+def _is_busy_unmount_error(error):
+    return 'busy' in str(error).lower()
+
+
+def _build_managed_unmount_retry_response(partition, configured_mount_point, configured_uuid):
+    if not is_selected_partition_managed_backup_drive(
+        partition,
+        configured_mount_point,
+        configured_uuid,
+        system_utils,
+        runtime=runtime,
+    ):
+        return None
+
+    # This response only appears after the exact-partition unmount already
+    # failed, so power users can make an explicit choice about stopping SMB.
+    return {
+        'success': False,
+        'error': MANAGED_UNMOUNT_RETRY_ERROR,
+        'details': MANAGED_UNMOUNT_RETRY_DETAILS,
+        'can_retry_managed_unmount': True,
+    }
+
+
+def _unmount_selected_partition_with_managed_retry(partition, force_managed=False):
+    if force_managed:
+        configured_mount_point, configured_uuid = _get_configured_backup_drive_identity()
+        if not is_selected_partition_managed_backup_drive(
+            partition,
+            configured_mount_point,
+            configured_uuid,
+            system_utils,
+            runtime=runtime,
+        ):
+            raise BackupDriveSetupError(
+                'The selected partition is no longer the active configured backup drive.'
+            )
+        unmount_managed_backup_drive(
+            configured_mount_point,
+            configured_uuid,
+            system_utils,
+            runtime=runtime,
+            power_down=False,
+        )
+        return (
+            'Drive unmounted after the SMB-safe retry temporarily stopped SMB access '
+            'and related background backup tasks.'
+        )
+
+    try:
+        return unmount_selected_partition(partition, runtime=runtime)
+    except BackupDriveSetupError as exc:
+        if not _is_busy_unmount_error(exc):
+            raise
+
+        configured_mount_point, configured_uuid = _get_configured_backup_drive_identity()
+        retry_response = _build_managed_unmount_retry_response(
+            partition,
+            configured_mount_point,
+            configured_uuid,
+        )
+        if retry_response is not None:
+            return retry_response
+        raise
 
 @setup.route('/setup')
 def setup_page():
@@ -62,6 +181,7 @@ def setup_page():
         return render_template('setup.html')
 
 @setup.route('/api/setup/user', methods=['POST'])
+@setup_api_access_required
 def create_user():
     """Create the initial admin user"""
     try:
@@ -82,87 +202,38 @@ def create_user():
         logger.error(f"Error creating user: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
-@setup.route('/api/setup/drives', methods=['GET'])
-def list_drives():
-    """List available drives with detailed information"""
+@setup.route('/api/setup/format-drives', methods=['GET'])
+@setup_api_access_required
+def list_format_drives():
+    """List disks for the destructive format step."""
     try:
-        if runtime.is_fake:
-            return jsonify({'success': True, 'drives': fake_state.get_virtual_drives()})
-
-        # Get detailed drive information using lsblk
-        lsblk_result = subprocess.run(['lsblk', '-f', '-o', 'NAME,FSTYPE,LABEL,SIZE,MODEL,MOUNTPOINT,TYPE'], 
-                                    capture_output=True, text=True)
-        
-        if lsblk_result.returncode != 0:
-            return jsonify({'success': False, 'error': 'Failed to list drives'})
-
-        drives = []
-        current_drive = None
-        
-        # Get system drive to exclude it
-        root_mount = subprocess.run(['mount | grep "on / "'], shell=True, capture_output=True, text=True)
-        system_drive = None
-        if root_mount.returncode == 0:
-            system_drive = root_mount.stdout.split()[0]
-        
-        for line in lsblk_result.stdout.splitlines()[1:]:  # Skip header
-            parts = line.split()
-            if not parts:
-                continue
-                
-            name = parts[0]
-            if name.startswith('├─') or name.startswith('└─'):
-                # This is a partition
-                if current_drive:
-                    partition = {
-                        'path': f"/dev/{name[2:]}",  # Remove the tree characters
-                        'type': parts[1] if len(parts) > 1 else 'unknown',
-                        'label': parts[2] if len(parts) > 2 else '',
-                        'size': parts[3] if len(parts) > 3 else '',
-                        'mountpoint': parts[4] if len(parts) > 4 else ''
-                    }
-                    current_drive['partitions'].append(partition)
-            else:
-                # This is a drive
-                if current_drive:
-                    # Only add if it's a physical drive and not the system drive
-                    if current_drive['type'] in ['disk', 'usb'] and current_drive['path'] != system_drive:
-                        drives.append(current_drive)
-                
-                # Get drive model and type using udevadm
-                udev_result = subprocess.run(['udevadm', 'info', '--query=property', f"/dev/{name}"], 
-                                          capture_output=True, text=True)
-                model = 'Unknown Drive'
-                drive_type = 'unknown'
-                if udev_result.returncode == 0:
-                    for line in udev_result.stdout.splitlines():
-                        if line.startswith('ID_MODEL='):
-                            model = line.split('=')[1].strip()
-                        elif line.startswith('ID_TYPE='):
-                            drive_type = line.split('=')[1].strip()
-                
-                current_drive = {
-                    'path': f"/dev/{name}",
-                    'model': model,
-                    'size': parts[3] if len(parts) > 3 else '',
-                    'type': drive_type,
-                    'partitions': []
-                }
-        
-        # Add the last drive if it's a physical drive
-        if current_drive and current_drive['type'] in ['disk', 'usb'] and current_drive['path'] != system_drive:
-            drives.append(current_drive)
-
-        return jsonify({
-            'success': True,
-            'drives': drives
-        })
-
+        # Step 2 is intentionally broader than the mount pickers because it is
+        # the "prepare or erase this disk" step, not the "pick an NTFS backup
+        # partition" step.
+        drives = get_available_backup_drives(runtime=runtime, ntfs_only=False)
+        return jsonify({'success': True, 'drives': drives})
     except Exception as e:
-        logger.error(f"Error listing drives: {str(e)}")
+        logger.error(f"Error listing format drives: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@setup.route('/api/setup/mount-drives', methods=['GET'])
+@setup_api_access_required
+def list_mount_drives():
+    """List NTFS partitions for the mount step."""
+    try:
+        # Step 3 is partition-oriented and only accepts NTFS backup targets, so
+        # it must reuse the same NTFS scan as the Drive Health rerun flow. That
+        # includes the blkid fallback when lsblk reports ntfs-3g mounts as
+        # fuseblk, which is easy to miss if this route ever gets "simplified".
+        drives = get_available_backup_drives(runtime=runtime, ntfs_only=True)
+        return jsonify({'success': True, 'drives': drives})
+    except Exception as e:
+        logger.error(f"Error listing mount drives: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
 
 @setup.route('/api/setup/format', methods=['POST'])
+@setup_api_access_required
 def format_drive():
     """Format the selected drive"""
     try:
@@ -174,26 +245,14 @@ def format_drive():
             })
 
         data = request.get_json()
-        drive = data.get('drive')
-        
-        if not drive:
-            return jsonify({'success': False, 'error': 'No drive selected'})
+        # Step 2 is intentionally disk-oriented because formatting and partition
+        # creation are destructive whole-disk operations.
+        disk = data.get('disk')
 
-        # Check if drive is mounted
-        mount_check = subprocess.run(['mount'], capture_output=True, text=True)
-        mounted_partitions = []
-        
-        # Find all mounted partitions for this drive
-        for line in mount_check.stdout.splitlines():
-            if drive in line:
-                parts = line.split()
-                if len(parts) >= 2:
-                    device = parts[0]
-                    mount_point = parts[2]
-                    mounted_partitions.append({
-                        'device': device,
-                        'mount_point': mount_point
-                    })
+        if not disk:
+            return jsonify({'success': False, 'error': 'No disk selected'})
+
+        mounted_partitions = _get_mounted_partitions_for_disk(disk)
 
         if mounted_partitions:
             partition_info = '\n'.join([f"- {p['device']} at {p['mount_point']}" for p in mounted_partitions])
@@ -205,11 +264,11 @@ def format_drive():
             })
 
         # Create a single partition if none exists
-        partition = f"{drive}1"
+        partition = f"{disk}1"
         if not os.path.exists(partition):
             # Create partition using fdisk
             fdisk_input = f"n\np\n1\n\n\nw\n"
-            result = subprocess.run(['fdisk', drive], input=fdisk_input.encode(), capture_output=True)
+            result = subprocess.run(['fdisk', disk], input=fdisk_input.encode(), capture_output=True)
             if result.returncode != 0:
                 return jsonify({
                     'success': False,
@@ -239,81 +298,30 @@ def format_drive():
         })
 
 @setup.route('/api/setup/unmount', methods=['POST'])
+@setup_api_access_required
 def unmount_drive():
-    """Unmount the selected drive and clean up fstab entries related to SimpleSaferServer"""
+    """Unmount the selected drive"""
     try:
-        if runtime.is_fake:
-            fake_state.set_mount(False)
-            return jsonify({'success': True, 'message': 'Fake backup source disconnected.'})
+        data = request.get_json() or {}
+        # The setup wizard uses this route for two different UI controls:
+        # whole-disk unmount before formatting, and exact-partition unmount
+        # before mounting an NTFS partition in step 3.
+        disk = data.get('disk')
+        partition = data.get('partition')
+        force_managed = bool(data.get('force_managed'))
+        if disk:
+            message = unmount_disk_partitions(disk, runtime=runtime)
+        else:
+            message = _unmount_selected_partition_with_managed_retry(
+                partition,
+                force_managed=force_managed,
+            )
 
-        data = request.get_json()
-        drive = data.get('drive')
-        
-        if not drive:
-            return jsonify({'success': False, 'error': 'No drive selected'})
-
-        # Check if drive is mounted
-        mount_check = subprocess.run(['mount'], capture_output=True, text=True)
-        mounted_partitions = []
-        
-        # Find all mounted partitions for this drive
-        for line in mount_check.stdout.splitlines():
-            if drive in line:
-                parts = line.split()
-                if len(parts) >= 2:
-                    device = parts[0]
-                    mount_point = parts[2]
-                    mounted_partitions.append({
-                        'device': device,
-                        'mount_point': mount_point
-                    })
-
-        if not mounted_partitions:
-            return jsonify({
-                'success': False,
-                'error': f'No mounted partitions found for {drive}',
-                'details': 'The drive might not be mounted or might not have any partitions.'
-            })
-
-        # Try to unmount each partition
-        failed_unmounts = []
-        for partition in mounted_partitions:
-            result = subprocess.run(['umount', partition['device']], capture_output=True, text=True)
-            if result.returncode != 0:
-                error_msg = result.stderr.strip() if result.stderr else 'Unknown error occurred'
-                failed_unmounts.append({
-                    'device': partition['device'],
-                    'error': error_msg
-                })
-
-        if failed_unmounts:
-            error_details = '\n'.join([f"{f['device']}: {f['error']}" for f in failed_unmounts])
-            return jsonify({
-                'success': False,
-                'error': 'Failed to unmount some partitions',
-                'details': f'The following partitions could not be unmounted:\n{error_details}\n\nPlease ensure no applications are using these partitions.'
-            })
-
-        # Remove any fstab entries related to SimpleSaferServer
-        try:
-            with open('/etc/fstab', 'r') as fstab_file:
-                lines = fstab_file.readlines()
-            new_lines = [line for line in lines if 'SimpleSaferServer' not in line]
-            with open('/etc/fstab', 'w') as fstab_file:
-                fstab_file.writelines(new_lines)
-        except Exception as e:
-            logger.error(f"Error cleaning up fstab: {e}")
-            return jsonify({
-                'success': False,
-                'error': f'Error cleaning up fstab: {e}',
-                'details': 'Unmount succeeded, but failed to clean up /etc/fstab.'
-            })
-
-        return jsonify({
-            'success': True,
-            'message': f'Successfully unmounted {len(mounted_partitions)} partition(s)'
-        })
-
+        if isinstance(message, dict):
+            return jsonify(message)
+        return jsonify({'success': True, 'message': message})
+    except BackupDriveSetupError as e:
+        return jsonify({'success': False, 'error': str(e), 'details': e.details})
     except Exception as e:
         logger.error(f"Error unmounting drive: {str(e)}")
         return jsonify({
@@ -323,122 +331,28 @@ def unmount_drive():
         })
 
 @setup.route('/api/setup/mount', methods=['POST'])
+@setup_api_access_required
 def mount_drive():
     """Mount the selected drive"""
     try:
         data = request.get_json()
-        drive = data.get('drive')
+        # Step 3 always selects a filesystem-bearing partition, never a whole
+        # disk. That aligns it with the rerun flow on Drive Health.
+        partition = data.get('partition')
         mount_point = data.get('mount_point') or (runtime.default_mount_point if runtime.is_fake else '/media/backup')
         auto_mount = data.get('auto_mount', True)
-
-        if runtime.is_fake:
-            selected_path = Path(os.path.abspath(mount_point or runtime.default_mount_point))
-            if not selected_path.exists():
-                try:
-                    selected_path.relative_to(runtime.data_dir)
-                    selected_path.mkdir(parents=True, exist_ok=True)
-                except ValueError:
-                    return jsonify({
-                        'success': False,
-                        'error': 'Source folder does not exist',
-                        'details': 'In fake mode, choose an existing folder on this machine or a path inside .dev-data that can be created safely.'
-                    })
-            if not selected_path.is_dir():
-                return jsonify({'success': False, 'error': 'Source path must be a directory'})
-
-            config_manager.set_value('backup', 'mount_point', str(selected_path))
-            config_manager.set_value('backup', 'uuid', 'FAKE-UUID-0001')
-            config_manager.set_value('backup', 'usb_id', 'FAKE:0001')
-            fake_state.set_mount(True, mount_point=str(selected_path), drive=drive or '/dev/fakebackup1')
-            logger.info(f"Fake mode: using local backup source at {selected_path}")
-            return jsonify({
-                'success': True,
-                'message': f'Successfully selected local backup source at {selected_path}'
-            })
-
-        if not drive:
-            return jsonify({'success': False, 'error': 'No drive selected'})
-
-        # Check if drive is already mounted
-        mount_check = subprocess.run(['mount'], capture_output=True, text=True)
-        if drive in mount_check.stdout:
-            return jsonify({
-                'success': False,
-                'error': 'Drive is already mounted',
-                'details': 'Please unmount the drive first if you want to change mount settings.'
-            })
-
-        # Create mount point if it doesn't exist
-        os.makedirs(mount_point, exist_ok=True)
-
-        # Mount the drive using ntfs-3g
-        result = subprocess.run(['ntfs-3g', drive, mount_point, '-o', 'rw,uid=1000,gid=1000'], capture_output=True, text=True)
-        
-        if result.returncode != 0:
-            error_msg = result.stderr.strip() if result.stderr else 'Unknown error occurred'
-            return jsonify({
-                'success': False,
-                'error': f'Error mounting drive: {error_msg}',
-                'details': 'Please ensure the drive is not in use and try again.'
-            })
-
-        # Get UUID of the partition
-        uuid_result = subprocess.run(['blkid', '-s', 'UUID', '-o', 'value', drive], capture_output=True, text=True)
-        if uuid_result.returncode != 0:
-            return jsonify({
-                'success': False,
-                'error': 'Failed to get drive UUID',
-                'details': 'Could not determine the drive UUID. Please try again.'
-            })
-        
-        uuid = uuid_result.stdout.strip()
-
-        # Get USB ID of the drive (if available)
-        try:
-            usb_logger = logging.getLogger(__name__)
-            usb_id = ""
-            # Find sysfs path for the block device
-            sys_block_path = f"/sys/class/block/{os.path.basename(drive)}/device"
-            parent = os.path.realpath(sys_block_path)
-            usb_logger.info(f"Starting sysfs walk for USB ID from: {parent}")
-            while parent != "/":
-                id_vendor_path = os.path.join(parent, "idVendor")
-                id_product_path = os.path.join(parent, "idProduct")
-                if os.path.isfile(id_vendor_path) and os.path.isfile(id_product_path):
-                    with open(id_vendor_path) as f:
-                        vendor = f.read().strip()
-                    with open(id_product_path) as f:
-                        product = f.read().strip()
-                    usb_id = f"{vendor}:{product}"
-                    usb_logger.info(f"Found USB ID at {parent}: {usb_id}")
-                    break
-                parent = os.path.dirname(parent)
-            if not usb_id:
-                usb_logger.info("USB ID not found, likely not a USB device or not detected.")
-        except Exception as e:
-            usb_logger.error(f"Error getting USB ID: {e}")
-            usb_id = ""
-
-        # Add to fstab if auto_mount is enabled
-        if auto_mount:
-            fstab_entry = f"UUID={uuid}\t\t{mount_point}\tntfs-3g\tdefaults,nofail\t0\t0 # SimpleSaferServer\n"
-            with open('/etc/fstab', 'a') as f:
-                f.write(fstab_entry)
-
-        # Save to config using ConfigManager
-        config_manager.set_value('backup', 'mount_point', mount_point)
-        config_manager.set_value('backup', 'uuid', uuid)
-        config_manager.set_value('backup', 'usb_id', usb_id)  # Empty string means not a USB device or not detected
-        
-        # Verify the config was saved
-        current_config = config_manager.get_all_config()
-        logger.info(f"Current config after mounting: {current_config}")
-
-        return jsonify({
-            'success': True,
-            'message': f'Successfully mounted {drive} at {mount_point}'
-        })
-
+        result = apply_backup_drive_configuration(
+            partition,
+            mount_point,
+            auto_mount,
+            config_manager,
+            smb_manager,
+            runtime=runtime,
+        )
+        logger.info(f"Current config after mounting: {config_manager.get_all_config()}")
+        return jsonify({'success': True, 'message': result['message']})
+    except BackupDriveSetupError as e:
+        return jsonify({'success': False, 'error': str(e), 'details': e.details})
     except Exception as e:
         logger.error(f"Error mounting drive: {str(e)}")
         return jsonify({
@@ -448,6 +362,7 @@ def mount_drive():
         })
 
 @setup.route('/api/setup/rclone', methods=['POST'])
+@setup_api_access_required
 def setup_rclone():
     """Set up rclone configuration"""
     try:
@@ -471,6 +386,7 @@ def setup_rclone():
         return jsonify({'success': False, 'error': str(e)})
 
 @setup.route('/api/setup/email', methods=['POST'])
+@setup_api_access_required
 def setup_email():
     """Set up email configuration"""
     try:
@@ -505,6 +421,7 @@ def setup_email():
         return jsonify({'success': False, 'error': str(e)})
 
 @setup.route('/api/setup/schedule', methods=['POST'])
+@setup_api_access_required
 def save_schedule():
     """Save the backup schedule configuration"""
     try:
@@ -656,6 +573,7 @@ def setup_smb_share(config):
         return False, str(e)
 
 @setup.route('/api/setup/complete', methods=['POST'])
+@setup_api_access_required
 def complete_setup():
     """Complete the setup process"""
     try:
@@ -723,6 +641,7 @@ def complete_setup():
         })
 
 @setup.route('/api/setup/system', methods=['POST'])
+@setup_api_access_required
 def setup_system_info():
     """Save system-level info such as username and server name"""
     try:
@@ -741,6 +660,7 @@ def setup_system_info():
         return jsonify({'success': False, 'error': str(e)}) 
 
 @setup.route('/api/setup/mega/connect', methods=['POST'])
+@setup_api_access_required
 def mega_connect():
     """Authenticate with MEGA and list folders using rclone."""
     try:
@@ -779,6 +699,7 @@ pass = {obscured_pw}
         return jsonify({'success': False, 'error': f'Error connecting to MEGA: {str(e)}'})
 
 @setup.route('/api/setup/mega/list_folders', methods=['POST'])
+@setup_api_access_required
 def mega_list_folders():
     """List folders at a given MEGA path using rclone."""
     try:
@@ -818,6 +739,7 @@ pass = {obscured_pw}
         return jsonify({'error': f'Error listing MEGA folders: {str(e)}'})
 
 @setup.route('/api/setup/mega/create_folder', methods=['POST'])
+@setup_api_access_required
 def mega_create_folder_picker():
     """Create a new folder at a given MEGA path using rclone."""
     try:
@@ -855,6 +777,7 @@ pass = {obscured_pw}
         return jsonify({'error': f'Error creating folder: {str(e)}'})
 
 @setup.route('/api/setup/mega/save', methods=['POST'])
+@setup_api_access_required
 def mega_save():
     """Save MEGA config (obscured password, selected folder) securely and write rclone config."""
     try:

@@ -1,3 +1,4 @@
+import shutil
 import subprocess
 import json
 import logging
@@ -168,7 +169,9 @@ account default : simplesaferserver
             # Create destination directory if it doesn't exist
             scripts_dest_dir.mkdir(parents=True, exist_ok=True)
             
-            # Copy and configure each script
+            # Copy each script as-is. The scripts read live values from
+            # /etc/SimpleSaferServer/config.conf, so templating them here can
+            # accidentally bake stale UUID/USB_ID values into the installed copy.
             script_files = ['check_mount.sh', 'check_health.sh', 'check_health.py', 'backup_cloud.sh', 'predict_health.py', 'log_alert.py']
             
             for script_file in script_files:
@@ -179,14 +182,7 @@ account default : simplesaferserver
                     self.logger.warning(f"Script file not found: {source_path}")
                     continue
                 
-                # Read the script content
-                script_content = source_path.read_text()
-                
-                # Replace configuration variables in the script
-                script_content = self._configure_script(script_content, config)
-                
-                # Write the configured script
-                dest_path.write_text(script_content)
+                shutil.copy2(source_path, dest_path)
                 dest_path.chmod(0o755)  # Make executable
                 
                 self.logger.info(f"Installed script: {dest_path}")
@@ -196,41 +192,6 @@ account default : simplesaferserver
         except Exception as e:
             self.logger.error(f"Error installing systemd scripts: {e}")
             return False, str(e)
-
-    def _configure_script(self, script_content, config):
-        """Configure script content with the current configuration"""
-        try:
-            # Extract configuration values
-            backup_config = config.get('backup', {})
-            system_config = config.get('system', {})
-            
-            mount_point = backup_config.get('mount_point', '/media/backup')
-            uuid = backup_config.get('uuid', '')
-            usb_id = backup_config.get('usb_id', '')
-            email_address = backup_config.get('email_address', '')
-            rclone_dir = backup_config.get('rclone_dir', '')
-            bandwidth_limit = backup_config.get('bandwidth_limit', '')
-            server_name = system_config.get('server_name', 'SimpleSaferServer')
-            
-            # Replace variables in the script
-            replacements = {
-                'MOUNT_POINT': mount_point,
-                'UUID': uuid,
-                'USB_ID': usb_id,
-                'EMAIL_ADDRESS': email_address,
-                'RCLONE_DIR': rclone_dir,
-                'BANDWIDTH_LIMIT': bandwidth_limit,
-                'SERVER_NAME': server_name
-            }
-            
-            for var_name, value in replacements.items():
-                script_content = script_content.replace(f'${var_name}', str(value))
-            
-            return script_content
-            
-        except Exception as e:
-            self.logger.error(f"Error configuring script: {e}")
-            return script_content
 
     def create_systemd_config_file(self, config):
         """Create the /etc/SimpleSaferServer/config.conf file for scripts and Python (INI format)"""

@@ -43,6 +43,7 @@ set -e
 
 APP_DIR="/opt/SimpleSaferServer"
 SCRIPTS_DIR="$APP_DIR/scripts"
+BIN_DIR="/usr/local/bin"
 MODEL_DIR="/opt/SimpleSaferServer/harddrive_model"
 VENV_DIR="$APP_DIR/venv"
 SERVICE_FILE="/etc/systemd/system/simple_safer_server_web.service"
@@ -164,14 +165,17 @@ if ! "$VENV_DIR/bin/pip" install -r "$APP_DIR/requirements-ml.txt"; then
 fi
 echo -e "${GREEN}✔ Python virtualenv ready at $VENV_DIR.${NC}\n"
 
-# 7. Copy scripts to /opt/SimpleSaferServer/scripts and set permissions
+# 7. Copy scripts to /opt/SimpleSaferServer/scripts and /usr/local/bin
 echo -e "${YELLOW}Step 7: Installing scripts...${NC}"
 mkdir -p "$SCRIPTS_DIR"
+mkdir -p "$BIN_DIR"
 for script in scripts/*.sh scripts/*.py; do
   cp "$script" "$SCRIPTS_DIR/"
   chmod +x "$SCRIPTS_DIR/$(basename $script)"
+  cp "$script" "$BIN_DIR/"
+  chmod +x "$BIN_DIR/$(basename $script)"
 done
-echo -e "${GREEN}✔ Scripts installed to $SCRIPTS_DIR.${NC}\n"
+echo -e "${GREEN}✔ Scripts installed to $SCRIPTS_DIR and $BIN_DIR.${NC}\n"
 
 # 8. Copy model files
 echo -e "${YELLOW}Step 8: Copying model files...${NC}"

@@ -23,6 +23,10 @@ except (ImportError, OSError):
 
 
 LOGGER = logging.getLogger(__name__)
+SMARTCTL_JSON_UPGRADE_MESSAGE = (
+    "The installed smartctl version does not support JSON output required for SMART-based health prediction. "
+    "Upgrade smartmontools on this machine to enable SMART prediction."
+)
 
 SMART_FIELDS = {
     "smart_1_raw": {
@@ -120,6 +124,20 @@ def get_fake_smart_attributes():
     return attrs, []
 
 
+def get_smartctl_json_support():
+    # Do not cache this result across the whole process. Operators can install
+    # or upgrade smartmontools while the web service keeps running, and a stale
+    # negative result would keep blocking SMART reads until restart.
+    if not shutil.which("smartctl"):
+        return False, "smartctl is not installed on this machine."
+
+    result = subprocess.run(["smartctl", "-h"], capture_output=True, text=True)
+    help_output = "\n".join(part for part in [result.stdout, result.stderr] if part)
+    if "-j" in help_output or "--json" in help_output:
+        return True, None
+    return False, SMARTCTL_JSON_UPGRADE_MESSAGE
+
+
 @lru_cache(maxsize=1)
 def _load_model_and_threshold(model_path: str, threshold_path: str):
     if XGBClassifier is None or joblib is None:
@@ -208,25 +226,53 @@ def resolve_backup_parent_device(config_manager, system_utils, runtime=None):
 def get_smart_attributes(config_manager, system_utils, device=None, runtime=None):
     runtime = runtime or get_runtime()
     if runtime.is_fake:
-        return get_fake_smart_attributes()
+        attrs, missing = get_fake_smart_attributes()
+        return attrs, missing, None
 
     try:
+        smartctl_json_supported, smartctl_json_error = get_smartctl_json_support()
+        if not smartctl_json_supported:
+            LOGGER.warning(smartctl_json_error)
+            return None, None, smartctl_json_error
+
         if device is None:
             device, _, error = resolve_backup_parent_device(config_manager, system_utils, runtime=runtime)
             if error:
                 LOGGER.warning(error)
-                return None, None
+                return None, None, error
 
         command = ["smartctl", "-A", "-j", device]
         if os.geteuid() != 0 and shutil.which("sudo"):
             command.insert(0, "sudo")
-        result = subprocess.run(command, capture_output=True, text=True, check=True)
-        data = json.loads(result.stdout)
+
+        result = subprocess.run(command, capture_output=True, text=True)
+        stdout = (result.stdout or "").strip()
+        stderr = (result.stderr or "").strip()
+
+        if not stdout:
+            error_message = stderr or "smartctl returned no JSON output"
+            LOGGER.warning("Failed to retrieve SMART JSON: %s", error_message)
+            return None, None, error_message
+
+        data = json.loads(stdout)
+
+        smart_table = data.get("ata_smart_attributes", {}).get("table")
+        if result.returncode != 0 and not smart_table:
+            # Some smartctl failures still emit valid JSON, but without the ATA
+            # SMART table we need for prediction. Treat that as a read failure
+            # instead of silently falling back to model defaults.
+            error_message = (
+                stderr
+                or data.get("smartctl", {}).get("messages", [{}])[0].get("string")
+                or "smartctl could not retrieve SMART attributes"
+            )
+            LOGGER.warning("Failed to retrieve SMART JSON: %s", error_message)
+            return None, None, error_message
 
         attrs = {field: info["default"] for field, info in SMART_FIELDS.items()}
         missing_attrs = set(SMART_FIELDS.keys())
 
-        for item in data.get("ata_smart_attributes", {}).get("table", []):
+        for item in smart_table or []:
             field_name = f"smart_{item['id']}_raw"
             if field_name not in SMART_FIELDS:
                 continue
@@ -239,16 +285,22 @@ def get_smart_attributes(config_manager, system_utils, device=None, runtime=None
             except (ValueError, KeyError, TypeError):
                 LOGGER.warning("Could not parse SMART value for %s", field_name)
 
-        return attrs, list(missing_attrs)
-    except subprocess.CalledProcessError as exc:
-        LOGGER.warning("Failed to execute smartctl: %s", exc)
-        return None, None
+        return attrs, list(missing_attrs), None
     except json.JSONDecodeError as exc:
         LOGGER.warning("Failed to parse smartctl JSON output: %s", exc)
-        return None, None
+        # We only surface the upgrade warning from the explicit capability
+        # check above. If `-j` is advertised but this invocation still emits
+        # malformed or plain-text output, that usually points to a device,
+        # bridge, or transport problem rather than an outdated binary.
+        error_message = (
+            locals().get("stderr")
+            or locals().get("stdout")
+            or f"Failed to parse smartctl JSON output: {exc}"
+        )
+        return None, None, error_message
     except Exception as exc:
         LOGGER.warning("Unexpected SMART read error: %s", exc)
-        return None, None
+        return None, None, str(exc)
 
 
 def append_telemetry(data_dict, prediction, runtime=None):
@@ -563,7 +615,10 @@ def collect_hdsentinel_snapshot(config_manager, system_utils, runtime=None, devi
             report_text = report_path.read_text(errors="replace")
             report_data = parse_hdsentinel_report(report_text)
     finally:
-        report_path.unlink(missing_ok=True)
+        try:
+            report_path.unlink()
+        except FileNotFoundError:
+            pass
 
     snapshot.update(solid_data)
     for key, value in report_data.items():
@@ -690,18 +745,33 @@ def run_scheduled_drive_health_check(config_manager, system_utils, runtime=None)
         )
         raise RuntimeError(error)
 
-    smart, missing_attrs = get_smart_attributes(
+    smart, missing_attrs, smart_error = get_smart_attributes(
         config_manager,
         system_utils,
         device=device,
         runtime=runtime,
     )
     if smart is None:
-        message = f"Could not retrieve SMART data from {device}."
+        hdsentinel_result = run_hdsentinel_health_monitor(config_manager, system_utils, runtime=runtime)
+        if smart_error == SMARTCTL_JSON_UPGRADE_MESSAGE and hdsentinel_result.get("snapshot", {}).get("available"):
+            LOGGER.warning(smart_error)
+            return {
+                "device": device,
+                "smart": None,
+                "missing_attrs": None,
+                "probability": None,
+                "prediction": None,
+                "threshold": get_optimal_threshold(runtime),
+                "hdsentinel": hdsentinel_result,
+                "smart_warning": smart_error,
+            }
+
+        message = smart_error or f"Could not retrieve SMART data from {device}."
+        LOGGER.warning("Drive health check could not retrieve SMART data: %s", message)
         _log_and_email_alert(
             config_manager,
             runtime,
-            "Drive Health Check Failed - No SMART Data",
+            "Drive Health Check Failed - SMART Read Error",
             message,
             alert_type="error",
             source="check_health",

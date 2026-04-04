@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 import logging
 from functools import wraps
-from flask import session, redirect, url_for, flash
+from flask import session, redirect, url_for, flash, jsonify
 import re
 import os
 import datetime
@@ -307,4 +307,28 @@ def admin_required(f):
             flash('Admin privileges required', 'error')
             return redirect(url_for('dashboard'))
         return f(*args, **kwargs)
-    return decorated_function 
+    return decorated_function
+
+
+def api_login_required(f):
+    """Decorator to require login for JSON API routes"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'username' not in session:
+            return jsonify({'success': False, 'error': 'Please log in again.'}), 401
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+def api_admin_required(f):
+    """Decorator to require admin privileges for JSON API routes"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'username' not in session:
+            return jsonify({'success': False, 'error': 'Please log in again.'}), 401
+
+        user_manager = UserManager()
+        if not user_manager.is_admin(session['username']):
+            return jsonify({'success': False, 'error': 'Admin privileges required.'}), 403
+        return f(*args, **kwargs)
+    return decorated_function

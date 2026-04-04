@@ -6,14 +6,27 @@ import json
 import os
 import queue
 import threading
+from dashboard_messages import build_dashboard_unmount_success_message
+from backup_drive_setup import (
+    BackupDriveSetupError,
+    apply_backup_drive_configuration,
+    list_available_drives,
+    unmount_selected_partition,
+)
+from backup_drive_unmount import (
+    is_selected_partition_managed_backup_drive,
+    unmount_managed_backup_drive,
+)
 from config_manager import ConfigManager
 from drive_health import (
+    SMARTCTL_JSON_UPGRADE_MESSAGE,
     SMART_FIELDS,
     append_telemetry,
     collect_hdsentinel_snapshot,
     get_hdsentinel_display_snapshot,
     get_hdsentinel_settings,
     get_optimal_threshold,
+    get_smartctl_json_support,
     get_smart_attributes,
     predict_failure_probability,
     run_scheduled_drive_health_check,
@@ -21,7 +34,7 @@ from drive_health import (
 )
 from setup_wizard import setup, install_systemd_tasks
 import logging
-from user_manager import UserManager, login_required, admin_required
+from user_manager import UserManager, login_required, admin_required, api_login_required, api_admin_required
 from flask_socketio import SocketIO
 from logging.handlers import RotatingFileHandler
 import sys
@@ -554,51 +567,49 @@ def run_task(task_name):
         return jsonify({"success": False, "message": str(e)}), 500
 
 
+def _get_check_mount_next_run():
+    check_mount_task = get_task('Check Mount')
+    if not check_mount_task:
+        return None
+    return check_mount_task.next_run
+
+
 # API route for unmounting storage
 @app.route("/unmount", methods=["POST"])
 @login_required
 def unmount():
     mount_point = config_manager.get_value('backup', 'mount_point', runtime.default_mount_point)
+    configured_uuid = config_manager.get_value('backup', 'uuid', None)
     try:
         if runtime.is_fake:
             fake_state.set_mount(False)
             fake_state.append_task_log('Check Mount', f'Backup source disconnected from {mount_point}.')
-            return jsonify({"success": True, "message": "Local backup source disconnected."})
+            return jsonify({
+                "success": True,
+                "message": build_dashboard_unmount_success_message(
+                    'Local backup source disconnected.',
+                    _get_check_mount_next_run(),
+                    availability_phrase='stays available',
+                    remount_verb='reconnect',
+                ),
+            })
 
-        # 1. Disconnect all SMB users (if possible)
-        try:
-            subprocess.run(["sudo", "smbcontrol", "all", "close-share", mount_point], check=False)
-        except Exception:
-            pass  # Ignore errors, just try to close sessions
-        # 2. Stop all systemd tasks
-        for service in ["check_mount.service", "check_health.service", "backup_cloud.service"]:
-            subprocess.run(["sudo", "systemctl", "stop", service], check=False)
-        # 3. Stop smbd and nmbd
-        subprocess.run(["sudo", "systemctl", "stop", "smbd"], check=False)
-        subprocess.run(["sudo", "systemctl", "stop", "nmbd"], check=False)
-        # 4. Unmount the drive
-        subprocess.run(["sudo", "umount", mount_point], check=True)
-        # 5. Power down the drive (try hdparm, ignore errors if not supported)
-        try:
-            uuid = config_manager.get_value('backup', 'uuid', None)
-            if uuid:
-                blkid_out = subprocess.run(['blkid', '-t', f'UUID={uuid}', '-o', 'device'], capture_output=True, text=True)
-                partition_device = blkid_out.stdout.strip()
-                if partition_device:
-                    parent_device = system_utils.get_parent_device(partition_device)
-                    if parent_device:
-                        subprocess.run(["sudo", "hdparm", "-y", parent_device], check=False)
-        except Exception:
-            pass
-        # 6. Start smbd and nmbd again so network file sharing is available
-        try:
-            subprocess.run(["sudo", "systemctl", "start", "smbd"], check=False)
-            subprocess.run(["sudo", "systemctl", "start", "nmbd"], check=False)
-        except Exception:
-            pass
-        return jsonify({"success": True, "message": "Drive unmounted and powered down. It is now safe to remove the drive."})
-    except subprocess.CalledProcessError as e:
-        return jsonify({"success": False, "message": f"Failed to unmount drive: {e}"}), 500
+        unmount_managed_backup_drive(
+            mount_point,
+            configured_uuid,
+            system_utils,
+            runtime=runtime,
+            power_down=True,
+        )
+        return jsonify({
+            "success": True,
+            "message": build_dashboard_unmount_success_message(
+                'Drive unmounted and powered down. It is now safe to remove the drive.',
+                _get_check_mount_next_run(),
+            ),
+        })
+    except BackupDriveSetupError as e:
+        return jsonify({"success": False, "message": str(e)}), 500
     except Exception as e:
         return jsonify({"success": False, "message": f"Unexpected error: {e}"}), 500
 
@@ -656,6 +667,12 @@ def drives():
         'usb_id': config_manager.get_value('backup', 'usb_id', ''),
     }
 
+    smart_support_warning = None
+    if not runtime.is_fake:
+        smartctl_json_supported, smartctl_json_error = get_smartctl_json_support()
+        if not smartctl_json_supported:
+            smart_support_warning = smartctl_json_error
+
     if request.method == "POST":
         form_action = request.form.get("form_action", "run_health_check")
         if form_action == "save_hdsentinel_settings":
@@ -677,36 +694,17 @@ def drives():
                 settings_message = "HDSentinel settings saved successfully."
             except Exception as exc:
                 settings_error = f"Failed to save HDSentinel settings: {exc}"
-        elif form_action == "save_drive_identifiers":
-            mount_point = request.form.get("mount_point", "").strip()
-            uuid = request.form.get("uuid", "").strip()
-            usb_id = request.form.get("usb_id", "").strip()
-
-            if not mount_point:
-                settings_error = "Mount point is required."
-            elif not uuid:
-                settings_error = "Drive UUID is required."
-            else:
-                try:
-                    config_manager.set_value('backup', 'mount_point', mount_point)
-                    config_manager.set_value('backup', 'uuid', uuid)
-                    config_manager.set_value('backup', 'usb_id', usb_id)
-                    drive_config = {
-                        'mount_point': mount_point,
-                        'uuid': uuid,
-                        'usb_id': usb_id,
-                    }
-                    settings_message = "Backup drive identification saved successfully."
-                except Exception as exc:
-                    settings_error = f"Failed to save backup drive identification: {exc}"
         else:
-            smart, missing_attrs = get_smart_attributes(
+            smart, missing_attrs, smart_error = get_smart_attributes(
                 config_manager,
                 system_utils,
                 runtime=runtime,
             )
             if smart is None:
-                error = "Could not retrieve SMART data"
+                if smart_error == SMARTCTL_JSON_UPGRADE_MESSAGE:
+                    smart_support_warning = smart_error
+                else:
+                    error = smart_error or "Could not retrieve SMART data"
             else:
                 prob = predict_failure_probability(smart, runtime=runtime)
                 if prob is not None:
@@ -723,6 +721,9 @@ def drives():
                     runtime=runtime,
                 )
 
+    # The normal web UI login path is admin-only, and the backup-drive APIs
+    # still enforce admin on every request. Keep this section visible here so
+    # the first post-setup session cannot be tripped up by stale user state.
     return render_template(
         "drive_health.html",
         smart=smart,
@@ -734,6 +735,7 @@ def drives():
         hdsentinel_settings=hdsentinel_settings,
         hdsentinel_snapshot=hdsentinel_snapshot,
         drive_config=drive_config,
+        smart_support_warning=smart_support_warning,
         settings_message=settings_message,
         settings_error=settings_error,
     )
@@ -744,6 +746,8 @@ def drives():
 def download_telemetry():
     if runtime.telemetry_path.exists():
         return send_file(runtime.telemetry_path, as_attachment=True)
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({"success": False, "error": "Telemetry has not been generated yet. Run a health check first."}), 404
     abort(404)
 
 
@@ -1394,9 +1398,9 @@ def api_storage_status():
 @login_required
 def api_drive_health_summary():
     try:
-        smart, missing_attrs = get_smart_attributes(config_manager, system_utils, runtime=runtime)
+        smart, missing_attrs, smart_error = get_smart_attributes(config_manager, system_utils, runtime=runtime)
         if smart is None:
-            return jsonify({'status': 'unknown', 'probability': None, 'temperature': None})
+            return jsonify({'status': 'unknown', 'probability': None, 'temperature': None, 'error': smart_error})
         prob = predict_failure_probability(smart, runtime=runtime)
         if prob is not None:
             temperature = smart.get('smart_194_raw', None)
@@ -1503,6 +1507,80 @@ def api_tasks_schedule():
         return jsonify({'tasks': tasks})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/backup_drive/drives', methods=['GET'])
+@api_login_required
+@api_admin_required
+def api_backup_drive_drives():
+    try:
+        return jsonify({'success': True, 'drives': list_available_drives(runtime=runtime, ntfs_only=True)})
+    except Exception as e:
+        current_app.logger.error(f"Error listing backup drives: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/backup_drive/unmount', methods=['POST'])
+@api_login_required
+@api_admin_required
+def api_backup_drive_unmount():
+    try:
+        data = request.get_json() or {}
+        partition = data.get('partition')
+        configured_mount_point = config_manager.get_value('backup', 'mount_point', runtime.default_mount_point)
+        configured_uuid = config_manager.get_value('backup', 'uuid', '')
+
+        if is_selected_partition_managed_backup_drive(
+            partition,
+            configured_mount_point,
+            configured_uuid,
+            system_utils,
+            runtime=runtime,
+        ):
+            unmount_managed_backup_drive(
+                configured_mount_point,
+                configured_uuid,
+                system_utils,
+                runtime=runtime,
+                power_down=False,
+            )
+            message = build_dashboard_unmount_success_message(
+                'Configured backup drive unmounted so backup drive setup can continue.',
+                _get_check_mount_next_run(),
+            )
+        else:
+            message = unmount_selected_partition(partition, runtime=runtime)
+        return jsonify({'success': True, 'message': message})
+    except BackupDriveSetupError as e:
+        return jsonify({'success': False, 'error': str(e), 'details': e.details})
+    except Exception as e:
+        current_app.logger.error(f"Error unmounting backup drive: {e}")
+        return jsonify({'success': False, 'error': 'Could not unmount the selected drive.'})
+
+
+@app.route('/api/backup_drive/configure', methods=['POST'])
+@api_login_required
+@api_admin_required
+def api_backup_drive_configure():
+    try:
+        data = request.get_json() or {}
+        result = apply_backup_drive_configuration(
+            data.get('partition'),
+            data.get('mount_point'),
+            # Rerun setup always refreshes the managed fstab entry with the
+            # boot-safe defaults,nofail policy. The UI intentionally exposes no
+            # opt-out here.
+            True,
+            config_manager,
+            smb_manager,
+            runtime=runtime,
+        )
+        return jsonify({'success': True, 'result': result})
+    except BackupDriveSetupError as e:
+        return jsonify({'success': False, 'error': str(e), 'details': e.details})
+    except Exception as e:
+        current_app.logger.error(f"Error configuring backup drive: {e}")
+        return jsonify({'success': False, 'error': 'Could not configure the backup drive.'})
 
 @app.route('/api/cloud_backup/config', methods=['GET'])
 @login_required

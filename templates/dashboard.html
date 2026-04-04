@@ -129,12 +129,8 @@
   <div class="d-flex gap-3 flex-wrap">
     <div id="drive-action-slot">
       {% if mount_info and mount_info.is_mounted %}
-      <form method="post" action="{{ url_for('unmount') }}" class="d-inline dashboard-action-form" data-success-action="refresh-drive-ui">
-        <button type="submit" class="btn btn-warning btn-sm"
-          data-confirm="Are you sure you want to unmount the backup drive?"
-          data-confirm-title="Unmount Drive"
-          data-confirm-button="Unmount"
-          data-confirm-class="btn-warning">
+      <form method="post" action="{{ url_for('unmount') }}" class="d-inline dashboard-action-form" data-success-action="refresh-drive-ui" data-dashboard-unmount="true">
+        <button type="submit" class="btn btn-warning btn-sm">
           <i class="fas fa-eject me-1"></i> Unmount Drive
         </button>
       </form>
@@ -187,7 +183,10 @@ document.addEventListener('DOMContentLoaded', function() {
   const tasksBody = document.getElementById('tasks-body');
   const taskContextMenu = document.getElementById('taskContextMenu');
   const driveActionSlot = document.getElementById('drive-action-slot');
+  const taskScheduleByName = new Map();
   let activeContextTaskName = null;
+
+  rememberTaskSchedule({{ tasks | tojson }});
 
   function escapeHtml(value) {
     return String(value ?? '')
@@ -206,6 +205,50 @@ document.addEventListener('DOMContentLoaded', function() {
     if (status === 'Not Run Yet') return '<span class="badge badge-neutral"><i class="fas fa-clock"></i> Not Run Yet</span>';
     if (status === 'Stopped') return '<span class="badge badge-neutral"><i class="fas fa-circle-stop"></i> Stopped</span>';
     return `<span class="badge badge-warning">${escapeHtml(status || 'Unknown')}</span>`;
+  }
+
+  function rememberTaskSchedule(tasks) {
+    taskScheduleByName.clear();
+    (tasks || []).forEach((task) => {
+      if (task && task.name) {
+        taskScheduleByName.set(task.name, task);
+      }
+    });
+  }
+
+  function getDashboardUnmountCountdownText() {
+    const checkMountTask = taskScheduleByName.get('Check Mount');
+    const nextRun = checkMountTask && checkMountTask.next_run ? checkMountTask.next_run : '';
+    const parsed = window.parseServerDateTime(nextRun);
+    if (!parsed || parsed.getTime() <= Date.now()) {
+      return '';
+    }
+
+    return window.formatRelativeTimestamp(nextRun, {
+      fallback: '',
+      futurePrefix: false
+    });
+  }
+
+  function getDashboardUnmountConfirmationMessage() {
+    const countdown = getDashboardUnmountCountdownText();
+    // The configured backup drive stays app-managed here, so unmount only buys
+    // enough time for a safe removal or swap before Check Mount notices it again.
+    if (countdown) {
+      return `This unmounts the configured backup drive temporarily.
+
+If it stays connected, SimpleSaferServer will remount it
+automatically during the next 'Check Mount' run (in about ${countdown}).
+
+Remove the drive now if you do not want it mounted again.`;
+    }
+
+    return `This unmounts the configured backup drive temporarily.
+
+If it stays connected, SimpleSaferServer will remount it
+automatically during the next scheduled 'Check Mount' run.
+
+Remove the drive now if you do not want it mounted again.`;
   }
 
   function renderTaskRow(task) {
@@ -310,6 +353,7 @@ document.addEventListener('DOMContentLoaded', function() {
         throw new Error(data.error || 'Could not refresh task schedule.');
       }
 
+      rememberTaskSchedule(data.tasks);
       tasksBody.innerHTML = '';
       data.tasks.forEach(task => tasksBody.appendChild(renderTaskRow(task)));
       bindInteractiveRows();
@@ -323,12 +367,8 @@ document.addEventListener('DOMContentLoaded', function() {
     if (!driveActionSlot) return;
 
     driveActionSlot.innerHTML = isMounted
-      ? `<form method="post" action="{{ url_for('unmount') }}" class="d-inline dashboard-action-form" data-success-action="refresh-drive-ui">
-          <button type="submit" class="btn btn-warning btn-sm"
-            data-confirm="Are you sure you want to unmount the backup drive?"
-            data-confirm-title="Unmount Drive"
-            data-confirm-button="Unmount"
-            data-confirm-class="btn-warning">
+      ? `<form method="post" action="{{ url_for('unmount') }}" class="d-inline dashboard-action-form" data-success-action="refresh-drive-ui" data-dashboard-unmount="true">
+          <button type="submit" class="btn btn-warning btn-sm">
             <i class="fas fa-eject me-1"></i> Unmount Drive
           </button>
         </form>`
@@ -377,6 +417,19 @@ document.addEventListener('DOMContentLoaded', function() {
       form.addEventListener('submit', async (event) => {
         event.preventDefault();
         const submitButton = form.querySelector('button[type="submit"]');
+        const isDashboardUnmount = form.dataset.dashboardUnmount === 'true';
+
+        if (isDashboardUnmount) {
+          const confirmed = await window.showConfirmationDialog({
+            title: 'Unmount Drive',
+            message: getDashboardUnmountConfirmationMessage(),
+            confirmLabel: 'Unmount',
+            confirmClass: 'btn-warning'
+          });
+          if (!confirmed) {
+            return;
+          }
+        }
 
         if (submitButton) {
           window.AsyncButtonState.start(submitButton);

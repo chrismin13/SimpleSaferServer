@@ -15,13 +15,17 @@ Four cards display real-time status:
 - **Refresh**: Button to reload the task schedule.
 
 ## System Actions
-- **Unmount Storage**: Opens a modal to confirm and unmount the storage drive.
+- **Unmount Storage**: Opens a modal to confirm a temporary unmount of the configured backup drive.
+- Before unmounting, the app best-effort closes SMB sessions and stops the related background tasks so Samba does not keep the backup share busy.
+- If the backup drive stays connected, SimpleSaferServer may remount it automatically during the next scheduled `Check Mount` run.
+- When the next `Check Mount` run is available, the confirmation dialog explains the remount timing as a relative countdown so the user knows how long they have to remove or swap the drive.
 - **Mount Storage**: Opens a modal to mount the storage drive.
 - **Restart System**: Opens a modal to confirm and restart the system.
 - **Shutdown System**: Opens a modal to confirm and shut down the system.
 
 ## Modals
-- **Unmount, Mount, Restart, Shutdown**: Each action temporarily disables its button and uses existing completion/error messaging.
+- **Unmount, Mount, Restart, Shutdown**: Each action temporarily disables its button and uses completion/error messaging.
+- The unmount success message repeats that the dashboard action is temporary. That reminder matters because the app still manages the configured backup drive through its mount checks and `/etc/fstab` entry.
 
 ## Live Updates
 - Status cards and system resources update live using background API calls.
