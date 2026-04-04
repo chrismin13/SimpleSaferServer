@@ -27,6 +27,8 @@ This step is disk-oriented.
 - The selector shows disks, not partitions.
 - The selector intentionally detects eligible non-system disks whether they are blank, already formatted, or currently formatted with the wrong filesystem.
 - The unmount button unmounts every currently mounted partition that belongs to the selected disk.
+- That unmount action only clears live mounts so the format step can proceed safely.
+- It does not clear the saved backup-drive config and it does not remove the SimpleSaferServer-managed `/etc/fstab` entry.
 - The format button creates a single partition if needed and formats that partition as NTFS.
 - Formatting erases all existing data on the selected disk.
 
@@ -45,8 +47,15 @@ This step is partition-oriented.
 - If a mounted `ntfs-3g` partition shows up from `lsblk` as `fuseblk`, the wizard verifies the underlying on-disk type with `blkid` before treating it as NTFS.
 - Partitions reported as `ntfs3`, `ntfs-3g`, or confirmed-NTFS `fuseblk` are all exposed to the wizard as NTFS mount targets.
 - The unmount button unmounts only the exact selected partition.
+- That unmount action is temporary preparation for this step. It does not deconfigure the old backup drive by itself.
 - The mount button mounts that selected NTFS partition at the chosen mount point.
 - Advanced options allow changing the mount point and whether the managed `/etc/fstab` entry should be present.
+
+Persistent backup-drive state changes only when the mount/configure step succeeds:
+
+- `backup.mount_point`, `backup.uuid`, and `backup.usb_id` stay unchanged until a new backup-drive setup is applied successfully.
+- The SimpleSaferServer-managed `/etc/fstab` entry is updated only when the new setup is applied.
+- If the old backup drive is still the configured backup source and it remains connected, `Check Mount` may mount it again after an unmount-only step.
 
 That NTFS-only scan is shared with the backup-drive rerun flow on Drive Health.
 This is worth calling out because the setup wizard and the rerun flow need to

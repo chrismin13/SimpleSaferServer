@@ -46,6 +46,7 @@ This flow is partition-oriented.
 - If `lsblk` reports a mounted `ntfs-3g` partition as `fuseblk`, the app double-checks the on-disk type with `blkid` before showing it.
 - Partitions reported as `ntfs3`, `ntfs-3g`, or confirmed-NTFS `fuseblk` are treated as NTFS backup targets by the picker.
 - The unmount action unmounts only the exact selected partition.
+- That unmount action only clears the live mount so the selected partition can be validated and configured again.
 - The configure action mounts only the exact selected partition.
 
 This is different from setup wizard step 2, which is disk-oriented for formatting.
@@ -55,6 +56,7 @@ It is also different from the main Dashboard `Unmount Drive` action.
 - Dashboard unmount is temporary for the configured backup drive.
 - If that drive stays connected, SimpleSaferServer may remount it automatically during the next scheduled `Check Mount` run.
 - The Drive Health unmount button exists to clear the selected partition so the rerun flow can mount and validate the exact partition you picked.
+- The Drive Health unmount button does not clear the stored backup `mount_point`, `uuid`, `usb_id`, or managed `/etc/fstab` entry by itself.
 
 ## What the Rerun Flow Updates
 
@@ -65,6 +67,9 @@ It is also different from the main Dashboard `Unmount Drive` action.
 - the Samba backup share path if the mount point changed
 
 The rerun flow always refreshes the managed `/etc/fstab` entry with `defaults,nofail`.
+
+Persistent backup-drive state changes happen only when the rerun configure step succeeds.
+That separation is intentional because a failed replacement attempt should still be able to fall back to the previously configured backup drive.
 
 ## What "SimpleSaferServer-managed" Means
 

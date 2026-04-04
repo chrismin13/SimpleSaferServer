@@ -119,13 +119,14 @@
                             </div>
                             <div id="driveStatusArea" class="d-flex items-center mb-3" style="min-height:1.5rem;font-size:var(--text-sm);"></div>
                             <div class="d-flex gap-3 mb-4">
-                                <button id="unmountDriveBtn" class="btn btn-warning btn-sm" data-confirm="Are you sure you want to unmount this drive? This is required before formatting.">
+                                <button id="unmountDriveBtn" class="btn btn-warning btn-sm" data-confirm="Are you sure you want to unmount this drive? This only clears the current live mounts so formatting can continue. Backup-drive settings, if any, are updated later in the Drive Mount step.">
                                     <i class="fas fa-eject me-1"></i> Unmount
                                 </button>
                                 <button id="formatDriveBtn" class="btn btn-danger btn-sm" data-confirm="Are you sure you want to format this drive? This will erase all data.">
                                     <i class="fas fa-exclamation-triangle me-1"></i> Format Drive
                                 </button>
                             </div>
+                            <div class="form-hint mb-4">Unmount here only removes current live mounts. Backup-drive settings, if any, are applied later when the Drive Mount step succeeds.</div>
                             <div id="formatError" class="text-danger d-none" style="font-size:var(--text-sm);"></div>
                             <div id="formatDetails" class="text-muted d-none" style="font-size:var(--text-xs);"></div>
                             <div class="setup-actions">
@@ -166,13 +167,14 @@
                                 </div>
                             </div>
                             <div class="d-flex gap-2 justify-end mb-4">
-                                <button id="unmountMountDriveBtn" class="btn btn-warning btn-sm" data-confirm="Are you sure you want to unmount this drive?">
+                                <button id="unmountMountDriveBtn" class="btn btn-warning btn-sm" data-confirm="Are you sure you want to unmount this drive? This only clears the current live mount so the selected partition can be configured again. Backup-drive settings are updated only after Mount Drive succeeds.">
                                     <i class="fas fa-eject me-1"></i> Unmount
                                 </button>
                                 <button id="mountDriveBtn" class="btn btn-primary btn-sm" data-confirm="Are you sure you want to mount this drive?">
                                     <i class="fas fa-plug me-1"></i> Mount Drive
                                 </button>
                             </div>
+                            <div class="form-hint mb-4">Unmount here is temporary preparation for mounting the selected partition. Backup-drive settings change only when Mount Drive succeeds.</div>
                             <div id="mountError" class="text-danger d-none" style="font-size:var(--text-sm);"></div>
                             <div id="mountDetails" class="text-muted d-none" style="font-size:var(--text-xs);"></div>
                         </div>
@@ -593,7 +595,9 @@
             try {
                 const response = await fetch('/api/setup/unmount', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ disk }) });
                 const data = await response.json();
-                if (data.success) { window.AsyncButtonState.success(unmountBtn); hideFormatError(); setDriveStatus('Drive unmounted successfully.', 'success'); await loadDrives(); const formatSelect = document.getElementById('formatDriveSelect'); for (let i = 0; i < formatSelect.options.length; i++) { if (formatSelect.options[i].value === disk) { formatSelect.selectedIndex = i; break; } } }
+                // Keep this message explicit because setup unmount only affects
+                // live mounts. Backup-drive settings are applied later.
+                if (data.success) { window.AsyncButtonState.success(unmountBtn); hideFormatError(); setDriveStatus('Drive unmounted. You can continue formatting.', 'success'); await loadDrives(); const formatSelect = document.getElementById('formatDriveSelect'); for (let i = 0; i < formatSelect.options.length; i++) { if (formatSelect.options[i].value === disk) { formatSelect.selectedIndex = i; break; } } }
                 else { window.AsyncButtonState.error(unmountBtn); setDriveStatus('Failed to unmount drive.', 'error'); showFormatError(data.error, data.details); }
             } catch (error) { window.AsyncButtonState.error(unmountBtn); setDriveStatus('An error occurred.', 'error'); showFormatError('An error occurred while unmounting the drive'); }
         }
@@ -643,7 +647,9 @@
             try {
                 const response = await fetch('/api/setup/unmount', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ partition }) });
                 const data = await response.json();
-                if (data.success) { window.AsyncButtonState.success(unmountMountBtn); hideMountError(); setMountStatus('Drive unmounted successfully.', 'success'); await loadDrives(); }
+                // This stays temporary on purpose so only a successful mount step
+                // changes the backup-drive settings.
+                if (data.success) { window.AsyncButtonState.success(unmountMountBtn); hideMountError(); setMountStatus('Drive unmounted. You can continue mounting the selected partition.', 'success'); await loadDrives(); }
                 else { window.AsyncButtonState.error(unmountMountBtn); setMountStatus('Failed to unmount drive.', 'error'); showMountError(data.error, data.details); }
             } catch (error) { window.AsyncButtonState.error(unmountMountBtn); setMountStatus('An error occurred.', 'error'); showMountError('An error occurred while unmounting the drive'); }
         }
