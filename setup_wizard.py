@@ -19,6 +19,8 @@ import logging
 import subprocess
 import os
 import re
+import stat
+import time
 from datetime import datetime
 from functools import wraps
 from tempfile import NamedTemporaryFile
@@ -33,6 +35,11 @@ system_utils = SystemUtils(runtime=runtime)
 user_manager = UserManager(runtime=runtime)
 smb_manager = SMBManager(runtime=runtime)
 logger = logging.getLogger(__name__)
+
+# How long to wait for udev to create a newly-partitioned device node
+# (e.g. /dev/nvme0n1p1) before giving up and reporting an error.
+PARTITION_POLL_INTERVAL_SECONDS = 0.5  # delay between existence checks
+PARTITION_POLL_TIMEOUT_SECONDS = 5.0   # maximum total wait
 
 
 def setup_api_access_required(route_handler):
@@ -272,6 +279,13 @@ def format_drive():
         if not disk:
             return jsonify({'success': False, 'error': 'No disk selected'})
 
+        # Resolve symlinks first so a symlink inside /dev/ pointing elsewhere
+        # cannot be used to bypass the /dev/ prefix check, then validate that
+        # the caller is actually targeting a block device node.
+        disk = os.path.realpath(disk)
+        if not disk.startswith('/dev/'):
+            return jsonify({'success': False, 'error': 'Invalid disk path: must be a /dev/ device node'})
+
         mounted_partitions = _get_mounted_partitions_for_disk(disk)
 
         if mounted_partitions:
@@ -315,6 +329,33 @@ def format_drive():
                 logger.debug("partprobe not found for %s; continuing without it", disk)
             except subprocess.SubprocessError as exc:
                 logger.debug("partprobe failed for %s: %s", disk, exc)
+
+            # Poll for up to 5 seconds so udev has time to create the new
+            # device node before mkfs.ntfs tries to open it.  Without this
+            # wait, mkfs can fail with "No such file or directory" on kernels
+            # where udev processing is slightly delayed.
+            deadline = time.monotonic() + PARTITION_POLL_TIMEOUT_SECONDS
+            while True:
+                # Verify the node exists *and* is a block device — udev could
+                # briefly create a placeholder file of the wrong type.
+                try:
+                    is_block_device = stat.S_ISBLK(os.stat(partition).st_mode)
+                except OSError:
+                    is_block_device = False
+                if is_block_device:
+                    break
+                if time.monotonic() >= deadline:
+                    return jsonify({
+                        'success': False,
+                        'error': 'Partition node did not appear after partitioning',
+                        'details': (
+                            f'{partition} was not created within '
+                            f'{PARTITION_POLL_TIMEOUT_SECONDS:.0f} seconds of partitioning. '
+                            'The kernel may not have processed the new partition table yet. '
+                            'Please try again.'
+                        ),
+                    })
+                time.sleep(PARTITION_POLL_INTERVAL_SECONDS)
 
         # Format the partition as NTFS
         result = subprocess.run(['mkfs.ntfs', '-f', partition], capture_output=True, text=True)

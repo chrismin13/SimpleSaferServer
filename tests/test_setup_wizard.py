@@ -223,6 +223,7 @@ class SetupWizardTests(unittest.TestCase):
         # The helper documents that an empty device path is invalid input.
         with self.assertRaises(ValueError):
             self.setup_wizard.get_partition_node('')
+
     def test_get_partition_node_nvme_disk(self):
         # NVMe paths end with a digit (/dev/nvme0n1), so a 'p' separator is
         # needed to produce /dev/nvme0n1p1.
