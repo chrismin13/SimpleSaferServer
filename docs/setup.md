@@ -39,6 +39,7 @@ Why it works this way:
 This step is partition-oriented.
 
 - The selector shows NTFS partitions, not whole disks.
+- If a mounted `ntfs-3g` partition shows up from `lsblk` as `fuseblk`, the wizard verifies the underlying on-disk type with `blkid` before treating it as NTFS.
 - The unmount button unmounts only the exact selected partition.
 - The mount button mounts that selected NTFS partition at the chosen mount point.
 - Advanced options allow changing the mount point and whether the managed `/etc/fstab` entry should be present.

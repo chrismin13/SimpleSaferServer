@@ -27,6 +27,7 @@ Use the advanced backup-drive section only when:
 This flow is partition-oriented.
 
 - The selector shows NTFS partitions.
+- If `lsblk` reports a mounted `ntfs-3g` partition as `fuseblk`, the app double-checks the on-disk type with `blkid` before showing it.
 - The unmount action unmounts only the exact selected partition.
 - The configure action mounts only the exact selected partition.
 
@@ -67,6 +68,7 @@ If you need to inspect or repair the backup-drive configuration manually, start 
 sudo awk '1' /etc/SimpleSaferServer/config.conf
 sudo grep -n 'SimpleSaferServer' /etc/fstab
 lsblk -f
+sudo blkid -s TYPE -o value /dev/sdX1
 sudo blkid -s UUID -o value /dev/sdX1
 lsusb
 sudo findmnt --verify

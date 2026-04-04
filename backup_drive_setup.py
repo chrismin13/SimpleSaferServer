@@ -77,6 +77,30 @@ def _is_ntfs_filesystem(filesystem_type):
     return (filesystem_type or '').strip().lower() in NTFS_FILESYSTEM_TYPES
 
 
+def _get_blkid_filesystem_type(device_path):
+    # lsblk can report a mounted ntfs-3g partition as "fuseblk", which tells
+    # us how it is mounted right now rather than what is on disk. For the
+    # NTFS-only picker we verify that narrower case with blkid so we do not
+    # accidentally treat every FUSE-backed block device as NTFS months later.
+    result = subprocess.run(
+        ['blkid', '-o', 'value', '-s', 'TYPE', device_path],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return ''
+    return result.stdout.strip().lower()
+
+
+def _is_ntfs_scan_candidate(device_path, filesystem_type):
+    normalized_type = (filesystem_type or '').strip().lower()
+    if _is_ntfs_filesystem(normalized_type):
+        return True
+    if normalized_type != 'fuseblk':
+        return False
+    return _get_blkid_filesystem_type(device_path) == 'ntfs'
+
+
 def _normalize_device_path(device_path):
     device_path = (device_path or '').strip()
     if not device_path:
@@ -367,7 +391,7 @@ def list_available_drives(runtime=None, ntfs_only=False):
             if not child_path:
                 continue
             filesystem_type = child.get('fstype') or ''
-            if ntfs_only and not _is_ntfs_filesystem(filesystem_type):
+            if ntfs_only and not _is_ntfs_scan_candidate(child_path, filesystem_type):
                 continue
             partitions.append({
                 'path': child_path,
@@ -378,7 +402,7 @@ def list_available_drives(runtime=None, ntfs_only=False):
             })
 
         block_filesystem_type = block.get('fstype') or ''
-        if not partitions and _is_ntfs_filesystem(block_filesystem_type):
+        if not partitions and _is_ntfs_scan_candidate(disk_path, block_filesystem_type):
             partitions.append({
                 'path': disk_path,
                 'type': block_filesystem_type or block.get('type') or 'unknown',

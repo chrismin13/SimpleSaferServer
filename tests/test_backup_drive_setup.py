@@ -6,6 +6,75 @@ import backup_drive_setup
 
 
 class BackupDriveSetupTests(unittest.TestCase):
+    @patch('backup_drive_setup._get_system_drive_path', return_value='/dev/sda')
+    @patch('backup_drive_setup._load_lsblk_devices')
+    def test_list_available_drives_keeps_fuseblk_partition_when_blkid_confirms_ntfs(
+        self,
+        mock_load_lsblk_devices,
+        _mock_get_system_drive_path,
+    ):
+        mock_load_lsblk_devices.return_value = [
+            {
+                'type': 'disk',
+                'path': '/dev/sdb',
+                'model': 'Backup Disk',
+                'size': '1T',
+                'children': [
+                    {
+                        'path': '/dev/sdb1',
+                        'fstype': 'fuseblk',
+                        'label': 'Backup',
+                        'size': '1T',
+                        'mountpoint': '/media/backup',
+                    }
+                ],
+            }
+        ]
+
+        with patch('backup_drive_setup._get_blkid_filesystem_type', return_value='ntfs') as mock_blkid:
+            drives = backup_drive_setup.list_available_drives(
+                runtime=SimpleNamespace(is_fake=False),
+                ntfs_only=True,
+            )
+
+        self.assertEqual(len(drives), 1)
+        self.assertEqual(drives[0]['partitions'][0]['path'], '/dev/sdb1')
+        mock_blkid.assert_called_once_with('/dev/sdb1')
+
+    @patch('backup_drive_setup._get_system_drive_path', return_value='/dev/sda')
+    @patch('backup_drive_setup._load_lsblk_devices')
+    def test_list_available_drives_skips_fuseblk_partition_when_blkid_is_not_ntfs(
+        self,
+        mock_load_lsblk_devices,
+        _mock_get_system_drive_path,
+    ):
+        mock_load_lsblk_devices.return_value = [
+            {
+                'type': 'disk',
+                'path': '/dev/sdb',
+                'model': 'Backup Disk',
+                'size': '1T',
+                'children': [
+                    {
+                        'path': '/dev/sdb1',
+                        'fstype': 'fuseblk',
+                        'label': 'Something Else',
+                        'size': '1T',
+                        'mountpoint': '/media/other',
+                    }
+                ],
+            }
+        ]
+
+        with patch('backup_drive_setup._get_blkid_filesystem_type', return_value='exfat') as mock_blkid:
+            drives = backup_drive_setup.list_available_drives(
+                runtime=SimpleNamespace(is_fake=False),
+                ntfs_only=True,
+            )
+
+        self.assertEqual(drives, [])
+        mock_blkid.assert_called_once_with('/dev/sdb1')
+
     def test_get_mounted_partitions_for_disk_matches_child_partitions(self):
         blockdevices = [
             {
