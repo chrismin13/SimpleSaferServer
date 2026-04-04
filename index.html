@@ -73,6 +73,31 @@
         .doc-list i {
             margin-right: 0.5em;
         }
+        .demo-card {
+            background: #e7f3ff;
+            border: 1px solid #b6d4fe;
+            border-radius: 8px;
+            padding: 1.2em;
+            margin-bottom: 2em;
+            text-align: center;
+        }
+        .demo-btn {
+            background: #2a5d9f;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            padding: 0.6em 1.5em;
+            font-weight: 500;
+            text-decoration: none;
+            display: inline-block;
+            margin-top: 0.5em;
+            transition: transform 0.2s, background 0.2s;
+        }
+        .demo-btn:hover {
+            background: #1a3d6f;
+            color: #fff;
+            transform: translateY(-2px);
+        }
     </style>
 </head>
 <body>
@@ -81,6 +106,13 @@
             <h1><i class="fa-solid fa-cloud"></i> SimpleSaferServer</h1>
             <p class="lead">Affordable, Reliable, and User‑Friendly Backup Solution for Debian-based systems.</p>
         </div>
+
+        <div class="demo-card">
+            <h3 class="h5 mb-2"><i class="fa-solid fa-play-circle"></i> Want to see it in action?</h3>
+            <p class="mb-2">Try out the live demo of the management interface (running in fake mode).</p>
+            <a href="https://sssdemo.chrismin13.com" class="demo-btn" target="_blank">Launch Live Demo</a>
+        </div>
+
         <h2 class="mb-3"><i class="fa-solid fa-terminal"></i> One-Line Install</h2>
         <div class="mb-3 d-flex align-items-center">
             <pre class="flex-grow-1 mb-0"><code id="install-cmd">curl -fsSL https://sss.chrismin13.com/install.sh | sudo bash</code></pre>

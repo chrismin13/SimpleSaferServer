@@ -1,5 +1,9 @@
 # SimpleSaferServer
 
+> [!TIP]
+> **🚀 Want to see it in action?**  
+> Check out the [Live Management Demo](https://sssdemo.chrismin13.com) to explore the dashboard and features in a simulated environment!
+
 ## 🚀 Quick Installation
 
 To install SimpleSaferServer on a clean Debian-based system, run the following command:
