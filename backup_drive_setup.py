@@ -77,24 +77,116 @@ def _is_ntfs_filesystem(filesystem_type):
     return (filesystem_type or '').strip().lower() in NTFS_FILESYSTEM_TYPES
 
 
-def _mount_belongs_to_drive(selected_drive, mounted_device):
-    selected_drive = (selected_drive or '').strip()
-    mounted_device = (mounted_device or '').strip()
-    if not selected_drive or not mounted_device:
-        return False
-    # The rerun flow selects a partition path, not a whole disk. Match the
-    # mounted source exactly so names like /dev/sdb1 never catch /dev/sdb11.
-    return os.path.realpath(mounted_device) == os.path.realpath(selected_drive)
+def _normalize_device_path(device_path):
+    device_path = (device_path or '').strip()
+    if not device_path:
+        return ''
+    return os.path.realpath(device_path)
 
 
-def _get_mounted_partitions_for_drive(drive):
+def _get_current_mounts():
+    # Use the live mount table for operation safety checks instead of lsblk's
+    # mountpoint field so we always act on what the kernel currently reports.
     mount_check = subprocess.run(['mount'], capture_output=True, text=True)
-    mounted_partitions = []
+    mounts = []
     for line in mount_check.stdout.splitlines():
         parts = line.split()
-        if len(parts) >= 3 and _mount_belongs_to_drive(drive, parts[0]):
-            mounted_partitions.append({'device': parts[0], 'mount_point': parts[2]})
+        if len(parts) >= 3:
+            mounts.append({'device': parts[0], 'mount_point': parts[2]})
+    return mounts
+
+
+def _load_lsblk_devices():
+    # Keep one shared inventory source for both setup and rerun flows. The
+    # flows differ in target semantics, not in how we discover block devices.
+    lsblk_result = subprocess.run(
+        ['lsblk', '-J', '-o', 'NAME,PATH,FSTYPE,LABEL,SIZE,MODEL,MOUNTPOINT,TYPE'],
+        capture_output=True,
+        text=True,
+    )
+    if lsblk_result.returncode != 0:
+        raise BackupDriveSetupError('Failed to list drives.')
+
+    try:
+        lsblk_data = json.loads(lsblk_result.stdout)
+    except Exception as exc:
+        raise BackupDriveSetupError('Failed to parse drive list.') from exc
+
+    return lsblk_data.get('blockdevices', [])
+
+
+def _get_system_drive_path():
+    root_mount = subprocess.run(['findmnt', '-n', '-o', 'SOURCE', '/'], capture_output=True, text=True)
+    return root_mount.stdout.strip() if root_mount.returncode == 0 else None
+
+
+def _iter_non_system_disks(blockdevices, system_drive=None):
+    for block in blockdevices:
+        if block.get('type') != 'disk':
+            continue
+        disk_path = block.get('path')
+        if not disk_path:
+            continue
+        if system_drive and system_drive.startswith(disk_path):
+            continue
+        yield block
+
+
+def _find_disk_device(disk_path, blockdevices):
+    normalized_disk = _normalize_device_path(disk_path)
+    for block in blockdevices:
+        if block.get('type') != 'disk':
+            continue
+        if _normalize_device_path(block.get('path')) == normalized_disk:
+            return block
+    return None
+
+
+def _get_disk_member_devices(disk_path, blockdevices):
+    # Setup step 2 operates on a whole disk, so it must consider every child
+    # partition that belongs to that disk before unmounting or formatting.
+    disk = _find_disk_device(disk_path, blockdevices)
+    if not disk:
+        return set()
+
+    device_paths = set()
+    for child in disk.get('children', []) or []:
+        child_path = child.get('path')
+        if child_path:
+            device_paths.add(_normalize_device_path(child_path))
+
+    # Some removable media expose a filesystem directly on the disk path.
+    if not device_paths and disk.get('fstype'):
+        device_paths.add(_normalize_device_path(disk.get('path')))
+
+    return device_paths
+
+
+def _get_mounted_partitions_for_disk(disk_path, blockdevices=None, mounts=None):
+    # Disk operations intentionally match child partitions; partition-oriented
+    # flows use _get_mount_for_partition() instead.
+    blockdevices = blockdevices if blockdevices is not None else _load_lsblk_devices()
+    mounts = mounts if mounts is not None else _get_current_mounts()
+    member_devices = _get_disk_member_devices(disk_path, blockdevices)
+    if not member_devices:
+        return []
+
+    mounted_partitions = []
+    for mount in mounts:
+        if _normalize_device_path(mount['device']) in member_devices:
+            mounted_partitions.append(mount)
     return mounted_partitions
+
+
+def _get_mount_for_partition(partition_path, mounts=None):
+    # Rerun/setup-mount flows select an exact partition path, so this lookup
+    # must never treat /dev/sdb1 and /dev/sdb11 as interchangeable.
+    mounts = mounts if mounts is not None else _get_current_mounts()
+    normalized_partition = _normalize_device_path(partition_path)
+    for mount in mounts:
+        if _normalize_device_path(mount['device']) == normalized_partition:
+            return mount
+    return None
 
 
 def _get_partition_filesystem_type(drive):
@@ -263,34 +355,12 @@ def list_available_drives(runtime=None, ntfs_only=False):
     if runtime.is_fake:
         return fake_state.get_virtual_drives()
 
-    lsblk_result = subprocess.run(
-        ['lsblk', '-J', '-o', 'NAME,PATH,FSTYPE,LABEL,SIZE,MODEL,MOUNTPOINT,TYPE'],
-        capture_output=True,
-        text=True,
-    )
-    if lsblk_result.returncode != 0:
-        raise BackupDriveSetupError('Failed to list drives.')
-
-    try:
-        lsblk_data = json.loads(lsblk_result.stdout)
-    except Exception as exc:
-        raise BackupDriveSetupError('Failed to parse drive list.') from exc
-
-    root_mount = subprocess.run(['findmnt', '-n', '-o', 'SOURCE', '/'], capture_output=True, text=True)
-    system_drive = root_mount.stdout.strip() if root_mount.returncode == 0 else None
+    blockdevices = _load_lsblk_devices()
+    system_drive = _get_system_drive_path()
 
     drives = []
-    for block in lsblk_data.get('blockdevices', []):
-        if block.get('type') != 'disk':
-            continue
-
+    for block in _iter_non_system_disks(blockdevices, system_drive=system_drive):
         disk_path = block.get('path')
-        if not disk_path:
-            continue
-
-        if system_drive and system_drive.startswith(disk_path):
-            continue
-
         partitions = []
         for child in block.get('children', []) or []:
             child_path = child.get('path')
@@ -331,7 +401,7 @@ def list_available_drives(runtime=None, ntfs_only=False):
     return drives
 
 
-def unmount_selected_drive(drive, runtime=None):
+def unmount_disk_partitions(disk_path, runtime=None):
     runtime = runtime or get_runtime()
     fake_state = get_fake_state() if runtime.is_fake else None
 
@@ -339,13 +409,15 @@ def unmount_selected_drive(drive, runtime=None):
         fake_state.set_mount(False)
         return 'Fake backup source disconnected.'
 
-    if not drive:
-        raise BackupDriveSetupError('No drive selected.')
+    if not disk_path:
+        raise BackupDriveSetupError('No disk selected.')
 
-    mounted_partitions = _get_mounted_partitions_for_drive(drive)
+    # The format flow needs to clear every mounted child partition on the
+    # selected disk, not just one exact device path.
+    mounted_partitions = _get_mounted_partitions_for_disk(disk_path)
 
     if not mounted_partitions:
-        raise BackupDriveSetupError('The selected drive is not currently mounted.')
+        raise BackupDriveSetupError('The selected disk has no mounted partitions.')
 
     failures = []
     for partition in mounted_partitions:
@@ -360,6 +432,33 @@ def unmount_selected_drive(drive, runtime=None):
         raise BackupDriveSetupError('Failed to unmount partitions: {}'.format('; '.join(failures)))
 
     return 'Successfully unmounted {} partition(s).'.format(len(mounted_partitions))
+
+
+def unmount_selected_partition(partition_path, runtime=None):
+    runtime = runtime or get_runtime()
+    fake_state = get_fake_state() if runtime.is_fake else None
+
+    if runtime.is_fake:
+        fake_state.set_mount(False)
+        return 'Fake backup source disconnected.'
+
+    if not partition_path:
+        raise BackupDriveSetupError('No partition selected.')
+
+    # The rerun flow should only unmount the exact partition the user chose.
+    mount = _get_mount_for_partition(partition_path)
+    if not mount:
+        raise BackupDriveSetupError('The selected partition is not currently mounted.')
+
+    result = subprocess.run(['umount', mount['device']], capture_output=True, text=True)
+    if result.returncode != 0:
+        raise BackupDriveSetupError(
+            'Failed to unmount partition: {}'.format(
+                result.stderr.strip() if result.stderr else 'unknown error'
+            )
+        )
+
+    return 'Successfully unmounted {}.'.format(mount['device'])
 
 
 def _sync_backup_share_path(smb_manager, new_path):
@@ -378,7 +477,7 @@ def _sync_backup_share_path(smb_manager, new_path):
     return False
 
 
-def apply_backup_drive_configuration(drive, mount_point, auto_mount, config_manager, smb_manager, runtime=None):
+def apply_backup_drive_configuration(partition, mount_point, auto_mount, config_manager, smb_manager, runtime=None):
     runtime = runtime or get_runtime()
     fake_state = get_fake_state() if runtime.is_fake else None
 
@@ -427,7 +526,7 @@ def apply_backup_drive_configuration(drive, mount_point, auto_mount, config_mana
             config_manager.set_value('backup', 'uuid', uuid)
             config_manager.set_value('backup', 'usb_id', usb_id)
             config_updated = True
-            fake_state.set_mount(True, mount_point=selected_path_str, drive=drive or '/dev/fakebackup1')
+            fake_state.set_mount(True, mount_point=selected_path_str, drive=partition or '/dev/fakebackup1')
             return {
                 'message': 'Successfully selected local backup source at {}'.format(selected_path),
                 'uuid': uuid,
@@ -458,22 +557,24 @@ def apply_backup_drive_configuration(drive, mount_point, auto_mount, config_mana
                     LOGGER.error('Failed to restore fake backup config after drive setup error: %s', config_exc)
             raise
 
-    if not drive:
-        raise BackupDriveSetupError('No drive selected.')
+    if not partition:
+        raise BackupDriveSetupError('No partition selected.')
 
-    mounted_partitions = _get_mounted_partitions_for_drive(drive)
-    if mounted_partitions:
+    # This flow is partition-oriented by design. If the user selected /dev/sdb1,
+    # we should not block on or touch unrelated devices on the same disk.
+    mounted_partition = _get_mount_for_partition(partition)
+    if mounted_partition:
         raise BackupDriveSetupError(
-            'The selected drive is already mounted at {}. Unmount it first before rerunning drive setup.'.format(
-                mounted_partitions[0]['mount_point']
+            'The selected partition is already mounted at {}. Unmount it first before rerunning drive setup.'.format(
+                mounted_partition['mount_point']
             )
         )
 
-    uuid = get_drive_uuid(drive)
-    usb_id = get_drive_usb_id(drive)
-    filesystem_type = _get_partition_filesystem_type(drive)
+    uuid = get_drive_uuid(partition)
+    usb_id = get_drive_usb_id(partition)
+    filesystem_type = _get_partition_filesystem_type(partition)
     if not _is_ntfs_filesystem(filesystem_type):
-        raise BackupDriveSetupError('The selected drive must be formatted as NTFS.')
+        raise BackupDriveSetupError('The selected partition must be formatted as NTFS.')
 
     os.makedirs(mount_point, exist_ok=True)
 
@@ -486,7 +587,7 @@ def apply_backup_drive_configuration(drive, mount_point, auto_mount, config_mana
         fstab_backup = update_managed_fstab(uuid, mount_point, bool(auto_mount), runtime=runtime)
 
         mount_result = subprocess.run(
-            ['ntfs-3g', drive, mount_point, '-o', 'rw,uid=1000,gid=1000'],
+            ['ntfs-3g', partition, mount_point, '-o', 'rw,uid=1000,gid=1000'],
             capture_output=True,
             text=True,
         )
@@ -511,14 +612,14 @@ def apply_backup_drive_configuration(drive, mount_point, auto_mount, config_mana
         config_updated = True
 
         return {
-            'message': 'Successfully configured {} at {}'.format(drive, mount_point),
+            'message': 'Successfully configured {} at {}'.format(partition, mount_point),
             'uuid': uuid,
             'usb_id': usb_id,
             'mount_point': mount_point,
         }
     except Exception:
         if mounted:
-            subprocess.run(['umount', drive], check=False)
+            subprocess.run(['umount', partition], check=False)
         if fstab_backup:
             restore_fstab_backup(fstab_backup, runtime=runtime)
         if share_backup:

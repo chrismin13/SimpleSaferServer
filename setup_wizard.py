@@ -3,8 +3,9 @@ from backup_drive_setup import (
     BackupDriveSetupError,
     apply_backup_drive_configuration,
     list_available_drives as get_available_backup_drives,
-    _get_mounted_partitions_for_drive,
-    unmount_selected_drive,
+    _get_mounted_partitions_for_disk,
+    unmount_disk_partitions,
+    unmount_selected_partition,
 )
 from config_manager import ConfigManager
 from system_utils import SystemUtils
@@ -111,12 +112,14 @@ def format_drive():
             })
 
         data = request.get_json()
-        drive = data.get('drive')
-        
-        if not drive:
-            return jsonify({'success': False, 'error': 'No drive selected'})
+        # Step 2 is intentionally disk-oriented because formatting and partition
+        # creation are destructive whole-disk operations.
+        disk = data.get('disk')
 
-        mounted_partitions = _get_mounted_partitions_for_drive(drive)
+        if not disk:
+            return jsonify({'success': False, 'error': 'No disk selected'})
+
+        mounted_partitions = _get_mounted_partitions_for_disk(disk)
 
         if mounted_partitions:
             partition_info = '\n'.join([f"- {p['device']} at {p['mount_point']}" for p in mounted_partitions])
@@ -128,11 +131,11 @@ def format_drive():
             })
 
         # Create a single partition if none exists
-        partition = f"{drive}1"
+        partition = f"{disk}1"
         if not os.path.exists(partition):
             # Create partition using fdisk
             fdisk_input = f"n\np\n1\n\n\nw\n"
-            result = subprocess.run(['fdisk', drive], input=fdisk_input.encode(), capture_output=True)
+            result = subprocess.run(['fdisk', disk], input=fdisk_input.encode(), capture_output=True)
             if result.returncode != 0:
                 return jsonify({
                     'success': False,
@@ -166,8 +169,15 @@ def unmount_drive():
     """Unmount the selected drive"""
     try:
         data = request.get_json()
-        drive = data.get('drive')
-        message = unmount_selected_drive(drive, runtime=runtime)
+        # The setup wizard uses this route for two different UI controls:
+        # whole-disk unmount before formatting, and exact-partition unmount
+        # before mounting an NTFS partition in step 3.
+        disk = data.get('disk')
+        partition = data.get('partition')
+        if disk:
+            message = unmount_disk_partitions(disk, runtime=runtime)
+        else:
+            message = unmount_selected_partition(partition, runtime=runtime)
         return jsonify({'success': True, 'message': message})
     except BackupDriveSetupError as e:
         return jsonify({'success': False, 'error': str(e)})
@@ -184,11 +194,13 @@ def mount_drive():
     """Mount the selected drive"""
     try:
         data = request.get_json()
-        drive = data.get('drive')
+        # Step 3 always selects a filesystem-bearing partition, never a whole
+        # disk. That aligns it with the rerun flow on Drive Health.
+        partition = data.get('partition')
         mount_point = data.get('mount_point') or (runtime.default_mount_point if runtime.is_fake else '/media/backup')
         auto_mount = data.get('auto_mount', True)
         result = apply_backup_drive_configuration(
-            drive,
+            partition,
             mount_point,
             auto_mount,
             config_manager,

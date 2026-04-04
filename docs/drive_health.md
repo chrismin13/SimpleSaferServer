@@ -1,45 +1,71 @@
 # Drive Health
 
-The Drive Health page combines two views of the configured backup drive:
+The Drive Health page is the main place to inspect the configured backup drive and to rerun backup-drive configuration if the physical backup device changes.
 
-- SMART data plus the local machine-learning failure prediction
+It combines:
+
+- SMART data and the local failure-prediction result
 - HDSentinel health and performance reporting
 
 ## Features
-- **Run Health Check**: Runs a manual SMART and HDSentinel refresh from the page.
-- **Prediction Result**: Shows whether the SMART model predicts failure, with probability percentage.
-- **Missing Attributes**: Lists SMART attributes that fell back to defaults.
-- **HDSentinel Status**: Shows install state, device, model, serial, health, performance, temperature, size, and last checked time.
-- **HDSentinel Settings**: Lets users enable or disable HDSentinel monitoring and toggle health-change alerts.
-- **SMART Data Table**: Lists SMART attributes, descriptions, raw values, and status.
-- **Download Telemetry**: Downloads the SMART telemetry CSV.
 
-## Alerting
-- HDSentinel alerts only trigger on health changes between scheduled checks.
-- Temperature is displayed but does not currently trigger alerts.
+- Run a manual health refresh from the page.
+- View the SMART prediction result and probability.
+- View missing SMART attributes that fell back to defaults.
+- View the HDSentinel device snapshot.
+- Enable or disable HDSentinel monitoring and change alert settings.
+- Download SMART telemetry as CSV.
 
 ## Re-running Backup Drive Setup
-- Use the advanced section on the Drive Health page only if the backup drive changed or the original identifiers were detected incorrectly.
-- The flow is designed to re-run the backup drive mount setup safely instead of editing UUID or USB ID fields directly.
-- It updates only the SimpleSaferServer-managed backup mount entry in `/etc/fstab`.
-- The rerun flow always refreshes the managed entry with the boot-safe `defaults,nofail` mount options.
-- If the app finds multiple managed entries or a conflicting non-SimpleSaferServer entry using the same UUID or mount point, it stops and asks for manual cleanup.
 
-What "SimpleSaferServer-managed" means:
-- It refers to the backup drive line in `/etc/fstab` that ends with the marker comment `# SimpleSaferServer managed backup drive`.
-- The app does not treat unrelated `/etc/fstab` lines as its own unless they carry that backup-drive marker (or the older legacy marker).
+Use the advanced backup-drive section only when:
+
+- the backup drive was replaced
+- the original UUID or USB ID was detected incorrectly
+- the app needs to be pointed at the correct backup partition again
+
+This flow is partition-oriented.
+
+- The selector shows NTFS partitions.
+- The unmount action unmounts only the exact selected partition.
+- The configure action mounts only the exact selected partition.
+
+This is different from setup wizard step 2, which is disk-oriented for formatting.
+
+## What the Rerun Flow Updates
+
+- the stored backup `mount_point`
+- the stored backup `uuid`
+- the stored backup `usb_id`
+- the SimpleSaferServer-managed `/etc/fstab` entry for the backup drive
+- the Samba backup share path if the mount point changed
+
+The rerun flow always refreshes the managed `/etc/fstab` entry with `defaults,nofail`.
+
+## What "SimpleSaferServer-managed" Means
+
+The app only manages the `/etc/fstab` line for the backup drive that ends with:
+
+```text
+# SimpleSaferServer managed backup drive
+```
+
+The app does not treat unrelated `/etc/fstab` lines as its own unless they use that marker or the older legacy marker.
+
+## Safety Rules
+
+- The rerun flow does not edit unrelated `/etc/fstab` entries.
+- If the app finds multiple managed entries, it stops and asks for manual cleanup.
+- If a non-SimpleSaferServer entry already uses the same UUID or mount point, it stops and asks for manual cleanup.
+- If the selected partition is already mounted, it stops and asks the user to unmount it first.
 
 ## Manual Recovery
-If you need to inspect or repair the backup drive configuration manually, start here:
+
+If you need to inspect or repair the backup-drive configuration manually, start here:
 
 ```bash
 sudo awk '1' /etc/SimpleSaferServer/config.conf
 sudo grep -n 'SimpleSaferServer' /etc/fstab
-```
-
-Useful commands:
-
-```bash
 lsblk -f
 sudo blkid -s UUID -o value /dev/sdX1
 lsusb
@@ -47,13 +73,15 @@ sudo findmnt --verify
 ```
 
 Manual recovery rules:
-- Update `/etc/SimpleSaferServer/config.conf` only if you know the correct `mount_point`, `uuid`, and `usb_id` values.
-- Update only the SimpleSaferServer-managed line in `/etc/fstab`.
-- If the mount point changes, also check the backup share path in `/etc/samba/smb.conf`.
+
+- Update `/etc/SimpleSaferServer/config.conf` only if you know the correct `mount_point`, `uuid`, and `usb_id`.
+- Update only the SimpleSaferServer-managed `/etc/fstab` entry.
+- If the mount point changes, also check `/etc/samba/smb.conf`.
 - Do not modify unrelated `/etc/fstab` entries.
-- Create a backup of `/etc/fstab` before editing it.
+- Back up `/etc/fstab` before editing it manually.
 
 Important file locations:
+
 - App config: `/etc/SimpleSaferServer/config.conf`
 - Managed mount entry: `/etc/fstab`
 - Samba share config: `/etc/samba/smb.conf`
@@ -72,7 +100,3 @@ sudo mkdir -p /media/backup
 sudo mount -a
 sudo systemctl restart smbd nmbd simple_safer_server_web.service
 ```
-
----
-
-This page is the main place to inspect the backup drive's current SMART and HDSentinel health data.

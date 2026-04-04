@@ -530,12 +530,12 @@
 
         async function formatDrive() {
             const formatBtn = document.getElementById('formatDriveBtn');
-            const drive = document.getElementById('formatDriveSelect').value;
-            if (!drive) { showFormatError('Please select a drive first'); setDriveStatus('Please select a drive first.', 'warning'); return; }
+            const disk = document.getElementById('formatDriveSelect').value;
+            if (!disk) { showFormatError('Please select a drive first'); setDriveStatus('Please select a drive first.', 'warning'); return; }
             window.AsyncButtonState.start(formatBtn);
             setDriveStatus('Formatting drive…', 'info');
             try {
-                const response = await fetch('/api/setup/format', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ drive }) });
+                const response = await fetch('/api/setup/format', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ disk }) });
                 const data = await response.json();
                 if (data.success) {
                     window.AsyncButtonState.success(formatBtn);
@@ -545,21 +545,21 @@
                     setDriveStatus('Drive formatted successfully.', 'success');
                     await loadDrives();
                     const formatSelect = document.getElementById('formatDriveSelect');
-                    for (let i = 0; i < formatSelect.options.length; i++) { if (formatSelect.options[i].value === drive) { formatSelect.selectedIndex = i; break; } }
+                    for (let i = 0; i < formatSelect.options.length; i++) { if (formatSelect.options[i].value === disk) { formatSelect.selectedIndex = i; break; } }
                 } else { window.AsyncButtonState.error(formatBtn); setDriveStatus('Failed to format drive.', 'error'); showFormatError(data.error, data.details, data.can_unmount); }
             } catch (error) { window.AsyncButtonState.error(formatBtn); setDriveStatus('An error occurred.', 'error'); showFormatError('An error occurred while formatting the drive'); }
         }
 
         async function unmountDrive() {
             const unmountBtn = document.getElementById('unmountDriveBtn');
-            const drive = document.getElementById('formatDriveSelect').value;
-            if (!drive) { showFormatError('Please select a drive first'); setDriveStatus('Please select a drive first.', 'warning'); return; }
+            const disk = document.getElementById('formatDriveSelect').value;
+            if (!disk) { showFormatError('Please select a drive first'); setDriveStatus('Please select a drive first.', 'warning'); return; }
             window.AsyncButtonState.start(unmountBtn);
             setDriveStatus('Unmounting drive…', 'info');
             try {
-                const response = await fetch('/api/setup/unmount', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ drive }) });
+                const response = await fetch('/api/setup/unmount', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ disk }) });
                 const data = await response.json();
-                if (data.success) { window.AsyncButtonState.success(unmountBtn); hideFormatError(); setDriveStatus('Drive unmounted successfully.', 'success'); await loadDrives(); const formatSelect = document.getElementById('formatDriveSelect'); for (let i = 0; i < formatSelect.options.length; i++) { if (formatSelect.options[i].value === drive) { formatSelect.selectedIndex = i; break; } } }
+                if (data.success) { window.AsyncButtonState.success(unmountBtn); hideFormatError(); setDriveStatus('Drive unmounted successfully.', 'success'); await loadDrives(); const formatSelect = document.getElementById('formatDriveSelect'); for (let i = 0; i < formatSelect.options.length; i++) { if (formatSelect.options[i].value === disk) { formatSelect.selectedIndex = i; break; } } }
                 else { window.AsyncButtonState.error(unmountBtn); setDriveStatus('Failed to unmount drive.', 'error'); showFormatError(data.error, data.details); }
             } catch (error) { window.AsyncButtonState.error(unmountBtn); setDriveStatus('An error occurred.', 'error'); showFormatError('An error occurred while unmounting the drive'); }
         }
@@ -586,14 +586,14 @@
 
         async function mountDrive() {
             const mountBtn = document.getElementById('mountDriveBtn');
-            const drive = document.getElementById('mountDriveSelect').value;
+            const partition = document.getElementById('mountDriveSelect').value;
             const mountPoint = document.getElementById('mountPoint').value;
             const autoMount = document.getElementById('autoMount').checked;
-            if (!drive) { showMountError('Please select a drive to mount'); setMountStatus('Please select a drive.', 'warning'); return; }
+            if (!partition) { showMountError('Please select a drive to mount'); setMountStatus('Please select a drive.', 'warning'); return; }
             window.AsyncButtonState.start(mountBtn);
             setMountStatus('Mounting drive…', 'info');
             try {
-                const response = await fetch('/api/setup/mount', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ drive, mount_point: mountPoint, auto_mount: autoMount }) });
+                const response = await fetch('/api/setup/mount', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ partition, mount_point: mountPoint, auto_mount: autoMount }) });
                 const data = await response.json();
                 if (data.success) { window.AsyncButtonState.success(mountBtn); localStorage.setItem('mountSuccess', '1'); nextStep(); hideMountError(); setMountStatus('Drive mounted successfully.', 'success'); await loadDrives(); }
                 else { window.AsyncButtonState.error(mountBtn); setMountStatus('Failed to mount drive.', 'error'); showMountError(data.error, data.details); }
@@ -602,12 +602,12 @@
 
         async function unmountMountDrive() {
             const unmountMountBtn = document.getElementById('unmountMountDriveBtn');
-            const drive = document.getElementById('mountDriveSelect').value;
-            if (!drive) { showMountError('Please select a drive'); setMountStatus('Please select a drive.', 'warning'); return; }
+            const partition = document.getElementById('mountDriveSelect').value;
+            if (!partition) { showMountError('Please select a drive'); setMountStatus('Please select a drive.', 'warning'); return; }
             window.AsyncButtonState.start(unmountMountBtn);
             setMountStatus('Unmounting drive…', 'info');
             try {
-                const response = await fetch('/api/setup/unmount', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ drive }) });
+                const response = await fetch('/api/setup/unmount', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ partition }) });
                 const data = await response.json();
                 if (data.success) { window.AsyncButtonState.success(unmountMountBtn); hideMountError(); setMountStatus('Drive unmounted successfully.', 'success'); await loadDrives(); }
                 else { window.AsyncButtonState.error(unmountMountBtn); setMountStatus('Failed to unmount drive.', 'error'); showMountError(data.error, data.details); }

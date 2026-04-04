@@ -569,7 +569,7 @@
         const response = await fetch('/api/backup_drive/unmount', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ drive: driveSelect.value })
+          body: JSON.stringify({ partition: driveSelect.value })
         });
         const data = await parseDriveSetupResponse(response);
         if (!data.success) {
@@ -603,7 +603,7 @@
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            drive: driveSelect.value,
+            partition: driveSelect.value,
             mount_point: mountPointInput.value.trim()
           })
         });

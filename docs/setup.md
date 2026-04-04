@@ -1,69 +1,89 @@
 # Setup Wizard
 
-The Setup Wizard guides you through the initial configuration of your backup system. It consists of six main steps, each with its own section and options.
+The Setup Wizard walks through the first-time configuration of the system. The backup-drive portion has two different target types on purpose:
+
+- Step 2 works on a whole disk when the user wants to prepare or erase a drive.
+- Step 3 works on an NTFS partition when the user wants to mount and configure the backup destination.
+
+That split is important because the safety checks are different.
 
 ## Navigation and Progress
-- **Progress Bar**: Shows current step and allows navigation between steps.
-- **Validation**: Inline feedback for all fields.
-- **Async Buttons**: Buttons disable while work is in progress.
+
+- The progress bar shows the current step and allows moving between steps.
+- Validation is inline for the form fields.
+- Async buttons disable themselves while work is in progress.
 
 ## Step 1: Create Admin Account
-- **Username**: Enter a username using letters, numbers, underscores, or hyphens.
-- **Server Name**: Name your server (required).
-- **Password**: Enter a password (minimum 4 characters).
-- **Confirm Password**: Re-enter the password to confirm.
-- **Validation**: Inline feedback is provided for all fields.
-- **Button**: `Create Admin Account` (proceeds to next step on success).
+
+- Enter the admin username.
+- Enter the server name.
+- Enter and confirm the password.
+- On success, the wizard logs the user in and moves to the next step.
 
 ## Step 2: Drive Format (Optional)
-- **Drive Selection**: Choose a drive to format from a dropdown (shows model, size, type, and mount status).
-- **Unmount Drive**: Button to unmount the selected drive (required before formatting).
-- **Format Drive**: Button to format the selected drive (erases all data).
-- **Status Area**: Shows messages about formatting/unmounting.
-- **Warning**: Formatting erases all data on the drive.
-- **Skip Formatting**: Button to proceed without formatting.
+
+This step is disk-oriented.
+
+- The selector shows disks, not partitions.
+- The unmount button unmounts every currently mounted partition that belongs to the selected disk.
+- The format button creates a single partition if needed and formats that partition as NTFS.
+- Formatting erases all existing data on the selected disk.
+
+Why it works this way:
+
+- Formatting is a whole-disk preparation step.
+- Desktop automounters often mount child partitions such as `/dev/sdb1`, so the wizard checks for mounted child partitions before allowing formatting.
 
 ## Step 3: Drive Mount
-- **Drive Selection**: Choose an NTFS partition to mount.
-- **Advanced Options**: Toggle to show mount point and auto-mount at boot.
-- **Mount Point**: Set the mount directory (default: `/media/backup`).
-- **Auto Mount**: Checkbox to mount automatically at boot.
-- **Boot Behavior**: The managed `/etc/fstab` entry uses `nofail`, so the system should still boot if the backup drive is disconnected.
-- **Unmount/Mount Buttons**: Unmount or mount the selected drive.
-- **Status/Error Areas**: Inline feedback for actions.
-- **Later Changes**: If the backup drive changes after setup, use the advanced section on the Drive Health page to re-run this part of the setup flow.
+
+This step is partition-oriented.
+
+- The selector shows NTFS partitions, not whole disks.
+- The unmount button unmounts only the exact selected partition.
+- The mount button mounts that selected NTFS partition at the chosen mount point.
+- Advanced options allow changing the mount point and whether the managed `/etc/fstab` entry should be present.
+
+Boot behavior:
+
+- The managed `/etc/fstab` entry uses `defaults,nofail`.
+- That means the system should still boot if the backup drive is disconnected.
 
 ## Step 4: Backup Configuration
-- **Backup Mode**: Choose between:
-  - Easy MEGA Cloud Backup
-  - Advanced (Paste rclone config)
 
-### MEGA Easy Mode
-- **MEGA Email/Password**: Enter MEGA credentials.
-- **Connect & Choose Folder**: Button to connect and select a MEGA folder.
-- **Folder Path**: Shows selected MEGA folder.
-- **Modal**: MEGA folder picker modal for cloud backup setup.
-- **Warning**: All files in the selected MEGA folder will be overwritten during backup.
+Choose one cloud-backup mode:
 
-### Advanced rclone Config
-- **Rclone Configuration**: Paste rclone config.
-- **Remote Name and Path**: Enter in the format `remotename:/path`.
-- **Warning**: rclone will synchronize the remote path to match the local backup directory.
+- Easy MEGA Cloud Backup
+- Advanced rclone configuration
 
-- **Save Backup Configuration**: Button to save settings.
+MEGA mode:
+
+- Enter MEGA credentials.
+- Connect and choose the target folder.
+- The selected remote folder is shown before saving.
+
+Advanced mode:
+
+- Paste the rclone config.
+- Enter the remote in `remote:/path` form.
 
 ## Step 5: Email Setup
-- **Email Address**: Enter the address for alerts.
-- **From Address**: Enter the address that will appear in the From field of alert emails. This must be a valid, verified sender for your SMTP service (e.g., the authenticated SMTP user or a domain-verified address). Some SMTP providers will only deliver mail if the From address matches the authenticated user or a verified sender.
-- **SMTP Configuration**: Enter SMTP server, port, username, and password.
-- **Save Email Configuration**: Button to save settings.
+
+- Enter the destination alert email address.
+- Enter the From address used by the SMTP provider.
+- Enter SMTP host, port, username, and password.
 
 ## Step 6: Schedule
-- **Backup Time**: Set the daily backup time.
-- **Bandwidth Limit**: (Optional) Limit backup bandwidth (e.g., 4M for 4 MB/s).
-- **Save Schedule**: Button to save and complete setup.
 
+- Set the backup time.
+- Optionally set a bandwidth limit.
+- Save to complete setup.
 
----
+## Later Changes
 
-After completing all steps, the system is ready for use and redirects to the main interface. 
+If the backup drive changes after setup:
+
+- use the advanced backup-drive section on the Drive Health page
+- select the correct NTFS partition there
+- rerun only the backup-drive configuration portion
+
+That rerun flow is intentionally partition-oriented and does not behave like the whole-disk format step.

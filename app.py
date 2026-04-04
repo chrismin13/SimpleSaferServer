@@ -10,7 +10,7 @@ from backup_drive_setup import (
     BackupDriveSetupError,
     apply_backup_drive_configuration,
     list_available_drives,
-    unmount_selected_drive,
+    unmount_selected_partition,
 )
 from config_manager import ConfigManager
 from drive_health import (
@@ -1522,7 +1522,7 @@ def api_backup_drive_drives():
 def api_backup_drive_unmount():
     try:
         data = request.get_json() or {}
-        message = unmount_selected_drive(data.get('drive'), runtime=runtime)
+        message = unmount_selected_partition(data.get('partition'), runtime=runtime)
         return jsonify({'success': True, 'message': message})
     except BackupDriveSetupError as e:
         return jsonify({'success': False, 'error': str(e), 'details': e.details})
@@ -1538,7 +1538,7 @@ def api_backup_drive_configure():
     try:
         data = request.get_json() or {}
         result = apply_backup_drive_configuration(
-            data.get('drive'),
+            data.get('partition'),
             data.get('mount_point'),
             # Rerun setup always refreshes the managed fstab entry with the
             # boot-safe defaults,nofail policy. The UI intentionally exposes no
