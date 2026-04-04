@@ -979,6 +979,7 @@ table .text-end { text-align: right; }
 
 .modal-body {
   padding: var(--sp-5);
+  white-space: pre-line;
 }
 
 .modal-footer {

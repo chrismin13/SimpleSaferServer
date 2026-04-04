@@ -47,6 +47,8 @@ def setup_api_access_required(route_handler):
         if 'username' not in session:
             return jsonify({'success': False, 'error': 'Please log in again.'}), 401
 
+        # Reload user data to ensure we have the latest
+        user_manager.users = user_manager._load_users()
         if not user_manager.is_admin(session['username']):
             return jsonify({'success': False, 'error': 'Admin privileges required.'}), 403
 
@@ -350,7 +352,7 @@ def mount_drive():
         logger.info(f"Current config after mounting: {config_manager.get_all_config()}")
         return jsonify({'success': True, 'message': result['message']})
     except BackupDriveSetupError as e:
-        return jsonify({'success': False, 'error': str(e)})
+        return jsonify({'success': False, 'error': str(e), 'details': e.details})
     except Exception as e:
         logger.error(f"Error mounting drive: {str(e)}")
         return jsonify({

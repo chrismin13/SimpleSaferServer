@@ -235,10 +235,20 @@ document.addEventListener('DOMContentLoaded', function() {
     // The configured backup drive stays app-managed here, so unmount only buys
     // enough time for a safe removal or swap before Check Mount notices it again.
     if (countdown) {
-      return `This only unmounts the configured backup drive temporarily. If the drive stays connected, SimpleSaferServer may remount it automatically during the next Check Mount run, in about ${countdown}. Remove it now if you do not want it mounted again.`;
+      return `This unmounts the configured backup drive temporarily.
+
+If it stays connected, SimpleSaferServer will remount it
+automatically during the next 'Check Mount' run (in about ${countdown}).
+
+Remove the drive now if you do not want it mounted again.`;
     }
 
-    return 'This only unmounts the configured backup drive temporarily. If the drive stays connected, SimpleSaferServer may remount it automatically during the next scheduled Check Mount run. Remove it now if you do not want it mounted again.';
+    return `This unmounts the configured backup drive temporarily.
+
+If it stays connected, SimpleSaferServer will remount it
+automatically during the next scheduled 'Check Mount' run.
+
+Remove the drive now if you do not want it mounted again.`;
   }
 
   function renderTaskRow(task) {

@@ -534,7 +534,12 @@
     }
 
     function getDriveHealthUnmountConfirmationMessage() {
-      return 'This only unmounts the selected partition temporarily so backup drive setup can continue. If the selected partition is still the configured backup drive, SimpleSaferServer may remount it automatically during a later Check Mount run if the drive stays connected. SMB access to the backup share may disconnect briefly so the unmount can succeed.';
+      return `This unmounts the partition temporarily so backup drive setup can continue.
+
+If it stays connected, SimpleSaferServer will remount it
+automatically during the next 'Check Mount' run.
+
+Note: SMB access will briefly disconnect while unmounting.`;
     }
 
     async function scanDrives() {

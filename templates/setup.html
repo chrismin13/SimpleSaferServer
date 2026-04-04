@@ -119,7 +119,11 @@
                             </div>
                             <div id="driveStatusArea" class="d-flex items-center mb-3" style="min-height:1.5rem;font-size:var(--text-sm);"></div>
                             <div class="d-flex gap-3 mb-4">
-                                <button id="unmountDriveBtn" class="btn btn-warning btn-sm" data-confirm="Are you sure you want to unmount this drive? This only clears the current live mounts so formatting can continue. Backup-drive settings, if any, are updated later in the Drive Mount step.">
+                                <button id="unmountDriveBtn" class="btn btn-warning btn-sm" data-confirm="Unmount this drive?
+
+This only clears live mounts so formatting can continue.
+
+Backup settings are NOT updated until the 'Drive Mount' step.">
                                     <i class="fas fa-eject me-1"></i> Unmount
                                 </button>
                                 <button id="formatDriveBtn" class="btn btn-danger btn-sm" data-confirm="Are you sure you want to format this drive? This will erase all data.">
@@ -167,7 +171,11 @@
                                 </div>
                             </div>
                             <div class="d-flex gap-2 justify-end mb-4">
-                                <button id="unmountMountDriveBtn" class="btn btn-warning btn-sm" data-confirm="Are you sure you want to unmount this drive? This only clears the current live mount so the selected partition can be configured again. Backup-drive settings are updated only after Mount Drive succeeds.">
+                                <button id="unmountMountDriveBtn" class="btn btn-warning btn-sm" data-confirm="Unmount this drive?
+
+This only clears the live mount so you can configure the partition.
+
+Backup settings are NOT updated until 'Mount Drive' succeeds.">
                                     <i class="fas fa-eject me-1"></i> Unmount
                                 </button>
                                 <button id="mountDriveBtn" class="btn btn-primary btn-sm" data-confirm="Are you sure you want to mount this drive?">
@@ -180,7 +188,10 @@
                             <button
                                 id="retryManagedUnmountBtn"
                                 class="btn btn-warning btn-sm d-none mt-3"
-                                data-confirm="Are you sure you want to retry using the SMB-safe unmount path? This may temporarily stop SMB access and related background backup tasks, unmount the configured backup share, and then start SMB again."
+                                data-confirm="Retry using the SMB-safe unmount path?
+
+This will temporarily stop SMB and background tasks to safely
+unmount the share, then restart SMB automatically."
                                 data-confirm-button="Retry SMB-safe Unmount"
                                 data-confirm-class="btn-warning"
                             >

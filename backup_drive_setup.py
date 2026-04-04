@@ -619,10 +619,10 @@ def apply_backup_drive_configuration(partition, mount_point, auto_mount, config_
                 share_backup = backup_share
                 _sync_backup_share_path(smb_manager, selected_path_str)
 
+            config_updated = True
             config_manager.set_value('backup', 'mount_point', selected_path_str)
             config_manager.set_value('backup', 'uuid', uuid)
             config_manager.set_value('backup', 'usb_id', usb_id)
-            config_updated = True
             fake_state.set_mount(True, mount_point=selected_path_str, drive=partition or '/dev/fakebackup1')
             return {
                 'message': 'Successfully selected local backup source at {}'.format(selected_path),
@@ -705,10 +705,10 @@ def apply_backup_drive_configuration(partition, mount_point, auto_mount, config_
             share_backup = backup_share
             _sync_backup_share_path(smb_manager, mount_point)
 
+        config_updated = True
         config_manager.set_value('backup', 'mount_point', mount_point)
         config_manager.set_value('backup', 'uuid', uuid)
         config_manager.set_value('backup', 'usb_id', usb_id)
-        config_updated = True
 
         return {
             'message': 'Successfully configured {} at {}'.format(partition, mount_point),
