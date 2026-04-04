@@ -1,6 +1,7 @@
 [variables]
 SSS_MODE = "fake"
 SSS_SKIP_LOGIN = "true"
+SSS_DATA_DIR = "/data"
 
 [phases.setup]
 nixPkgs = ["python311", "rclone", "msmtp", "smartmontools"]

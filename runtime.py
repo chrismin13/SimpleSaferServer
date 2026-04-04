@@ -247,7 +247,7 @@ def get_runtime() -> Runtime:
     mode = os.environ.get("SSS_MODE", "real").strip().lower() or "real"
 
     if mode == "fake":
-        data_dir = repo_root / ".dev-data"
+        data_dir = Path(os.environ.get("SSS_DATA_DIR", str(repo_root / ".dev-data"))).resolve()
         skip_login = os.environ.get("SSS_SKIP_LOGIN", "false").strip().lower() in {"1", "true", "yes", "on"}
         _runtime = Runtime(
             mode="fake",
