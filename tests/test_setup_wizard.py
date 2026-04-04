@@ -214,6 +214,15 @@ class SetupWizardTests(unittest.TestCase):
         # /dev/sdb ends with a letter, so the partition is just /dev/sdb1.
         self.assertEqual(self.setup_wizard.get_partition_node('/dev/sdb'), '/dev/sdb1')
 
+    def test_get_partition_node_raises_value_error_for_none(self):
+        # The helper documents that None is invalid input.
+        with self.assertRaises(ValueError):
+            self.setup_wizard.get_partition_node(None)
+
+    def test_get_partition_node_raises_value_error_for_empty_string(self):
+        # The helper documents that an empty device path is invalid input.
+        with self.assertRaises(ValueError):
+            self.setup_wizard.get_partition_node('')
     def test_get_partition_node_nvme_disk(self):
         # NVMe paths end with a digit (/dev/nvme0n1), so a 'p' separator is
         # needed to produce /dev/nvme0n1p1.
