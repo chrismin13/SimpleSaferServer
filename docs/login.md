@@ -2,6 +2,8 @@
 
 The Login page allows administrators to sign in to the SimpleSaferServer management interface.
 
+The broader access model is documented in [Access and Permissions](access.md).
+
 ## Fields
 - **Username**: Enter your admin username.
 - **Password**: Enter your password.

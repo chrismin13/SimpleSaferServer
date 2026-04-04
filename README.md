@@ -9,6 +9,7 @@ curl -fsSL https://sss.chrismin13.com/install.sh | sudo bash
 ```
 
 - This script will install all dependencies, set up the service, and print your Web UI address.
+- The management Web UI is admin-only. The first account created during setup becomes the initial administrator.
 - For more details and documentation, visit the [landing page](https://sss.chrismin13.com).
 - For manual installation, see the [Manual Installation Guide](docs/manual_install.md).
 
@@ -45,6 +46,7 @@ bash install_dev.sh --with-ml
 
 This project includes detailed documentation for each main feature and page. See the following files for step-by-step guides and explanations:
 
+- [access.md](docs/access.md)
 - [manual_install.md](docs/manual_install.md)
 - [setup.md](docs/setup.md)
 - [login.md](docs/login.md)

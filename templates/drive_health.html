@@ -186,7 +186,6 @@
   </details>
 </section>
 
-{% if can_manage_backup_drive %}
 <section class="mb-6">
   <details>
     <summary><strong>Advanced: Re-run Backup Drive Setup</strong></summary>
@@ -342,7 +341,6 @@
     </div>
   </div>
 </div>
-{% endif %}
 
 {% if smart %}
 <section>
@@ -449,7 +447,6 @@
     downloadTelemetryBtn.addEventListener('click', handleTelemetryDownload);
   })();
 </script>
-{% if can_manage_backup_drive %}
 <script>
   (function() {
     const statusEl = document.getElementById('driveSetupStatus');
@@ -657,5 +654,4 @@
     if (applyBtn) applyBtn.addEventListener('click', applyDriveSetup);
   })();
 </script>
-{% endif %}
 {% endblock %}

@@ -20,6 +20,7 @@ import subprocess
 import os
 import re
 from datetime import datetime
+from functools import wraps
 from tempfile import NamedTemporaryFile
 from pathlib import Path
 from runtime import get_runtime, get_fake_state
@@ -32,6 +33,28 @@ system_utils = SystemUtils(runtime=runtime)
 user_manager = UserManager(runtime=runtime)
 smb_manager = SMBManager(runtime=runtime)
 logger = logging.getLogger(__name__)
+
+
+def setup_api_access_required(route_handler):
+    """Allow anonymous setup API access only during first-time onboarding."""
+    @wraps(route_handler)
+    def wrapped(*args, **kwargs):
+        # Once setup is complete these routes become admin maintenance tools,
+        # so old bookmarked setup URLs must not keep working anonymously.
+        if not config_manager.is_setup_complete():
+            return route_handler(*args, **kwargs)
+
+        if 'username' not in session:
+            return jsonify({'success': False, 'error': 'Please log in again.'}), 401
+
+        if not user_manager.is_admin(session['username']):
+            return jsonify({'success': False, 'error': 'Admin privileges required.'}), 403
+
+        return route_handler(*args, **kwargs)
+
+    return wrapped
+
+
 MANAGED_UNMOUNT_RETRY_ERROR = (
     'The selected partition is busy. If it is still serving the backup share over SMB, '
     'retry with the SMB-safe unmount path.'
@@ -156,6 +179,7 @@ def setup_page():
         return render_template('setup.html')
 
 @setup.route('/api/setup/user', methods=['POST'])
+@setup_api_access_required
 def create_user():
     """Create the initial admin user"""
     try:
@@ -177,6 +201,7 @@ def create_user():
         return jsonify({'success': False, 'error': str(e)})
 
 @setup.route('/api/setup/format-drives', methods=['GET'])
+@setup_api_access_required
 def list_format_drives():
     """List disks for the destructive format step."""
     try:
@@ -191,6 +216,7 @@ def list_format_drives():
 
 
 @setup.route('/api/setup/mount-drives', methods=['GET'])
+@setup_api_access_required
 def list_mount_drives():
     """List NTFS partitions for the mount step."""
     try:
@@ -205,6 +231,7 @@ def list_mount_drives():
         return jsonify({'success': False, 'error': str(e)})
 
 @setup.route('/api/setup/format', methods=['POST'])
+@setup_api_access_required
 def format_drive():
     """Format the selected drive"""
     try:
@@ -269,6 +296,7 @@ def format_drive():
         })
 
 @setup.route('/api/setup/unmount', methods=['POST'])
+@setup_api_access_required
 def unmount_drive():
     """Unmount the selected drive"""
     try:
@@ -301,6 +329,7 @@ def unmount_drive():
         })
 
 @setup.route('/api/setup/mount', methods=['POST'])
+@setup_api_access_required
 def mount_drive():
     """Mount the selected drive"""
     try:
@@ -331,6 +360,7 @@ def mount_drive():
         })
 
 @setup.route('/api/setup/rclone', methods=['POST'])
+@setup_api_access_required
 def setup_rclone():
     """Set up rclone configuration"""
     try:
@@ -354,6 +384,7 @@ def setup_rclone():
         return jsonify({'success': False, 'error': str(e)})
 
 @setup.route('/api/setup/email', methods=['POST'])
+@setup_api_access_required
 def setup_email():
     """Set up email configuration"""
     try:
@@ -388,6 +419,7 @@ def setup_email():
         return jsonify({'success': False, 'error': str(e)})
 
 @setup.route('/api/setup/schedule', methods=['POST'])
+@setup_api_access_required
 def save_schedule():
     """Save the backup schedule configuration"""
     try:
@@ -539,6 +571,7 @@ def setup_smb_share(config):
         return False, str(e)
 
 @setup.route('/api/setup/complete', methods=['POST'])
+@setup_api_access_required
 def complete_setup():
     """Complete the setup process"""
     try:
@@ -606,6 +639,7 @@ def complete_setup():
         })
 
 @setup.route('/api/setup/system', methods=['POST'])
+@setup_api_access_required
 def setup_system_info():
     """Save system-level info such as username and server name"""
     try:
@@ -624,6 +658,7 @@ def setup_system_info():
         return jsonify({'success': False, 'error': str(e)}) 
 
 @setup.route('/api/setup/mega/connect', methods=['POST'])
+@setup_api_access_required
 def mega_connect():
     """Authenticate with MEGA and list folders using rclone."""
     try:
@@ -662,6 +697,7 @@ pass = {obscured_pw}
         return jsonify({'success': False, 'error': f'Error connecting to MEGA: {str(e)}'})
 
 @setup.route('/api/setup/mega/list_folders', methods=['POST'])
+@setup_api_access_required
 def mega_list_folders():
     """List folders at a given MEGA path using rclone."""
     try:
@@ -701,6 +737,7 @@ pass = {obscured_pw}
         return jsonify({'error': f'Error listing MEGA folders: {str(e)}'})
 
 @setup.route('/api/setup/mega/create_folder', methods=['POST'])
+@setup_api_access_required
 def mega_create_folder_picker():
     """Create a new folder at a given MEGA path using rclone."""
     try:
@@ -738,6 +775,7 @@ pass = {obscured_pw}
         return jsonify({'error': f'Error creating folder: {str(e)}'})
 
 @setup.route('/api/setup/mega/save', methods=['POST'])
+@setup_api_access_required
 def mega_save():
     """Save MEGA config (obscured password, selected folder) securely and write rclone config."""
     try:

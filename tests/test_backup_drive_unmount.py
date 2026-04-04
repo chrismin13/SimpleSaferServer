@@ -7,12 +7,10 @@ from backup_drive_setup import BackupDriveSetupError
 
 
 class BackupDriveUnmountTests(unittest.TestCase):
-    @patch('backup_drive_unmount.get_drive_uuid')
     @patch('backup_drive_unmount._get_mount_for_partition')
     def test_is_selected_partition_managed_backup_drive_matches_live_mount_point(
         self,
         mock_get_mount,
-        mock_get_uuid,
     ):
         system_utils = MagicMock()
         runtime = SimpleNamespace(is_fake=False)
@@ -28,14 +26,11 @@ class BackupDriveUnmountTests(unittest.TestCase):
 
         self.assertTrue(result)
         system_utils.is_mounted.assert_not_called()
-        mock_get_uuid.assert_not_called()
 
-    @patch('backup_drive_unmount.get_drive_uuid', return_value='UUID-1')
     @patch('backup_drive_unmount._get_mount_for_partition', return_value=None)
-    def test_is_selected_partition_managed_backup_drive_matches_uuid_only_when_managed_mount_is_live(
+    def test_is_selected_partition_managed_backup_drive_does_not_match_by_uuid_only(
         self,
         _mock_get_mount,
-        mock_get_uuid,
     ):
         system_utils = MagicMock()
         system_utils.is_mounted.return_value = True
@@ -49,19 +44,15 @@ class BackupDriveUnmountTests(unittest.TestCase):
             runtime=runtime,
         )
 
-        self.assertTrue(result)
-        system_utils.is_mounted.assert_called_once_with('/media/backup')
-        mock_get_uuid.assert_called_once_with('/dev/sdb1')
+        self.assertFalse(result)
+        system_utils.is_mounted.assert_not_called()
 
-    @patch('backup_drive_unmount.get_drive_uuid', return_value='UUID-1')
     @patch('backup_drive_unmount._get_mount_for_partition', return_value=None)
     def test_is_selected_partition_managed_backup_drive_does_not_match_unmounted_old_backup_partition(
         self,
         _mock_get_mount,
-        mock_get_uuid,
     ):
         system_utils = MagicMock()
-        system_utils.is_mounted.return_value = False
         runtime = SimpleNamespace(is_fake=False)
 
         result = backup_drive_unmount.is_selected_partition_managed_backup_drive(
@@ -73,8 +64,7 @@ class BackupDriveUnmountTests(unittest.TestCase):
         )
 
         self.assertFalse(result)
-        system_utils.is_mounted.assert_called_once_with('/media/backup')
-        mock_get_uuid.assert_not_called()
+        system_utils.is_mounted.assert_not_called()
 
     @patch('backup_drive_unmount.subprocess.run')
     def test_unmount_managed_backup_drive_stops_services_and_restarts_smb_without_power_down(self, mock_run):

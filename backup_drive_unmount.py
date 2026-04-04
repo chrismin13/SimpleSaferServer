@@ -2,7 +2,7 @@ import logging
 import os
 import subprocess
 
-from backup_drive_setup import BackupDriveSetupError, _get_mount_for_partition, get_drive_uuid
+from backup_drive_setup import BackupDriveSetupError, _get_mount_for_partition
 from runtime import get_fake_state, get_runtime
 
 
@@ -30,20 +30,14 @@ def is_selected_partition_managed_backup_drive(
         return system_utils.is_mounted(configured_mount_point)
 
     mount = _get_mount_for_partition(partition_path)
-    if mount and os.path.realpath(mount['mount_point']) == os.path.realpath(configured_mount_point):
-        return True
-
-    # Months from now it will be easy to forget why UUID matching is gated on
-    # the configured mount being active: without that guard, an unmounted old
-    # backup disk would incorrectly trigger the broader SMB-safe flow.
-    if not configured_uuid or not system_utils.is_mounted(configured_mount_point):
+    if not mount:
         return False
 
-    try:
-        return get_drive_uuid(partition_path) == configured_uuid
-    except BackupDriveSetupError as exc:
-        LOGGER.warning('Could not compare backup partition UUID for %s: %s', partition_path, exc)
-        return False
+    # Keep the SMB-safe path tied to the partition that is actually mounted at
+    # the managed backup mount point. UUID-only matching sounds convenient, but
+    # cloned replacement disks can legitimately share a filesystem UUID and
+    # would make us stop SMB for the wrong physical device.
+    return os.path.realpath(mount['mount_point']) == os.path.realpath(configured_mount_point)
 
 
 def _power_down_managed_backup_drive(configured_uuid, system_utils):

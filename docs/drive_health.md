@@ -48,6 +48,7 @@ This flow is partition-oriented.
 - The unmount action unmounts only the exact selected partition.
 - That unmount action only clears the live mount so the selected partition can be validated and configured again.
 - If the selected partition is still the configured backup drive and it is currently mounted at the managed backup mount point, the app first disconnects SMB access and stops the related background tasks so the unmount is not blocked by busy share handles.
+- The app intentionally does not escalate to that broader SMB-safe path based on UUID alone, because cloned replacement disks can legitimately share a filesystem UUID and would make the selected physical device ambiguous.
 - The configure action mounts only the exact selected partition.
 
 This is different from setup wizard step 2, which is disk-oriented for formatting.

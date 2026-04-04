@@ -666,7 +666,6 @@ def drives():
         'uuid': config_manager.get_value('backup', 'uuid', ''),
         'usb_id': config_manager.get_value('backup', 'usb_id', ''),
     }
-    can_manage_backup_drive = user_manager.is_admin(session.get('username'))
 
     smart_support_warning = None
     if not runtime.is_fake:
@@ -722,6 +721,9 @@ def drives():
                     runtime=runtime,
                 )
 
+    # The normal web UI login path is admin-only, and the backup-drive APIs
+    # still enforce admin on every request. Keep this section visible here so
+    # the first post-setup session cannot be tripped up by stale user state.
     return render_template(
         "drive_health.html",
         smart=smart,
@@ -733,7 +735,6 @@ def drives():
         hdsentinel_settings=hdsentinel_settings,
         hdsentinel_snapshot=hdsentinel_snapshot,
         drive_config=drive_config,
-        can_manage_backup_drive=can_manage_backup_drive,
         smart_support_warning=smart_support_warning,
         settings_message=settings_message,
         settings_error=settings_error,

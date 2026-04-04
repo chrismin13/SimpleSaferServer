@@ -19,6 +19,8 @@ That split is important because the safety checks are different.
 - Enter the server name.
 - Enter and confirm the password.
 - On success, the wizard logs the user in and moves to the next step.
+- That first account becomes the initial administrator for the web UI.
+- Only administrator accounts can sign in to the management interface after setup.
 
 ## Step 2: Drive Format (Optional)
 
@@ -49,7 +51,8 @@ This step is partition-oriented.
 - Drive labels prefer `lsblk` transport data such as `TRAN=usb`, with `RM` and `HOTPLUG` as fallbacks, so removable backup targets are not mislabeled as internal disks.
 - The unmount button unmounts only the exact selected partition.
 - That unmount action is temporary preparation for this step. It does not deconfigure the old backup drive by itself.
-- If the exact unmount fails and the selected partition still appears to be the currently configured backup drive, the wizard offers a second explicit SMB-safe retry that may temporarily stop SMB access and the related background backup tasks before retrying the unmount.
+- If the exact unmount fails and the selected partition is still the live configured backup drive mounted at the managed backup mount point, the wizard offers a second explicit SMB-safe retry that may temporarily stop SMB access and the related background backup tasks before retrying the unmount.
+- The wizard intentionally does not offer that broader retry based on UUID alone, because cloned replacement disks can legitimately share a filesystem UUID and would make the safety check ambiguous.
 - The mount button mounts that selected NTFS partition at the chosen mount point.
 - Advanced options allow changing the mount point and whether the managed `/etc/fstab` entry should be present.
 
