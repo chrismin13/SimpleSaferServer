@@ -251,15 +251,8 @@
         </div>
       </div>
 
-      <div class="form-group mb-4">
-        <label class="form-check-label" for="backupDriveAutoMount">
-          <input type="checkbox" class="form-check-input" id="backupDriveAutoMount" checked>
-          Update the SimpleSaferServer-managed <code>/etc/fstab</code> entry so this drive mounts automatically at boot
-        </label>
-      </div>
-
       <div class="text-muted mb-4" style="font-size: var(--text-sm); line-height: 1.6;">
-        Scan drives, select the correct backup partition, unmount it first if needed, then apply the updated backup drive setup. Do not use this for unrelated system storage changes.
+        Scan drives, select the correct backup partition, unmount it first if needed, then apply the updated backup drive setup. This always refreshes the SimpleSaferServer-managed <code>/etc/fstab</code> entry using the boot-safe <code>nofail</code> configuration. Do not use this for unrelated system storage changes.
       </div>
 
       <div class="d-flex gap-2 justify-end flex-wrap">
@@ -469,7 +462,6 @@
     const applyBtn = document.getElementById('applyBackupDriveBtn');
     const driveSelect = document.getElementById('backupDriveSelect');
     const mountPointInput = document.getElementById('backupDriveMountPoint');
-    const autoMountInput = document.getElementById('backupDriveAutoMount');
     const configuredMountPointValue = document.getElementById('configuredMountPointValue');
     const configuredUuidValue = document.getElementById('configuredUuidValue');
     const configuredUsbIdValue = document.getElementById('configuredUsbIdValue');
@@ -612,8 +604,7 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             drive: driveSelect.value,
-            mount_point: mountPointInput.value.trim(),
-            auto_mount: autoMountInput.checked
+            mount_point: mountPointInput.value.trim()
           })
         });
         const data = await parseDriveSetupResponse(response);

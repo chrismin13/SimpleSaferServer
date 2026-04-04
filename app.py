@@ -1540,7 +1540,10 @@ def api_backup_drive_configure():
         result = apply_backup_drive_configuration(
             data.get('drive'),
             data.get('mount_point'),
-            data.get('auto_mount', True),
+            # Rerun setup always refreshes the managed fstab entry with the
+            # boot-safe defaults,nofail policy. The UI intentionally exposes no
+            # opt-out here.
+            True,
             config_manager,
             smb_manager,
             runtime=runtime,

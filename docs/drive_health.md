@@ -22,6 +22,7 @@ The Drive Health page combines two views of the configured backup drive:
 - Use the advanced section on the Drive Health page only if the backup drive changed or the original identifiers were detected incorrectly.
 - The flow is designed to re-run the backup drive mount setup safely instead of editing UUID or USB ID fields directly.
 - It updates only the SimpleSaferServer-managed backup mount entry in `/etc/fstab`.
+- The rerun flow always refreshes the managed entry with the boot-safe `defaults,nofail` mount options.
 - If the app finds multiple managed entries or a conflicting non-SimpleSaferServer entry using the same UUID or mount point, it stops and asks for manual cleanup.
 
 What "SimpleSaferServer-managed" means:

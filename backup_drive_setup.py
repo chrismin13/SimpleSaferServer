@@ -82,15 +82,9 @@ def _mount_belongs_to_drive(selected_drive, mounted_device):
     mounted_device = (mounted_device or '').strip()
     if not selected_drive or not mounted_device:
         return False
-    if mounted_device == selected_drive:
-        return True
-
-    base_name = os.path.basename(selected_drive)
-    mounted_name = os.path.basename(mounted_device)
-
-    if re.match(r'^{}p\d+$'.format(re.escape(base_name)), mounted_name):
-        return True
-    return re.match(r'^{}\d+$'.format(re.escape(base_name)), mounted_name) is not None
+    # The rerun flow selects a partition path, not a whole disk. Match the
+    # mounted source exactly so names like /dev/sdb1 never catch /dev/sdb11.
+    return os.path.realpath(mounted_device) == os.path.realpath(selected_drive)
 
 
 def _get_mounted_partitions_for_drive(drive):
