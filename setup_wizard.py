@@ -304,12 +304,17 @@ def format_drive():
             # partprobe failures are non-fatal: mkfs.ntfs will still succeed on
             # most kernels without it, but we log at debug so failures are
             # visible if troubleshooting a race condition.
-            result_probe = subprocess.run(['partprobe', disk], capture_output=True, text=True)
-            if result_probe.returncode != 0:
-                logger.debug(
-                    "partprobe %s exited %d: %s",
-                    disk, result_probe.returncode, result_probe.stderr.strip(),
-                )
+            try:
+                result_probe = subprocess.run(['partprobe', disk], capture_output=True, text=True)
+                if result_probe.returncode != 0:
+                    logger.debug(
+                        "partprobe %s exited %d: %s",
+                        disk, result_probe.returncode, result_probe.stderr.strip(),
+                    )
+            except FileNotFoundError:
+                logger.debug("partprobe not found for %s; continuing without it", disk)
+            except subprocess.SubprocessError as exc:
+                logger.debug("partprobe failed for %s: %s", disk, exc)
 
         # Format the partition as NTFS
         result = subprocess.run(['mkfs.ntfs', '-f', partition], capture_output=True, text=True)
