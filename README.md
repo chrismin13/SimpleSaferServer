@@ -1,5 +1,9 @@
 # SimpleSaferServer
 
+> [!TIP]
+> **🚀 Want to see it in action?**  
+> Check out the [Live Management Demo](https://sssdemo.chrismin13.com) to explore the dashboard and features in a simulated environment!
+
 ## 🚀 Quick Installation
 
 To install SimpleSaferServer on a clean Debian-based system, run the following command:
@@ -26,12 +30,6 @@ To wipe fake-mode setup state and start over:
 
 ```bash
 bash reset_fake_mode.sh
-```
-
-If you also want the full drive-health ML stack locally, install it explicitly:
-
-```bash
-bash install_dev.sh --with-ml
 ```
 
 - Fake mode stores its state under `.dev-data/`.
