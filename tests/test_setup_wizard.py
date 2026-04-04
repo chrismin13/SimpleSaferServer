@@ -22,7 +22,7 @@ class SetupWizardTests(unittest.TestCase):
         smb_manager_module = types.ModuleType("smb_manager")
         smb_manager_module.SMBManager = lambda runtime=None: object()
         runtime_module = types.ModuleType("runtime")
-        runtime_module.get_runtime = lambda: types.SimpleNamespace(is_fake=False)
+        runtime_module.get_runtime = lambda: types.SimpleNamespace(is_fake=False, default_mount_point='/media/backup')
         runtime_module.get_fake_state = lambda: None
 
         self._module_patches = [
