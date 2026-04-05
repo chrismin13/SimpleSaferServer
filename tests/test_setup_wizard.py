@@ -205,3 +205,315 @@ class SetupWizardTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.get_json(), {'success': False, 'error': 'partition is required'})
+
+    # ------------------------------------------------------------------
+    # get_partition_node helper — NVMe/MMC partition naming
+    # ------------------------------------------------------------------
+
+    def test_get_partition_node_standard_sata_disk(self):
+        # /dev/sdb ends with a letter, so the partition is just /dev/sdb1.
+        self.assertEqual(self.setup_wizard.get_partition_node('/dev/sdb'), '/dev/sdb1')
+
+    def test_get_partition_node_raises_value_error_for_none(self):
+        # The helper documents that None is invalid input.
+        with self.assertRaises(ValueError):
+            self.setup_wizard.get_partition_node(None)
+
+    def test_get_partition_node_raises_value_error_for_empty_string(self):
+        # The helper documents that an empty device path is invalid input.
+        with self.assertRaises(ValueError):
+            self.setup_wizard.get_partition_node('')
+
+    def test_get_partition_node_raises_value_error_for_non_string(self):
+        # Non-string truthy values must raise ValueError, not TypeError.
+        with self.assertRaises(ValueError):
+            self.setup_wizard.get_partition_node(123)
+
+    def test_get_partition_node_nvme_disk(self):
+        # NVMe paths end with a digit (/dev/nvme0n1), so a 'p' separator is
+        # needed to produce /dev/nvme0n1p1.
+        self.assertEqual(self.setup_wizard.get_partition_node('/dev/nvme0n1'), '/dev/nvme0n1p1')
+
+    def test_get_partition_node_mmc_disk(self):
+        # MMC/SD-card paths also end with a digit (/dev/mmcblk0).
+        self.assertEqual(self.setup_wizard.get_partition_node('/dev/mmcblk0'), '/dev/mmcblk0p1')
+
+    def test_get_partition_node_loop_device(self):
+        # Loop devices end with a digit too (/dev/loop0).
+        self.assertEqual(self.setup_wizard.get_partition_node('/dev/loop0'), '/dev/loop0p1')
+
+    def test_get_partition_node_sda_disk(self):
+        # Another standard disk to confirm the letter-ending branch.
+        self.assertEqual(self.setup_wizard.get_partition_node('/dev/sda'), '/dev/sda1')
+
+    # ------------------------------------------------------------------
+    # format_drive — disk path validation, partprobe, and partition poll
+    # ------------------------------------------------------------------
+
+    def _post_format(self, client, disk):
+        """POST /api/setup/format with a JSON body and return the response."""
+        return client.post('/api/setup/format', json={'disk': disk})
+
+    def test_format_drive_rejects_missing_body(self):
+        # A POST with no JSON body at all must return a clear error, not AttributeError.
+        with self.app.test_client() as client:
+            response = client.post('/api/setup/format')
+
+        data = response.get_json()
+        self.assertEqual(data['success'], False)
+        self.assertIn('disk', data['error'].lower())
+
+    def test_format_drive_rejects_non_dict_body(self):
+        # A JSON body that is not an object (e.g. an array) must be rejected
+        # clearly rather than raising an AttributeError on .get('disk').
+        with self.app.test_client() as client:
+            response = client.post('/api/setup/format', json=[1, 2, 3])
+
+        data = response.get_json()
+        self.assertEqual(data['success'], False)
+        self.assertIn('JSON object', data['error'])
+
+    def test_format_drive_rejects_non_string_disk(self):
+        # JSON clients can send numeric or other non-string values; reject cleanly.
+        with self.app.test_client() as client:
+            response = client.post('/api/setup/format', json={'disk': 123})
+
+        data = response.get_json()
+        self.assertEqual(data['success'], False)
+        self.assertIn('string', data['error'])
+
+    def test_format_drive_rejects_falsey_non_string_disk(self):
+        # Falsey but non-None values (e.g. False, 0) must hit the isinstance check,
+        # not the "No disk selected" branch, so the error is accurate.
+        with self.app.test_client() as client:
+            response = client.post('/api/setup/format', json={'disk': False})
+
+        data = response.get_json()
+        self.assertEqual(data['success'], False)
+        self.assertIn('string', data['error'])
+
+    def test_format_drive_rejects_non_dev_path(self):
+        # Paths that resolve outside /dev/ must be rejected without touching the disk.
+        with patch('os.path.realpath', return_value='/tmp/evil'):
+            with self.app.test_client() as client:
+                response = self._post_format(client, '/tmp/evil')
+
+        data = response.get_json()
+        self.assertEqual(data['success'], False)
+        self.assertIn('/dev/', data['error'])
+
+    def test_format_drive_rejects_nonexistent_device(self):
+        # A path under /dev/ that doesn't exist must be rejected.
+        with patch('os.path.realpath', return_value='/dev/sdb'):
+            with patch('os.stat', side_effect=FileNotFoundError):
+                with self.app.test_client() as client:
+                    response = self._post_format(client, '/dev/sdb')
+
+        data = response.get_json()
+        self.assertEqual(data['success'], False)
+        self.assertIn('does not exist', data['error'])
+
+    def test_format_drive_rejects_non_block_device(self):
+        # A node that exists but is not a block device (e.g. /dev/null) must be rejected.
+        import stat as stat_module
+        non_block_stat = MagicMock()
+        non_block_stat.st_mode = stat_module.S_IFCHR | 0o666  # char device, not block
+
+        with patch('os.path.realpath', return_value='/dev/null'):
+            with patch('os.path.exists', return_value=True):
+                with patch('os.stat', return_value=non_block_stat):
+                    with self.app.test_client() as client:
+                        response = self._post_format(client, '/dev/null')
+
+        data = response.get_json()
+        self.assertEqual(data['success'], False)
+        self.assertIn('block device', data['error'])
+
+    def test_format_drive_rejects_partition_node(self):
+        # Passing a partition (/dev/sda1) instead of a whole disk must be rejected.
+        import stat as stat_module
+        blk_stat = MagicMock()
+        blk_stat.st_mode = stat_module.S_IFBLK | 0o660
+
+        lsblk_result = MagicMock(returncode=0, stdout='part\n', stderr='')
+        with patch('os.path.realpath', return_value='/dev/sda1'):
+            with patch('os.path.exists', return_value=True):
+                with patch('os.stat', return_value=blk_stat):
+                    with patch.object(self.setup_wizard.subprocess, 'run', return_value=lsblk_result):
+                        with self.app.test_client() as client:
+                            response = self._post_format(client, '/dev/sda1')
+
+        data = response.get_json()
+        self.assertEqual(data['success'], False)
+        self.assertIn('whole-disk', data['error'])
+
+    def test_format_drive_handles_lsblk_not_found(self):
+        # If lsblk isn't installed, return a clear error rather than crashing.
+        import stat as stat_module
+        blk_stat = MagicMock()
+        blk_stat.st_mode = stat_module.S_IFBLK | 0o660
+
+        with patch('os.path.realpath', return_value='/dev/sdb'):
+            with patch('os.path.exists', return_value=True):
+                with patch('os.stat', return_value=blk_stat):
+                    with patch.object(
+                        self.setup_wizard.subprocess,
+                        'run',
+                        side_effect=FileNotFoundError,
+                    ):
+                        with self.app.test_client() as client:
+                            response = self._post_format(client, '/dev/sdb')
+
+        data = response.get_json()
+        self.assertEqual(data['success'], False)
+        self.assertIn('verify disk type', data['error'])
+
+    def test_format_drive_partprobe_missing_is_non_fatal(self):
+        # OSError from partprobe (not installed, or permission denied) must not abort formatting.
+        import stat as stat_module
+        blk_stat = MagicMock()
+        blk_stat.st_mode = stat_module.S_IFBLK | 0o660
+
+        # lsblk succeeds → disk is valid; fdisk succeeds → partition created;
+        # partprobe raises OSError (FileNotFoundError) → caught, logged at debug, not fatal;
+        # os.stat on partition shows a block device → poll succeeds immediately;
+        # mkfs.ntfs succeeds → overall success.
+        lsblk_ok = MagicMock(returncode=0, stdout='disk\n', stderr='')
+        fdisk_ok = MagicMock(returncode=0, stdout='', stderr='')
+        mkfs_ok = MagicMock(returncode=0, stdout='', stderr='')
+
+        subprocess_call_results = iter([lsblk_ok, fdisk_ok, mkfs_ok])
+
+        def fake_run(cmd, **kwargs):
+            if cmd[0] == 'partprobe':
+                raise FileNotFoundError
+            return next(subprocess_call_results)
+
+        partition_stat = MagicMock()
+        partition_stat.st_mode = stat_module.S_IFBLK | 0o660
+
+        def fake_os_stat(path):
+            # Partition node exists as a block device immediately.
+            return partition_stat
+
+        with patch('os.path.realpath', return_value='/dev/sdb'):
+            with patch('os.path.exists', side_effect=lambda p: p == '/dev/sdb'):
+                with patch('os.stat', side_effect=fake_os_stat):
+                    with patch('os.lstat', side_effect=fake_os_stat):
+                        with patch.object(self.setup_wizard.subprocess, 'run', side_effect=fake_run):
+                            with patch.object(self.setup_wizard, '_get_mounted_partitions_for_disk', return_value=[]):
+                                with self.app.test_client() as client:
+                                    response = self._post_format(client, '/dev/sdb')
+
+        self.assertEqual(response.get_json()['success'], True)
+
+    def test_format_drive_partprobe_permission_error_is_non_fatal(self):
+        # PermissionError (an OSError subclass) from partprobe must also be non-fatal.
+        import stat as stat_module
+        blk_stat = MagicMock()
+        blk_stat.st_mode = stat_module.S_IFBLK | 0o660
+
+        lsblk_ok = MagicMock(returncode=0, stdout='disk\n', stderr='')
+        fdisk_ok = MagicMock(returncode=0, stdout='', stderr='')
+        mkfs_ok = MagicMock(returncode=0, stdout='', stderr='')
+
+        subprocess_call_results = iter([lsblk_ok, fdisk_ok, mkfs_ok])
+
+        def fake_run(cmd, **kwargs):
+            if cmd[0] == 'partprobe':
+                raise PermissionError("operation not permitted")
+            return next(subprocess_call_results)
+
+        partition_stat = MagicMock()
+        partition_stat.st_mode = stat_module.S_IFBLK | 0o660
+
+        with patch('os.path.realpath', return_value='/dev/sdb'):
+            with patch('os.path.exists', side_effect=lambda p: p == '/dev/sdb'):
+                with patch('os.stat', return_value=partition_stat):
+                    with patch('os.lstat', return_value=partition_stat):
+                        with patch.object(self.setup_wizard.subprocess, 'run', side_effect=fake_run):
+                            with patch.object(self.setup_wizard, '_get_mounted_partitions_for_disk', return_value=[]):
+                                with self.app.test_client() as client:
+                                    response = self._post_format(client, '/dev/sdb')
+
+        self.assertEqual(response.get_json()['success'], True)
+
+    def test_format_drive_partprobe_nonzero_is_non_fatal(self):
+        # Non-zero exit from partprobe must be logged at debug, not abort formatting.
+        import stat as stat_module
+        blk_stat = MagicMock()
+        blk_stat.st_mode = stat_module.S_IFBLK | 0o660
+
+        lsblk_ok = MagicMock(returncode=0, stdout='disk\n', stderr='')
+        fdisk_ok = MagicMock(returncode=0, stdout='', stderr='')
+        partprobe_fail = MagicMock(returncode=1, stdout='', stderr='ioctl error')
+        mkfs_ok = MagicMock(returncode=0, stdout='', stderr='')
+
+        subprocess_calls = iter([lsblk_ok, fdisk_ok, partprobe_fail, mkfs_ok])
+
+        partition_stat = MagicMock()
+        partition_stat.st_mode = stat_module.S_IFBLK | 0o660
+
+        def fake_os_stat(path):
+            return partition_stat
+
+        with patch('os.path.realpath', return_value='/dev/sdb'):
+            with patch('os.path.exists', side_effect=lambda p: p == '/dev/sdb'):
+                with patch('os.stat', side_effect=fake_os_stat):
+                    with patch('os.lstat', side_effect=fake_os_stat):
+                        with patch.object(
+                            self.setup_wizard.subprocess, 'run', side_effect=lambda cmd, **kw: next(subprocess_calls)
+                        ):
+                            with patch.object(self.setup_wizard, '_get_mounted_partitions_for_disk', return_value=[]):
+                                with self.app.test_client() as client:
+                                    response = self._post_format(client, '/dev/sdb')
+
+        self.assertEqual(response.get_json()['success'], True)
+
+    def test_format_drive_poll_timeout_returns_error(self):
+        # If the partition node never appears as a block device within the
+        # timeout window, format_drive must return a clear error.
+        import stat as stat_module
+        blk_stat = MagicMock()
+        blk_stat.st_mode = stat_module.S_IFBLK | 0o660
+
+        lsblk_ok = MagicMock(returncode=0, stdout='disk\n', stderr='')
+        fdisk_ok = MagicMock(returncode=0, stdout='', stderr='')
+
+        disk_stat = MagicMock()
+        disk_stat.st_mode = stat_module.S_IFBLK | 0o660
+
+        def fake_os_stat(path):
+            if path == '/dev/sdb':
+                return disk_stat
+            # Partition node (/dev/sdb1) never appears — always raises OSError.
+            raise OSError('no such file')
+
+        def fake_run(cmd, **kwargs):
+            if cmd[0] == 'partprobe':
+                raise FileNotFoundError
+            if cmd[0] == 'lsblk':
+                return lsblk_ok
+            if cmd[0] == 'fdisk':
+                return fdisk_ok
+            raise AssertionError(f'Unexpected subprocess call: {cmd}')
+
+        # Return a low timestamp on the first call (deadline = 0 + timeout),
+        # then a timestamp past the deadline on the second call so the poll
+        # loop exits immediately.
+        timeout = self.setup_wizard.PARTITION_POLL_TIMEOUT_SECONDS
+        monotonic_seq = iter([0.0, timeout + 1.0])
+
+        with patch('os.path.realpath', return_value='/dev/sdb'):
+            with patch('os.path.exists', side_effect=lambda p: p == '/dev/sdb'):
+                with patch('os.stat', side_effect=fake_os_stat):
+                    with patch.object(self.setup_wizard.subprocess, 'run', side_effect=fake_run):
+                        with patch.object(self.setup_wizard, '_get_mounted_partitions_for_disk', return_value=[]):
+                            with patch.object(self.setup_wizard.time, 'monotonic', side_effect=monotonic_seq):
+                                with self.app.test_client() as client:
+                                    response = self._post_format(client, '/dev/sdb')
+
+        data = response.get_json()
+        self.assertEqual(data['success'], False)
+        self.assertIn('did not appear', data['error'])
+

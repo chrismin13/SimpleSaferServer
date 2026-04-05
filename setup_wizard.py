@@ -19,6 +19,8 @@ import logging
 import subprocess
 import os
 import re
+import stat
+import time
 from datetime import datetime
 from functools import wraps
 from tempfile import NamedTemporaryFile
@@ -33,6 +35,11 @@ system_utils = SystemUtils(runtime=runtime)
 user_manager = UserManager(runtime=runtime)
 smb_manager = SMBManager(runtime=runtime)
 logger = logging.getLogger(__name__)
+
+# How long to wait for udev to create a newly-partitioned device node
+# (e.g. /dev/nvme0n1p1) before giving up and reporting an error.
+PARTITION_POLL_INTERVAL_SECONDS = 0.5  # delay between existence checks
+PARTITION_POLL_TIMEOUT_SECONDS = 5.0   # maximum total wait
 
 
 def setup_api_access_required(route_handler):
@@ -65,6 +72,27 @@ MANAGED_UNMOUNT_RETRY_DETAILS = (
     'This retry may temporarily stop SMB access and related background backup tasks, '
     'unmount the configured backup share, and then restart SMB.'
 )
+
+
+def get_partition_node(disk):
+    """Return the first-partition device node for *disk*.
+
+    Linux names partition nodes differently depending on the disk type:
+    - Standard SCSI/SATA disks (e.g. /dev/sdb)  → /dev/sdb1
+    - NVMe and MMC devices whose path already ends in a digit
+      (e.g. /dev/nvme0n1, /dev/mmcblk0)         → /dev/nvme0n1p1, /dev/mmcblk0p1
+
+    The rule is: if the last character of the disk path is a digit, insert a
+    'p' separator before the partition number so the kernel can tell where the
+    disk name ends and the partition number begins.
+
+    Raises ValueError if *disk* is not a non-empty string.
+    """
+    if not isinstance(disk, str) or not disk:
+        raise ValueError(f"disk must be a non-empty string, got {disk!r}")
+    if disk[-1].isdigit():
+        return f"{disk}p1"
+    return f"{disk}1"
 
 
 def _get_configured_backup_drive_identity():
@@ -243,13 +271,74 @@ def format_drive():
                 'details': 'Fake mode never formats local disks. Use the mount step to point the backup source at an existing folder instead.'
             })
 
-        data = request.get_json()
+        # silent=True suppresses the 400 on a missing/wrong Content-Type so we
+        # can return our own JSON error. Only a JSON object is valid here.
+        data = request.get_json(silent=True)
+        if data is None:
+            data = {}
+        elif not isinstance(data, dict):
+            return jsonify({'success': False, 'error': 'Request body must be a JSON object'})
         # Step 2 is intentionally disk-oriented because formatting and partition
         # creation are destructive whole-disk operations.
         disk = data.get('disk')
 
+        # Treat an absent key and an explicit null the same way.  Falsey but
+        # non-None values (e.g. 0, False, []) must fall through to the
+        # isinstance check below so they get the clearer "must be a string"
+        # error instead of the generic "No disk selected" message.
+        if disk is None:
+            return jsonify({'success': False, 'error': 'No disk selected'})
+
+        # A JSON client could send a non-string value (e.g. 123 or False);
+        # os.path.realpath would raise TypeError, so we catch it here.
+        if not isinstance(disk, str):
+            return jsonify({'success': False, 'error': 'Invalid disk path: must be a string'})
+
+        # Reject an empty string after the type check — the `disk is None` guard
+        # above only catches a missing key; an explicit empty string must be
+        # rejected here.
         if not disk:
             return jsonify({'success': False, 'error': 'No disk selected'})
+
+        # Resolve symlinks first so a symlink inside /dev/ pointing elsewhere
+        # cannot be used to bypass the /dev/ prefix check, then verify the
+        # caller is targeting an existing whole-disk block device.
+        disk = os.path.realpath(disk)
+        if not disk.startswith('/dev/'):
+            return jsonify({'success': False, 'error': 'Invalid disk path: must be a /dev/ device node'})
+
+        # Use os.stat() directly so the error message reflects the actual
+        # failure: a missing node (FileNotFoundError) is different from a
+        # permission problem (PermissionError), and os.path.exists() silently
+        # maps both to False, which would produce a misleading "does not exist"
+        # message when the real issue is a permissions error.
+        try:
+            disk_stat = os.stat(disk)
+        except FileNotFoundError:
+            return jsonify({'success': False, 'error': 'Invalid disk path: device does not exist'})
+        except PermissionError:
+            return jsonify({'success': False, 'error': 'Invalid disk path: permission denied while inspecting device node'})
+        except OSError:
+            return jsonify({'success': False, 'error': 'Invalid disk path: unable to inspect device node'})
+
+        if not stat.S_ISBLK(disk_stat.st_mode):
+            return jsonify({'success': False, 'error': 'Invalid disk path: must be a block device node'})
+
+        # Confirm the node is a whole disk rather than a partition (e.g. /dev/sda
+        # has TYPE=disk; /dev/sda1 has TYPE=part).  Passing a partition path here
+        # would corrupt get_partition_node output (e.g. /dev/sda1 → /dev/sda11).
+        try:
+            lsblk_result = subprocess.run(
+                ['lsblk', '-dn', '-o', 'TYPE', disk],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+        except (subprocess.SubprocessError, OSError):
+            return jsonify({'success': False, 'error': 'Unable to verify disk type'})
+
+        if lsblk_result.stdout.strip() != 'disk':
+            return jsonify({'success': False, 'error': 'Invalid disk path: must be a whole-disk block device'})
 
         mounted_partitions = _get_mounted_partitions_for_disk(disk)
 
@@ -262,8 +351,11 @@ def format_drive():
                 'can_unmount': True
             })
 
-        # Create a single partition if none exists
-        partition = f"{disk}1"
+        # Determine the correct first-partition device node.
+        # NVMe/MMC paths end in a digit (e.g. /dev/nvme0n1), so their partition
+        # nodes use a 'p' separator (e.g. /dev/nvme0n1p1).  Standard SCSI/SATA
+        # disks (e.g. /dev/sdb) just append the number (e.g. /dev/sdb1).
+        partition = get_partition_node(disk)
         if not os.path.exists(partition):
             # Create partition using fdisk
             fdisk_input = f"n\np\n1\n\n\nw\n"
@@ -275,6 +367,71 @@ def format_drive():
                     'details': 'Could not create partition on the drive. Please ensure the drive is not in use.'
                 })
 
+            # Ask the kernel to re-read the partition table so the new partition
+            # node (e.g. /dev/nvme0n1p1) appears in /dev before mkfs.ntfs runs.
+            # partprobe failures are non-fatal: mkfs.ntfs will still succeed on
+            # most kernels without it, but we log at debug so failures are
+            # visible if troubleshooting a race condition.
+            try:
+                result_probe = subprocess.run(['partprobe', disk], capture_output=True, text=True)
+                if result_probe.returncode != 0:
+                    logger.debug(
+                        "partprobe %s exited %d: %s",
+                        disk, result_probe.returncode, result_probe.stderr.strip(),
+                    )
+            except OSError as e:
+                logger.debug("partprobe failed for %s; continuing without it: %s", disk, e)
+
+            # Poll for up to 5 seconds so udev has time to create the new
+            # device node before mkfs.ntfs tries to open it.  Without this
+            # wait, mkfs can fail with "No such file or directory" on kernels
+            # where udev processing is slightly delayed.
+            deadline = time.monotonic() + PARTITION_POLL_TIMEOUT_SECONDS
+            while True:
+                # Verify the node exists *and* is a block device — udev could
+                # briefly create a placeholder file of the wrong type.
+                try:
+                    is_block_device = stat.S_ISBLK(os.stat(partition).st_mode)
+                except OSError:
+                    is_block_device = False
+                if is_block_device:
+                    break
+                if time.monotonic() >= deadline:
+                    return jsonify({
+                        'success': False,
+                        'error': 'Partition node did not appear after partitioning',
+                        'details': (
+                            f'{partition} was not created within '
+                            f'{PARTITION_POLL_TIMEOUT_SECONDS:.0f} seconds of partitioning. '
+                            'The kernel may not have processed the new partition table yet. '
+                            'Please try again.'
+                        ),
+                    })
+                time.sleep(PARTITION_POLL_INTERVAL_SECONDS)
+
+        # Verify the partition node immediately before formatting so both the
+        # "already existed" and "just created" paths are protected.
+        deadline = time.monotonic() + PARTITION_POLL_TIMEOUT_SECONDS
+        while True:
+            try:
+                partition_lstat = os.lstat(partition)
+                is_symlink = stat.S_ISLNK(partition_lstat.st_mode)
+                is_block_device = (not is_symlink) and stat.S_ISBLK(os.stat(partition).st_mode)
+            except OSError:
+                is_block_device = False
+            if is_block_device:
+                break
+            if time.monotonic() >= deadline:
+                return jsonify({
+                    'success': False,
+                    'error': 'Invalid partition path: must be a partition block device',
+                    'details': (
+                        f'{partition} was not a valid block device within '
+                        f'{PARTITION_POLL_TIMEOUT_SECONDS:.0f} seconds. '
+                        'Please verify the drive path and try again.'
+                    ),
+                })
+            time.sleep(PARTITION_POLL_INTERVAL_SECONDS)
         # Format the partition as NTFS
         result = subprocess.run(['mkfs.ntfs', '-f', partition], capture_output=True, text=True)
 
