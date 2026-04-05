@@ -324,7 +324,7 @@ def format_drive():
                 text=True,
                 check=True,
             )
-        except (subprocess.SubprocessError, FileNotFoundError):
+        except (subprocess.SubprocessError, OSError):
             return jsonify({'success': False, 'error': 'Unable to verify disk type'})
 
         if lsblk_result.stdout.strip() != 'disk':
