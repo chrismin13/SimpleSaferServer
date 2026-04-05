@@ -263,6 +263,16 @@ class SetupWizardTests(unittest.TestCase):
         self.assertEqual(data['success'], False)
         self.assertIn('disk', data['error'].lower())
 
+    def test_format_drive_rejects_non_dict_body(self):
+        # A JSON body that is not an object (e.g. an array) must be rejected
+        # clearly rather than raising an AttributeError on .get('disk').
+        with self.app.test_client() as client:
+            response = client.post('/api/setup/format', json=[1, 2, 3])
+
+        data = response.get_json()
+        self.assertEqual(data['success'], False)
+        self.assertIn('JSON object', data['error'])
+
     def test_format_drive_rejects_non_string_disk(self):
         # JSON clients can send numeric or other non-string values; reject cleanly.
         with self.app.test_client() as client:
@@ -295,7 +305,7 @@ class SetupWizardTests(unittest.TestCase):
     def test_format_drive_rejects_nonexistent_device(self):
         # A path under /dev/ that doesn't exist must be rejected.
         with patch('os.path.realpath', return_value='/dev/sdb'):
-            with patch('os.path.exists', return_value=False):
+            with patch('os.stat', side_effect=FileNotFoundError):
                 with self.app.test_client() as client:
                     response = self._post_format(client, '/dev/sdb')
 
@@ -389,10 +399,11 @@ class SetupWizardTests(unittest.TestCase):
         with patch('os.path.realpath', return_value='/dev/sdb'):
             with patch('os.path.exists', side_effect=lambda p: p == '/dev/sdb'):
                 with patch('os.stat', side_effect=fake_os_stat):
-                    with patch.object(self.setup_wizard.subprocess, 'run', side_effect=fake_run):
-                        with patch.object(self.setup_wizard, '_get_mounted_partitions_for_disk', return_value=[]):
-                            with self.app.test_client() as client:
-                                response = self._post_format(client, '/dev/sdb')
+                    with patch('os.lstat', side_effect=fake_os_stat):
+                        with patch.object(self.setup_wizard.subprocess, 'run', side_effect=fake_run):
+                            with patch.object(self.setup_wizard, '_get_mounted_partitions_for_disk', return_value=[]):
+                                with self.app.test_client() as client:
+                                    response = self._post_format(client, '/dev/sdb')
 
         self.assertEqual(response.get_json()['success'], True)
 
@@ -419,10 +430,11 @@ class SetupWizardTests(unittest.TestCase):
         with patch('os.path.realpath', return_value='/dev/sdb'):
             with patch('os.path.exists', side_effect=lambda p: p == '/dev/sdb'):
                 with patch('os.stat', return_value=partition_stat):
-                    with patch.object(self.setup_wizard.subprocess, 'run', side_effect=fake_run):
-                        with patch.object(self.setup_wizard, '_get_mounted_partitions_for_disk', return_value=[]):
-                            with self.app.test_client() as client:
-                                response = self._post_format(client, '/dev/sdb')
+                    with patch('os.lstat', return_value=partition_stat):
+                        with patch.object(self.setup_wizard.subprocess, 'run', side_effect=fake_run):
+                            with patch.object(self.setup_wizard, '_get_mounted_partitions_for_disk', return_value=[]):
+                                with self.app.test_client() as client:
+                                    response = self._post_format(client, '/dev/sdb')
 
         self.assertEqual(response.get_json()['success'], True)
 
@@ -448,12 +460,13 @@ class SetupWizardTests(unittest.TestCase):
         with patch('os.path.realpath', return_value='/dev/sdb'):
             with patch('os.path.exists', side_effect=lambda p: p == '/dev/sdb'):
                 with patch('os.stat', side_effect=fake_os_stat):
-                    with patch.object(
-                        self.setup_wizard.subprocess, 'run', side_effect=lambda cmd, **kw: next(subprocess_calls)
-                    ):
-                        with patch.object(self.setup_wizard, '_get_mounted_partitions_for_disk', return_value=[]):
-                            with self.app.test_client() as client:
-                                response = self._post_format(client, '/dev/sdb')
+                    with patch('os.lstat', side_effect=fake_os_stat):
+                        with patch.object(
+                            self.setup_wizard.subprocess, 'run', side_effect=lambda cmd, **kw: next(subprocess_calls)
+                        ):
+                            with patch.object(self.setup_wizard, '_get_mounted_partitions_for_disk', return_value=[]):
+                                with self.app.test_client() as client:
+                                    response = self._post_format(client, '/dev/sdb')
 
         self.assertEqual(response.get_json()['success'], True)
 

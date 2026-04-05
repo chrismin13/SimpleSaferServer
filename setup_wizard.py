@@ -307,11 +307,17 @@ def format_drive():
         if not disk.startswith('/dev/'):
             return jsonify({'success': False, 'error': 'Invalid disk path: must be a /dev/ device node'})
 
-        if not os.path.exists(disk):
-            return jsonify({'success': False, 'error': 'Invalid disk path: device does not exist'})
-
+        # Use os.stat() directly so the error message reflects the actual
+        # failure: a missing node (FileNotFoundError) is different from a
+        # permission problem (PermissionError), and os.path.exists() silently
+        # maps both to False, which would produce a misleading "does not exist"
+        # message when the real issue is a permissions error.
         try:
             disk_stat = os.stat(disk)
+        except FileNotFoundError:
+            return jsonify({'success': False, 'error': 'Invalid disk path: device does not exist'})
+        except PermissionError:
+            return jsonify({'success': False, 'error': 'Invalid disk path: permission denied while inspecting device node'})
         except OSError:
             return jsonify({'success': False, 'error': 'Invalid disk path: unable to inspect device node'})
 
