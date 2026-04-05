@@ -280,11 +280,38 @@ def format_drive():
             return jsonify({'success': False, 'error': 'No disk selected'})
 
         # Resolve symlinks first so a symlink inside /dev/ pointing elsewhere
-        # cannot be used to bypass the /dev/ prefix check, then validate that
-        # the caller is actually targeting a block device node.
+        # cannot be used to bypass the /dev/ prefix check, then verify the
+        # caller is targeting an existing whole-disk block device.
         disk = os.path.realpath(disk)
         if not disk.startswith('/dev/'):
             return jsonify({'success': False, 'error': 'Invalid disk path: must be a /dev/ device node'})
+
+        if not os.path.exists(disk):
+            return jsonify({'success': False, 'error': 'Invalid disk path: device does not exist'})
+
+        try:
+            disk_stat = os.stat(disk)
+        except OSError:
+            return jsonify({'success': False, 'error': 'Invalid disk path: unable to inspect device node'})
+
+        if not stat.S_ISBLK(disk_stat.st_mode):
+            return jsonify({'success': False, 'error': 'Invalid disk path: must be a block device node'})
+
+        # Confirm the node is a whole disk rather than a partition (e.g. /dev/sda
+        # has TYPE=disk; /dev/sda1 has TYPE=part).  Passing a partition path here
+        # would corrupt get_partition_node output (e.g. /dev/sda1 → /dev/sda11).
+        try:
+            lsblk_result = subprocess.run(
+                ['lsblk', '-dn', '-o', 'TYPE', disk],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+        except (subprocess.SubprocessError, FileNotFoundError):
+            return jsonify({'success': False, 'error': 'Unable to verify disk type'})
+
+        if lsblk_result.stdout.strip() != 'disk':
+            return jsonify({'success': False, 'error': 'Invalid disk path: must be a whole-disk block device'})
 
         mounted_partitions = _get_mounted_partitions_for_disk(disk)
 
