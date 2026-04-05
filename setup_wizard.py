@@ -403,6 +403,29 @@ def format_drive():
                     })
                 time.sleep(PARTITION_POLL_INTERVAL_SECONDS)
 
+        # Verify the partition node immediately before formatting so both the
+        # "already existed" and "just created" paths are protected.
+        deadline = time.monotonic() + PARTITION_POLL_TIMEOUT_SECONDS
+        while True:
+            try:
+                partition_lstat = os.lstat(partition)
+                is_symlink = stat.S_ISLNK(partition_lstat.st_mode)
+                is_block_device = (not is_symlink) and stat.S_ISBLK(os.stat(partition).st_mode)
+            except OSError:
+                is_block_device = False
+            if is_block_device:
+                break
+            if time.monotonic() >= deadline:
+                return jsonify({
+                    'success': False,
+                    'error': 'Invalid partition path: must be a partition block device',
+                    'details': (
+                        f'{partition} was not a valid block device within '
+                        f'{PARTITION_POLL_TIMEOUT_SECONDS:.0f} seconds. '
+                        'Please verify the drive path and try again.'
+                    ),
+                })
+            time.sleep(PARTITION_POLL_INTERVAL_SECONDS)
         # Format the partition as NTFS
         result = subprocess.run(['mkfs.ntfs', '-f', partition], capture_output=True, text=True)
 
