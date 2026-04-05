@@ -278,13 +278,23 @@ def format_drive():
         # creation are destructive whole-disk operations.
         disk = data.get('disk')
 
-        if not disk:
+        # Treat an absent key and an explicit null the same way.  Falsey but
+        # non-None values (e.g. 0, False, []) must fall through to the
+        # isinstance check below so they get the clearer "must be a string"
+        # error instead of the generic "No disk selected" message.
+        if disk is None:
             return jsonify({'success': False, 'error': 'No disk selected'})
 
-        # A JSON client could send a non-string value (e.g. 123); os.path.realpath
-        # would raise TypeError, so we catch it here with a clear message.
+        # A JSON client could send a non-string value (e.g. 123 or False);
+        # os.path.realpath would raise TypeError, so we catch it here.
         if not isinstance(disk, str):
             return jsonify({'success': False, 'error': 'Invalid disk path: must be a string'})
+
+        # Reject an empty string after the type check — the `disk is None` guard
+        # above only catches a missing key; an explicit empty string must be
+        # rejected here.
+        if not disk:
+            return jsonify({'success': False, 'error': 'No disk selected'})
 
         # Resolve symlinks first so a symlink inside /dev/ pointing elsewhere
         # cannot be used to bypass the /dev/ prefix check, then verify the
@@ -359,8 +369,8 @@ def format_drive():
                         "partprobe %s exited %d: %s",
                         disk, result_probe.returncode, result_probe.stderr.strip(),
                     )
-            except FileNotFoundError:
-                logger.debug("partprobe not found for %s; continuing without it", disk)
+            except OSError as e:
+                logger.debug("partprobe failed for %s; continuing without it: %s", disk, e)
 
             # Poll for up to 5 seconds so udev has time to create the new
             # device node before mkfs.ntfs tries to open it.  Without this
