@@ -254,6 +254,24 @@ class SetupWizardTests(unittest.TestCase):
         """POST /api/setup/format with a JSON body and return the response."""
         return client.post('/api/setup/format', json={'disk': disk})
 
+    def test_format_drive_rejects_missing_body(self):
+        # A POST with no JSON body at all must return a clear error, not AttributeError.
+        with self.app.test_client() as client:
+            response = client.post('/api/setup/format')
+
+        data = response.get_json()
+        self.assertEqual(data['success'], False)
+        self.assertIn('disk', data['error'].lower())
+
+    def test_format_drive_rejects_non_string_disk(self):
+        # JSON clients can send numeric or other non-string values; reject cleanly.
+        with self.app.test_client() as client:
+            response = client.post('/api/setup/format', json={'disk': 123})
+
+        data = response.get_json()
+        self.assertEqual(data['success'], False)
+        self.assertIn('string', data['error'])
+
     def test_format_drive_rejects_non_dev_path(self):
         # Paths that resolve outside /dev/ must be rejected without touching the disk.
         with patch('os.path.realpath', return_value='/tmp/evil'):

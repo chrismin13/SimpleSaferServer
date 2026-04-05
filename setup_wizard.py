@@ -271,13 +271,20 @@ def format_drive():
                 'details': 'Fake mode never formats local disks. Use the mount step to point the backup source at an existing folder instead.'
             })
 
-        data = request.get_json()
+        # silent=True suppresses the 400 on a missing/wrong Content-Type so we
+        # can return our own JSON error.  Fall back to {} so .get() is always safe.
+        data = request.get_json(silent=True) or {}
         # Step 2 is intentionally disk-oriented because formatting and partition
         # creation are destructive whole-disk operations.
         disk = data.get('disk')
 
         if not disk:
             return jsonify({'success': False, 'error': 'No disk selected'})
+
+        # A JSON client could send a non-string value (e.g. 123); os.path.realpath
+        # would raise TypeError, so we catch it here with a clear message.
+        if not isinstance(disk, str):
+            return jsonify({'success': False, 'error': 'Invalid disk path: must be a string'})
 
         # Resolve symlinks first so a symlink inside /dev/ pointing elsewhere
         # cannot be used to bypass the /dev/ prefix check, then verify the
