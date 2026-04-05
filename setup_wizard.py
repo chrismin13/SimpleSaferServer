@@ -272,8 +272,12 @@ def format_drive():
             })
 
         # silent=True suppresses the 400 on a missing/wrong Content-Type so we
-        # can return our own JSON error.  Fall back to {} so .get() is always safe.
-        data = request.get_json(silent=True) or {}
+        # can return our own JSON error. Only a JSON object is valid here.
+        data = request.get_json(silent=True)
+        if data is None:
+            data = {}
+        elif not isinstance(data, dict):
+            return jsonify({'success': False, 'error': 'Request body must be a JSON object'})
         # Step 2 is intentionally disk-oriented because formatting and partition
         # creation are destructive whole-disk operations.
         disk = data.get('disk')
