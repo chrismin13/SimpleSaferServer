@@ -224,6 +224,11 @@ class SetupWizardTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.setup_wizard.get_partition_node('')
 
+    def test_get_partition_node_raises_value_error_for_non_string(self):
+        # Non-string truthy values must raise ValueError, not TypeError.
+        with self.assertRaises(ValueError):
+            self.setup_wizard.get_partition_node(123)
+
     def test_get_partition_node_nvme_disk(self):
         # NVMe paths end with a digit (/dev/nvme0n1), so a 'p' separator is
         # needed to produce /dev/nvme0n1p1.

@@ -86,9 +86,9 @@ def get_partition_node(disk):
     'p' separator before the partition number so the kernel can tell where the
     disk name ends and the partition number begins.
 
-    Raises ValueError if *disk* is None or empty.
+    Raises ValueError if *disk* is not a non-empty string.
     """
-    if not disk:
+    if not isinstance(disk, str) or not disk:
         raise ValueError(f"disk must be a non-empty string, got {disk!r}")
     if disk[-1].isdigit():
         return f"{disk}p1"
@@ -327,8 +327,6 @@ def format_drive():
                     )
             except FileNotFoundError:
                 logger.debug("partprobe not found for %s; continuing without it", disk)
-            except subprocess.SubprocessError as exc:
-                logger.debug("partprobe failed for %s: %s", disk, exc)
 
             # Poll for up to 5 seconds so udev has time to create the new
             # device node before mkfs.ntfs tries to open it.  Without this
