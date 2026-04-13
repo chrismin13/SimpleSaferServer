@@ -944,38 +944,80 @@ def run_fake_task(task_name: str, cancel_event: threading.Event):
                     [sys.executable, str(ddns_script)],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
-                    text=True
+                    text=True,
+                    bufsize=1,
                 )
+                output_queue: queue.Queue[Tuple[str, str]] = queue.Queue()
 
-                # Poll the process while checking for cancellation
-                while proc.poll() is None:
+                def _drain_stream(stream, stream_name: str):
+                    try:
+                        for line in iter(stream.readline, ''):
+                            output_queue.put((stream_name, line))
+                    finally:
+                        stream.close()
+
+                stdout_thread = threading.Thread(
+                    target=_drain_stream,
+                    args=(proc.stdout, 'stdout'),
+                    name='ddns-update-stdout',
+                    daemon=True,
+                )
+                stderr_thread = threading.Thread(
+                    target=_drain_stream,
+                    args=(proc.stderr, 'stderr'),
+                    name='ddns-update-stderr',
+                    daemon=True,
+                )
+                stdout_thread.start()
+                stderr_thread.start()
+
+                stdout_chunks: List[str] = []
+                stderr_chunks: List[str] = []
+                while True:
+                    while True:
+                        try:
+                            stream_name, chunk = output_queue.get_nowait()
+                        except queue.Empty:
+                            break
+                        if stream_name == 'stdout':
+                            stdout_chunks.append(chunk)
+                        else:
+                            stderr_chunks.append(chunk)
+
+                    if proc.poll() is not None:
+                        break
                     if cancel_event.is_set():
-                        # Terminate the process gracefully first
                         proc.terminate()
                         try:
-                            proc.wait(timeout=5)
+                            proc.wait(timeout=5.0)
                         except subprocess.TimeoutExpired:
-                            # Force kill if it doesn't terminate
                             proc.kill()
                             proc.wait()
-
-                        # Collect any output before raising
-                        stdout, stderr = proc.communicate()
-                        if stdout:
-                            fake_state.append_task_log(task_name, stdout.strip())
-                        if stderr:
-                            fake_state.append_task_log(task_name, stderr.strip())
-                        raise RuntimeError('Task was cancelled.')
-
-                    # Short sleep to avoid busy-waiting
+                        break
                     time.sleep(0.1)
 
-                # Process completed, collect output
-                stdout, stderr = proc.communicate()
-                if stdout:
-                    fake_state.append_task_log(task_name, stdout.strip())
-                if stderr:
-                    fake_state.append_task_log(task_name, stderr.strip())
+                stdout_thread.join(timeout=1.0)
+                stderr_thread.join(timeout=1.0)
+                while True:
+                    try:
+                        stream_name, chunk = output_queue.get_nowait()
+                    except queue.Empty:
+                        break
+                    if stream_name == 'stdout':
+                        stdout_chunks.append(chunk)
+                    else:
+                        stderr_chunks.append(chunk)
+
+                # Append collected output to task log
+                stdout_output = ''.join(stdout_chunks).strip()
+                stderr_output = ''.join(stderr_chunks).strip()
+                if stdout_output:
+                    fake_state.append_task_log(task_name, stdout_output)
+                if stderr_output:
+                    fake_state.append_task_log(task_name, stderr_output)
+
+                if cancel_event.is_set():
+                    raise RuntimeError('Task was cancelled.')
 
                 # Check exit code
                 if proc.returncode != 0:
@@ -1725,19 +1767,47 @@ def save_ddns_config():
              
         if 'duckdns' in data:
             duckdns = data['duckdns']
-            config_manager.set_value('ddns', 'duckdns_enabled', str(duckdns.get('enabled', False)).lower())
-            config_manager.set_value('ddns', 'duckdns_domain', duckdns.get('domain', ''))
-            if 'token' in duckdns and duckdns['token']:
-                config_manager.store_secret('duckdns_token', duckdns['token'])
-                
+            domain = duckdns.get('domain', '').strip()
+            token = duckdns.get('token', '').strip()
+            enabled = duckdns.get('enabled', False)
+
+            # Validate required fields if enabled
+            if enabled:
+                existing_token = config_manager.get_secret('duckdns_token')
+                if not domain:
+                    return jsonify({'success': False, 'message': 'DuckDNS domain is required when enabled'}), 400
+                if not token and not existing_token:
+                    return jsonify({'success': False, 'message': 'DuckDNS token is required when enabled'}), 400
+
+            config_manager.set_value('ddns', 'duckdns_domain', domain)
+            config_manager.set_value('ddns', 'duckdns_enabled', str(enabled).lower())
+            if token:
+                config_manager.store_secret('duckdns_token', token)
+
         if 'cloudflare' in data:
             cf = data['cloudflare']
-            config_manager.set_value('ddns', 'cloudflare_enabled', str(cf.get('enabled', False)).lower())
-            config_manager.set_value('ddns', 'cloudflare_zone', cf.get('zone', ''))
-            config_manager.set_value('ddns', 'cloudflare_record', cf.get('record', ''))
-            config_manager.set_value('ddns', 'cloudflare_proxy', str(cf.get('proxy', False)).lower())
-            if 'token' in cf and cf['token']:
-                config_manager.store_secret('cloudflare_token', cf['token'])
+            zone = cf.get('zone', '').strip()
+            record = cf.get('record', '').strip()
+            token = cf.get('token', '').strip()
+            proxy = cf.get('proxy', False)
+            enabled = cf.get('enabled', False)
+
+            # Validate required fields if enabled
+            if enabled:
+                existing_token = config_manager.get_secret('cloudflare_token')
+                if not zone:
+                    return jsonify({'success': False, 'message': 'Cloudflare zone is required when enabled'}), 400
+                if not record:
+                    return jsonify({'success': False, 'message': 'Cloudflare record is required when enabled'}), 400
+                if not token and not existing_token:
+                    return jsonify({'success': False, 'message': 'Cloudflare token is required when enabled'}), 400
+
+            config_manager.set_value('ddns', 'cloudflare_zone', zone)
+            config_manager.set_value('ddns', 'cloudflare_record', record)
+            config_manager.set_value('ddns', 'cloudflare_proxy', str(proxy).lower())
+            config_manager.set_value('ddns', 'cloudflare_enabled', str(enabled).lower())
+            if token:
+                config_manager.store_secret('cloudflare_token', token)
 
         # Create systemd config file and check for failures
         try:
