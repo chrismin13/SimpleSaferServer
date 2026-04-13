@@ -50,32 +50,51 @@ SERVICE_FILE="/etc/systemd/system/simple_safer_server_web.service"
 HDSENTINEL_BIN="/usr/local/bin/hdsentinel"
 HDSENTINEL_ASSET_DIR="$SRC_DIR/third_party/hdsentinel"
 
-install_hdsentinel() {
+detect_hdsentinel_arch() {
     local arch=""
     local machine=""
-    local asset_path=""
-    local package_path=""
-    local tmpdir=""
-    local candidate=""
 
     if command -v dpkg >/dev/null 2>&1; then
         arch=$(dpkg --print-architecture 2>/dev/null || true)
     fi
 
-    if [ -z "$arch" ]; then
-        machine=$(uname -m)
-        case "$machine" in
-            x86_64|amd64)
-                arch="amd64"
-                ;;
-            aarch64|arm64)
-                arch="arm64"
-                ;;
-            armv7l|armv7|armhf)
-                arch="armhf"
-                ;;
-        esac
+    # Prefer Debian's package architecture when it is available because that
+    # reflects the userspace ABI we need to run, not just the kernel's CPU view.
+    if [ -n "$arch" ]; then
+        printf '%s\n' "$arch"
+        return 0
     fi
+
+    machine=$(uname -m 2>/dev/null || true)
+    machine=${machine,,}
+
+    case "$machine" in
+        x86_64*|amd64*)
+            printf '%s\n' "amd64"
+            ;;
+        aarch64*|arm64*)
+            printf '%s\n' "arm64"
+            ;;
+        armv7*|armv8l*|armhf*)
+            # The vendored 32-bit ARM build is the ARMv7 hard-float variant.
+            # Matching armv8l here is intentional because it is commonly a
+            # 32-bit userspace on newer ARM hardware.
+            printf '%s\n' "armhf"
+            ;;
+        *)
+            printf '%s\n' "$machine"
+            ;;
+    esac
+}
+
+install_hdsentinel() {
+    local arch=""
+    local asset_path=""
+    local package_path=""
+    local tmpdir=""
+    local candidate=""
+
+    arch=$(detect_hdsentinel_arch)
 
     case "$arch" in
         amd64)
@@ -85,6 +104,8 @@ install_hdsentinel() {
             asset_path="$HDSENTINEL_ASSET_DIR/hdsentinel-linux-arm64.zip"
             ;;
         armhf)
+            # This asset is repackaged from the vendor's ARMv7 release, so we
+            # deliberately do not pretend older ARM variants are compatible.
             asset_path="$HDSENTINEL_ASSET_DIR/hdsentinel-linux-armv7.zip"
             ;;
         *)
