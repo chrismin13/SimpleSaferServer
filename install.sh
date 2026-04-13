@@ -246,7 +246,13 @@ if not success:
 "; then
   echo -e "${GREEN}✔ Background services generated and restarted.${NC}\n"
 else
-  echo -e "${YELLOW}Warning: Failed to refresh background services.${NC}\n"
+  echo -e "${RED}ERROR: Failed to generate and register background services.${NC}"
+  echo -e "${RED}DDNS and other scheduled tasks will not run without the systemd units.${NC}"
+  echo -e "${YELLOW}Remediation:${NC}"
+  echo -e "  1. Check the error message printed above for details."
+  echo -e "  2. Review systemd logs with: journalctl -xe"
+  echo -e "  3. Fix the reported issue and rerun this installer."
+  exit 1
 fi
 
 # 11. Open port 5000 in firewall if active

@@ -1078,7 +1078,7 @@ def get_task(name: str):
     return None
 
 @app.route('/ddns')
-@login_required
+@admin_required
 def ddns():
     return render_template('ddns.html', username=session.get('username'))
 
@@ -1235,10 +1235,13 @@ def api_set_email_config():
 
 @app.context_processor
 def inject_username():
+    username = session.get('username')
     return dict(
-        username=session.get('username'),
+        username=username,
         runtime_mode=runtime.mode,
         default_mount_point=runtime.default_mount_point,
+        # Expose admin status so templates can conditionally show admin-only nav items.
+        is_admin=user_manager.is_admin(username) if username else False,
     )
 
 @app.route('/api/users', methods=['GET'])
@@ -1817,9 +1820,16 @@ def save_ddns_config():
         # section of the template, silently dropping them.
 
         # Trigger an immediate sync so the user sees the result of their new config.
-        ddns_task = get_task("DDNS Update")
-        if ddns_task:
-            ddns_task.start()
+        # If the task start fails (e.g. systemd unavailable), we still consider the
+        # save successful — the periodic timer will pick up the new config on the
+        # next scheduled run regardless.
+        try:
+            ddns_task = get_task("DDNS Update")
+            if ddns_task:
+                ddns_task.start()
+        except Exception:
+            current_app.logger.warning("Could not trigger immediate DDNS sync; config was saved successfully", exc_info=True)
+            return jsonify({'success': True, 'message': 'DDNS configuration saved. Immediate sync could not be triggered — the next scheduled run will use the new config.'})
 
         return jsonify({'success': True, 'message': 'DDNS configuration saved and update triggered.'})
     except Exception:

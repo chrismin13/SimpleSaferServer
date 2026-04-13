@@ -3,6 +3,7 @@
 import sys
 import json
 import logging
+import os
 import urllib.request
 import urllib.error
 from urllib.parse import quote
@@ -205,8 +206,12 @@ def main():
     status_data['cloudflare'] = cf_new_status
 
     status_file.parent.mkdir(parents=True, exist_ok=True)
-    status_file.write_text(json.dumps(status_data, indent=2))
-    status_file.chmod(0o644)
+    # Write atomically: write to a temp file in the same directory then rename, so
+    # concurrent reads by the web API never see a partial/empty file.
+    tmp_file = status_file.with_suffix('.tmp')
+    tmp_file.write_text(json.dumps(status_data, indent=2))
+    tmp_file.chmod(0o644)
+    os.replace(tmp_file, status_file)
 
 if __name__ == '__main__':
     try:

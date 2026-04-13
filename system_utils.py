@@ -356,7 +356,7 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/ddns_update.py
+ExecStart=/opt/SimpleSaferServer/venv/bin/python /usr/local/bin/ddns_update.py
 User=root
 StandardOutput=journal
 StandardError=journal
