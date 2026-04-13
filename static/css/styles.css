@@ -979,6 +979,9 @@ table .text-end { text-align: right; }
 
 .modal-body {
   padding: var(--sp-5);
+}
+
+.modal-body-pre {
   white-space: pre-line;
 }
 
