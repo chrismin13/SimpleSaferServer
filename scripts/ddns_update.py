@@ -5,6 +5,7 @@ import json
 import logging
 import urllib.request
 import urllib.error
+from urllib.parse import quote
 from datetime import datetime
 from pathlib import Path
 
@@ -46,9 +47,12 @@ def get_public_ip():
 
 def update_duckdns(domain, token, ipv4):
     logger.info(f"Updating DuckDNS domain '{domain}' with IP {ipv4 if ipv4 else 'auto'}...")
-    url = f"https://www.duckdns.org/update?domains={domain}&token={token}"
+    encoded_domain = quote(domain)
+    encoded_token = quote(token)
+    url = f"https://www.duckdns.org/update?domains={encoded_domain}&token={encoded_token}"
     if ipv4:
-        url += f"&ip={ipv4}"
+        encoded_ipv4 = quote(ipv4)
+        url += f"&ip={encoded_ipv4}"
     
     try:
         with urllib.request.urlopen(url, timeout=10) as response:
@@ -63,7 +67,8 @@ def update_duckdns(domain, token, ipv4):
         return False, str(e)
 
 def get_cloudflare_record(zone_id, token, record_name):
-    url = f"https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records?type=A&name={record_name}"
+    encoded_record_name = quote(record_name)
+    url = f"https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records?type=A&name={encoded_record_name}"
     req = urllib.request.Request(url, headers={
         'Authorization': f'Bearer {token}',
         'Content-Type': 'application/json'

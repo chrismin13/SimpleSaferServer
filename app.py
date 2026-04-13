@@ -1695,7 +1695,7 @@ def save_ddns_config():
             if 'token' in cf and cf['token']:
                 config_manager.store_secret('cloudflare_token', cf['token'])
                 
-        system_utils.create_systemd_config_file(config_manager.config)
+        system_utils.create_systemd_config_file({s: dict(config_manager.config[s]) for s in config_manager.config.sections()})
         
         ddns_task = get_task("DDNS Update")
         if ddns_task:
