@@ -5,166 +5,8 @@
 
 {% block extra_css %}
 <style>
-  .unmanaged-shares-trigger {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--sp-2);
-    min-height: 2.35rem;
-    padding: 0.55rem 0.95rem;
-    border-radius: 999px;
-    border: 1px solid hsla(38, 90%, 55%, 0.28);
-    background:
-      linear-gradient(135deg, hsla(38, 90%, 55%, 0.18), hsla(38, 90%, 55%, 0.08));
-    color: var(--warning-text);
-    box-shadow: inset 0 1px 0 hsla(0, 0%, 100%, 0.04);
-    transition:
-      transform var(--dur-fast) var(--ease-default),
-      border-color var(--dur-fast) var(--ease-default),
-      background var(--dur-fast) var(--ease-default);
-  }
-
-  .unmanaged-shares-trigger:hover {
-    transform: translateY(-1px);
-    border-color: hsla(38, 90%, 55%, 0.48);
-    background:
-      linear-gradient(135deg, hsla(38, 90%, 55%, 0.24), hsla(38, 90%, 55%, 0.12));
-  }
-
-  .unmanaged-shares-trigger i {
-    color: var(--warning);
-  }
-
-  .unmanaged-shares-modal {
-    max-width: 680px;
-  }
-
   .unmanaged-shares-modal .modal-body {
     white-space: normal;
-  }
-
-  .unmanaged-shares-stack {
-    display: grid;
-    gap: var(--sp-4);
-  }
-
-  .unmanaged-shares-lead {
-    font-size: var(--text-md);
-    line-height: 1.65;
-    color: var(--text-secondary);
-  }
-
-  .unmanaged-shares-callout {
-    display: grid;
-    gap: var(--sp-3);
-    padding: var(--sp-4);
-    border-radius: var(--radius-lg);
-    border: 1px solid hsla(38, 90%, 55%, 0.18);
-    background:
-      linear-gradient(180deg, hsla(220, 16%, 16%, 0.96), hsla(220, 14%, 13%, 0.96));
-  }
-
-  .unmanaged-shares-callout-header {
-    display: flex;
-    align-items: center;
-    gap: var(--sp-3);
-  }
-
-  .unmanaged-shares-callout-icon {
-    width: 2rem;
-    height: 2rem;
-    border-radius: 999px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--warning-subtle);
-    color: var(--warning);
-    flex-shrink: 0;
-  }
-
-  .unmanaged-shares-callout-title {
-    font-size: var(--text-sm);
-    font-weight: var(--weight-semi);
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: var(--warning-text);
-  }
-
-  .unmanaged-shares-callout p {
-    color: var(--text-primary);
-    line-height: 1.7;
-  }
-
-  .unmanaged-shares-grid {
-    display: grid;
-    grid-template-columns: minmax(0, 1.15fr) minmax(220px, 0.85fr);
-    gap: var(--sp-4);
-    align-items: start;
-  }
-
-  .unmanaged-shares-section-label {
-    margin-bottom: var(--sp-2);
-    font-size: var(--text-xs);
-    font-weight: var(--weight-semi);
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--text-muted);
-  }
-
-  .unmanaged-shares-name-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--sp-2);
-    min-height: 2.5rem;
-  }
-
-  .unmanaged-shares-name-pill {
-    display: inline-flex;
-    align-items: center;
-    padding: 0.55rem 0.8rem;
-    border-radius: 999px;
-    border: 1px solid var(--border-default);
-    background: hsla(220, 18%, 18%, 0.9);
-    color: var(--text-primary);
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-  }
-
-  .unmanaged-shares-support-note {
-    display: grid;
-    gap: var(--sp-2);
-    padding: var(--sp-4);
-    border-radius: var(--radius-lg);
-    background: hsla(220, 18%, 16%, 0.82);
-    border: 1px solid var(--border-subtle);
-  }
-
-  .unmanaged-shares-support-note p {
-    color: var(--text-secondary);
-    line-height: 1.65;
-  }
-
-  .unmanaged-shares-actions {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: var(--sp-3);
-    padding-top: var(--sp-1);
-  }
-
-  .unmanaged-shares-actions .btn {
-    min-width: 0;
-  }
-
-  .unmanaged-shares-actions-note {
-    font-size: var(--text-xs);
-    color: var(--text-muted);
-  }
-
-  @media (max-width: 720px) {
-    .unmanaged-shares-grid {
-      grid-template-columns: 1fr;
-    }
   }
 </style>
 {% endblock %}
@@ -220,7 +62,7 @@
     <div class="d-flex items-center gap-2 flex-wrap">
       <h2 style="font-size: var(--text-lg); margin: 0;">SMB Shares</h2>
       <button
-        class="btn btn-sm unmanaged-shares-trigger d-none"
+        class="btn btn-secondary btn-sm d-none"
         id="unmanagedSharesBtn"
         data-modal-target="unmanagedSharesModal"
         type="button">
@@ -414,62 +256,39 @@
 
 <!-- Unmanaged Shares Modal -->
 <div class="modal-overlay" id="unmanagedSharesModal">
-  <div class="modal-container unmanaged-shares-modal">
+  <div class="modal-container modal-lg unmanaged-shares-modal">
     <div class="modal-header">
       <h5>Unmanaged SMB Shares</h5>
       <button class="modal-close" data-modal-close><i class="fas fa-xmark"></i></button>
     </div>
     <div class="modal-body">
-      <div class="unmanaged-shares-stack">
-        <p class="unmanaged-shares-lead">
-          SimpleSaferServer found Samba share definitions in <code>/etc/samba/smb.conf</code> that are still active,
-          but are not marked as SimpleSaferServer-managed. For safety, they stay read-only here.
-        </p>
+      <p class="text-secondary mb-4">
+        SimpleSaferServer found Samba share definitions in <code>/etc/samba/smb.conf</code> that are still active,
+        but are not marked as SimpleSaferServer-managed. They remain read-only here.
+      </p>
 
-        <div class="unmanaged-shares-callout">
-          <div class="unmanaged-shares-callout-header">
-            <span class="unmanaged-shares-callout-icon">
-              <i class="fas fa-circle-info"></i>
-            </span>
-            <div class="unmanaged-shares-callout-title">Manual conversion required</div>
-          </div>
-          <p>
-            Convert a share manually only if it fits the SimpleSaferServer-managed format. The app supports a share
-            name, path, writable state, comment, and valid users list, and it writes the rest of the managed block in
-            a fixed format on purpose.
-          </p>
-        </div>
-
-        <div class="unmanaged-shares-grid">
-          <div>
-            <div class="unmanaged-shares-section-label">Detected unmanaged shares</div>
-            <div id="unmanagedSharesList" class="unmanaged-shares-name-list">
-              <span class="text-muted">No unmanaged shares detected.</span>
-            </div>
-          </div>
-
-          <div class="unmanaged-shares-support-note">
-            <div class="unmanaged-shares-section-label">What SimpleSaferServer supports</div>
-            <p>
-              Managed shares are intentionally limited so the app can update them safely later without guessing about
-              unrelated Samba directives.
-            </p>
-          </div>
-        </div>
-
-        <div class="unmanaged-shares-actions">
-          <a
-            href="{{ smb_docs_url }}"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="btn btn-warning btn-sm">
-            <i class="fas fa-book-open me-1"></i> Open Manual Conversion Guide
-          </a>
-          <div class="unmanaged-shares-actions-note">
-            The guide opens directly to the manual conversion section.
-          </div>
-        </div>
+      <div class="table-container mb-4">
+        <table>
+          <thead>
+            <tr>
+              <th>Share Name</th>
+            </tr>
+          </thead>
+          <tbody id="unmanagedSharesList">
+            <tr>
+              <td class="text-muted">No unmanaged shares detected.</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
+
+      <a
+        href="{{ smb_docs_url }}"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="btn btn-secondary btn-sm">
+        <i class="fas fa-book-open me-1"></i> Open Manual Conversion Guide
+      </a>
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" data-modal-close>Close</button>
@@ -640,20 +459,22 @@ function renderUnmanagedShareState(hasUnmanagedShares, count, names) {
 
   if (!hasUnmanagedShares || !count) {
     button.classList.add('d-none');
-    list.innerHTML = '<span class="text-muted">No unmanaged shares detected.</span>';
+    list.innerHTML = '<tr><td class="text-muted">No unmanaged shares detected.</td></tr>';
     return;
   }
 
   label.textContent = `${count} unmanaged share${count === 1 ? '' : 's'} detected`;
   button.classList.remove('d-none');
 
-  // Keep the modal list simple because unsupported Samba directives can vary
-  // widely, and the docs are the canonical place for manual conversion steps.
+  // Keep the modal list plain and table-based so it matches the rest of the UI
+  // and stays readable even if we revisit this flow months from now.
   names.forEach(function(name) {
-    const item = document.createElement('span');
-    item.className = 'unmanaged-shares-name-pill';
-    item.textContent = name;
-    list.appendChild(item);
+    const row = document.createElement('tr');
+    const cell = document.createElement('td');
+    cell.className = 'fw-medium';
+    cell.textContent = name;
+    row.appendChild(cell);
+    list.appendChild(row);
   });
 }
 
