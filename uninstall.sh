@@ -146,11 +146,12 @@ remove_managed_fstab_entries() {
         return 1
     fi
 
-    # Refuse to replace core system files with missing or empty temp output if
-    # the filtering step broke unexpectedly.
-    if [ ! -s "$updated" ]; then
+    # Refuse to replace core system files only if the filtering step failed to
+    # produce the temporary output file at all. An empty file is valid when all
+    # entries were SimpleSaferServer-managed and have been removed.
+    if [ ! -f "$updated" ]; then
         rm -f "$updated"
-        echo "ERROR: Refusing to replace $original because the generated file is missing or empty."
+        echo "ERROR: Refusing to replace $original because the generated file is missing."
         return 1
     fi
 
