@@ -27,17 +27,36 @@ rm -f "$TMPFILE"
 
 ## 3. Install HDSentinel
 
-Install the vendor binary to `/usr/local/bin/hdsentinel`.
+Use the official Linux download page first:
 
-- `amd64`: `https://www.hdsentinel.com/hdslin/hdsentinel-020c-x64.zip`
-- `arm64`: `https://www.hdsentinel.com/hdslin/hdsentinel-armv8.zip`
+- https://www.hdsentinel.com/hdslin.php
 
-Example for `amd64`:
+This repository also includes a mirror copy of the Linux archives in `third_party/hdsentinel/` for convenience/offline installs.
+
+Install the matching binary to `/usr/local/bin/hdsentinel`:
 
 ```bash
-TMPDIR=$(mktemp -d)
-curl -L --fail -o "$TMPDIR/hdsentinel.zip" "https://www.hdsentinel.com/hdslin/hdsentinel-020c-x64.zip"
-unzip -o "$TMPDIR/hdsentinel.zip" -d "$TMPDIR"
+ARCH="$(dpkg --print-architecture 2>/dev/null || uname -m)"
+TMPDIR="$(mktemp -d)"
+case "$ARCH" in
+  amd64|x86_64)
+    cp third_party/hdsentinel/hdsentinel-linux-amd64.zip "$TMPDIR/hdsentinel-package"
+    unzip -o "$TMPDIR/hdsentinel-package" -d "$TMPDIR"
+    ;;
+  arm64|aarch64)
+    cp third_party/hdsentinel/hdsentinel-linux-arm64.zip "$TMPDIR/hdsentinel-package"
+    unzip -o "$TMPDIR/hdsentinel-package" -d "$TMPDIR"
+    ;;
+  armhf|armv7|armv7l)
+    cp third_party/hdsentinel/hdsentinel-linux-armv7.zip "$TMPDIR/hdsentinel-package"
+    unzip -o "$TMPDIR/hdsentinel-package" -d "$TMPDIR"
+    ;;
+  *)
+    echo "Unsupported architecture for bundled HDSentinel: $ARCH" >&2
+    rm -rf "$TMPDIR"
+    exit 1
+    ;;
+esac
 sudo install -m 755 "$TMPDIR/HDSentinel" /usr/local/bin/hdsentinel
 rm -rf "$TMPDIR"
 ```

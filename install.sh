@@ -48,11 +48,13 @@ MODEL_DIR="/opt/SimpleSaferServer/harddrive_model"
 VENV_DIR="$APP_DIR/venv"
 SERVICE_FILE="/etc/systemd/system/simple_safer_server_web.service"
 HDSENTINEL_BIN="/usr/local/bin/hdsentinel"
+HDSENTINEL_ASSET_DIR="$SRC_DIR/third_party/hdsentinel"
 
 install_hdsentinel() {
     local arch=""
     local machine=""
     local url=""
+    local asset_path=""
     local tmpdir=""
     local candidate=""
 
@@ -69,15 +71,24 @@ install_hdsentinel() {
             aarch64|arm64)
                 arch="arm64"
                 ;;
+            armv7l|armv7|armhf)
+                arch="armhf"
+                ;;
         esac
     fi
 
     case "$arch" in
         amd64)
+            asset_path="$HDSENTINEL_ASSET_DIR/hdsentinel-linux-amd64.zip"
             url="https://www.hdsentinel.com/hdslin/hdsentinel-020c-x64.zip"
             ;;
         arm64)
+            asset_path="$HDSENTINEL_ASSET_DIR/hdsentinel-linux-arm64.zip"
             url="https://www.hdsentinel.com/hdslin/hdsentinel-armv8.zip"
+            ;;
+        armhf)
+            asset_path="$HDSENTINEL_ASSET_DIR/hdsentinel-linux-armv7.zip"
+            url="https://www.hdsentinel.com/hdslin/hdsentinel-armv7.gz"
             ;;
         *)
             echo -e "${YELLOW}HDSentinel auto-install skipped: unsupported architecture '${arch:-unknown}'.${NC}"
@@ -86,13 +97,21 @@ install_hdsentinel() {
     esac
 
     tmpdir=$(mktemp -d)
-    if ! curl -L --fail --output "$tmpdir/hdsentinel.zip" "$url"; then
-        echo -e "${YELLOW}HDSentinel download failed. Continuing without it.${NC}"
-        rm -rf "$tmpdir"
-        return 0
+    # Prefer repository-bundled archives so installs remain reproducible even
+    # when the upstream host is temporarily unavailable.
+    if [ -f "$asset_path" ]; then
+        cp "$asset_path" "$tmpdir/hdsentinel-package"
+        echo -e "${GREEN}✔ Using bundled HDSentinel package: $asset_path${NC}"
+    else
+        echo -e "${YELLOW}Bundled HDSentinel package not found for ${arch}. Falling back to vendor download.${NC}"
+        if ! curl -L --fail --output "$tmpdir/hdsentinel-package" "$url"; then
+            echo -e "${YELLOW}HDSentinel download failed. Continuing without it.${NC}"
+            rm -rf "$tmpdir"
+            return 0
+        fi
     fi
 
-    if ! unzip -o "$tmpdir/hdsentinel.zip" -d "$tmpdir" >/dev/null; then
+    if ! unzip -o "$tmpdir/hdsentinel-package" -d "$tmpdir" >/dev/null; then
         echo -e "${YELLOW}HDSentinel extraction failed. Continuing without it.${NC}"
         rm -rf "$tmpdir"
         return 0
