@@ -68,7 +68,11 @@ curl -fsSL https://sss.chrismin13.com/uninstall.sh | sudo bash
 This will:
 - Remove all installed scripts, models, and application files
 - Remove the systemd service and background tasks
-- Clean up configuration, logs, and user data
-- Remove Samba shares and related configuration
+- Clean up SimpleSaferServer configuration, logs, user data, and the managed `/etc/fstab` entry
+- Remove the Samba users synced from SimpleSaferServer accounts
+- Remove marker-wrapped SimpleSaferServer-managed Samba share blocks from `/etc/samba/smb.conf`
+
+This does not remove shared system packages such as Samba, Python, or rclone.
+Unmanaged or legacy untagged Samba share blocks are left in `/etc/samba/smb.conf` for safety.
 
 **Note:** This process is irreversible. Back up any important data before uninstalling.

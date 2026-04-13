@@ -285,7 +285,7 @@ class BackupDriveSetupTests(unittest.TestCase):
         config_manager = MagicMock()
         config_manager.get_value.side_effect = ['/media/backup', '', '']
         smb_manager = MagicMock()
-        smb_manager.get_shares.return_value = []
+        smb_manager.get_managed_share.return_value = None
 
         mock_get_mount.return_value = None
         mock_get_uuid.return_value = 'UUID-1'
@@ -337,7 +337,7 @@ class BackupDriveSetupTests(unittest.TestCase):
         config_manager = MagicMock()
         config_manager.get_value.side_effect = ['/media/backup', 'OLD-UUID', '1234:5678']
         smb_manager = MagicMock()
-        smb_manager.get_shares.return_value = []
+        smb_manager.get_managed_share.return_value = None
 
         mock_get_mount.return_value = None
         mock_get_uuid.return_value = 'UUID-1'
@@ -384,7 +384,7 @@ class BackupDriveSetupTests(unittest.TestCase):
         config_manager = MagicMock()
         config_manager.get_value.side_effect = ['/media/backup', 'OLD-UUID', '1234:5678']
         smb_manager = MagicMock()
-        smb_manager.get_shares.return_value = []
+        smb_manager.get_managed_share.return_value = None
 
         mock_get_mount.return_value = None
         mock_get_uuid.return_value = 'UUID-1'

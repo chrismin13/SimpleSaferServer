@@ -148,7 +148,14 @@
             <pre class="flex-grow-1 mb-0"><code id="uninstall-cmd-web">curl -fsSL https://sss.chrismin13.com/uninstall.sh | sudo bash</code></pre>
             <button class="copy-btn" onclick="copyCmd('uninstall-cmd-web', this)"><i class="fa-regular fa-copy"></i> Copy</button>
         </div>
-        <p class="note"><i class="fa-solid fa-circle-info"></i> This will remove all installed files, services, configuration, and user data. <strong>This process is irreversible.</strong></p>
+        <p class="note">
+            <i class="fa-solid fa-circle-info"></i>
+            This removes SimpleSaferServer files, services, timers, app data, the managed <code>/etc/fstab</code> entry,
+            and marker-wrapped SimpleSaferServer-managed Samba share blocks.
+            Shared system packages such as Samba, Python, and rclone stay installed.
+            Unmanaged or legacy untagged Samba share blocks stay in <code>/etc/samba/smb.conf</code> for safety.
+            <strong>This process is irreversible.</strong>
+        </p>
         <div class="text-center mt-4">
             <span class="text-muted">&copy; 2025 Christos Miniotis &mdash; <a href="https://github.com/chrismin13/SimpleSaferServer" target="_blank">SimpleSaferServer</a></span>
         </div>

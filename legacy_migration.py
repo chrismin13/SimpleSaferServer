@@ -239,24 +239,11 @@ def _configure_backup_share(
     runtime = smb_manager.runtime
 
     if runtime.is_fake:
-        existing_shares = smb_manager.get_shares()
-        if any(share["name"] == "backup" for share in existing_shares):
-            smb_manager.update_share(
-                old_name="backup",
-                new_name="backup",
-                path=mount_point,
-                writable=True,
-                comment="Fake-mode backup share",
-                valid_users=[admin_username],
-            )
-        else:
-            smb_manager.add_share(
-                name="backup",
-                path=mount_point,
-                writable=True,
-                comment="Fake-mode backup share",
-                valid_users=[admin_username],
-            )
+        smb_manager.ensure_default_backup_share(
+            mount_point,
+            admin_username,
+            fake_mode_comment="Fake-mode backup share",
+        )
         return
 
     user_manager.users = user_manager._load_users()
@@ -268,24 +255,11 @@ def _configure_backup_share(
             f"Admin user '{admin_username}' is missing from Samba after migration."
         )
 
-    existing_shares = smb_manager.get_shares()
-    if any(share["name"] == "backup" for share in existing_shares):
-        smb_manager.update_share(
-            old_name="backup",
-            new_name="backup",
-            path=mount_point,
-            writable=True,
-            comment="Default backup share created by SimpleSaferServer migration",
-            valid_users=[admin_username],
-        )
-    else:
-        smb_manager.add_share(
-            name="backup",
-            path=mount_point,
-            writable=True,
-            comment="Default backup share created by SimpleSaferServer migration",
-            valid_users=[admin_username],
-        )
+    smb_manager.ensure_default_backup_share(
+        mount_point,
+        admin_username,
+        comment="Default backup share created by SimpleSaferServer migration",
+    )
 
     try:
         subprocess.run(["systemctl", "enable", "smbd"], check=True)

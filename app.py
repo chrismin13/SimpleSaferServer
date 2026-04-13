@@ -41,7 +41,7 @@ import sys
 import time
 from typing import Dict, List, Tuple
 from system_utils import SystemUtils
-from smb_manager import SMBManager
+from smb_manager import SMBManager, SMB_DOCS_URL
 from tempfile import NamedTemporaryFile
 from runtime import get_runtime, get_fake_state, get_flask_secret_key
 
@@ -426,7 +426,12 @@ def auto_login_fake_mode_user():
 @login_required
 def network_file_sharing():
     backup_mount_point = config_manager.get_value('backup', 'mount_point', runtime.default_mount_point)
-    return render_template('network_file_sharing.html', username=session.get('username'), backup_mount_point=backup_mount_point)
+    return render_template(
+        'network_file_sharing.html',
+        username=session.get('username'),
+        backup_mount_point=backup_mount_point,
+        smb_docs_url=SMB_DOCS_URL,
+    )
 
 @app.route('/users')
 @login_required
@@ -1218,10 +1223,16 @@ def api_delete_user(username):
 @app.route('/api/smb/shares', methods=['GET'])
 @admin_required
 def api_list_smb_shares():
-    """Get list of all SMB shares from smb.conf"""
+    """Get the SimpleSaferServer-managed SMB shares plus unmanaged-share metadata."""
     try:
-        shares = smb_manager.get_shares()
-        return jsonify({'shares': shares})
+        shares = smb_manager.list_managed_shares()
+        unmanaged_shares = smb_manager.list_unmanaged_shares()
+        return jsonify({
+            'shares': shares,
+            'unmanaged_shares_detected': bool(unmanaged_shares),
+            'unmanaged_share_count': len(unmanaged_shares),
+            'unmanaged_share_names': [share['name'] for share in unmanaged_shares],
+        })
     except Exception as e:
         current_app.logger.error(f"Error reading SMB shares: {e}")
         return jsonify({'error': 'Failed to read SMB shares'}), 500
@@ -1247,7 +1258,7 @@ def api_add_smb_share():
             return jsonify({'error': 'Share name contains invalid characters'}), 400
         
         # Add share using SMB manager
-        smb_manager.add_share(share_name, path, writable, comment, valid_users)
+        smb_manager.create_managed_share(share_name, path, writable, comment, valid_users)
         
         return jsonify({'message': f'Share {share_name} added successfully'})
     except ValueError as e:
@@ -1277,7 +1288,7 @@ def api_edit_smb_share(share_name):
             return jsonify({'error': 'Share name contains invalid characters'}), 400
         
         # Update share using SMB manager
-        smb_manager.update_share(share_name, new_name, path, writable, comment, valid_users)
+        smb_manager.update_managed_share(share_name, new_name, path, writable, comment, valid_users)
         
         return jsonify({'message': f'Share {share_name} updated successfully'})
     except ValueError as e:
@@ -1291,7 +1302,7 @@ def api_edit_smb_share(share_name):
 def api_delete_smb_share(share_name):
     """Delete an SMB share"""
     try:
-        smb_manager.delete_share(share_name)
+        smb_manager.delete_managed_share(share_name)
         return jsonify({'message': f'Share {share_name} deleted successfully'})
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
@@ -1328,7 +1339,15 @@ def api_restart_smb():
 def api_get_share_users(share_name):
     """Get users who have access to a specific share"""
     try:
-        users = smb_manager.get_share_users(share_name)
+        share = smb_manager.get_managed_share(share_name)
+        if share is None:
+            return jsonify({
+                'error': (
+                    f"Share {share_name} is not managed by SimpleSaferServer. "
+                    f"See {SMB_DOCS_URL} for manual conversion guidance."
+                )
+            }), 400
+        users = share.get('valid_users', [])
         return jsonify({'users': users})
     except Exception as e:
         current_app.logger.error(f"Error getting share users: {e}")
