@@ -19,13 +19,15 @@ normal install flow instead:
 
 ## Deploy Checklist
 
+Run these steps from the root of the `SimpleSaferServer` repository.
+
 1. Open the Railway project and select the `SimpleSaferServer` service.
 
 2. Create a persistent volume and attach it to that service.
 
 3. Mount the volume at `/data`.
 
-4. Deploy the latest commit.
+4. Deploy the repository from the repo root.
 
 5. Open the app and complete setup once.
 
@@ -35,11 +37,15 @@ If setup is still there after step 6, the deployment is correct.
 
 ## CLI Version Of The Same Flow
 
+`railway up` uploads the files from your current local checkout, so run it from
+the root of the repository state you actually want to deploy.
+
 ```bash
+cd /path/to/SimpleSaferServer
 railway status
 railway volume list
 railway volume add --mount-path /data
-railway deploy
+railway up
 ```
 
 After the deploy finishes, run this once to verify the volume exists:
