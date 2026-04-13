@@ -166,19 +166,42 @@ cleanup_managed_smb_shares() {
     echo "Removing SimpleSaferServer-managed Samba shares..."
     backup_file_if_present "$SMB_CONF" "uninstall_backup"
 
-    awk -v begin_prefix="$MANAGED_SHARE_BEGIN_PREFIX" -v end_prefix="$MANAGED_SHARE_END_PREFIX" '
+    if ! awk -v begin_prefix="$MANAGED_SHARE_BEGIN_PREFIX" -v end_prefix="$MANAGED_SHARE_END_PREFIX" '
     BEGIN {
         in_managed_share = 0
+        current_share_name = ""
+        bad = 0
     }
 
     {
-        if (index($0, begin_prefix) == 1) {
+        line = $0
+        sub(/^[[:space:]]+/, "", line)
+
+        if (index(line, begin_prefix) == 1) {
+            share_name = substr(line, length(begin_prefix) + 1)
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", share_name)
+
+            if (in_managed_share || share_name == "") {
+                bad = 1
+                exit 1
+            }
+
             in_managed_share = 1
+            current_share_name = share_name
             next
         }
 
-        if (index($0, end_prefix) == 1) {
+        if (index(line, end_prefix) == 1) {
+            share_name = substr(line, length(end_prefix) + 1)
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", share_name)
+
+            if (!in_managed_share || share_name == "" || share_name != current_share_name) {
+                bad = 1
+                exit 1
+            }
+
             in_managed_share = 0
+            current_share_name = ""
             next
         }
 
@@ -186,7 +209,22 @@ cleanup_managed_smb_shares() {
             print
         }
     }
+
+    END {
+        if (in_managed_share) {
+            bad = 1
+        }
+
+        if (bad) {
+            exit 1
+        }
+    }
     ' "$SMB_CONF" > "$cleaned"
+    then
+        rm -f "$cleaned"
+        echo "ERROR: Refusing to rewrite $SMB_CONF because the SimpleSaferServer share markers are malformed."
+        return 1
+    fi
 
     mv "$cleaned" "$SMB_CONF"
     chmod 644 "$SMB_CONF"
@@ -218,7 +256,7 @@ main() {
     remove_systemd_unit "simple_safer_server_web.service"
 
     remove_managed_fstab_entries
-    cleanup_managed_smb_shares
+    cleanup_managed_smb_shares || exit 1
 
     echo "Removing installed helper scripts..."
     for script in "${SCRIPT_FILES[@]}"; do

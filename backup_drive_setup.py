@@ -633,7 +633,7 @@ def apply_backup_drive_configuration(partition, mount_point, auto_mount, config_
                 _reload_systemd_mount_units(runtime=runtime)
             if share_backup:
                 try:
-                    smb_manager.update_share(
+                    smb_manager.update_managed_share(
                         old_name='backup',
                         new_name='backup',
                         path=share_backup.get('path', previous_mount_point),

@@ -1,7 +1,9 @@
 import logging
 import os
 import re
+import shutil
 import subprocess
+import tempfile
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -11,7 +13,10 @@ from runtime import get_fake_state, get_runtime
 
 logger = logging.getLogger(__name__)
 
-SMB_DOCS_URL = "https://github.com/chrismin13/SimpleSaferServer/blob/main/docs/network_file_sharing.md"
+SMB_DOCS_URL = (
+    "https://github.com/chrismin13/SimpleSaferServer/blob/main/docs/network_file_sharing.md"
+    "#manual-conversion-unmanaged-share-to-simplesaferserver-managed-share"
+)
 MANAGED_SHARE_BEGIN_PREFIX = "# BEGIN SimpleSaferServer share: "
 MANAGED_SHARE_END_PREFIX = "# END SimpleSaferServer share: "
 SYSTEM_SHARE_NAMES = {"global", "homes", "printers", "print$"}
@@ -52,6 +57,10 @@ def _extract_section_name(line: str) -> Optional[str]:
     if stripped.startswith("[") and stripped.endswith("]") and len(stripped) > 2:
         return stripped[1:-1].strip()
     return None
+
+
+def _contains_control_characters(value: str) -> bool:
+    return any(ord(char) < 32 or ord(char) == 127 for char in value)
 
 
 class SMBManager:
@@ -299,6 +308,76 @@ class SMBManager:
             handle.write(content)
         os.chmod(self.smb_conf_path, 0o644)
 
+    def _validate_smb_conf_candidate(self, candidate_path: Path):
+        validator = shutil.which("testparm")
+        if validator:
+            command = [validator, "-s", str(candidate_path)]
+        else:
+            validator = shutil.which("smbd")
+            if not validator:
+                raise RuntimeError(
+                    "Could not validate smb.conf because neither 'testparm' nor 'smbd' is available."
+                )
+            command = [validator, "-t", "-s", str(candidate_path)]
+
+        result = subprocess.run(command, capture_output=True, text=True)
+        if result.returncode != 0:
+            details = result.stderr.strip() or result.stdout.strip() or "unknown validation error"
+            raise SMBConfigError(f"Samba configuration validation failed: {details}")
+
+    def _restore_smb_conf_backup(self, backup_path: Path):
+        shutil.copy2(backup_path, self.smb_conf_path)
+        os.chmod(self.smb_conf_path, 0o644)
+
+    def _commit_smb_conf(self, content: str):
+        if self.runtime.is_fake:
+            self._write_smb_conf(content)
+            if not self._restart_services():
+                raise Exception("Failed to restart SMB services")
+            return
+
+        live_path = Path(self.smb_conf_path)
+        backup_path = Path(self._create_backup())
+        temp_path = None
+        replaced_live_config = False
+
+        try:
+            with tempfile.NamedTemporaryFile(
+                "w",
+                delete=False,
+                dir=str(live_path.parent),
+                prefix=f"{live_path.name}.",
+                suffix=".tmp",
+            ) as handle:
+                handle.write(content)
+                temp_path = Path(handle.name)
+
+            os.chmod(temp_path, 0o644)
+            # Validate the candidate before replacing the live file so Samba is
+            # never pointed at a config we already know is broken.
+            self._validate_smb_conf_candidate(temp_path)
+            os.replace(temp_path, live_path)
+            replaced_live_config = True
+            temp_path = None
+
+            if not self._restart_services():
+                raise RuntimeError("Failed to restart SMB services")
+        except Exception as original_error:
+            if temp_path is not None and temp_path.exists():
+                temp_path.unlink()
+
+            if replaced_live_config:
+                try:
+                    self._restore_smb_conf_backup(backup_path)
+                    self._restart_services()
+                except Exception as rollback_error:
+                    logger.error(
+                        "Failed to restore smb.conf after SMB update error: %s",
+                        rollback_error,
+                    )
+
+            raise original_error
+
     def _restart_services(self):
         """Restart SMB services."""
         if self.runtime.is_fake:
@@ -455,15 +534,45 @@ class SMBManager:
     def _validate_share_input(self, name, path):
         if not name or not path:
             raise ValueError("Share name and path are required")
-        if not VALID_SHARE_NAME_RE.match(name):
+        if not isinstance(name, str) or _contains_control_characters(name) or not VALID_SHARE_NAME_RE.fullmatch(name):
             raise ValueError(
                 "Share name may only contain letters, numbers, hyphens, and underscores."
             )
-        if not os.path.exists(path):
-            raise ValueError(f"Path {path} does not exist")
+        if not isinstance(path, str) or _contains_control_characters(path):
+            raise ValueError("Share path contains unsupported control characters.")
+        if not os.path.isdir(path):
+            raise ValueError(f"Path {path} must be an existing directory")
+
+    def _validate_renderable_share_field(self, field_name, value):
+        if not isinstance(value, str):
+            raise ValueError(f"{field_name} must be a string.")
+        if _contains_control_characters(value):
+            raise ValueError(f"{field_name} contains unsupported control characters.")
+        return value
+
+    def _validate_valid_users(self, valid_users):
+        validated_users = []
+        for username in valid_users or []:
+            if not isinstance(username, str):
+                raise ValueError("Share usernames must be strings.")
+            if _contains_control_characters(username) or not VALID_SHARE_NAME_RE.fullmatch(username):
+                raise ValueError(
+                    "Share usernames may only contain letters, numbers, hyphens, and underscores."
+                )
+            validated_users.append(username)
+        return validated_users
 
     def _render_managed_share_block(self, name, path, writable=True, comment="", valid_users=None):
-        valid_users = valid_users or []
+        name = self._validate_renderable_share_field("Share name", name)
+        if not VALID_SHARE_NAME_RE.fullmatch(name):
+            raise ValueError(
+                "Share name may only contain letters, numbers, hyphens, and underscores."
+            )
+
+        path = self._validate_renderable_share_field("Share path", path)
+        comment = self._validate_renderable_share_field("Share comment", comment)
+        valid_users = self._validate_valid_users(valid_users or [])
+
         lines = [
             f"{MANAGED_SHARE_BEGIN_PREFIX}{name}\n",
             f"[{name}]\n",
@@ -513,10 +622,7 @@ class SMBManager:
 
         block_lines = self._render_managed_share_block(name, path, writable, comment, valid_users)
         new_lines = self._append_managed_block(lines, block_lines)
-        self._write_smb_conf("".join(new_lines))
-
-        if not self._restart_services():
-            raise Exception("Failed to restart SMB services")
+        self._commit_smb_conf("".join(new_lines))
 
         return True
 
@@ -543,10 +649,7 @@ class SMBManager:
         new_lines = list(lines)
         replacement = self._render_managed_share_block(new_name, path, writable, comment, valid_users)
         new_lines[share.start_line:share.end_line] = replacement
-        self._write_smb_conf("".join(new_lines))
-
-        if not self._restart_services():
-            raise Exception("Failed to restart SMB services")
+        self._commit_smb_conf("".join(new_lines))
 
         return True
 
@@ -563,10 +666,7 @@ class SMBManager:
 
         new_lines = list(lines)
         del new_lines[share.start_line:share.end_line]
-        self._write_smb_conf("".join(new_lines))
-
-        if not self._restart_services():
-            raise Exception("Failed to restart SMB services")
+        self._commit_smb_conf("".join(new_lines))
 
         return True
 

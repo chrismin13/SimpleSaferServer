@@ -22,6 +22,14 @@ class UninstallScriptTests(unittest.TestCase):
             raise AssertionError(result.stderr or result.stdout)
         return result.stdout
 
+    def run_bash_raw(self, snippet):
+        return subprocess.run(
+            ["bash", "-lc", snippet],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+        )
+
     def test_collect_samba_users_reads_current_users_json_shape(self):
         with tempfile.TemporaryDirectory() as tempdir:
             users_path = Path(tempdir) / "users.json"
@@ -104,6 +112,38 @@ class UninstallScriptTests(unittest.TestCase):
         self.assertNotIn("[backup]", content)
         self.assertIn("[media]", content)
         self.assertIn("guest ok = yes", content)
+
+    def test_cleanup_managed_smb_shares_rejects_malformed_markers(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            smb_conf_path = Path(tempdir) / "smb.conf"
+            original = textwrap.dedent(
+                """\
+                [global]
+                   workgroup = WORKGROUP
+
+                  # BEGIN SimpleSaferServer share: backup
+                [backup]
+                   path = /media/backup
+                  # END SimpleSaferServer share: media
+                """
+            )
+            smb_conf_path.write_text(original)
+
+            result = self.run_bash_raw(
+                textwrap.dedent(
+                    f"""\
+                    source "{UNINSTALL_SCRIPT}"
+                    SMB_CONF="{smb_conf_path}"
+                    cleanup_managed_smb_shares
+                    """
+                )
+            )
+
+            content = smb_conf_path.read_text()
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("markers are malformed", result.stdout)
+        self.assertEqual(content, original)
 
 
 if __name__ == "__main__":

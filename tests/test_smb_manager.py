@@ -210,6 +210,65 @@ class SMBManagerTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unmanaged Samba share named 'backup'"):
             self.manager.ensure_default_backup_share(str(share_path), "admin")
 
+    def test_create_managed_share_rejects_comment_with_newline_injection(self):
+        share_path = self.root / "share-with-comment"
+        share_path.mkdir()
+
+        with self.assertRaisesRegex(ValueError, "Share comment contains unsupported control characters"):
+            self.manager.create_managed_share(
+                "backup",
+                str(share_path),
+                comment="Looks fine\nguest ok = yes",
+                valid_users=["admin"],
+            )
+
+    def test_create_managed_share_rejects_non_directory_path(self):
+        file_path = self.root / "not-a-directory"
+        file_path.write_text("hello")
+
+        with self.assertRaisesRegex(ValueError, "must be an existing directory"):
+            self.manager.create_managed_share("backup", str(file_path))
+
+    def test_create_managed_share_rejects_whitespace_in_valid_users(self):
+        share_path = self.root / "share-with-users"
+        share_path.mkdir()
+
+        with self.assertRaisesRegex(ValueError, "Share usernames may only contain"):
+            self.manager.create_managed_share(
+                "backup",
+                str(share_path),
+                valid_users=["admin user"],
+            )
+
+    def test_restart_failure_restores_previous_live_config(self):
+        runtime = SimpleNamespace(
+            samba_dir=self.root / "real-samba",
+            samba_backup_dir=self.root / "real-samba-backups",
+            is_fake=False,
+        )
+        runtime.samba_dir.mkdir(parents=True, exist_ok=True)
+        runtime.samba_backup_dir.mkdir(parents=True, exist_ok=True)
+        manager = smb_manager.SMBManager(runtime=runtime)
+        live_path = runtime.samba_dir / "smb.conf"
+        original_content = "[global]\n   workgroup = WORKGROUP\n"
+        live_path.write_text(original_content)
+
+        share_path = self.root / "real-share"
+        share_path.mkdir()
+        backup_path = runtime.samba_backup_dir / "smb.conf.backup.test"
+
+        def fake_backup():
+            backup_path.write_text(live_path.read_text())
+            return str(backup_path)
+
+        with patch.object(manager, "_create_backup", side_effect=fake_backup):
+            with patch.object(manager, "_validate_smb_conf_candidate", return_value=None):
+                with patch.object(manager, "_restart_services", side_effect=[False, True]):
+                    with self.assertRaisesRegex(RuntimeError, "Failed to restart SMB services"):
+                        manager.create_managed_share("backup", str(share_path))
+
+        self.assertEqual(live_path.read_text(), original_content)
+
 
 if __name__ == "__main__":
     unittest.main()
