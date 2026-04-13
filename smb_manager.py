@@ -551,8 +551,13 @@ class SMBManager:
         return value
 
     def _validate_valid_users(self, valid_users):
+        if valid_users is None:
+            return []
+        if isinstance(valid_users, (str, bytes)):
+            raise ValueError("valid_users must be a sequence of usernames, not a string")
+
         validated_users = []
-        for username in valid_users or []:
+        for username in valid_users:
             if not isinstance(username, str):
                 raise ValueError("Share usernames must be strings.")
             if _contains_control_characters(username) or not VALID_SHARE_NAME_RE.fullmatch(username):
@@ -718,22 +723,28 @@ class SMBManager:
     def delete_share(self, name):
         return self.delete_managed_share(name)
 
+    def _get_managed_share_or_raise(self, share_name):
+        # Keep the unmanaged-share rejection in one place so legacy helper
+        # methods do not drift apart and accidentally expose raw Samba state.
+        _, shares = self._load_shares()
+        share = self._find_share_record(shares, share_name)
+        if share is None:
+            raise ValueError(f"Share {share_name} not found")
+        if not share.managed:
+            raise ValueError(
+                "Share '{}' is not managed by SimpleSaferServer, so it cannot be edited here. "
+                "See {} for manual conversion guidance.".format(share_name, SMB_DOCS_URL)
+            )
+        return self.get_managed_share(share_name)
+
     def get_share_users(self, share_name):
-        share = self.get_managed_share(share_name)
-        if not share:
-            return []
+        # Callers use this to populate edit flows, so unmanaged shares need an
+        # explicit error instead of looking like empty access lists.
+        share = self._get_managed_share_or_raise(share_name)
         return share.get("valid_users", [])
 
     def update_share_users(self, share_name, users):
-        share = self.get_managed_share(share_name)
-        if not share:
-            if self._find_share_record(self._load_shares()[1], share_name, managed=False) is not None:
-                raise ValueError(
-                    "Share '{}' is not managed by SimpleSaferServer, so its users cannot be edited here. "
-                    "See {} for manual conversion guidance.".format(share_name, SMB_DOCS_URL)
-                )
-            raise ValueError(f"Share {share_name} not found")
-
+        share = self._get_managed_share_or_raise(share_name)
         return self.update_managed_share(
             share_name,
             share_name,

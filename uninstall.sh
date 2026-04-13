@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -u
+set -euo pipefail
 
 # Color codes
 RED='\033[0;31m'
@@ -128,7 +128,7 @@ remove_managed_fstab_entries() {
     echo "Removing SimpleSaferServer-managed /etc/fstab entries..."
     backup_file_if_present "$original" "uninstall_backup"
 
-    awk -v marker="$FSTAB_MARKER" -v legacy="$LEGACY_FSTAB_MARKER" '
+    if ! awk -v marker="$FSTAB_MARKER" -v legacy="$LEGACY_FSTAB_MARKER" '
     function trim(value) {
         gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
         return value
@@ -147,10 +147,30 @@ remove_managed_fstab_entries() {
 
         print
     }
-    ' "$original" > "$updated"
+    ' "$original" > "$updated"; then
+        rm -f "$updated"
+        echo "ERROR: Failed to rebuild $original while removing SimpleSaferServer-managed entries."
+        return 1
+    fi
 
-    mv "$updated" "$original"
-    chmod 644 "$original"
+    # Refuse to replace core system files with missing or empty temp output if
+    # the filtering step broke unexpectedly.
+    if [ ! -s "$updated" ]; then
+        rm -f "$updated"
+        echo "ERROR: Refusing to replace $original because the generated file is missing or empty."
+        return 1
+    fi
+
+    if ! mv "$updated" "$original"; then
+        rm -f "$updated"
+        echo "ERROR: Failed to replace $original."
+        return 1
+    fi
+
+    if ! chmod 644 "$original"; then
+        echo "ERROR: Failed to set permissions on $original."
+        return 1
+    fi
 }
 
 cleanup_managed_smb_shares() {
@@ -226,8 +246,25 @@ cleanup_managed_smb_shares() {
         return 1
     fi
 
-    mv "$cleaned" "$SMB_CONF"
-    chmod 644 "$SMB_CONF"
+    # Keep the live Samba config untouched if the cleaned candidate was not
+    # produced as expected.
+    if [ ! -s "$cleaned" ]; then
+        rm -f "$cleaned"
+        echo "ERROR: Refusing to replace $SMB_CONF because the generated file is missing or empty."
+        return 1
+    fi
+
+    if ! mv "$cleaned" "$SMB_CONF"; then
+        rm -f "$cleaned"
+        echo "ERROR: Failed to replace $SMB_CONF."
+        return 1
+    fi
+
+    if ! chmod 644 "$SMB_CONF"; then
+        echo "ERROR: Failed to set permissions on $SMB_CONF."
+        return 1
+    fi
+
     systemctl restart smbd 2>/dev/null || true
     systemctl restart nmbd 2>/dev/null || true
 }

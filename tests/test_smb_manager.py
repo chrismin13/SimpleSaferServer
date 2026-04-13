@@ -240,6 +240,34 @@ class SMBManagerTests(unittest.TestCase):
                 valid_users=["admin user"],
             )
 
+    def test_create_managed_share_rejects_string_valid_users_input(self):
+        share_path = self.root / "share-string-users"
+        share_path.mkdir()
+
+        with self.assertRaisesRegex(ValueError, "valid_users must be a sequence of usernames"):
+            self.manager.create_managed_share(
+                "backup",
+                str(share_path),
+                valid_users="admin",
+            )
+
+    def test_get_share_users_rejects_unmanaged_share(self):
+        share_path = self.root / "unmanaged-share"
+        share_path.mkdir()
+        self._write_conf(
+            "\n".join(
+                [
+                    "[media]",
+                    f"   path = {share_path}",
+                    "   guest ok = yes",
+                    "",
+                ]
+            )
+        )
+
+        with self.assertRaisesRegex(ValueError, "is not managed by SimpleSaferServer"):
+            self.manager.get_share_users("media")
+
     def test_restart_failure_restores_previous_live_config(self):
         runtime = SimpleNamespace(
             samba_dir=self.root / "real-samba",
