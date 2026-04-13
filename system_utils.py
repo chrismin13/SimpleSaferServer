@@ -274,7 +274,7 @@ cloudflare_proxy = {ddns_config.get('cloudflare_proxy', 'false')}
             
             # Define services and timers with proper formatting
             services = {
-                'check_mount.service': f"""[Unit]
+                'check_mount.service': """[Unit]
 Description=Check USB Mount Status
 After=network.target
 
@@ -288,7 +288,7 @@ StandardError=journal
 [Install]
 WantedBy=multi-user.target
 """,
-                'check_health.service': f"""[Unit]
+                'check_health.service': """[Unit]
 Description=Drive Health Check
 After=network.target
 
@@ -302,7 +302,7 @@ StandardError=journal
 [Install]
 WantedBy=multi-user.target
 """,
-                'backup_cloud.service': f"""[Unit]
+                'backup_cloud.service': """[Unit]
 Description=Cloud Backup Service
 After=network.target
 
@@ -349,7 +349,7 @@ RandomizedDelaySec=60
 [Install]
 WantedBy=timers.target
 """,
-                'ddns_update.service': f"""[Unit]
+                'ddns_update.service': """[Unit]
 Description=DDNS Update Service
 After=network-online.target
 Wants=network-online.target
@@ -364,7 +364,7 @@ StandardError=journal
 [Install]
 WantedBy=multi-user.target
 """,
-                'ddns_update.timer': f"""[Unit]
+                'ddns_update.timer': """[Unit]
 Description=Run DDNS update every 5 minutes
 
 [Timer]
