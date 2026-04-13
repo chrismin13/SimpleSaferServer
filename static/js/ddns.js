@@ -56,7 +56,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     if (!duckEnabled) {
       duckBadge.textContent = 'Disabled';
-      duckBadge.className = 'badge badge-secondary';
+      duckBadge.className = 'badge badge-neutral';
       document.getElementById('duckdns-message').textContent = '—';
     } else if (duckStatus) {
       let isError = duckStatus.status !== 'Success';
@@ -79,7 +79,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (!cfEnabled) {
       cfBadge.textContent = 'Disabled';
-      cfBadge.className = 'badge badge-secondary';
+      cfBadge.className = 'badge badge-neutral';
       document.getElementById('cf-message').textContent = '—';
     } else if (cfStatus) {
       let isError = cfStatus.status !== 'Success';

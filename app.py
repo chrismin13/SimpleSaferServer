@@ -38,7 +38,6 @@ import logging
 from user_manager import UserManager, login_required, admin_required, api_login_required, api_admin_required
 from flask_socketio import SocketIO
 from logging.handlers import RotatingFileHandler
-import sys
 import time
 from typing import Dict, List, Tuple
 from system_utils import SystemUtils
@@ -1753,16 +1752,19 @@ def get_ddns_config():
             'status': status,
             'next_run': next_run
         })
-    except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
+    except Exception:
+        current_app.logger.exception("Error loading DDNS configuration")
+        return jsonify({'success': False, 'message': 'Failed to load DDNS configuration.'}), 500
 
 @app.route('/api/ddns/config', methods=['POST'])
 @api_login_required
 @api_admin_required
 def save_ddns_config():
     try:
-        data = request.json
-        if not data:
+        # get_json(silent=True) returns None on parse errors or wrong content-type,
+        # avoiding the BadRequest exception that request.json raises on malformed input.
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict) or not data:
              return jsonify({'success': False, 'message': 'Invalid payload'}), 400
              
         if 'duckdns' in data:
@@ -1809,23 +1811,20 @@ def save_ddns_config():
             if token:
                 config_manager.store_secret('cloudflare_token', token)
 
-        # create_systemd_config_file catches exceptions internally and returns (success, error).
-        # We must check the return value — a try/except alone won't catch internal failures.
-        ok, err = system_utils.create_systemd_config_file(config_manager.get_all_config())
-        if not ok:
-            return jsonify({
-                'success': False,
-                'message': f'Failed to create systemd configuration: {err}'
-            }), 500
+        # ConfigManager.set_value already persists each key to disk, so there is no
+        # need to rewrite the entire config file here. Doing so would overwrite keys
+        # written by other subsystems (e.g., email, backup) that aren't in the DDNS
+        # section of the template, silently dropping them.
 
-        # Only start the DDNS task if config file creation succeeded
+        # Trigger an immediate sync so the user sees the result of their new config.
         ddns_task = get_task("DDNS Update")
         if ddns_task:
             ddns_task.start()
 
         return jsonify({'success': True, 'message': 'DDNS configuration saved and update triggered.'})
-    except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
+    except Exception:
+        current_app.logger.exception("Error saving DDNS configuration")
+        return jsonify({'success': False, 'message': 'Failed to save DDNS configuration.'}), 500
 
 @app.route('/api/cloud_backup/config', methods=['GET'])
 @login_required

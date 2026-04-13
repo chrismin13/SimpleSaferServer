@@ -369,6 +369,9 @@ Description=Run DDNS update every 5 minutes
 
 [Timer]
 OnCalendar=*:0/5
+# Spread requests so all installs don't hit provider APIs on the exact same boundary
+RandomizedDelaySec=1m
+AccuracySec=1m
 Persistent=true
 
 [Install]

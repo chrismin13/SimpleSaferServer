@@ -228,7 +228,7 @@ echo -e "${GREEN}✔ Systemd service enabled and started.${NC}\n"
 
 # 10. Refresh procedurally generated background services
 echo -e "${YELLOW}Step 10: Refreshing procedural background services...${NC}"
-"$VENV_DIR/bin/python3" -c "
+if "$VENV_DIR/bin/python3" -c "
 import sys
 sys.path.insert(0, '$APP_DIR')
 from config_manager import ConfigManager
@@ -243,8 +243,11 @@ success, error = SystemUtils(runtime=rt).install_systemd_services_and_timers(con
 if not success:
     print(f'Error: {error}', file=sys.stderr)
     sys.exit(1)
-" || echo -e "${YELLOW}Warning: Failed to refresh background services.${NC}"
-echo -e "${GREEN}✔ Background services generated and restarted.${NC}\n"
+"; then
+  echo -e "${GREEN}✔ Background services generated and restarted.${NC}\n"
+else
+  echo -e "${YELLOW}Warning: Failed to refresh background services.${NC}\n"
+fi
 
 # 11. Open port 5000 in firewall if active
 echo -e "${YELLOW}Step 11: Configuring firewall (if active)...${NC}"
