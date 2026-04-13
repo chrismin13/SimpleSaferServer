@@ -1,13 +1,56 @@
 # Railway Deployment Notes
 
-SimpleSaferServer runs in fake mode on Railway on purpose. That keeps the live
-demo safe because Railway cannot provide the local disks, Samba services, or
-systemd environment that the full Debian install uses.
+Railway is a cloud hosting platform that can build and run this repository
+directly from GitHub.
 
-## Why setup resets without a volume
+SimpleSaferServer runs in fake mode on Railway on purpose. Railway cannot
+provide the local disks, Samba services, or systemd environment that the full
+Debian install uses, so the demo stores its writable state in a Railway volume
+instead.
 
-In Railway fake mode, the app stores its writable state under the fake-mode data
-directory. That includes:
+Regular SimpleSaferServer users do not need any of this. This document is only
+for development and demo hosting on Railway.
+
+If you are installing SimpleSaferServer on a real Debian-based machine, use the
+normal install flow instead:
+
+- [README.md](../README.md)
+- [manual_install.md](manual_install.md)
+
+## Deploy Checklist
+
+1. Open the Railway project and select the `SimpleSaferServer` service.
+
+2. Create a persistent volume and attach it to that service.
+
+3. Mount the volume at `/data`.
+
+4. Deploy the latest commit.
+
+5. Open the app and complete setup once.
+
+6. Redeploy one more time to confirm the setup still exists.
+
+If setup is still there after step 6, the deployment is correct.
+
+## CLI Version Of The Same Flow
+
+```bash
+railway status
+railway volume list
+railway volume add --mount-path /data
+railway deploy
+```
+
+After the deploy finishes, run this once to verify the volume exists:
+
+```bash
+railway volume list
+```
+
+## What Must Persist
+
+The writable state lives under the fake-mode data directory. That includes:
 
 - `config/config.conf`
 - `config/users.json`
@@ -16,34 +59,14 @@ directory. That includes:
 - `config/.flask-secret-key`
 - logs and fake task state
 
-The repo config sets `SSS_DATA_DIR=/data` in `nixpacks.toml`. If Railway does
-not have a persistent volume attached, `/data` is only a normal container
-directory, so every deploy starts from an empty filesystem again.
+The repo sets `SSS_DATA_DIR=/data` in `nixpacks.toml`, so `/data` must be a
+real Railway volume. If no volume is attached, `/data` is only a normal
+container directory and every deploy starts from an empty filesystem again.
 
-## How to keep config across deploys
+## Notes
 
-1. Create a Railway volume for the service.
-2. Attach it to the `SimpleSaferServer` service.
-3. Mount it at `/data`, or mount it somewhere else and let the app use
-   Railway's `RAILWAY_VOLUME_MOUNT_PATH` runtime variable automatically.
-4. Redeploy once after the volume is attached.
-
-Useful CLI checks:
-
-```bash
-railway status
-railway volume list
-railway volume add --mount-path /data
-```
-
-If you create the volume with a different mount path later, the app now prefers
-`RAILWAY_VOLUME_MOUNT_PATH` over the default `/data` setting so the writable
-state still follows the real attached volume.
-
-## Session behavior
-
-The app now persists its Flask session secret inside the writable config
-directory unless `FLASK_SECRET_KEY` is set explicitly. That keeps login cookies
-stable across deploys when the Railway volume persists.
-
-If there is no volume, both configuration and session state remain disposable.
+- The app now persists the Flask session secret in the writable config
+  directory unless `FLASK_SECRET_KEY` is set explicitly. That keeps login
+  cookies stable across deploys when the volume persists.
+- If you ever mount the Railway volume somewhere other than `/data`, the app
+  prefers Railway's `RAILWAY_VOLUME_MOUNT_PATH` variable automatically.
