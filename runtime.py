@@ -3,6 +3,7 @@ import os
 import secrets
 import tempfile
 import threading
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -284,13 +285,16 @@ def load_or_create_text_secret(secret_path: Path) -> str:
     secret_value = secrets.token_urlsafe(48)
     try:
         secret_fd = os.open(secret_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    except FileExistsError:
-        # Another worker won the creation race after our first read. Re-read the
-        # file so every process converges on the exact same persisted secret.
-        existing_secret = _read_persisted_text_secret(secret_path)
-        if existing_secret:
-            return existing_secret
-        raise RuntimeError(f"Secret file exists but is empty: {secret_path}")
+    except FileExistsError as err:
+        # Another worker won the creation race after our first read. Give that
+        # process a short window to finish writing so every worker converges on
+        # the same persisted secret instead of tripping over a transient empty file.
+        for _ in range(5):
+            existing_secret = _read_persisted_text_secret(secret_path)
+            if existing_secret:
+                return existing_secret
+            time.sleep(0.05)
+        raise RuntimeError(f"Secret file exists but is empty: {secret_path}") from err
 
     with os.fdopen(secret_fd, "w", encoding="utf-8") as secret_file:
         # fchmod closes the gap where umask could otherwise leave the new file

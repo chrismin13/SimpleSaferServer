@@ -78,3 +78,18 @@ class RuntimeHelpersTests(unittest.TestCase):
                 self.assertEqual(runtime.load_or_create_text_secret(secret_path), "winner-secret")
 
             self.assertEqual(secret_path.stat().st_mode & 0o777, 0o600)
+
+    def test_load_or_create_text_secret_retries_until_race_winner_finishes_writing(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            secret_path = Path(temp_dir) / ".flask-secret-key"
+
+            with patch("runtime.os.open", side_effect=FileExistsError):
+                with patch(
+                    "runtime._read_persisted_text_secret",
+                    side_effect=[None, None, "winner-secret"],
+                ) as mock_read_secret:
+                    with patch("runtime.time.sleep") as mock_sleep:
+                        self.assertEqual(runtime.load_or_create_text_secret(secret_path), "winner-secret")
+
+            self.assertEqual(mock_read_secret.call_count, 3)
+            self.assertEqual(mock_sleep.call_count, 1)
