@@ -1,4 +1,7 @@
 [variables]
+# Railway fake mode stores config, users, secrets, and the persisted Flask
+# session key under SSS_DATA_DIR. That path must be backed by a Railway volume
+# in production, or every fresh deploy starts from an empty setup state.
 SSS_MODE = "fake"
 SSS_SKIP_LOGIN = "true"
 SSS_DATA_DIR = "/data"
