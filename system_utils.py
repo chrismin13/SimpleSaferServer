@@ -200,6 +200,7 @@ account default : simplesaferserver
             system_config = config.get('system', {})
             schedule_config = config.get('schedule', {})
             hdsentinel_config = config.get('hdsentinel', {})
+            ddns_config = config.get('ddns', {})
 
             config_content = f"""[system]
 username = {system_config.get('username', '')}
@@ -224,6 +225,14 @@ backup_cloud_time = {schedule_config.get('backup_cloud_time', '')}
 [hdsentinel]
 enabled = {hdsentinel_config.get('enabled', 'true')}
 health_change_alert = {hdsentinel_config.get('health_change_alert', 'true')}
+
+[ddns]
+duckdns_enabled = {ddns_config.get('duckdns_enabled', 'false')}
+duckdns_domain = {ddns_config.get('duckdns_domain', '')}
+cloudflare_enabled = {ddns_config.get('cloudflare_enabled', 'false')}
+cloudflare_zone = {ddns_config.get('cloudflare_zone', '')}
+cloudflare_record = {ddns_config.get('cloudflare_record', '')}
+cloudflare_proxy = {ddns_config.get('cloudflare_proxy', 'false')}
 """
             # Create the config directory
             config_dir = self.runtime.config_dir
