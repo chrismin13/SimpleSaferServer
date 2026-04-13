@@ -53,8 +53,8 @@ HDSENTINEL_ASSET_DIR="$SRC_DIR/third_party/hdsentinel"
 install_hdsentinel() {
     local arch=""
     local machine=""
-    local url=""
     local asset_path=""
+    local package_path=""
     local tmpdir=""
     local candidate=""
 
@@ -80,15 +80,12 @@ install_hdsentinel() {
     case "$arch" in
         amd64)
             asset_path="$HDSENTINEL_ASSET_DIR/hdsentinel-linux-amd64.zip"
-            url="https://www.hdsentinel.com/hdslin/hdsentinel-020c-x64.zip"
             ;;
         arm64)
             asset_path="$HDSENTINEL_ASSET_DIR/hdsentinel-linux-arm64.zip"
-            url="https://www.hdsentinel.com/hdslin/hdsentinel-armv8.zip"
             ;;
         armhf)
             asset_path="$HDSENTINEL_ASSET_DIR/hdsentinel-linux-armv7.zip"
-            url="https://www.hdsentinel.com/hdslin/hdsentinel-armv7.gz"
             ;;
         *)
             echo -e "${YELLOW}HDSentinel auto-install skipped: unsupported architecture '${arch:-unknown}'.${NC}"
@@ -97,21 +94,19 @@ install_hdsentinel() {
     esac
 
     tmpdir=$(mktemp -d)
-    # Prefer repository-bundled archives so installs remain reproducible even
-    # when the upstream host is temporarily unavailable.
-    if [ -f "$asset_path" ]; then
-        cp "$asset_path" "$tmpdir/hdsentinel-package"
-        echo -e "${GREEN}✔ Using bundled HDSentinel package: $asset_path${NC}"
-    else
-        echo -e "${YELLOW}Bundled HDSentinel package not found for ${arch}. Falling back to vendor download.${NC}"
-        if ! curl -L --fail --output "$tmpdir/hdsentinel-package" "$url"; then
-            echo -e "${YELLOW}HDSentinel download failed. Continuing without it.${NC}"
-            rm -rf "$tmpdir"
-            return 0
-        fi
+    # The automated installer only trusts vendored HDSentinel archives so the
+    # binary source stays pinned to files shipped with this repo.
+    if [ ! -f "$asset_path" ]; then
+        echo -e "${YELLOW}Bundled HDSentinel package not found for ${arch}. Skipping HDSentinel auto-install.${NC}"
+        rm -rf "$tmpdir"
+        return 0
     fi
 
-    if ! unzip -o "$tmpdir/hdsentinel-package" -d "$tmpdir" >/dev/null; then
+    package_path="$tmpdir/$(basename "$asset_path")"
+    cp "$asset_path" "$package_path"
+    echo -e "${GREEN}✔ Using bundled HDSentinel package: $asset_path${NC}"
+
+    if ! unzip -o "$package_path" -d "$tmpdir" >/dev/null; then
         echo -e "${YELLOW}HDSentinel extraction failed. Continuing without it.${NC}"
         rm -rf "$tmpdir"
         return 0

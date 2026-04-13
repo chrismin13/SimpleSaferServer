@@ -10,7 +10,7 @@ Open a terminal and run:
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y python3 python3-pip python3-flask python3-flask-socketio python3-psutil python3-xgboost python3-joblib python3-pandas python3-sklearn python3-cryptography smartmontools samba msmtp rsync curl unzip
+sudo apt-get install -y git python3 python3-pip python3-flask python3-flask-socketio python3-psutil python3-xgboost python3-joblib python3-pandas python3-sklearn python3-cryptography smartmontools samba msmtp rsync curl unzip
 ```
 
 ## 2. Install rclone (Official Script)
@@ -25,15 +25,24 @@ sudo sh -c "bash $TMPFILE || true"
 rm -f "$TMPFILE"
 ```
 
-## 3. Install HDSentinel
+## 3. Download the Repository
 
-Use the official Linux download page first:
+Clone the repository and move into it before running any repo-relative commands:
+
+```bash
+git clone https://github.com/chrismin13/SimpleSaferServer.git
+cd SimpleSaferServer
+```
+
+## 4. Install HDSentinel
+
+Manual installation is the only supported path if you want to download and verify HDSentinel directly from the vendor site:
 
 - https://www.hdsentinel.com/hdslin.php
 
-This repository also includes a mirror copy of the Linux archives in `third_party/hdsentinel/` for convenience/offline installs.
+This repository also includes mirror copies of the Linux archives in `third_party/hdsentinel/` for convenience and offline installs. The automated installer intentionally uses only these vendored files so it never pulls HDSentinel binaries from the network during installation. The ARMv7 archive is repackaged in this repo as `hdsentinel-linux-armv7.zip` so the local install flow stays consistent across architectures.
 
-Install the matching binary to `/usr/local/bin/hdsentinel`:
+Install the matching binary from the cloned repository to `/usr/local/bin/hdsentinel`:
 
 ```bash
 ARCH="$(dpkg --print-architecture 2>/dev/null || uname -m)"
@@ -61,20 +70,18 @@ sudo install -m 755 "$TMPDIR/HDSentinel" /usr/local/bin/hdsentinel
 rm -rf "$TMPDIR"
 ```
 
-## 4. Download and Copy Application Files
+## 5. Download and Copy Application Files
 
-Clone the repository and copy files to `/opt/SimpleSaferServer`:
+Copy files from the cloned repository to `/opt/SimpleSaferServer`:
 
 ```bash
-git clone https://github.com/chrismin13/SimpleSaferServer.git
-cd SimpleSaferServer
 sudo mkdir -p /opt/SimpleSaferServer
 sudo rsync -a --exclude='venv' --exclude='__pycache__' --exclude='*.pyc' --exclude='*.pyo' --exclude='*.log' --exclude='telemetry.csv' --exclude='harddrive_model' --exclude='scripts' --exclude='static' --exclude='templates' ./ /opt/SimpleSaferServer/
 sudo rsync -a static /opt/SimpleSaferServer/
 sudo rsync -a templates /opt/SimpleSaferServer/
 ```
 
-## 5. Install Scripts and Model Files
+## 6. Install Scripts and Model Files
 
 ```bash
 sudo mkdir -p /usr/local/bin
@@ -86,13 +93,9 @@ sudo mkdir -p /opt/SimpleSaferServer/harddrive_model
 sudo cp harddrive_model/* /opt/SimpleSaferServer/harddrive_model/
 ```
 
-## 6. Set Up the Systemd Service
+## 7. Set Up the Systemd Service
 
-## Email Setup
-- **Email Address**: Enter the address for alerts.
-- **From Address**: Enter the address that will appear in the From field of alert emails. This must be a valid, verified sender for your SMTP service (e.g., the authenticated SMTP user or a domain-verified address). Some SMTP providers will only deliver mail if the From address matches the authenticated user or a verified sender.
-- **SMTP Configuration**: Enter SMTP server, port, username, and password.
-- **Save Email Configuration**: Button to save settings.
+After the service starts, use the Web UI setup flow to configure email alerts, backup settings, and the initial administrator account.
 
 Copy the service file and enable/start the service:
 
@@ -103,7 +106,7 @@ sudo systemctl enable simple_safer_server_web.service
 sudo systemctl restart simple_safer_server_web.service
 ```
 
-## 7. (Optional) Open Firewall Port 5000
+## 8. (Optional) Open Firewall Port 5000
 
 If you use a firewall, open port 5000:
 
@@ -121,7 +124,7 @@ If you use a firewall, open port 5000:
   sudo iptables -C INPUT -p tcp --dport 5000 -j ACCEPT 2>/dev/null || sudo iptables -A INPUT -p tcp --dport 5000 -j ACCEPT
   ```
 
-## 8. Access the Web UI
+## 9. Access the Web UI
 
 After installation, open a browser on any device in your network and go to:
 
