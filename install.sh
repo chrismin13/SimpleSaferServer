@@ -48,36 +48,65 @@ MODEL_DIR="/opt/SimpleSaferServer/harddrive_model"
 VENV_DIR="$APP_DIR/venv"
 SERVICE_FILE="/etc/systemd/system/simple_safer_server_web.service"
 HDSENTINEL_BIN="/usr/local/bin/hdsentinel"
+HDSENTINEL_ASSET_DIR="$SRC_DIR/third_party/hdsentinel"
 
-install_hdsentinel() {
+detect_hdsentinel_arch() {
     local arch=""
     local machine=""
-    local url=""
-    local tmpdir=""
-    local candidate=""
 
     if command -v dpkg >/dev/null 2>&1; then
         arch=$(dpkg --print-architecture 2>/dev/null || true)
     fi
 
-    if [ -z "$arch" ]; then
-        machine=$(uname -m)
-        case "$machine" in
-            x86_64|amd64)
-                arch="amd64"
-                ;;
-            aarch64|arm64)
-                arch="arm64"
-                ;;
-        esac
+    # Prefer Debian's package architecture when it is available because that
+    # reflects the userspace ABI we need to run, not just the kernel's CPU view.
+    if [ -n "$arch" ]; then
+        printf '%s\n' "$arch"
+        return 0
     fi
+
+    machine=$(uname -m 2>/dev/null || true)
+    machine=${machine,,}
+
+    case "$machine" in
+        x86_64*|amd64*)
+            printf '%s\n' "amd64"
+            ;;
+        aarch64*|arm64*)
+            printf '%s\n' "arm64"
+            ;;
+        armv7*|armv8l*|armhf*)
+            # The vendored 32-bit ARM build is the ARMv7 hard-float variant.
+            # Matching armv8l here is intentional because it is commonly a
+            # 32-bit userspace on newer ARM hardware.
+            printf '%s\n' "armhf"
+            ;;
+        *)
+            printf '%s\n' "$machine"
+            ;;
+    esac
+}
+
+install_hdsentinel() {
+    local arch=""
+    local asset_path=""
+    local package_path=""
+    local tmpdir=""
+    local candidate=""
+
+    arch=$(detect_hdsentinel_arch)
 
     case "$arch" in
         amd64)
-            url="https://www.hdsentinel.com/hdslin/hdsentinel-020c-x64.zip"
+            asset_path="$HDSENTINEL_ASSET_DIR/hdsentinel-linux-amd64.zip"
             ;;
         arm64)
-            url="https://www.hdsentinel.com/hdslin/hdsentinel-armv8.zip"
+            asset_path="$HDSENTINEL_ASSET_DIR/hdsentinel-linux-arm64.zip"
+            ;;
+        armhf)
+            # This asset is repackaged from the vendor's ARMv7 release, so we
+            # deliberately do not pretend older ARM variants are compatible.
+            asset_path="$HDSENTINEL_ASSET_DIR/hdsentinel-linux-armv7.zip"
             ;;
         *)
             echo -e "${YELLOW}HDSentinel auto-install skipped: unsupported architecture '${arch:-unknown}'.${NC}"
@@ -86,13 +115,19 @@ install_hdsentinel() {
     esac
 
     tmpdir=$(mktemp -d)
-    if ! curl -L --fail --output "$tmpdir/hdsentinel.zip" "$url"; then
-        echo -e "${YELLOW}HDSentinel download failed. Continuing without it.${NC}"
+    # The automated installer only trusts vendored HDSentinel archives so the
+    # binary source stays pinned to files shipped with this repo.
+    if [ ! -f "$asset_path" ]; then
+        echo -e "${YELLOW}Bundled HDSentinel package not found for ${arch}. Skipping HDSentinel auto-install.${NC}"
         rm -rf "$tmpdir"
         return 0
     fi
 
-    if ! unzip -o "$tmpdir/hdsentinel.zip" -d "$tmpdir" >/dev/null; then
+    package_path="$tmpdir/$(basename "$asset_path")"
+    cp "$asset_path" "$package_path"
+    echo -e "${GREEN}✔ Using bundled HDSentinel package: $asset_path${NC}"
+
+    if ! unzip -o "$package_path" -d "$tmpdir" >/dev/null; then
         echo -e "${YELLOW}HDSentinel extraction failed. Continuing without it.${NC}"
         rm -rf "$tmpdir"
         return 0
