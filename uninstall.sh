@@ -16,7 +16,6 @@ DATA_DIR="/var/lib/SimpleSaferServer"
 LOG_DIR="/var/log/SimpleSaferServer"
 SYSTEMD_DIR="/etc/systemd/system"
 SMB_CONF="/etc/samba/smb.conf"
-TMP_DIR=""
 FSTAB_MARKER="SimpleSaferServer managed backup drive"
 LEGACY_FSTAB_MARKER="SimpleSaferServer"
 MANAGED_SHARE_BEGIN_PREFIX="# BEGIN SimpleSaferServer share: "
@@ -33,29 +32,34 @@ SCRIPT_FILES=(
 
 # The installer writes rclone config where the root-owned scheduled tasks can
 # read it later, so the uninstaller needs to look there instead of under /etc.
-ROOT_HOME="$(getent passwd root 2>/dev/null | cut -d: -f6)"
+ROOT_HOME=""
+if command -v getent >/dev/null 2>&1; then
+    ROOT_HOME="$(getent passwd root 2>/dev/null | cut -d: -f6 || true)"
+fi
 if [ -z "$ROOT_HOME" ]; then
     ROOT_HOME="/root"
 fi
 RCLONE_CONFIG_DIR="$ROOT_HOME/.config/rclone"
 RCLONE_CONFIG_PATH="$RCLONE_CONFIG_DIR/rclone.conf"
 
-setup_temp_dir() {
-    if [ -z "$TMP_DIR" ]; then
-        TMP_DIR="$(mktemp -d)"
-    fi
-}
+make_atomic_temp_file() {
+    local target_path="$1"
+    local target_dir=""
+    local target_name=""
 
-cleanup() {
-    if [ -n "$TMP_DIR" ] && [ -d "$TMP_DIR" ]; then
-        rm -rf "$TMP_DIR"
-    fi
-    TMP_DIR=""
+    target_dir="$(dirname -- "$target_path")"
+    target_name="$(basename -- "$target_path")"
+    mktemp "${target_dir}/.${target_name}.XXXXXX"
 }
 
 collect_samba_users() {
     if [ ! -f "$USERS_FILE" ]; then
         return 0
+    fi
+
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo "ERROR: python3 is required to read $USERS_FILE during uninstall." >&2
+        return 1
     fi
 
     python3 - "$USERS_FILE" <<'PY'
@@ -68,7 +72,7 @@ try:
     with open(path, "r", encoding="utf-8") as handle:
         data = json.load(handle)
 except Exception:
-    raise SystemExit(0)
+    raise SystemExit(1)
 
 if isinstance(data, dict):
     for username in data.keys():
@@ -111,12 +115,11 @@ remove_managed_fstab_entries() {
     local original="${1:-/etc/fstab}"
     local updated=""
 
-    setup_temp_dir
-    updated="$TMP_DIR/fstab.updated"
-
     if [ ! -f "$original" ]; then
         return 0
     fi
+
+    updated="$(make_atomic_temp_file "$original")"
 
     echo "Removing SimpleSaferServer-managed /etc/fstab entries..."
     backup_file_if_present "$original" "uninstall_backup"
@@ -146,9 +149,8 @@ remove_managed_fstab_entries() {
         return 1
     fi
 
-    # Refuse to replace core system files only if the filtering step failed to
-    # produce the temporary output file at all. An empty file is valid when all
-    # entries were SimpleSaferServer-managed and have been removed.
+    # Allow intentionally empty results, but never replace a core config with a
+    # missing temp file if the rewrite step failed before producing output.
     if [ ! -f "$updated" ]; then
         rm -f "$updated"
         echo "ERROR: Refusing to replace $original because the generated file is missing."
@@ -174,8 +176,7 @@ cleanup_managed_smb_shares() {
         return 0
     fi
 
-    setup_temp_dir
-    cleaned="$TMP_DIR/smb.conf.cleaned"
+    cleaned="$(make_atomic_temp_file "$SMB_CONF")"
 
     echo "Removing SimpleSaferServer-managed Samba shares..."
     backup_file_if_present "$SMB_CONF" "uninstall_backup"
@@ -240,11 +241,11 @@ cleanup_managed_smb_shares() {
         return 1
     fi
 
-    # Keep the live Samba config untouched if the cleaned candidate was not
-    # produced as expected.
-    if [ ! -s "$cleaned" ]; then
+    # Allow smb.conf to become empty if every block was owned by
+    # SimpleSaferServer, but never replace it with a missing temp file.
+    if [ ! -f "$cleaned" ]; then
         rm -f "$cleaned"
-        echo "ERROR: Refusing to replace $SMB_CONF because the generated file is missing or empty."
+        echo "ERROR: Refusing to replace $SMB_CONF because the generated file is missing."
         return 1
     fi
 
@@ -264,9 +265,6 @@ cleanup_managed_smb_shares() {
 }
 
 main() {
-    trap cleanup EXIT
-    setup_temp_dir
-
     echo -e "${BLUE}==============================================="
     echo -e "   SimpleSaferServer Uninstaller"
     echo -e "===============================================${NC}\n"
@@ -303,7 +301,16 @@ main() {
 
     # Gather Samba usernames before deleting the config directory because the
     # app stores the source of truth in users.json rather than in a manifest.
-    mapfile -t SAMBA_USERS < <(collect_samba_users)
+    local samba_users_output=""
+    local -a SAMBA_USERS=()
+    if ! samba_users_output="$(collect_samba_users)"; then
+        echo "ERROR: Failed to read SimpleSaferServer users from $USERS_FILE."
+        exit 1
+    fi
+    if [ -n "$samba_users_output" ]; then
+        mapfile -t SAMBA_USERS <<< "$samba_users_output"
+    fi
+
     if [ "${#SAMBA_USERS[@]}" -gt 0 ]; then
         echo "Removing SimpleSaferServer users from Samba..."
         for username in "${SAMBA_USERS[@]}"; do

@@ -47,6 +47,23 @@ class UninstallScriptTests(unittest.TestCase):
 
         self.assertEqual(output.strip().splitlines(), ["alice", "bob"])
 
+    def test_collect_samba_users_fails_on_invalid_json(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            users_path = Path(tempdir) / "users.json"
+            users_path.write_text("{ definitely not valid json")
+
+            result = self.run_bash_raw(
+                textwrap.dedent(
+                    f"""\
+                    source "{UNINSTALL_SCRIPT}"
+                    USERS_FILE="{users_path}"
+                    collect_samba_users
+                    """
+                )
+            )
+
+        self.assertNotEqual(result.returncode, 0)
+
     def test_remove_managed_fstab_entries_only_removes_tagged_lines(self):
         with tempfile.TemporaryDirectory() as tempdir:
             fstab_path = Path(tempdir) / "fstab"
@@ -112,6 +129,34 @@ class UninstallScriptTests(unittest.TestCase):
         self.assertNotIn("[backup]", content)
         self.assertIn("[media]", content)
         self.assertIn("guest ok = yes", content)
+
+    def test_cleanup_managed_smb_shares_allows_empty_result_when_only_managed_blocks_exist(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            smb_conf_path = Path(tempdir) / "smb.conf"
+            smb_conf_path.write_text(
+                textwrap.dedent(
+                    """\
+                    # BEGIN SimpleSaferServer share: backup
+                    [backup]
+                       path = /media/backup
+                    # END SimpleSaferServer share: backup
+                    """
+                )
+            )
+
+            self.run_bash(
+                textwrap.dedent(
+                    f"""\
+                    source "{UNINSTALL_SCRIPT}"
+                    SMB_CONF="{smb_conf_path}"
+                    cleanup_managed_smb_shares
+                    """
+                )
+            )
+
+            content = smb_conf_path.read_text()
+
+        self.assertEqual(content, "")
 
     def test_cleanup_managed_smb_shares_rejects_malformed_markers(self):
         with tempfile.TemporaryDirectory() as tempdir:
