@@ -1634,6 +1634,8 @@ def api_backup_drive_configure():
 
 @app.route('/api/ddns/config', methods=['GET'])
 @api_login_required
+@api_admin_required
+def get_ddns_config():
 def get_ddns_config():
     try:
         config = {
