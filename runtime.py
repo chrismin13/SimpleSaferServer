@@ -1,5 +1,6 @@
 import json
 import os
+import secrets
 import tempfile
 import threading
 from dataclasses import dataclass
@@ -238,6 +239,52 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parent
 
 
+def resolve_fake_data_dir(repo_root: Optional[Path] = None) -> Path:
+    """Resolve the writable state directory for fake mode."""
+    repo_root = repo_root or _repo_root()
+    configured_data_dir = os.environ.get("SSS_DATA_DIR", "").strip()
+    railway_volume_mount = os.environ.get("RAILWAY_VOLUME_MOUNT_PATH", "").strip()
+
+    # Railway only injects RAILWAY_VOLUME_MOUNT_PATH when a real persistent
+    # volume is attached. If SSS_DATA_DIR still points at the repo's default
+    # /data path, prefer the mounted location so deploys keep the same config
+    # even if the volume was attached somewhere else in the service settings.
+    if railway_volume_mount and (not configured_data_dir or configured_data_dir == "/data"):
+        return Path(railway_volume_mount).resolve()
+
+    if configured_data_dir:
+        return Path(configured_data_dir).resolve()
+
+    return (repo_root / ".dev-data").resolve()
+
+
+def load_or_create_text_secret(secret_path: Path) -> str:
+    """Load a persisted secret, or create one once if it does not exist yet."""
+    secret_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if secret_path.exists():
+        existing_secret = secret_path.read_text().strip()
+        if existing_secret:
+            return existing_secret
+
+    # Persisting this once avoids the easy-to-miss deploy problem where Flask
+    # session cookies become invalid simply because the process restarted.
+    secret_value = secrets.token_urlsafe(48)
+    secret_path.write_text(secret_value)
+    secret_path.chmod(0o600)
+    return secret_value
+
+
+def get_flask_secret_key(runtime: Optional[Runtime] = None) -> str:
+    """Return the Flask session secret, preferring an explicit env var first."""
+    env_secret = os.environ.get("FLASK_SECRET_KEY", "").strip()
+    if env_secret:
+        return env_secret
+
+    runtime = runtime or get_runtime()
+    return load_or_create_text_secret(runtime.config_dir / ".flask-secret-key")
+
+
 def get_runtime() -> Runtime:
     global _runtime
     if _runtime is not None:
@@ -247,7 +294,7 @@ def get_runtime() -> Runtime:
     mode = os.environ.get("SSS_MODE", "real").strip().lower() or "real"
 
     if mode == "fake":
-        data_dir = Path(os.environ.get("SSS_DATA_DIR", str(repo_root / ".dev-data"))).resolve()
+        data_dir = resolve_fake_data_dir(repo_root)
         skip_login = os.environ.get("SSS_SKIP_LOGIN", "false").strip().lower() in {"1", "true", "yes", "on"}
         _runtime = Runtime(
             mode="fake",

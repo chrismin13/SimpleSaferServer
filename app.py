@@ -43,13 +43,15 @@ from typing import Dict, List, Tuple
 from system_utils import SystemUtils
 from smb_manager import SMBManager
 from tempfile import NamedTemporaryFile
-from runtime import get_runtime, get_fake_state
+from runtime import get_runtime, get_fake_state, get_flask_secret_key
 
-app = Flask(__name__)
-app.secret_key = os.urandom(24)  # Required for session management
-socketio = SocketIO(app) 
 runtime = get_runtime()
 fake_state = get_fake_state() if runtime.is_fake else None
+app = Flask(__name__)
+# Keep the session secret stable across deploys so a restart does not
+# invalidate every login cookie when the app's config directory persists.
+app.secret_key = get_flask_secret_key(runtime)
+socketio = SocketIO(app)
 user_manager = UserManager(runtime=runtime)
 
 system_utils = SystemUtils(runtime=runtime)
@@ -68,6 +70,12 @@ handler.setLevel(logging.INFO)
 app.logger.addHandler(handler)
 app.logger.setLevel(logging.INFO)
 app.logger.info('SimpleSaferServer startup')
+
+if runtime.is_fake and os.environ.get('RAILWAY_PROJECT_ID') and not os.environ.get('RAILWAY_VOLUME_MOUNT_PATH'):
+    app.logger.warning(
+        'Railway volume is not attached. Fake-mode config under %s is ephemeral, so setup state will reset on deploy.',
+        runtime.data_dir,
+    )
 
 # Initialize configuration
 config_manager = ConfigManager(runtime=runtime)

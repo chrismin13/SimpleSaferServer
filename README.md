@@ -45,6 +45,7 @@ bash reset_fake_mode.sh
 This project includes detailed documentation for each main feature and page. See the following files for step-by-step guides and explanations:
 
 - [access.md](docs/access.md)
+- [railway.md](docs/railway.md)
 - [manual_install.md](docs/manual_install.md)
 - [setup.md](docs/setup.md)
 - [login.md](docs/login.md)
