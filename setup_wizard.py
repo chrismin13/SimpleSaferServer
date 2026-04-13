@@ -658,25 +658,11 @@ def setup_smb_share(config):
         admin_username = system.get('username', 'admin')
 
         if runtime.is_fake:
-            existing_shares = smb_manager.get_shares()
-            backup_share_exists = any(share['name'] == 'backup' for share in existing_shares)
-            if backup_share_exists:
-                smb_manager.update_share(
-                    old_name='backup',
-                    new_name='backup',
-                    path=mount_point,
-                    writable=True,
-                    comment='Fake-mode backup share',
-                    valid_users=[admin_username]
-                )
-            else:
-                smb_manager.add_share(
-                    name='backup',
-                    path=mount_point,
-                    writable=True,
-                    comment='Fake-mode backup share',
-                    valid_users=[admin_username]
-                )
+            smb_manager.ensure_default_backup_share(
+                mount_point,
+                admin_username,
+                fake_mode_comment='Fake-mode backup share',
+            )
             return True, None
          
         if admin_username not in user_manager.users:
@@ -690,31 +676,8 @@ def setup_smb_share(config):
                 "Recreate the admin user through the setup flow or reset the Samba password manually."
             )
         
-        # Check if backup share already exists and update it, or create new one
-        existing_shares = smb_manager.get_shares()
-        backup_share_exists = any(share['name'] == 'backup' for share in existing_shares)
-        
-        if backup_share_exists:
-            # Update existing backup share
-            smb_manager.update_share(
-                old_name='backup',
-                new_name='backup',
-                path=mount_point,
-                writable=True,
-                comment='Default backup share created by SimpleSaferServer setup',
-                valid_users=[admin_username]
-            )
-            logger.info(f"Updated existing backup share at {mount_point}")
-        else:
-            # Create new backup share
-            smb_manager.add_share(
-                name='backup',
-                path=mount_point,
-                writable=True,
-                comment='Default backup share created by SimpleSaferServer setup',
-                valid_users=[admin_username]
-            )
-            logger.info(f"Created new backup share at {mount_point}")
+        smb_manager.ensure_default_backup_share(mount_point, admin_username)
+        logger.info("Ensured the SimpleSaferServer-managed backup share points at %s", mount_point)
         
         # Enable SMB services to start on boot
         try:
@@ -725,7 +688,7 @@ def setup_smb_share(config):
             logger.error(f"Failed to enable SMB services: {e}")
             # Don't fail setup for this, just log it
         
-        logger.info(f"SMB share setup completed successfully. Share 'backup' created at {mount_point}")
+        logger.info("SMB share setup completed successfully. Share 'backup' is configured at %s", mount_point)
         return True, None
         
     except Exception as e:

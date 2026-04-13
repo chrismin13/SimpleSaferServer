@@ -1,4 +1,6 @@
 import unittest
+import tempfile
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -285,7 +287,7 @@ class BackupDriveSetupTests(unittest.TestCase):
         config_manager = MagicMock()
         config_manager.get_value.side_effect = ['/media/backup', '', '']
         smb_manager = MagicMock()
-        smb_manager.get_shares.return_value = []
+        smb_manager.get_managed_share.return_value = None
 
         mock_get_mount.return_value = None
         mock_get_uuid.return_value = 'UUID-1'
@@ -337,7 +339,7 @@ class BackupDriveSetupTests(unittest.TestCase):
         config_manager = MagicMock()
         config_manager.get_value.side_effect = ['/media/backup', 'OLD-UUID', '1234:5678']
         smb_manager = MagicMock()
-        smb_manager.get_shares.return_value = []
+        smb_manager.get_managed_share.return_value = None
 
         mock_get_mount.return_value = None
         mock_get_uuid.return_value = 'UUID-1'
@@ -384,7 +386,7 @@ class BackupDriveSetupTests(unittest.TestCase):
         config_manager = MagicMock()
         config_manager.get_value.side_effect = ['/media/backup', 'OLD-UUID', '1234:5678']
         smb_manager = MagicMock()
-        smb_manager.get_shares.return_value = []
+        smb_manager.get_managed_share.return_value = None
 
         mock_get_mount.return_value = None
         mock_get_uuid.return_value = 'UUID-1'
@@ -412,6 +414,67 @@ class BackupDriveSetupTests(unittest.TestCase):
         mock_restore_fstab_backup.assert_called_once_with('/tmp/fstab.backup', runtime=runtime)
         self.assertEqual(mock_reload_mount_units.call_count, 2)
         mock_run.assert_not_called()
+
+    @patch('backup_drive_setup.get_fake_state')
+    @patch('backup_drive_setup.restore_fstab_backup')
+    @patch('backup_drive_setup._reload_systemd_mount_units')
+    @patch('backup_drive_setup.update_managed_fstab')
+    def test_fake_mode_rollback_restores_share_via_update_managed_share(
+        self,
+        mock_update_fstab,
+        mock_reload_mount_units,
+        mock_restore_fstab_backup,
+        mock_get_fake_state,
+    ):
+        with tempfile.TemporaryDirectory() as tempdir:
+            data_dir = Path(tempdir)
+            selected_path = data_dir / 'selected-backup'
+            selected_path.mkdir()
+
+            runtime = SimpleNamespace(
+                is_fake=True,
+                data_dir=data_dir,
+                default_mount_point='/media/backup',
+            )
+            fake_state = MagicMock()
+            mock_get_fake_state.return_value = fake_state
+            mock_update_fstab.return_value = '/tmp/fstab.backup'
+
+            config_manager = MagicMock()
+            config_manager.get_value.side_effect = ['/media/backup', 'OLD-UUID', 'OLD-USB']
+            config_manager.set_value.side_effect = [None, None, RuntimeError('boom')]
+
+            smb_manager = MagicMock()
+            smb_manager.get_managed_share.return_value = {
+                'name': 'backup',
+                'path': '/media/backup',
+                'writable': True,
+                'comment': 'Managed backup share',
+                'valid_users': ['admin'],
+            }
+
+            with self.assertRaisesRegex(RuntimeError, 'boom'):
+                backup_drive_setup.apply_backup_drive_configuration(
+                    '/dev/fakebackup1',
+                    str(selected_path),
+                    True,
+                    config_manager,
+                    smb_manager,
+                    runtime=runtime,
+                )
+
+        self.assertGreaterEqual(smb_manager.update_managed_share.call_count, 2)
+        self.assertEqual(
+            smb_manager.update_managed_share.call_args_list[-1].kwargs,
+            {
+                'old_name': 'backup',
+                'new_name': 'backup',
+                'path': '/media/backup',
+                'writable': True,
+                'comment': 'Managed backup share',
+                'valid_users': ['admin'],
+            },
+        )
 
 
 if __name__ == '__main__':

@@ -129,6 +129,8 @@ UUID=2CD49023D48FED80    /media/backup    ntfs-3g    defaults,nofail    0    0 #
 
 After manual changes, verify the result:
 
+Restarting `smbd` and `nmbd` disconnects anyone who is currently connected to a share, so active file copies or other SMB activity will drop.
+
 ```bash
 sudo findmnt --verify
 sudo mkdir -p /media/backup

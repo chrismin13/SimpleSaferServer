@@ -558,10 +558,11 @@ def unmount_selected_partition(partition_path, runtime=None):
 
 
 def _sync_backup_share_path(smb_manager, new_path):
-    for share in smb_manager.get_shares():
-        if share.get('name') != 'backup':
-            continue
-        smb_manager.update_share(
+    share = smb_manager.get_managed_share('backup')
+    if share:
+        # Only rewrite the owned backup share. Older untagged shares are
+        # deliberately left alone until the user converts them manually.
+        smb_manager.update_managed_share(
             old_name='backup',
             new_name='backup',
             path=new_path,
@@ -609,11 +610,7 @@ def apply_backup_drive_configuration(partition, mount_point, auto_mount, config_
             fstab_backup = update_managed_fstab(uuid, selected_path_str, bool(auto_mount), runtime=runtime)
             _reload_systemd_mount_units(runtime=runtime)
 
-            backup_share = None
-            for share in smb_manager.get_shares():
-                if share.get('name') == 'backup':
-                    backup_share = share
-                    break
+            backup_share = smb_manager.get_managed_share('backup')
 
             if backup_share and backup_share.get('path') != selected_path_str:
                 share_backup = backup_share
@@ -636,7 +633,7 @@ def apply_backup_drive_configuration(partition, mount_point, auto_mount, config_
                 _reload_systemd_mount_units(runtime=runtime)
             if share_backup:
                 try:
-                    smb_manager.update_share(
+                    smb_manager.update_managed_share(
                         old_name='backup',
                         new_name='backup',
                         path=share_backup.get('path', previous_mount_point),
@@ -695,11 +692,7 @@ def apply_backup_drive_configuration(partition, mount_point, auto_mount, config_
             raise BackupDriveSetupError('Error mounting drive: {}'.format(error_msg))
         mounted = True
 
-        backup_share = None
-        for share in smb_manager.get_shares():
-            if share.get('name') == 'backup':
-                backup_share = share
-                break
+        backup_share = smb_manager.get_managed_share('backup')
 
         if backup_share and backup_share.get('path') != mount_point:
             share_backup = backup_share
@@ -724,7 +717,7 @@ def apply_backup_drive_configuration(partition, mount_point, auto_mount, config_
             _reload_systemd_mount_units(runtime=runtime)
         if share_backup:
             try:
-                smb_manager.update_share(
+                smb_manager.update_managed_share(
                     old_name='backup',
                     new_name='backup',
                     path=share_backup.get('path', previous_mount_point),

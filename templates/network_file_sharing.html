@@ -3,6 +3,14 @@
 {% block title %}File Sharing — SimpleSaferServer{% endblock %}
 {% block header %}Network File Sharing{% endblock %}
 
+{% block extra_css %}
+<style>
+  .unmanaged-shares-modal .modal-body {
+    white-space: normal;
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 <!-- System Status - compact inline, no card -->
 <div class="d-flex items-center justify-between mb-6 flex-wrap gap-3" id="systemStatusArea">
@@ -51,7 +59,17 @@
 <!-- SMB Shares -->
 <section>
   <div class="d-flex items-center justify-between mb-4">
-    <h2 style="font-size: var(--text-lg); margin: 0;">SMB Shares</h2>
+    <div class="d-flex items-center gap-2 flex-wrap">
+      <h2 style="font-size: var(--text-lg); margin: 0;">SMB Shares</h2>
+      <button
+        class="btn btn-secondary btn-sm d-none"
+        id="unmanagedSharesBtn"
+        data-modal-target="unmanagedSharesModal"
+        type="button">
+        <i class="fas fa-triangle-exclamation me-1"></i>
+        <span id="unmanagedSharesBtnLabel">Unmanaged shares detected</span>
+      </button>
+    </div>
     <button class="btn btn-primary btn-sm" data-modal-target="addShareModal">
       <i class="fas fa-plus me-1"></i> Add Share
     </button>
@@ -235,6 +253,48 @@
     </div>
   </div>
 </div>
+
+<!-- Unmanaged Shares Modal -->
+<div class="modal-overlay" id="unmanagedSharesModal">
+  <div class="modal-container modal-lg unmanaged-shares-modal">
+    <div class="modal-header">
+      <h5>Unmanaged SMB Shares</h5>
+      <button class="modal-close" data-modal-close><i class="fas fa-xmark"></i></button>
+    </div>
+    <div class="modal-body">
+      <p class="text-secondary mb-4">
+        SimpleSaferServer found Samba share definitions in <code>/etc/samba/smb.conf</code> that are still active,
+        but are not marked as SimpleSaferServer-managed. They remain read-only here.
+      </p>
+
+      <div class="table-container mb-4">
+        <table>
+          <thead>
+            <tr>
+              <th>Share Name</th>
+            </tr>
+          </thead>
+          <tbody id="unmanagedSharesList">
+            <tr>
+              <td class="text-muted">No unmanaged shares detected.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <a
+        href="{{ smb_docs_url }}"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="btn btn-secondary btn-sm">
+        <i class="fas fa-book-open me-1"></i> Open Manual Conversion Guide
+      </a>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-modal-close>Close</button>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -242,6 +302,7 @@
 let shares = [];
 let currentDeleteShare = null;
 let allUsers = [];
+let unmanagedShareNames = [];
 
 document.addEventListener('DOMContentLoaded', function() {
   loadShares();
@@ -377,9 +438,44 @@ function loadShares() {
     .then(data => {
       if (data.error) { showAlert('Error loading shares: ' + data.error, 'danger'); return; }
       shares = data.shares;
+      unmanagedShareNames = data.unmanaged_share_names || [];
+      renderUnmanagedShareState(
+        Boolean(data.unmanaged_shares_detected),
+        data.unmanaged_share_count || unmanagedShareNames.length,
+        unmanagedShareNames
+      );
       renderSharesTable();
     })
     .catch(() => showAlert('Failed to load shares', 'danger'));
+}
+
+function renderUnmanagedShareState(hasUnmanagedShares, count, names) {
+  const button = document.getElementById('unmanagedSharesBtn');
+  const label = document.getElementById('unmanagedSharesBtnLabel');
+  const list = document.getElementById('unmanagedSharesList');
+  if (!button || !label || !list) return;
+
+  list.innerHTML = '';
+
+  if (!hasUnmanagedShares || !count) {
+    button.classList.add('d-none');
+    list.innerHTML = '<tr><td class="text-muted">No unmanaged shares detected.</td></tr>';
+    return;
+  }
+
+  label.textContent = `${count} unmanaged share${count === 1 ? '' : 's'} detected`;
+  button.classList.remove('d-none');
+
+  // Keep the modal list plain and table-based so it matches the rest of the UI
+  // and stays readable even if we revisit this flow months from now.
+  names.forEach(function(name) {
+    const row = document.createElement('tr');
+    const cell = document.createElement('td');
+    cell.className = 'fw-medium';
+    cell.textContent = name;
+    row.appendChild(cell);
+    list.appendChild(row);
+  });
 }
 
 function loadUsers() {
@@ -439,7 +535,7 @@ function renderSharesTable() {
     td.colSpan = 6;
     td.className = 'text-center text-muted';
     td.style.padding = 'var(--sp-6)';
-    td.textContent = 'No shares configured';
+    td.textContent = 'No SimpleSaferServer-managed shares configured';
     tr.appendChild(td);
     tbody.appendChild(tr);
     return;

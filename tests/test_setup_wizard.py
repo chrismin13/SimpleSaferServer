@@ -5,6 +5,7 @@ import types
 from unittest.mock import MagicMock, patch
 
 from flask import Flask
+from smb_manager import SMB_DOCS_URL
 
 
 class SetupWizardTests(unittest.TestCase):
@@ -245,6 +246,42 @@ class SetupWizardTests(unittest.TestCase):
     def test_get_partition_node_sda_disk(self):
         # Another standard disk to confirm the letter-ending branch.
         self.assertEqual(self.setup_wizard.get_partition_node('/dev/sda'), '/dev/sda1')
+
+    def test_setup_smb_share_uses_shared_manager_logic(self):
+        smb_manager = MagicMock()
+        user_manager = MagicMock()
+        user_manager.users = {'admin': {}}
+        user_manager.user_exists_in_samba.return_value = True
+
+        with patch.object(self.setup_wizard, 'smb_manager', smb_manager):
+            with patch.object(self.setup_wizard, 'user_manager', user_manager):
+                ok, err = self.setup_wizard.setup_smb_share({
+                    'backup': {'mount_point': '/media/backup'},
+                    'system': {'username': 'admin'},
+                })
+
+        self.assertTrue(ok)
+        self.assertIsNone(err)
+        smb_manager.ensure_default_backup_share.assert_called_once_with('/media/backup', 'admin')
+
+    def test_setup_smb_share_surfaces_unmanaged_backup_guidance(self):
+        smb_manager = MagicMock()
+        smb_manager.ensure_default_backup_share.side_effect = ValueError(
+            f"An unmanaged Samba share named 'backup' already exists. See {SMB_DOCS_URL}"
+        )
+        user_manager = MagicMock()
+        user_manager.users = {'admin': {}}
+        user_manager.user_exists_in_samba.return_value = True
+
+        with patch.object(self.setup_wizard, 'smb_manager', smb_manager):
+            with patch.object(self.setup_wizard, 'user_manager', user_manager):
+                ok, err = self.setup_wizard.setup_smb_share({
+                    'backup': {'mount_point': '/media/backup'},
+                    'system': {'username': 'admin'},
+                })
+
+        self.assertFalse(ok)
+        self.assertIn(SMB_DOCS_URL, err)
 
     # ------------------------------------------------------------------
     # format_drive — disk path validation, partprobe, and partition poll
@@ -516,4 +553,3 @@ class SetupWizardTests(unittest.TestCase):
         data = response.get_json()
         self.assertEqual(data['success'], False)
         self.assertIn('did not appear', data['error'])
-

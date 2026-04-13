@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -euo pipefail
+
 # Color codes
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -7,153 +9,343 @@ YELLOW='\033[1;33m'
 BLUE='\033[1;34m'
 NC='\033[0m' # No Color
 
-clear
-echo -e "${BLUE}==============================================="
-echo -e "   SimpleSaferServer Uninstaller"
-echo -e "===============================================${NC}\n"
-
-# Check if running as root
-if [ "$EUID" -ne 0 ]; then 
-    echo -e "${RED}ERROR:${NC} Please run as root (sudo)"
-    exit 1
-fi
-
-echo "Starting SimpleSaferServer uninstallation..."
-
-# Create backup of current smb.conf before uninstalling
+APP_DIR="/opt/SimpleSaferServer"
+CONFIG_DIR="/etc/SimpleSaferServer"
+USERS_FILE="$CONFIG_DIR/users.json"
+DATA_DIR="/var/lib/SimpleSaferServer"
+LOG_DIR="/var/log/SimpleSaferServer"
+SYSTEMD_DIR="/etc/systemd/system"
 SMB_CONF="/etc/samba/smb.conf"
-if [ -f "$SMB_CONF" ]; then
-    TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-    CURRENT_BACKUP="/etc/samba/smb.conf.uninstall_backup.${TIMESTAMP}"
-    echo "Creating backup of current smb.conf: $CURRENT_BACKUP"
-    cp "$SMB_CONF" "$CURRENT_BACKUP"
-    echo "Backup created successfully."
+FSTAB_MARKER="SimpleSaferServer managed backup drive"
+LEGACY_FSTAB_MARKER="SimpleSaferServer"
+MANAGED_SHARE_BEGIN_PREFIX="# BEGIN SimpleSaferServer share: "
+MANAGED_SHARE_END_PREFIX="# END SimpleSaferServer share: "
+SCRIPT_FILES=(
+  check_mount.sh
+  check_health.sh
+  check_health.py
+  backup_cloud.sh
+  predict_health.py
+  log_alert.py
+  import_legacy.py
+)
+
+# The installer writes rclone config where the root-owned scheduled tasks can
+# read it later, so the uninstaller needs to look there instead of under /etc.
+ROOT_HOME=""
+if command -v getent >/dev/null 2>&1; then
+    ROOT_HOME="$(getent passwd root 2>/dev/null | cut -d: -f6 || true)"
 fi
+if [ -z "$ROOT_HOME" ]; then
+    ROOT_HOME="/root"
+fi
+RCLONE_CONFIG_DIR="$ROOT_HOME/.config/rclone"
+RCLONE_CONFIG_PATH="$RCLONE_CONFIG_DIR/rclone.conf"
 
-# Stop and disable background systemd services and timers
-for svc in check_mount check_health backup_cloud; do
-    echo "Stopping and disabling $svc.service and $svc.timer..."
-    systemctl stop ${svc}.timer 2>/dev/null
-    systemctl stop ${svc}.service 2>/dev/null
-    systemctl disable ${svc}.timer 2>/dev/null
-    systemctl disable ${svc}.service 2>/dev/null
-    rm -f /etc/systemd/system/${svc}.service
-    rm -f /etc/systemd/system/${svc}.timer
-    echo "$svc.service and $svc.timer removed."
-done
+make_atomic_temp_file() {
+    local target_path="$1"
+    local target_dir=""
+    local target_name=""
 
-# Stop and remove the web UI systemd service
-WEB_SERVICE="simple_safer_server_web.service"
-echo "Stopping and disabling $WEB_SERVICE..."
-systemctl stop $WEB_SERVICE 2>/dev/null
-systemctl disable $WEB_SERVICE 2>/dev/null
-rm -f /etc/systemd/system/$WEB_SERVICE
+    target_dir="$(dirname -- "$target_path")"
+    target_name="$(basename -- "$target_path")"
+    mktemp "${target_dir}/.${target_name}.XXXXXX"
+}
 
-# Clean up SMB configuration
-echo "Cleaning up SMB configuration..."
-if [ -f "$SMB_CONF" ]; then
-    # Remove SimpleSaferServer shares and configurations
-    echo "Removing SimpleSaferServer shares and configurations..."
-    
-    # Create a clean version without SimpleSaferServer blocks
-    awk '
-    /^# BEGIN SimpleSaferServer$/ { in_block = 1; next }
-    /^# END SimpleSaferServer$/ { in_block = 0; next }
-    !in_block { print }
-    ' "$SMB_CONF" > /tmp/smb.conf.clean
-    
-    # Also remove any standalone SimpleSaferServer shares that might exist
-    # (in case the new SMB manager was used)
-    awk '
-    /^\[backup\]$/ { in_share = 1; next }
-    /^\[.*\]$/ { in_share = 0; print; next }
-    !in_share { print }
-    ' /tmp/smb.conf.clean > /tmp/smb.conf.final
-    
-    # Restore the default 'map to guest = bad user' if it was removed
-    if ! grep -q "map to guest = bad user" /tmp/smb.conf.final; then
-        # Find the [global] section and add the default line after it
-        sed '/^\[global\]$/a\   map to guest = bad user' /tmp/smb.conf.final > /tmp/smb.conf.restored
-        mv /tmp/smb.conf.restored /tmp/smb.conf.final
+collect_samba_users() {
+    if [ ! -f "$USERS_FILE" ]; then
+        return 0
     fi
-    
-    mv /tmp/smb.conf.final "$SMB_CONF"
-    echo "SimpleSaferServer configurations removed from smb.conf."
-    
-    # Restart SMB services
-    echo "Restarting SMB services..."
-    systemctl restart smbd 2>/dev/null
-    systemctl restart nmbd 2>/dev/null
-    echo "SMB services restarted."
-fi
 
-# Remove scripts from /opt/SimpleSaferServer/scripts/
-echo "Removing scripts from /opt/SimpleSaferServer/scripts..."
-for script in check_mount.sh check_health.sh backup_cloud.sh predict_health.py log_alert.py; do
-  rm -f /opt/SimpleSaferServer/scripts/$script
-  echo "/opt/SimpleSaferServer/scripts/$script removed."
-done
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo "ERROR: python3 is required to read $USERS_FILE during uninstall." >&2
+        return 1
+    fi
 
-# Remove model files from legacy and new locations
-rm -f /usr/local/bin/xgb_model.json
-rm -f /usr/local/bin/optimal_threshold_xgb.pkl
-echo "/usr/local/bin/xgb_model.json and /usr/local/bin/optimal_threshold_xgb.pkl removed if present."
-echo "Removing /opt/SimpleSaferServer/harddrive_model/ and its contents..."
-if [ -d /opt/SimpleSaferServer/harddrive_model ]; then
-    rm -rf /opt/SimpleSaferServer/harddrive_model
-    echo "/opt/SimpleSaferServer/harddrive_model/ removed."
-else
-    echo "/opt/SimpleSaferServer/harddrive_model/ not found."
-fi
+    python3 - "$USERS_FILE" <<'PY'
+import json
+import sys
 
-# Remove the application directory
-echo "Removing application files..."
-rm -rf /opt/SimpleSaferServer
+path = sys.argv[1]
 
-# Remove configuration files
-echo "Removing configuration files..."
-rm -rf /etc/SimpleSaferServer
+try:
+    with open(path, "r", encoding="utf-8") as handle:
+        data = json.load(handle)
+except Exception:
+    raise SystemExit(1)
 
-# Remove user data
-echo "Removing user data..."
-rm -rf /var/lib/SimpleSaferServer
+if isinstance(data, dict):
+    for username in data.keys():
+        if isinstance(username, str) and username.strip():
+            print(username)
+elif isinstance(data, list):
+    for item in data:
+        if isinstance(item, dict):
+            username = item.get("username")
+            if isinstance(username, str) and username.strip():
+                print(username)
+PY
+}
 
-# Remove log files
-echo "Removing log files..."
-rm -rf /var/log/SimpleSaferServer
+backup_file_if_present() {
+    local path="$1"
+    local label="$2"
+    local timestamp=""
+    local backup_path=""
 
-# Remove Python virtual environment (legacy support)
-echo "Removing Python virtual environment..."
-rm -rf /opt/SimpleSaferServer/venv
+    if [ ! -f "$path" ]; then
+        return 0
+    fi
 
-# Remove the user (legacy, safe to keep)
-echo "Removing SimpleSaferServer user..."
-userdel -r SimpleSaferServer 2>/dev/null
+    timestamp=$(date +"%Y%m%d_%H%M%S")
+    backup_path="${path}.${label}.${timestamp}"
+    cp "$path" "$backup_path"
+    echo "Created backup: $backup_path"
+}
 
-echo "Removing SimpleSaferServer group..."
-groupdel SimpleSaferServer 2>/dev/null
+remove_systemd_unit() {
+    local unit="$1"
 
-# Remove SimpleSaferServer users from Samba
-echo "Removing SimpleSaferServer users from Samba..."
-# Get list of users from the JSON file if it exists
-if [ -f "/etc/SimpleSaferServer/users.json" ]; then
-    # Extract usernames from the JSON file and remove them from Samba
-    grep -o '"username": "[^"]*"' /etc/SimpleSaferServer/users.json | cut -d'"' -f4 | while read username; do
-        echo "Removing Samba user: $username"
-        smbpasswd -x "$username" 2>/dev/null || true
+    systemctl stop "$unit" 2>/dev/null || true
+    systemctl disable "$unit" 2>/dev/null || true
+    rm -f "$SYSTEMD_DIR/$unit"
+}
+
+remove_managed_fstab_entries() {
+    local original="${1:-/etc/fstab}"
+    local updated=""
+
+    if [ ! -f "$original" ]; then
+        return 0
+    fi
+
+    updated="$(make_atomic_temp_file "$original")"
+
+    echo "Removing SimpleSaferServer-managed /etc/fstab entries..."
+    backup_file_if_present "$original" "uninstall_backup"
+
+    if ! awk -v marker="$FSTAB_MARKER" -v legacy="$LEGACY_FSTAB_MARKER" '
+    function trim(value) {
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+        return value
+    }
+
+    {
+        if ($0 ~ /^[[:space:]]*#/ || index($0, "#") == 0) {
+            print
+            next
+        }
+
+        comment = trim(substr($0, index($0, "#") + 1))
+        if (comment == marker || comment == legacy) {
+            next
+        }
+
+        print
+    }
+    ' "$original" > "$updated"; then
+        rm -f "$updated"
+        echo "ERROR: Failed to rebuild $original while removing SimpleSaferServer-managed entries."
+        return 1
+    fi
+
+    # Allow intentionally empty results, but never replace a core config with a
+    # missing temp file if the rewrite step failed before producing output.
+    if [ ! -f "$updated" ]; then
+        rm -f "$updated"
+        echo "ERROR: Refusing to replace $original because the generated file is missing."
+        return 1
+    fi
+
+    if ! mv "$updated" "$original"; then
+        rm -f "$updated"
+        echo "ERROR: Failed to replace $original."
+        return 1
+    fi
+
+    if ! chmod 644 "$original"; then
+        echo "ERROR: Failed to set permissions on $original."
+        return 1
+    fi
+}
+
+cleanup_managed_smb_shares() {
+    local cleaned=""
+
+    if [ ! -f "$SMB_CONF" ]; then
+        return 0
+    fi
+
+    cleaned="$(make_atomic_temp_file "$SMB_CONF")"
+
+    echo "Removing SimpleSaferServer-managed Samba shares..."
+    backup_file_if_present "$SMB_CONF" "uninstall_backup"
+
+    if ! awk -v begin_prefix="$MANAGED_SHARE_BEGIN_PREFIX" -v end_prefix="$MANAGED_SHARE_END_PREFIX" '
+    BEGIN {
+        in_managed_share = 0
+        current_share_name = ""
+        bad = 0
+    }
+
+    {
+        line = $0
+        sub(/^[[:space:]]+/, "", line)
+
+        if (index(line, begin_prefix) == 1) {
+            share_name = substr(line, length(begin_prefix) + 1)
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", share_name)
+
+            if (in_managed_share || share_name == "") {
+                bad = 1
+                exit 1
+            }
+
+            in_managed_share = 1
+            current_share_name = share_name
+            next
+        }
+
+        if (index(line, end_prefix) == 1) {
+            share_name = substr(line, length(end_prefix) + 1)
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", share_name)
+
+            if (!in_managed_share || share_name == "" || share_name != current_share_name) {
+                bad = 1
+                exit 1
+            }
+
+            in_managed_share = 0
+            current_share_name = ""
+            next
+        }
+
+        if (!in_managed_share) {
+            print
+        }
+    }
+
+    END {
+        if (in_managed_share) {
+            bad = 1
+        }
+
+        if (bad) {
+            exit 1
+        }
+    }
+    ' "$SMB_CONF" > "$cleaned"
+    then
+        rm -f "$cleaned"
+        echo "ERROR: Refusing to rewrite $SMB_CONF because the SimpleSaferServer share markers are malformed."
+        return 1
+    fi
+
+    # Allow smb.conf to become empty if every block was owned by
+    # SimpleSaferServer, but never replace it with a missing temp file.
+    if [ ! -f "$cleaned" ]; then
+        rm -f "$cleaned"
+        echo "ERROR: Refusing to replace $SMB_CONF because the generated file is missing."
+        return 1
+    fi
+
+    if ! mv "$cleaned" "$SMB_CONF"; then
+        rm -f "$cleaned"
+        echo "ERROR: Failed to replace $SMB_CONF."
+        return 1
+    fi
+
+    if ! chmod 644 "$SMB_CONF"; then
+        echo "ERROR: Failed to set permissions on $SMB_CONF."
+        return 1
+    fi
+
+    systemctl restart smbd 2>/dev/null || true
+    systemctl restart nmbd 2>/dev/null || true
+}
+
+main() {
+    echo -e "${BLUE}==============================================="
+    echo -e "   SimpleSaferServer Uninstaller"
+    echo -e "===============================================${NC}\n"
+
+    if [ "$EUID" -ne 0 ]; then
+        echo -e "${RED}ERROR:${NC} Please run as root (sudo)"
+        exit 1
+    fi
+
+    echo "Starting SimpleSaferServer uninstallation..."
+
+    echo "Stopping and disabling systemd units..."
+    for svc in check_mount check_health backup_cloud; do
+        remove_systemd_unit "${svc}.timer"
+        remove_systemd_unit "${svc}.service"
     done
+    remove_systemd_unit "simple_safer_server_web.service"
+
+    remove_managed_fstab_entries
+    cleanup_managed_smb_shares || exit 1
+
+    echo "Removing installed helper scripts..."
+    for script in "${SCRIPT_FILES[@]}"; do
+        rm -f "$APP_DIR/scripts/$script"
+        rm -f "/usr/local/bin/$script"
+        echo "Removed helper script if present: $script"
+    done
+
+    echo "Removing installed binary and legacy model artifacts..."
+    rm -f /usr/local/bin/hdsentinel
+    rm -f /usr/local/bin/xgb_model.json
+    rm -f /usr/local/bin/optimal_threshold_xgb.pkl
+    rm -rf "$APP_DIR/harddrive_model"
+
+    # Gather Samba usernames before deleting the config directory because the
+    # app stores the source of truth in users.json rather than in a manifest.
+    local samba_users_output=""
+    local -a SAMBA_USERS=()
+    if ! samba_users_output="$(collect_samba_users)"; then
+        echo "ERROR: Failed to read SimpleSaferServer users from $USERS_FILE."
+        exit 1
+    fi
+    if [ -n "$samba_users_output" ]; then
+        mapfile -t SAMBA_USERS <<< "$samba_users_output"
+    fi
+
+    if [ "${#SAMBA_USERS[@]}" -gt 0 ]; then
+        echo "Removing SimpleSaferServer users from Samba..."
+        for username in "${SAMBA_USERS[@]}"; do
+            echo "Removing Samba user: $username"
+            smbpasswd -x "$username" 2>/dev/null || true
+        done
+    else
+        echo "No SimpleSaferServer Samba users found in $USERS_FILE."
+    fi
+
+    echo "Removing application files and data..."
+    rm -rf "$APP_DIR"
+    rm -rf "$CONFIG_DIR"
+    rm -rf "$DATA_DIR"
+    rm -rf "$LOG_DIR"
+
+    echo "Removing SimpleSaferServer rclone configuration if present..."
+    rm -f "$RCLONE_CONFIG_PATH"
+    rmdir "$RCLONE_CONFIG_DIR" 2>/dev/null || true
+
+    echo "Removing legacy SimpleSaferServer user and group if present..."
+    userdel -r SimpleSaferServer 2>/dev/null || true
+    groupdel SimpleSaferServer 2>/dev/null || true
+
+    echo "Reloading systemd..."
+    systemctl daemon-reload 2>/dev/null || true
+
+    echo -e "${GREEN}Uninstallation complete!${NC}"
+    echo "SimpleSaferServer application files, services, timers, data, and managed mount entries have been removed."
+    echo "Shared system packages such as Samba, Python, and rclone were left installed."
+    echo "Samba user accounts created from SimpleSaferServer users were removed."
+    echo "Marker-wrapped SimpleSaferServer-managed Samba share blocks were removed from $SMB_CONF."
+    echo "Unmanaged or legacy untagged Samba share blocks were left untouched."
+}
+
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+    main "$@"
 fi
-
-# Remove any fstab entries related to SimpleSaferServer
-echo "Removing fstab entries..."
-# Create a temporary file without the SimpleSaferServer entries
-grep -v "SimpleSaferServer" /etc/fstab > /tmp/fstab.new
-# Replace the original fstab with the new one
-mv /tmp/fstab.new /etc/fstab
-
-# Reload systemd
-echo "Reloading systemd..."
-systemctl daemon-reload
-
-echo "Uninstallation complete!"
-echo "You can now run the install.sh script again to reinstall SimpleSaferServer." 
