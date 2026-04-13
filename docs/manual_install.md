@@ -7,7 +7,7 @@ This guide explains how to manually install SimpleSaferServer on a clean Debian-
 ## 1. Install System Dependencies
 
 - Run `sudo apt-get update`.
-- Run `sudo apt-get install -y git python3 python3-pip python3-flask python3-flask-socketio python3-psutil python3-xgboost python3-joblib python3-pandas python3-sklearn python3-cryptography smartmontools samba msmtp rsync curl unzip`.
+- Run `sudo apt-get install -y git python3 python3-pip python3-venv smartmontools samba msmtp rsync curl unzip ntfs-3g`.
 
 ## 2. Install rclone
 
@@ -66,7 +66,18 @@ Install the extracted binary:
 - Run `sudo rsync -a static /opt/SimpleSaferServer/`.
 - Run `sudo rsync -a templates /opt/SimpleSaferServer/`.
 
-## 6. Install Scripts and Model Files
+## 6. Set Up the Python Virtualenv
+
+- `install.sh` creates the application virtualenv at `/opt/SimpleSaferServer/venv`, so use that same path for a manual install.
+- Run `sudo python3 -m venv --system-site-packages /opt/SimpleSaferServer/venv`.
+- Because the virtualenv lives under `/opt`, open a root shell with `sudo -s` before activating it so `pip` can write into that environment.
+- In that root shell, run `source /opt/SimpleSaferServer/venv/bin/activate`.
+- Run `pip install --upgrade pip wheel`.
+- Run `pip install Flask-SocketIO==5.4.1 cryptography psutil joblib pandas scikit-learn xgboost`.
+- If you want the rest of the Python packages from the repository list, run `pip install -r /opt/SimpleSaferServer/requirements.txt`.
+- Run `deactivate`, then run `exit` to leave the root shell when you are done installing Python packages.
+
+## 7. Install Scripts and Model Files
 
 - Run `sudo mkdir -p /usr/local/bin`.
 - Copy each file from `scripts/` into `/usr/local/bin/`.
@@ -74,21 +85,23 @@ Install the extracted binary:
 - Run `sudo mkdir -p /opt/SimpleSaferServer/harddrive_model`.
 - Copy the contents of `harddrive_model/` into `/opt/SimpleSaferServer/harddrive_model/`.
 
-## 7. Set Up the Systemd Service
+## 8. Set Up the Systemd Service
 
 - Copy `simple_safer_server_web.service` to `/etc/systemd/system/simple_safer_server_web.service`.
+- `simple_safer_server_web.service` uses `ExecStart=/opt/SimpleSaferServer/venv/bin/python /opt/SimpleSaferServer/app.py --host=0.0.0.0 --port=5000 --no-debug`, so `/opt/SimpleSaferServer/venv` must exist before you start the service.
+- This matches the `VENV_DIR="/opt/SimpleSaferServer/venv"` flow in `install.sh`, which is why the manual install should use the same venv path instead of distro Python packages for the app runtime.
 - Run `sudo systemctl daemon-reload`.
 - Run `sudo systemctl enable simple_safer_server_web.service`.
 - Run `sudo systemctl restart simple_safer_server_web.service`.
 - After the service starts, use the Web UI setup flow to configure email alerts, backup settings, and the initial administrator account.
 
-## 8. Open Firewall Port 5000 If Needed
+## 9. Open Firewall Port 5000 If Needed
 
 - If you use UFW, run `sudo ufw allow 5000/tcp`.
 - If you use firewalld, run `sudo firewall-cmd --permanent --add-port=5000/tcp`, then run `sudo firewall-cmd --reload`.
 - If you manage firewall rules manually, allow inbound TCP traffic on port `5000`.
 
-## 9. Access the Web UI
+## 10. Access the Web UI
 
 - Open `http://<your-server-ip>:5000` in a browser on your network.
 - Follow the setup wizard to finish the installation.
