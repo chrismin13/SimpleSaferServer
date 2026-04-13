@@ -937,13 +937,53 @@ def run_fake_task(task_name: str, cancel_event: threading.Event):
             if cancel_event.is_set():
                 raise RuntimeError('Task was cancelled.')
             ddns_script = runtime.repo_root / 'scripts' / 'ddns_update.py'
-            result = subprocess.run([sys.executable, str(ddns_script)], capture_output=True, text=True)
-            if result.stdout:
-                fake_state.append_task_log(task_name, result.stdout.strip())
-            if result.stderr:
-                fake_state.append_task_log(task_name, result.stderr.strip())
-            if result.returncode != 0:
-                raise RuntimeError(f"DDNS update script exited with code {result.returncode}")
+
+            # Start the process non-blocking to allow cancellation
+            try:
+                proc = subprocess.Popen(
+                    [sys.executable, str(ddns_script)],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True
+                )
+
+                # Poll the process while checking for cancellation
+                while proc.poll() is None:
+                    if cancel_event.is_set():
+                        # Terminate the process gracefully first
+                        proc.terminate()
+                        try:
+                            proc.wait(timeout=5)
+                        except subprocess.TimeoutExpired:
+                            # Force kill if it doesn't terminate
+                            proc.kill()
+                            proc.wait()
+
+                        # Collect any output before raising
+                        stdout, stderr = proc.communicate()
+                        if stdout:
+                            fake_state.append_task_log(task_name, stdout.strip())
+                        if stderr:
+                            fake_state.append_task_log(task_name, stderr.strip())
+                        raise RuntimeError('Task was cancelled.')
+
+                    # Short sleep to avoid busy-waiting
+                    time.sleep(0.1)
+
+                # Process completed, collect output
+                stdout, stderr = proc.communicate()
+                if stdout:
+                    fake_state.append_task_log(task_name, stdout.strip())
+                if stderr:
+                    fake_state.append_task_log(task_name, stderr.strip())
+
+                # Check exit code
+                if proc.returncode != 0:
+                    raise RuntimeError(f"DDNS update script exited with code {proc.returncode}")
+
+            except subprocess.SubprocessError as e:
+                fake_state.append_task_log(task_name, f"Subprocess error: {str(e)}")
+                raise RuntimeError(f"Failed to run DDNS update script: {str(e)}")
 
         if cancel_event.is_set():
             raise RuntimeError('Task was cancelled.')
@@ -1695,13 +1735,21 @@ def save_ddns_config():
             config_manager.set_value('ddns', 'cloudflare_proxy', str(cf.get('proxy', False)).lower())
             if 'token' in cf and cf['token']:
                 config_manager.store_secret('cloudflare_token', cf['token'])
-                
-        system_utils.create_systemd_config_file({s: dict(config_manager.config[s]) for s in config_manager.config.sections()})
-        
+
+        # Create systemd config file and check for failures
+        try:
+            system_utils.create_systemd_config_file({s: dict(config_manager.config[s]) for s in config_manager.config.sections()})
+        except Exception as config_error:
+            return jsonify({
+                'success': False,
+                'message': f'Failed to create systemd configuration: {str(config_error)}'
+            }), 500
+
+        # Only start the DDNS task if config file creation succeeded
         ddns_task = get_task("DDNS Update")
         if ddns_task:
             ddns_task.start()
-            
+
         return jsonify({'success': True, 'message': 'DDNS configuration saved and update triggered.'})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
