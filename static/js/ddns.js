@@ -27,14 +27,14 @@ document.addEventListener('DOMContentLoaded', () => {
     if (config.duckdns) {
       document.getElementById('duckdnsEnabled').checked = config.duckdns.enabled;
       document.getElementById('duckdnsDomain').value = config.duckdns.domain || '';
-      document.getElementById('duckdnsToken').value = config.duckdns.token ? '********' : '';
+      document.getElementById('duckdnsToken').value = config.duckdns.token_present ? '********' : '';
     }
 
     if (config.cloudflare) {
       document.getElementById('cloudflareEnabled').checked = config.cloudflare.enabled;
       document.getElementById('cfZoneId').value = config.cloudflare.zone || '';
       document.getElementById('cfRecordName').value = config.cloudflare.record || '';
-      document.getElementById('cfToken').value = config.cloudflare.token ? '********' : '';
+      document.getElementById('cfToken').value = config.cloudflare.token_present ? '********' : '';
       document.getElementById('cfProxyStatus').checked = config.cloudflare.proxy;
     }
   }
@@ -169,53 +169,55 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Force sync handling
+  // Force sync: show the app's confirmation dialog, then POST to the task endpoint via AJAX
+  // so the user stays on this page and sees real-time feedback.
   if (runBtn) {
-    runBtn.addEventListener('click', async () => {
-      // Because we use data-confirm, standard global handler intercepts it, 
-      // but we override or attach. Simple approach for custom routes:
-    });
+    runBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
 
-    const observer = new MutationObserver((mutations) => {
-         // Because common.js handles data-confirm, it will replace this button's functionality
-         // wait I can just call the POST to task since its standard. Let's do it manually if custom.
-         // Actually the standard data-confirm requires an href or form.
-         // Let's implement our own confirm for AJAX. 
+      const confirmed = await window.showConfirmationDialog({
+        title: 'Run DDNS Checks',
+        message: 'Are you sure you want to run DDNS checks manually now?',
+        confirmLabel: 'Run Now',
+        confirmClass: 'btn-primary'
+      });
+
+      if (!confirmed) return;
+
+      const originalHtml = runBtn.innerHTML;
+      runBtn.disabled = true;
+      runBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running...';
+
+      try {
+        const response = await fetch('/task/DDNS%20Update/start', {
+          method: 'POST',
+          headers: { 'Accept': 'application/json' }
+        });
+
+        let json = null;
+        try {
+          json = await response.json();
+        } catch (_) {
+          json = null;
+        }
+
+        if (json && json.success) {
+          showAlert('DDNS sync started successfully.', 'success');
+        } else {
+          showAlert(json?.message || 'Failed to start DDNS sync.', 'error');
+        }
+
+        setTimeout(loadData, 3000);
+      } catch (err) {
+        console.error('Error starting DDNS sync:', err);
+        showAlert('Failed to start DDNS sync.', 'error');
+        setTimeout(loadData, 2000);
+      } finally {
+        runBtn.disabled = false;
+        runBtn.innerHTML = originalHtml;
+      }
     });
   }
-
-  document.addEventListener('click', async (e) => {
-    if (e.target && e.target.id === 'confirmationModalConfirmBtn') {
-        const title = document.getElementById('confirmationModalTitle').textContent;
-        if (title === "Run DDNS Checks") {
-             const btn = document.getElementById('confirmationModalConfirmBtn');
-             btn.disabled = true;
-             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running...';
-             try {
-                const response = await fetch('/task/DDNS%20Update/start', { 
-                   method: 'POST',
-                   headers: {
-                       'Accept': 'application/json'
-                   }
-                });
-                const json = await response.json();
-                if (json.success) {
-                     showAlert('DDNS Sync started successfully.', 'success');
-                     setTimeout(loadData, 3000);
-                } else {
-                     showAlert('Started check remotely...', 'info'); // if it doesn't return json
-                     setTimeout(loadData, 3000);
-                }
-             } catch (err) {
-                 setTimeout(loadData, 2000);
-             } finally {
-                 document.getElementById('confirmationModalCancelBtn').click();
-                 btn.disabled = false;
-                 btn.textContent = 'Confirm';
-             }
-        }
-    }
-  });
 
   // Init
   loadData();

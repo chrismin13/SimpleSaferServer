@@ -1723,15 +1723,15 @@ def get_ddns_config():
             'duckdns': {
                 'enabled': config_manager.get_value('ddns', 'duckdns_enabled', 'false') == 'true',
                 'domain': config_manager.get_value('ddns', 'duckdns_domain', ''),
+                # Never return the actual token to the client; expose only a boolean so the
+                # UI can show a masked placeholder without leaking credentials to the browser.
                 'token_present': config_manager.get_secret('duckdns_token', '') != '',
-                'token': config_manager.get_secret('duckdns_token', '')
             },
             'cloudflare': {
                 'enabled': config_manager.get_value('ddns', 'cloudflare_enabled', 'false') == 'true',
                 'zone': config_manager.get_value('ddns', 'cloudflare_zone', ''),
                 'record': config_manager.get_value('ddns', 'cloudflare_record', ''),
                 'token_present': config_manager.get_secret('cloudflare_token', '') != '',
-                'token': config_manager.get_secret('cloudflare_token', ''),
                 'proxy': config_manager.get_value('ddns', 'cloudflare_proxy', 'false') == 'true'
             }
         }
@@ -1809,13 +1809,13 @@ def save_ddns_config():
             if token:
                 config_manager.store_secret('cloudflare_token', token)
 
-        # Create systemd config file and check for failures
-        try:
-            system_utils.create_systemd_config_file({s: dict(config_manager.config[s]) for s in config_manager.config.sections()})
-        except Exception as config_error:
+        # create_systemd_config_file catches exceptions internally and returns (success, error).
+        # We must check the return value — a try/except alone won't catch internal failures.
+        ok, err = system_utils.create_systemd_config_file(config_manager.get_all_config())
+        if not ok:
             return jsonify({
                 'success': False,
-                'message': f'Failed to create systemd configuration: {str(config_error)}'
+                'message': f'Failed to create systemd configuration: {err}'
             }), 500
 
         # Only start the DDNS task if config file creation succeeded

@@ -68,11 +68,8 @@
   <a id="ddns-log-link" href="/task/DDNS%20Update" class="btn btn-secondary">
     <i class="fas fa-file-lines me-2"></i>View Synchronization Log
   </a>
-  <button id="ddns-run-btn" class="btn btn-primary"
-    data-confirm="Are you sure you want to run DDNS checks manually now?"
-    data-confirm-title="Run DDNS Checks"
-    data-confirm-button="Run Now"
-    data-confirm-class="btn-primary">
+  <!-- Confirmation and AJAX are handled in ddns.js; no data-confirm needed here -->
+  <button id="ddns-run-btn" class="btn btn-primary">
     <i class="fas fa-rotate me-2"></i>Force Sync Now
   </button>
 </div>
@@ -92,11 +89,11 @@
         <div id="duckdnsConfigFields" class="tab-pane active" role="tabpanel" aria-labelledby="tab-duckdns">
           <div class="d-flex justify-between items-center mb-3 pb-2" style="border-bottom: 1px solid var(--border-color);">
             <div>
-              <strong style="display: block; font-size: var(--text-md); margin-bottom: 4px;">Enable DuckDNS</strong>
-              <span class="text-muted" style="font-size: var(--text-sm);">Automatically update your public IP to DuckDNS every 5 minutes.</span>
+              <strong id="duckdnsEnabledLabel" style="display: block; font-size: var(--text-md); margin-bottom: 4px;">Enable DuckDNS</strong>
+              <span id="duckdnsEnabledDesc" class="text-muted" style="font-size: var(--text-sm);">Automatically update your public IP to DuckDNS every 5 minutes.</span>
             </div>
             <label class="toggle-switch">
-              <input type="checkbox" id="duckdnsEnabled">
+              <input type="checkbox" id="duckdnsEnabled" aria-labelledby="duckdnsEnabledLabel duckdnsEnabledDesc">
               <span class="toggle-slider"></span>
             </label>
           </div>
@@ -129,11 +126,11 @@
         <div id="cloudflareConfigFields" class="tab-pane" role="tabpanel" aria-labelledby="tab-cloudflare">
           <div class="d-flex justify-between items-center mb-3 pb-2" style="border-bottom: 1px solid var(--border-color);">
             <div>
-              <strong style="display: block; font-size: var(--text-md); margin-bottom: 4px;">Enable Cloudflare DDNS</strong>
-              <span class="text-muted" style="font-size: var(--text-sm);">Automatically keep a specific Cloudflare 'A' record updated with your public IP.</span>
+              <strong id="cloudflareEnabledLabel" style="display: block; font-size: var(--text-md); margin-bottom: 4px;">Enable Cloudflare DDNS</strong>
+              <span id="cloudflareEnabledDesc" class="text-muted" style="font-size: var(--text-sm);">Automatically keep a specific Cloudflare 'A' record updated with your public IP.</span>
             </div>
             <label class="toggle-switch">
-              <input type="checkbox" id="cloudflareEnabled">
+              <input type="checkbox" id="cloudflareEnabled" aria-labelledby="cloudflareEnabledLabel cloudflareEnabledDesc">
               <span class="toggle-slider"></span>
             </label>
           </div>
@@ -166,11 +163,11 @@
           </div>
           <div class="d-flex justify-between items-center mt-4 pt-3" style="border-top: 1px solid var(--border-color);">
             <div>
-              <strong style="display: block; font-size: var(--text-sm); margin-bottom: 2px;">Proxy through Cloudflare (Orange Cloud)</strong>
-              <span class="text-muted" style="font-size: var(--text-sm);">Route traffic through Cloudflare's network to conceal your IP address.</span>
+              <strong id="cfProxyLabel" style="display: block; font-size: var(--text-sm); margin-bottom: 2px;">Proxy through Cloudflare (Orange Cloud)</strong>
+              <span id="cfProxyDesc" class="text-muted" style="font-size: var(--text-sm);">Route traffic through Cloudflare's network to conceal your IP address.</span>
             </div>
             <label class="toggle-switch">
-              <input type="checkbox" id="cfProxyStatus">
+              <input type="checkbox" id="cfProxyStatus" aria-labelledby="cfProxyLabel cfProxyDesc">
               <span class="toggle-slider"></span>
             </label>
           </div>

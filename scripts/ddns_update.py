@@ -108,13 +108,19 @@ def update_cloudflare(zone_id, token, record_name, ip, proxy):
         req = urllib.request.Request(url, data=payload, headers={
             'Authorization': f'Bearer {token}',
             'Content-Type': 'application/json'
-        }, method='PATCH')
+        }, method='PUT')  # Cloudflare v4 API requires PUT (not PATCH) to update a DNS record
         with urllib.request.urlopen(req, timeout=10) as response:
             data = json.loads(response.read().decode('utf-8'))
             if data.get('success'):
                 return True, "Updated successfully"
             else:
-                return False, "API returned failure"
+                # Surface the API error messages for easier debugging
+                errors = data.get('errors', [])
+                error_messages = "; ".join(
+                    error.get('message', str(error)) if isinstance(error, dict) else str(error)
+                    for error in errors
+                )
+                return False, error_messages or "API returned failure"
     except urllib.error.HTTPError as e:
         return False, f"HTTP Error {e.code}: {e.read().decode('utf-8')}"
     except urllib.error.URLError as e:

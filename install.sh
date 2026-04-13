@@ -237,7 +237,12 @@ from system_utils import SystemUtils
 
 rt = get_runtime()
 config = ConfigManager(runtime=rt).get_all_config()
-SystemUtils(runtime=rt).install_systemd_services_and_timers(config)
+# install_systemd_services_and_timers catches exceptions and returns (success, error)
+# rather than raising, so we must check the tuple explicitly.
+success, error = SystemUtils(runtime=rt).install_systemd_services_and_timers(config)
+if not success:
+    print(f'Error: {error}', file=sys.stderr)
+    sys.exit(1)
 " || echo -e "${YELLOW}Warning: Failed to refresh background services.${NC}"
 echo -e "${GREEN}✔ Background services generated and restarted.${NC}\n"
 
