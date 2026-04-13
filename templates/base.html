@@ -58,6 +58,9 @@
                 <a href="{{ url_for('drives') }}" class="nav-item {% if request.endpoint == 'drives' %}active{% endif %}">
                     <i class="fas fa-hard-drive fa-fw"></i> Drive Health
                 </a>
+                <a href="{{ url_for('ddns') }}" class="nav-item {% if request.endpoint == 'ddns' %}active{% endif %}">
+                    <i class="fas fa-globe fa-fw"></i> DDNS
+                </a>
                 <a href="{{ url_for('cloud_backup') }}" class="nav-item {% if request.endpoint == 'cloud_backup' %}active{% endif %}">
                     <i class="fas fa-cloud-arrow-up fa-fw"></i> Cloud Backup
                 </a>

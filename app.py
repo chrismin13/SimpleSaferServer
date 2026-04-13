@@ -4,6 +4,7 @@ import psutil
 from datetime import datetime, timedelta
 import json
 import os
+import sys
 import queue
 import threading
 from dashboard_messages import build_dashboard_unmount_success_message
@@ -196,6 +197,11 @@ class Task:
         a system command.
         """
         if runtime.is_fake:
+            if self.name == "DDNS Update":
+                now = datetime.now()
+                minutes = (now.minute // 5 + 1) * 5
+                next_r = now.replace(minute=0, second=0, microsecond=0) + timedelta(minutes=minutes)
+                return next_r.strftime("%Y-%m-%d %H:%M:00")
             return fake_state.get_next_run(self.name, config_manager.get_value('schedule', 'backup_cloud_time', '03:00'))
         try:
             # Example: using 'systemctl list-timers' or 'systemctl show'
@@ -927,6 +933,17 @@ def run_fake_task(task_name: str, cancel_event: threading.Event):
                 fake_state.append_task_log(task_name, f"HDSentinel unavailable: {hdsentinel_snapshot['error']}")
         elif task_name == 'Cloud Backup':
             run_fake_cloud_backup(cancel_event)
+        elif task_name == 'DDNS Update':
+            if cancel_event.is_set():
+                raise RuntimeError('Task was cancelled.')
+            ddns_script = runtime.repo_root / 'scripts' / 'ddns_update.py'
+            result = subprocess.run([sys.executable, str(ddns_script)], capture_output=True, text=True)
+            if result.stdout:
+                fake_state.append_task_log(task_name, result.stdout.strip())
+            if result.stderr:
+                fake_state.append_task_log(task_name, result.stderr.strip())
+            if result.returncode != 0:
+                raise RuntimeError(f"DDNS update script exited with code {result.returncode}")
 
         if cancel_event.is_set():
             raise RuntimeError('Task was cancelled.')
@@ -969,7 +986,8 @@ def run_fake_task(task_name: str, cancel_event: threading.Event):
 TASKS = [
     Task("Check Mount", "check_mount.service", "check_mount.timer"),
     Task("Drive Health Check", "check_health.service", "check_health.timer"),
-    Task("Cloud Backup", "backup_cloud.service", "backup_cloud.timer")
+    Task("Cloud Backup", "backup_cloud.service", "backup_cloud.timer"),
+    Task("DDNS Update", "ddns_update.service", "ddns_update.timer")
 ]
 
 def get_task(name: str):
@@ -977,6 +995,11 @@ def get_task(name: str):
         if task.name == name:
             return task
     return None
+
+@app.route('/ddns')
+@login_required
+def ddns():
+    return render_template('ddns.html', username=session.get('username'))
 
 @app.route('/cloud_backup')
 @login_required
@@ -1608,6 +1631,79 @@ def api_backup_drive_configure():
     except Exception as e:
         current_app.logger.error(f"Error configuring backup drive: {e}")
         return jsonify({'success': False, 'error': 'Could not configure the backup drive.'})
+
+@app.route('/api/ddns/config', methods=['GET'])
+@api_login_required
+def get_ddns_config():
+    try:
+        config = {
+            'duckdns': {
+                'enabled': config_manager.get_value('ddns', 'duckdns_enabled', 'false') == 'true',
+                'domain': config_manager.get_value('ddns', 'duckdns_domain', ''),
+                'token': config_manager.get_secret('duckdns_token', '')
+            },
+            'cloudflare': {
+                'enabled': config_manager.get_value('ddns', 'cloudflare_enabled', 'false') == 'true',
+                'zone': config_manager.get_value('ddns', 'cloudflare_zone', ''),
+                'record': config_manager.get_value('ddns', 'cloudflare_record', ''),
+                'token': config_manager.get_secret('cloudflare_token', ''),
+                'proxy': config_manager.get_value('ddns', 'cloudflare_proxy', 'false') == 'true'
+            }
+        }
+        
+        status_file = runtime.data_dir / 'ddns_status.json'
+        status = {}
+        if status_file.exists():
+             try:
+                 status = json.loads(status_file.read_text())
+             except Exception:
+                 pass
+                 
+        ddns_task = get_task("DDNS Update")
+        next_run = ddns_task.next_run if ddns_task else "Unknown"
+
+        return jsonify({
+            'success': True,
+            'config': config,
+            'status': status,
+            'next_run': next_run
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/ddns/config', methods=['POST'])
+@api_admin_required
+def save_ddns_config():
+    try:
+        data = request.json
+        if not data:
+             return jsonify({'success': False, 'message': 'Invalid payload'}), 400
+             
+        if 'duckdns' in data:
+            duckdns = data['duckdns']
+            config_manager.set_value('ddns', 'duckdns_enabled', str(duckdns.get('enabled', False)).lower())
+            config_manager.set_value('ddns', 'duckdns_domain', duckdns.get('domain', ''))
+            if 'token' in duckdns and duckdns['token']:
+                config_manager.store_secret('duckdns_token', duckdns['token'])
+                
+        if 'cloudflare' in data:
+            cf = data['cloudflare']
+            config_manager.set_value('ddns', 'cloudflare_enabled', str(cf.get('enabled', False)).lower())
+            config_manager.set_value('ddns', 'cloudflare_zone', cf.get('zone', ''))
+            config_manager.set_value('ddns', 'cloudflare_record', cf.get('record', ''))
+            config_manager.set_value('ddns', 'cloudflare_proxy', str(cf.get('proxy', False)).lower())
+            if 'token' in cf and cf['token']:
+                config_manager.store_secret('cloudflare_token', cf['token'])
+                
+        system_utils.create_systemd_config_file(config_manager.config)
+        
+        ddns_task = get_task("DDNS Update")
+        if ddns_task:
+            ddns_task.start()
+            
+        return jsonify({'success': True, 'message': 'DDNS configuration saved and update triggered.'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 @app.route('/api/cloud_backup/config', methods=['GET'])
 @login_required

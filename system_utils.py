@@ -172,7 +172,7 @@ account default : simplesaferserver
             # Copy each script as-is. The scripts read live values from
             # /etc/SimpleSaferServer/config.conf, so templating them here can
             # accidentally bake stale UUID/USB_ID values into the installed copy.
-            script_files = ['check_mount.sh', 'check_health.sh', 'check_health.py', 'backup_cloud.sh', 'predict_health.py', 'log_alert.py']
+            script_files = ['check_mount.sh', 'check_health.sh', 'check_health.py', 'backup_cloud.sh', 'predict_health.py', 'log_alert.py', 'ddns_update.py']
             
             for script_file in script_files:
                 source_path = scripts_source_dir / script_file
@@ -339,6 +339,31 @@ RandomizedDelaySec=60
 
 [Install]
 WantedBy=timers.target
+""",
+                'ddns_update.service': f"""[Unit]
+Description=DDNS Update Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/ddns_update.py
+User=root
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+""",
+                'ddns_update.timer': f"""[Unit]
+Description=Run DDNS update every 5 minutes
+
+[Timer]
+OnCalendar=*:0/5
+Persistent=true
+
+[Install]
+WantedBy=timers.target
 """
             }
             
@@ -354,7 +379,7 @@ WantedBy=timers.target
             self.run_command(['systemctl', 'daemon-reload'])
             
             # Enable and start services and timers
-            for service_name in ['check_mount', 'check_health', 'backup_cloud']:
+            for service_name in ['check_mount', 'check_health', 'backup_cloud', 'ddns_update']:
                 # Enable services
                 self.run_command(['systemctl', 'enable', f'{service_name}.service'])
                 # Enable timers
