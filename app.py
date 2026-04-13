@@ -1636,19 +1636,18 @@ def api_backup_drive_configure():
 @api_login_required
 @api_admin_required
 def get_ddns_config():
-def get_ddns_config():
     try:
         config = {
             'duckdns': {
                 'enabled': config_manager.get_value('ddns', 'duckdns_enabled', 'false') == 'true',
                 'domain': config_manager.get_value('ddns', 'duckdns_domain', ''),
-                'token': config_manager.get_secret('duckdns_token', '')
+                'token_present': config_manager.get_secret('duckdns_token', '') != ''
             },
             'cloudflare': {
                 'enabled': config_manager.get_value('ddns', 'cloudflare_enabled', 'false') == 'true',
                 'zone': config_manager.get_value('ddns', 'cloudflare_zone', ''),
                 'record': config_manager.get_value('ddns', 'cloudflare_record', ''),
-                'token': config_manager.get_secret('cloudflare_token', ''),
+                'token_present': config_manager.get_secret('cloudflare_token', '') != '',
                 'proxy': config_manager.get_value('ddns', 'cloudflare_proxy', 'false') == 'true'
             }
         }
