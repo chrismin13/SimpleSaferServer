@@ -17,6 +17,7 @@ That ownership split matters because SimpleSaferServer only edits shares that it
 - **Delete Share**: removes a SimpleSaferServer-managed share
 - **Unmanaged share warning**: appears when SimpleSaferServer detects other non-system Samba shares in `smb.conf`
 - **Restart Services**: restarts `smbd` and `nmbd`
+  Restarting Samba disconnects anyone who is currently connected to a share, so active file copies or other SMB activity will drop.
 
 If unmanaged shares are detected, the page shows a small warning button with the count.
 That button opens a modal that:
@@ -143,7 +144,8 @@ Convert it to:
 # END SimpleSaferServer share: backup
 ```
 
-Then restart Samba:
+Then restart Samba.
+Restarting Samba disconnects anyone who is currently connected to a share, so active file copies or other SMB activity will drop:
 
 ```bash
 sudo systemctl restart smbd nmbd
