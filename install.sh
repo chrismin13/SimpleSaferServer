@@ -226,8 +226,23 @@ systemctl enable simple_safer_server_web.service
 systemctl restart simple_safer_server_web.service
 echo -e "${GREEN}✔ Systemd service enabled and started.${NC}\n"
 
-# 10. Open port 5000 in firewall if active
-echo -e "${YELLOW}Step 10: Configuring firewall (if active)...${NC}"
+# 10. Refresh procedurally generated background services
+echo -e "${YELLOW}Step 10: Refreshing procedural background services...${NC}"
+"$VENV_DIR/bin/python3" -c "
+import sys
+sys.path.insert(0, '$APP_DIR')
+from config_manager import ConfigManager
+from runtime import get_runtime
+from system_utils import SystemUtils
+
+rt = get_runtime()
+config = ConfigManager(runtime=rt).get_all_config()
+SystemUtils(runtime=rt).install_systemd_services_and_timers(config)
+" || echo -e "${YELLOW}Warning: Failed to refresh background services.${NC}"
+echo -e "${GREEN}✔ Background services generated and restarted.${NC}\n"
+
+# 11. Open port 5000 in firewall if active
+echo -e "${YELLOW}Step 11: Configuring firewall (if active)...${NC}"
 if command -v ufw >/dev/null 2>&1 && ufw status | grep -q 'Status: active'; then
   ufw allow 5000/tcp
 echo -e "${GREEN}✔ Port 5000 opened in ufw.${NC}"
@@ -243,7 +258,7 @@ echo -e "${YELLOW}No active firewall detected or configured. Skipping firewall s
 fi
 echo
 
-# 11. Print all network interface IPs for user access
+# 12. Print all network interface IPs for user access
 echo -e "${BLUE}==============================================="
 echo -e "  SimpleSaferServer Web UI Access URLs"
 echo -e "===============================================${NC}"
