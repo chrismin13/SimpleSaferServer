@@ -14,7 +14,7 @@ curl -fsSL https://sss.chrismin13.com/install.sh | sudo bash
 
 - This script will install all dependencies, set up the service, and print your Web UI address.
 - The management Web UI is admin-only. The first account created during setup becomes the initial administrator.
-- For more details and documentation, visit the [landing page](https://sss.chrismin13.com).
+- For more details and the maintained documentation index, visit the [documentation section on the website](https://sss.chrismin13.com/#documentation).
 - For manual installation, see the [Manual Installation Guide](docs/manual_install.md).
 
 ## Local Fake Mode
@@ -40,22 +40,13 @@ bash reset_fake_mode.sh
 
 ---
 
-# Documentation Index
+# Documentation
 
-This project includes detailed documentation for each main feature and page. See the following files for step-by-step guides and explanations:
+The website keeps the most up-to-date documentation index in one place:
 
-- [access.md](docs/access.md)
-- [railway.md](docs/railway.md)
-- [manual_install.md](docs/manual_install.md)
-- [setup.md](docs/setup.md)
-- [login.md](docs/login.md)
-- [dashboard.md](docs/dashboard.md)
-- [drive_health.md](docs/drive_health.md)
-- [cloud_backup.md](docs/cloud_backup.md)
-- [network_file_sharing.md](docs/network_file_sharing.md)
-- [users.md](docs/users.md)
-- [alerts.md](docs/alerts.md)
-- [task_detail.md](docs/task_detail.md)
+- [Documentation Index](https://sss.chrismin13.com/#documentation)
+
+The underlying markdown files still live in [`docs/`](docs/). Start with [manual_install.md](docs/manual_install.md) if you want the repository copy of the installation guide.
 
 ---
 
