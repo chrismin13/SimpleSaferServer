@@ -1681,13 +1681,15 @@ def get_ddns_config():
             'duckdns': {
                 'enabled': config_manager.get_value('ddns', 'duckdns_enabled', 'false') == 'true',
                 'domain': config_manager.get_value('ddns', 'duckdns_domain', ''),
-                'token_present': config_manager.get_secret('duckdns_token', '') != ''
+                'token_present': config_manager.get_secret('duckdns_token', '') != '',
+                'token': config_manager.get_secret('duckdns_token', '')
             },
             'cloudflare': {
                 'enabled': config_manager.get_value('ddns', 'cloudflare_enabled', 'false') == 'true',
                 'zone': config_manager.get_value('ddns', 'cloudflare_zone', ''),
                 'record': config_manager.get_value('ddns', 'cloudflare_record', ''),
                 'token_present': config_manager.get_secret('cloudflare_token', '') != '',
+                'token': config_manager.get_secret('cloudflare_token', ''),
                 'proxy': config_manager.get_value('ddns', 'cloudflare_proxy', 'false') == 'true'
             }
         }
@@ -1713,6 +1715,7 @@ def get_ddns_config():
         return jsonify({'success': False, 'message': str(e)}), 500
 
 @app.route('/api/ddns/config', methods=['POST'])
+@api_login_required
 @api_admin_required
 def save_ddns_config():
     try:
