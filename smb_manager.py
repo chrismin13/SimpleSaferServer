@@ -369,12 +369,19 @@ class SMBManager:
             if replaced_live_config:
                 try:
                     self._restore_smb_conf_backup(backup_path)
-                    self._restart_services()
+                    if not self._restart_services():
+                        raise RuntimeError("Failed to restart SMB services after restoring smb.conf backup")
                 except Exception as rollback_error:
                     logger.error(
                         "Failed to restore smb.conf after SMB update error: %s",
                         rollback_error,
                     )
+                    raise RuntimeError(
+                        "Failed to roll back smb.conf after SMB update error: {}. Original error: {}".format(
+                            rollback_error,
+                            original_error,
+                        )
+                    ) from rollback_error
 
             raise original_error
 
@@ -491,6 +498,14 @@ class SMBManager:
                 shares.append(share)
                 index = block_end
                 continue
+
+            if stripped.startswith(MANAGED_SHARE_END_PREFIX):
+                marker_name = stripped[len(MANAGED_SHARE_END_PREFIX):].strip() or stripped
+                raise SMBConfigError(
+                    "Unexpected SimpleSaferServer END marker was found in smb.conf for '{}'.".format(
+                        marker_name
+                    )
+                )
 
             section_name = _extract_section_name(stripped)
             if section_name and section_name.lower() not in SYSTEM_SHARE_NAMES:
@@ -621,8 +636,8 @@ class SMBManager:
         lines, shares = self._load_shares()
         if self._find_share_record(shares, name) is not None:
             raise ValueError(
-                "Share '{}' already exists. SimpleSaferServer will not overwrite an existing unmanaged "
-                "share with the same name. See {} for manual conversion guidance.".format(name, SMB_DOCS_URL)
+                "Share '{}' already exists. SimpleSaferServer will not overwrite an existing share "
+                "with the same name. See {} for manual conversion guidance.".format(name, SMB_DOCS_URL)
             )
 
         block_lines = self._render_managed_share_block(name, path, writable, comment, valid_users)
@@ -647,7 +662,7 @@ class SMBManager:
         conflict = self._find_share_record(shares, new_name)
         if conflict is not None and not (conflict.managed and conflict.name == old_name):
             raise ValueError(
-                "Share '{}' already exists. SimpleSaferServer will not overwrite an unmanaged share "
+                "Share '{}' already exists. SimpleSaferServer will not overwrite an existing share "
                 "with the same name. See {} for manual conversion guidance.".format(new_name, SMB_DOCS_URL)
             )
 

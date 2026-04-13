@@ -81,6 +81,22 @@ class SMBManagerTests(unittest.TestCase):
         with self.assertRaises(smb_manager.SMBConfigError):
             self.manager.list_managed_shares()
 
+    def test_stray_end_marker_raises_clear_error(self):
+        self._write_conf(
+            "\n".join(
+                [
+                    "[global]",
+                    "   workgroup = WORKGROUP",
+                    "",
+                    "# END SimpleSaferServer share: backup",
+                    "",
+                ]
+            )
+        )
+
+        with self.assertRaisesRegex(smb_manager.SMBConfigError, "END marker"):
+            self.manager.list_managed_shares()
+
     def test_create_managed_share_writes_wrapped_block(self):
         share_path = self.root / "share"
         share_path.mkdir()
@@ -316,6 +332,35 @@ class SMBManagerTests(unittest.TestCase):
             with patch.object(manager, "_validate_smb_conf_candidate", return_value=None):
                 with patch.object(manager, "_restart_services", side_effect=[False, True]):
                     with self.assertRaisesRegex(RuntimeError, "Failed to restart SMB services"):
+                        manager.create_managed_share("backup", str(share_path))
+
+        self.assertEqual(live_path.read_text(), original_content)
+
+    def test_rollback_restart_failure_raises_rollback_error(self):
+        runtime = SimpleNamespace(
+            samba_dir=self.root / "rollback-samba",
+            samba_backup_dir=self.root / "rollback-samba-backups",
+            is_fake=False,
+        )
+        runtime.samba_dir.mkdir(parents=True, exist_ok=True)
+        runtime.samba_backup_dir.mkdir(parents=True, exist_ok=True)
+        manager = smb_manager.SMBManager(runtime=runtime)
+        live_path = runtime.samba_dir / "smb.conf"
+        original_content = "[global]\n   workgroup = WORKGROUP\n"
+        live_path.write_text(original_content)
+
+        share_path = self.root / "rollback-share"
+        share_path.mkdir()
+        backup_path = runtime.samba_backup_dir / "smb.conf.backup.rollback"
+
+        def fake_backup():
+            backup_path.write_text(live_path.read_text())
+            return str(backup_path)
+
+        with patch.object(manager, "_create_backup", side_effect=fake_backup):
+            with patch.object(manager, "_validate_smb_conf_candidate", return_value=None):
+                with patch.object(manager, "_restart_services", side_effect=[False, False]):
+                    with self.assertRaisesRegex(RuntimeError, "Failed to roll back smb.conf"):
                         manager.create_managed_share("backup", str(share_path))
 
         self.assertEqual(live_path.read_text(), original_content)

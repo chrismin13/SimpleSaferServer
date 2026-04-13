@@ -58,8 +58,7 @@ collect_samba_users() {
         return 0
     fi
 
-    if command -v python3 >/dev/null 2>&1; then
-        python3 - "$USERS_FILE" <<'PY'
+    python3 - "$USERS_FILE" <<'PY'
 import json
 import sys
 
@@ -82,12 +81,6 @@ elif isinstance(data, list):
             if isinstance(username, str) and username.strip():
                 print(username)
 PY
-        return 0
-    fi
-
-    # Keep a low-tech fallback because older recovery environments sometimes
-    # have Samba installed but not a working Python runtime.
-    sed -n 's/^[[:space:]]*"\([^"]\+\)"[[:space:]]*:.*/\1/p' "$USERS_FILE"
 }
 
 backup_file_if_present() {
@@ -273,7 +266,6 @@ main() {
     trap cleanup EXIT
     setup_temp_dir
 
-    clear
     echo -e "${BLUE}==============================================="
     echo -e "   SimpleSaferServer Uninstaller"
     echo -e "===============================================${NC}\n"
