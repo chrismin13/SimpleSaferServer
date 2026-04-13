@@ -268,6 +268,29 @@ class SMBManagerTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "is not managed by SimpleSaferServer"):
             self.manager.get_share_users("media")
 
+    def test_get_share_users_uses_existing_snapshot_without_second_lookup(self):
+        share_path = self.root / "managed-share"
+        share_path.mkdir()
+        self._write_conf(
+            "\n".join(
+                [
+                    "# BEGIN SimpleSaferServer share: backup",
+                    "[backup]",
+                    f"   path = {share_path}",
+                    "   writeable = Yes",
+                    "   comment = Managed backup share",
+                    "   valid users = admin",
+                    "# END SimpleSaferServer share: backup",
+                    "",
+                ]
+            )
+        )
+
+        # This guards the helper against reloading the config after it has
+        # already validated ownership from a consistent snapshot.
+        with patch.object(self.manager, "get_managed_share", side_effect=AssertionError("unexpected second lookup")):
+            self.assertEqual(self.manager.get_share_users("backup"), ["admin"])
+
     def test_restart_failure_restores_previous_live_config(self):
         runtime = SimpleNamespace(
             samba_dir=self.root / "real-samba",

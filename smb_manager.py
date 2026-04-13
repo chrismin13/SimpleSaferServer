@@ -735,7 +735,7 @@ class SMBManager:
                 "Share '{}' is not managed by SimpleSaferServer, so it cannot be edited here. "
                 "See {} for manual conversion guidance.".format(share_name, SMB_DOCS_URL)
             )
-        return self.get_managed_share(share_name)
+        return share.as_dict()
 
     def get_share_users(self, share_name):
         # Callers use this to populate edit flows, so unmanaged shares need an
