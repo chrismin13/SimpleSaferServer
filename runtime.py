@@ -258,20 +258,46 @@ def resolve_fake_data_dir(repo_root: Optional[Path] = None) -> Path:
     return (repo_root / ".dev-data").resolve()
 
 
+def _read_persisted_text_secret(secret_path: Path) -> Optional[str]:
+    """Read a secret file after forcing the expected restrictive mode."""
+    try:
+        # Keep the permissions tight even if an older deploy or manual edit
+        # left this file more open than the app expects.
+        secret_path.chmod(0o600)
+        existing_secret = secret_path.read_text().strip()
+    except FileNotFoundError:
+        return None
+
+    return existing_secret or None
+
+
 def load_or_create_text_secret(secret_path: Path) -> str:
     """Load a persisted secret, or create one once if it does not exist yet."""
     secret_path.parent.mkdir(parents=True, exist_ok=True)
 
-    if secret_path.exists():
-        existing_secret = secret_path.read_text().strip()
-        if existing_secret:
-            return existing_secret
+    existing_secret = _read_persisted_text_secret(secret_path)
+    if existing_secret:
+        return existing_secret
 
     # Persisting this once avoids the easy-to-miss deploy problem where Flask
     # session cookies become invalid simply because the process restarted.
     secret_value = secrets.token_urlsafe(48)
-    secret_path.write_text(secret_value)
-    secret_path.chmod(0o600)
+    try:
+        secret_fd = os.open(secret_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        # Another worker won the creation race after our first read. Re-read the
+        # file so every process converges on the exact same persisted secret.
+        existing_secret = _read_persisted_text_secret(secret_path)
+        if existing_secret:
+            return existing_secret
+        raise RuntimeError(f"Secret file exists but is empty: {secret_path}")
+
+    with os.fdopen(secret_fd, "w", encoding="utf-8") as secret_file:
+        # fchmod closes the gap where umask could otherwise leave the new file
+        # more permissive than intended on some systems.
+        os.fchmod(secret_file.fileno(), 0o600)
+        secret_file.write(secret_value)
+
     return secret_value
 
 
