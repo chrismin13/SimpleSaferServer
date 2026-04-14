@@ -172,7 +172,7 @@ account default : simplesaferserver
             # Copy each script as-is. The scripts read live values from
             # /etc/SimpleSaferServer/config.conf, so templating them here can
             # accidentally bake stale UUID/USB_ID values into the installed copy.
-            script_files = ['check_mount.sh', 'check_health.sh', 'check_health.py', 'backup_cloud.sh', 'predict_health.py', 'log_alert.py', 'ddns_update.py']
+            script_files = ['check_mount.sh', 'check_health.sh', 'check_health.py', 'backup_cloud.sh', 'predict_health.py', 'log_alert.py', 'ddns_update.sh', 'ddns_update.py']
             
             for script_file in script_files:
                 source_path = scripts_source_dir / script_file
@@ -356,7 +356,7 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/opt/SimpleSaferServer/venv/bin/python /usr/local/bin/ddns_update.py
+ExecStart=/usr/local/bin/ddns_update.sh
 User=root
 StandardOutput=journal
 StandardError=journal
