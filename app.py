@@ -1767,8 +1767,7 @@ def save_ddns_config():
         # avoiding the BadRequest exception that request.json raises on malformed input.
         data = request.get_json(silent=True)
         if not isinstance(data, dict) or not data:
-             return jsonify({'success': False, 'message': 'Invalid payload'}), 400
-             
+            return jsonify({'success': False, 'message': 'Invalid payload'}), 400
         if 'duckdns' in data:
             duckdns = data['duckdns']
             domain = duckdns.get('domain', '').strip()
