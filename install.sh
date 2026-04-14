@@ -226,8 +226,37 @@ systemctl enable simple_safer_server_web.service
 systemctl restart simple_safer_server_web.service
 echo -e "${GREEN}✔ Systemd service enabled and started.${NC}\n"
 
-# 10. Open port 5000 in firewall if active
-echo -e "${YELLOW}Step 10: Configuring firewall (if active)...${NC}"
+# 10. Refresh procedurally generated background services
+echo -e "${YELLOW}Step 10: Refreshing procedural background services...${NC}"
+if "$VENV_DIR/bin/python3" -c "
+import sys
+sys.path.insert(0, '$APP_DIR')
+from config_manager import ConfigManager
+from runtime import get_runtime
+from system_utils import SystemUtils
+
+rt = get_runtime()
+config = ConfigManager(runtime=rt).get_all_config()
+# install_systemd_services_and_timers catches exceptions and returns (success, error)
+# rather than raising, so we must check the tuple explicitly.
+success, error = SystemUtils(runtime=rt).install_systemd_services_and_timers(config)
+if not success:
+    print(f'Error: {error}', file=sys.stderr)
+    sys.exit(1)
+"; then
+  echo -e "${GREEN}✔ Background services generated and restarted.${NC}\n"
+else
+  echo -e "${RED}ERROR: Failed to generate and register background services.${NC}"
+  echo -e "${RED}DDNS and other scheduled tasks will not run without the systemd units.${NC}"
+  echo -e "${YELLOW}Remediation:${NC}"
+  echo -e "  1. Check the error message printed above for details."
+  echo -e "  2. Review systemd logs with: journalctl -xe"
+  echo -e "  3. Fix the reported issue and rerun this installer."
+  exit 1
+fi
+
+# 11. Open port 5000 in firewall if active
+echo -e "${YELLOW}Step 11: Configuring firewall (if active)...${NC}"
 if command -v ufw >/dev/null 2>&1 && ufw status | grep -q 'Status: active'; then
   ufw allow 5000/tcp
 echo -e "${GREEN}✔ Port 5000 opened in ufw.${NC}"
@@ -243,7 +272,7 @@ echo -e "${YELLOW}No active firewall detected or configured. Skipping firewall s
 fi
 echo
 
-# 11. Print all network interface IPs for user access
+# 12. Print all network interface IPs for user access
 echo -e "${BLUE}==============================================="
 echo -e "  SimpleSaferServer Web UI Access URLs"
 echo -e "===============================================${NC}"

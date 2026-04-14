@@ -172,7 +172,7 @@ account default : simplesaferserver
             # Copy each script as-is. The scripts read live values from
             # /etc/SimpleSaferServer/config.conf, so templating them here can
             # accidentally bake stale UUID/USB_ID values into the installed copy.
-            script_files = ['check_mount.sh', 'check_health.sh', 'check_health.py', 'backup_cloud.sh', 'predict_health.py', 'log_alert.py']
+            script_files = ['check_mount.sh', 'check_health.sh', 'check_health.py', 'backup_cloud.sh', 'predict_health.py', 'log_alert.py', 'ddns_update.sh', 'ddns_update.py']
             
             for script_file in script_files:
                 source_path = scripts_source_dir / script_file
@@ -200,6 +200,7 @@ account default : simplesaferserver
             system_config = config.get('system', {})
             schedule_config = config.get('schedule', {})
             hdsentinel_config = config.get('hdsentinel', {})
+            ddns_config = config.get('ddns', {})
 
             config_content = f"""[system]
 username = {system_config.get('username', '')}
@@ -224,6 +225,14 @@ backup_cloud_time = {schedule_config.get('backup_cloud_time', '')}
 [hdsentinel]
 enabled = {hdsentinel_config.get('enabled', 'true')}
 health_change_alert = {hdsentinel_config.get('health_change_alert', 'true')}
+
+[ddns]
+duckdns_enabled = {ddns_config.get('duckdns_enabled', 'false')}
+duckdns_domain = {ddns_config.get('duckdns_domain', '')}
+cloudflare_enabled = {ddns_config.get('cloudflare_enabled', 'false')}
+cloudflare_zone = {ddns_config.get('cloudflare_zone', '')}
+cloudflare_record = {ddns_config.get('cloudflare_record', '')}
+cloudflare_proxy = {ddns_config.get('cloudflare_proxy', 'false')}
 """
             # Create the config directory
             config_dir = self.runtime.config_dir
@@ -265,7 +274,7 @@ health_change_alert = {hdsentinel_config.get('health_change_alert', 'true')}
             
             # Define services and timers with proper formatting
             services = {
-                'check_mount.service': f"""[Unit]
+                'check_mount.service': """[Unit]
 Description=Check USB Mount Status
 After=network.target
 
@@ -279,7 +288,7 @@ StandardError=journal
 [Install]
 WantedBy=multi-user.target
 """,
-                'check_health.service': f"""[Unit]
+                'check_health.service': """[Unit]
 Description=Drive Health Check
 After=network.target
 
@@ -293,7 +302,7 @@ StandardError=journal
 [Install]
 WantedBy=multi-user.target
 """,
-                'backup_cloud.service': f"""[Unit]
+                'backup_cloud.service': """[Unit]
 Description=Cloud Backup Service
 After=network.target
 
@@ -339,6 +348,34 @@ RandomizedDelaySec=60
 
 [Install]
 WantedBy=timers.target
+""",
+                'ddns_update.service': """[Unit]
+Description=DDNS Update Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/ddns_update.sh
+User=root
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+""",
+                'ddns_update.timer': """[Unit]
+Description=Run DDNS update every 5 minutes
+
+[Timer]
+OnCalendar=*:0/5
+# Spread requests so all installs don't hit provider APIs on the exact same boundary
+RandomizedDelaySec=1m
+AccuracySec=1m
+Persistent=true
+
+[Install]
+WantedBy=timers.target
 """
             }
             
@@ -354,7 +391,7 @@ WantedBy=timers.target
             self.run_command(['systemctl', 'daemon-reload'])
             
             # Enable and start services and timers
-            for service_name in ['check_mount', 'check_health', 'backup_cloud']:
+            for service_name in ['check_mount', 'check_health', 'backup_cloud', 'ddns_update']:
                 # Enable services
                 self.run_command(['systemctl', 'enable', f'{service_name}.service'])
                 # Enable timers

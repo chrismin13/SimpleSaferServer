@@ -4,6 +4,7 @@ import psutil
 from datetime import datetime, timedelta
 import json
 import os
+import sys
 import queue
 import threading
 from dashboard_messages import build_dashboard_unmount_success_message
@@ -37,7 +38,6 @@ import logging
 from user_manager import UserManager, login_required, admin_required, api_login_required, api_admin_required
 from flask_socketio import SocketIO
 from logging.handlers import RotatingFileHandler
-import sys
 import time
 from typing import Dict, List, Tuple
 from system_utils import SystemUtils
@@ -196,6 +196,11 @@ class Task:
         a system command.
         """
         if runtime.is_fake:
+            if self.name == "DDNS Update":
+                now = datetime.now()
+                minutes = (now.minute // 5 + 1) * 5
+                next_r = now.replace(minute=0, second=0, microsecond=0) + timedelta(minutes=minutes)
+                return next_r.strftime("%Y-%m-%d %H:%M:00")
             return fake_state.get_next_run(self.name, config_manager.get_value('schedule', 'backup_cloud_time', '03:00'))
         try:
             # Example: using 'systemctl list-timers' or 'systemctl show'
@@ -927,6 +932,99 @@ def run_fake_task(task_name: str, cancel_event: threading.Event):
                 fake_state.append_task_log(task_name, f"HDSentinel unavailable: {hdsentinel_snapshot['error']}")
         elif task_name == 'Cloud Backup':
             run_fake_cloud_backup(cancel_event)
+        elif task_name == 'DDNS Update':
+            if cancel_event.is_set():
+                raise RuntimeError('Task was cancelled.')
+            ddns_script = runtime.repo_root / 'scripts' / 'ddns_update.py'
+
+            # Start the process non-blocking to allow cancellation
+            try:
+                proc = subprocess.Popen(
+                    [sys.executable, str(ddns_script)],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    bufsize=1,
+                )
+                output_queue: queue.Queue[Tuple[str, str]] = queue.Queue()
+
+                def _drain_stream(stream, stream_name: str):
+                    try:
+                        for line in iter(stream.readline, ''):
+                            output_queue.put((stream_name, line))
+                    finally:
+                        stream.close()
+
+                stdout_thread = threading.Thread(
+                    target=_drain_stream,
+                    args=(proc.stdout, 'stdout'),
+                    name='ddns-update-stdout',
+                    daemon=True,
+                )
+                stderr_thread = threading.Thread(
+                    target=_drain_stream,
+                    args=(proc.stderr, 'stderr'),
+                    name='ddns-update-stderr',
+                    daemon=True,
+                )
+                stdout_thread.start()
+                stderr_thread.start()
+
+                stdout_chunks: List[str] = []
+                stderr_chunks: List[str] = []
+                while True:
+                    while True:
+                        try:
+                            stream_name, chunk = output_queue.get_nowait()
+                        except queue.Empty:
+                            break
+                        if stream_name == 'stdout':
+                            stdout_chunks.append(chunk)
+                        else:
+                            stderr_chunks.append(chunk)
+
+                    if proc.poll() is not None:
+                        break
+                    if cancel_event.is_set():
+                        proc.terminate()
+                        try:
+                            proc.wait(timeout=5.0)
+                        except subprocess.TimeoutExpired:
+                            proc.kill()
+                            proc.wait()
+                        break
+                    time.sleep(0.1)
+
+                stdout_thread.join(timeout=1.0)
+                stderr_thread.join(timeout=1.0)
+                while True:
+                    try:
+                        stream_name, chunk = output_queue.get_nowait()
+                    except queue.Empty:
+                        break
+                    if stream_name == 'stdout':
+                        stdout_chunks.append(chunk)
+                    else:
+                        stderr_chunks.append(chunk)
+
+                # Append collected output to task log
+                stdout_output = ''.join(stdout_chunks).strip()
+                stderr_output = ''.join(stderr_chunks).strip()
+                if stdout_output:
+                    fake_state.append_task_log(task_name, stdout_output)
+                if stderr_output:
+                    fake_state.append_task_log(task_name, stderr_output)
+
+                if cancel_event.is_set():
+                    raise RuntimeError('Task was cancelled.')
+
+                # Check exit code
+                if proc.returncode != 0:
+                    raise RuntimeError(f"DDNS update script exited with code {proc.returncode}")
+
+            except subprocess.SubprocessError as e:
+                fake_state.append_task_log(task_name, f"Subprocess error: {str(e)}")
+                raise RuntimeError(f"Failed to run DDNS update script: {str(e)}")
 
         if cancel_event.is_set():
             raise RuntimeError('Task was cancelled.')
@@ -969,7 +1067,8 @@ def run_fake_task(task_name: str, cancel_event: threading.Event):
 TASKS = [
     Task("Check Mount", "check_mount.service", "check_mount.timer"),
     Task("Drive Health Check", "check_health.service", "check_health.timer"),
-    Task("Cloud Backup", "backup_cloud.service", "backup_cloud.timer")
+    Task("Cloud Backup", "backup_cloud.service", "backup_cloud.timer"),
+    Task("DDNS Update", "ddns_update.service", "ddns_update.timer")
 ]
 
 def get_task(name: str):
@@ -977,6 +1076,11 @@ def get_task(name: str):
         if task.name == name:
             return task
     return None
+
+@app.route('/ddns')
+@admin_required
+def ddns():
+    return render_template('ddns.html', username=session.get('username'))
 
 @app.route('/cloud_backup')
 @login_required
@@ -1131,10 +1235,13 @@ def api_set_email_config():
 
 @app.context_processor
 def inject_username():
+    username = session.get('username')
     return dict(
-        username=session.get('username'),
+        username=username,
         runtime_mode=runtime.mode,
         default_mount_point=runtime.default_mount_point,
+        # Expose admin status so templates can conditionally show admin-only nav items.
+        is_admin=user_manager.is_admin(username) if username else False,
     )
 
 @app.route('/api/users', methods=['GET'])
@@ -1608,6 +1715,139 @@ def api_backup_drive_configure():
     except Exception as e:
         current_app.logger.error(f"Error configuring backup drive: {e}")
         return jsonify({'success': False, 'error': 'Could not configure the backup drive.'})
+
+@app.route('/api/ddns/config', methods=['GET'])
+@api_login_required
+@api_admin_required
+def get_ddns_config():
+    try:
+        config = {
+            'duckdns': {
+                'enabled': config_manager.get_value('ddns', 'duckdns_enabled', 'false') == 'true',
+                'domain': config_manager.get_value('ddns', 'duckdns_domain', ''),
+                # Never return the actual token to the client; expose only a boolean so the
+                # UI can show a masked placeholder without leaking credentials to the browser.
+                'token_present': config_manager.get_secret('duckdns_token', '') != '',
+            },
+            'cloudflare': {
+                'enabled': config_manager.get_value('ddns', 'cloudflare_enabled', 'false') == 'true',
+                'zone': config_manager.get_value('ddns', 'cloudflare_zone', ''),
+                'record': config_manager.get_value('ddns', 'cloudflare_record', ''),
+                'token_present': config_manager.get_secret('cloudflare_token', '') != '',
+                'proxy': config_manager.get_value('ddns', 'cloudflare_proxy', 'false') == 'true'
+            }
+        }
+        
+        status_file = runtime.data_dir / 'ddns_status.json'
+        status = {}
+        if status_file.exists():
+            try:
+                status = json.loads(status_file.read_text())
+            except Exception:
+                pass
+        ddns_task = get_task("DDNS Update")
+        next_run = ddns_task.next_run if ddns_task else "Unknown"
+
+        return jsonify({
+            'success': True,
+            'config': config,
+            'status': status,
+            'next_run': next_run
+        })
+    except Exception:
+        current_app.logger.exception("Error loading DDNS configuration")
+        return jsonify({'success': False, 'message': 'Failed to load DDNS configuration.'}), 500
+
+@app.route('/api/ddns/config', methods=['POST'])
+@api_login_required
+@api_admin_required
+def save_ddns_config():
+    try:
+        # get_json(silent=True) returns None on parse errors or wrong content-type,
+        # avoiding the BadRequest exception that request.json raises on malformed input.
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict) or not data:
+            return jsonify({'success': False, 'message': 'Invalid payload'}), 400
+        if 'duckdns' in data:
+            duckdns = data['duckdns']
+            domain = duckdns.get('domain', '').strip()
+            token = duckdns.get('token', '').strip()
+            enabled = duckdns.get('enabled', False)
+
+            # Validate required fields if enabled
+            if enabled:
+                existing_token = config_manager.get_secret('duckdns_token')
+                if not domain:
+                    return jsonify({'success': False, 'message': 'DuckDNS domain is required when enabled'}), 400
+                if not token and not existing_token:
+                    return jsonify({'success': False, 'message': 'DuckDNS token is required when enabled'}), 400
+
+            config_manager.set_value('ddns', 'duckdns_domain', domain)
+            config_manager.set_value('ddns', 'duckdns_enabled', str(enabled).lower())
+            if token:
+                config_manager.store_secret('duckdns_token', token)
+
+        if 'cloudflare' in data:
+            cf = data['cloudflare']
+            zone = cf.get('zone', '').strip()
+            record = cf.get('record', '').strip()
+            token = cf.get('token', '').strip()
+            proxy = cf.get('proxy', False)
+            enabled = cf.get('enabled', False)
+
+            # Validate required fields if enabled
+            if enabled:
+                existing_token = config_manager.get_secret('cloudflare_token')
+                if not zone:
+                    return jsonify({'success': False, 'message': 'Cloudflare zone is required when enabled'}), 400
+                if not record:
+                    return jsonify({'success': False, 'message': 'Cloudflare record is required when enabled'}), 400
+                if not token and not existing_token:
+                    return jsonify({'success': False, 'message': 'Cloudflare token is required when enabled'}), 400
+
+            config_manager.set_value('ddns', 'cloudflare_zone', zone)
+            config_manager.set_value('ddns', 'cloudflare_record', record)
+            config_manager.set_value('ddns', 'cloudflare_proxy', str(proxy).lower())
+            config_manager.set_value('ddns', 'cloudflare_enabled', str(enabled).lower())
+            if token:
+                config_manager.store_secret('cloudflare_token', token)
+
+        # ConfigManager.set_value already persists each key to disk, so there is no
+        # need to rewrite the entire config file here. Doing so would overwrite keys
+        # written by other subsystems (e.g., email, backup) that aren't in the DDNS
+        # section of the template, silently dropping them.
+
+        # Trigger an immediate sync so the user sees the result of their new config.
+        # If the task start fails (e.g. systemd unavailable), we still consider the
+        # save successful — the periodic timer will pick up the new config on the
+        # next scheduled run regardless.
+        try:
+            ddns_task = get_task("DDNS Update")
+            if ddns_task:
+                ddns_task.start()
+        except Exception:
+            current_app.logger.warning("Could not trigger immediate DDNS sync; config was saved successfully", exc_info=True)
+            return jsonify({'success': True, 'message': 'DDNS configuration saved. Immediate sync could not be triggered — the next scheduled run will use the new config.'})
+
+        return jsonify({'success': True, 'message': 'DDNS configuration saved and update triggered.'})
+    except Exception:
+        current_app.logger.exception("Error saving DDNS configuration")
+        return jsonify({'success': False, 'message': 'Failed to save DDNS configuration.'}), 500
+
+@app.route('/api/ddns/run', methods=['POST'])
+@api_login_required
+@api_admin_required
+def run_ddns_manual():
+    """Admin-only endpoint to manually trigger DDNS update."""
+    try:
+        ddns_task = get_task("DDNS Update")
+        if not ddns_task:
+            return jsonify({'success': False, 'message': 'DDNS Update task not found'}), 404
+        ddns_task.start()
+        return jsonify({'success': True, 'message': 'DDNS sync started successfully.'})
+    except Exception as e:
+        current_app.logger.exception("Error starting DDNS sync")
+        return jsonify({'success': False, 'message': f'Failed to start DDNS sync: {str(e)}'}), 500
 
 @app.route('/api/cloud_backup/config', methods=['GET'])
 @login_required
