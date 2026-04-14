@@ -160,7 +160,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setTimeout(loadData, 2000);
       } else {
         window.AsyncButtonState.error(saveBtn);
-        showAlert(data.message || 'Failed to save configuration', 'error');
+        showAlert(data.message || data.error || 'Failed to save configuration', 'error');
       }
     } catch (error) {
       console.error('Error saving:', error);
