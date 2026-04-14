@@ -9,11 +9,11 @@ document.addEventListener('DOMContentLoaded', () => {
       const response = await fetch('/api/ddns/config');
       const data = await response.json();
 
-      if (data.success) {
+      if (response.ok && data.success) {
         populateForm(data.config);
         updateStatusTiles(data.status, data.config, data);
       } else {
-        showAlert(data.message || 'Failed to load DDNS configuration', 'error');
+        showAlert(data.message || data.error || 'Failed to load DDNS configuration', 'error');
       }
     } catch (error) {
       console.error('Error fetching DDNS config:', error);
