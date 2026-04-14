@@ -1834,6 +1834,21 @@ def save_ddns_config():
         current_app.logger.exception("Error saving DDNS configuration")
         return jsonify({'success': False, 'message': 'Failed to save DDNS configuration.'}), 500
 
+@app.route('/api/ddns/run', methods=['POST'])
+@api_login_required
+@api_admin_required
+def run_ddns_manual():
+    """Admin-only endpoint to manually trigger DDNS update."""
+    try:
+        ddns_task = get_task("DDNS Update")
+        if not ddns_task:
+            return jsonify({'success': False, 'message': 'DDNS Update task not found'}), 404
+        ddns_task.start()
+        return jsonify({'success': True, 'message': 'DDNS sync started successfully.'})
+    except Exception as e:
+        current_app.logger.exception("Error starting DDNS sync")
+        return jsonify({'success': False, 'message': f'Failed to start DDNS sync: {str(e)}'}), 500
+
 @app.route('/api/cloud_backup/config', methods=['GET'])
 @login_required
 def api_cloud_backup_get_config():

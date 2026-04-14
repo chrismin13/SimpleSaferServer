@@ -3,6 +3,12 @@ document.addEventListener('DOMContentLoaded', () => {
   const saveBtn = document.getElementById('ddns-save-btn');
   const runBtn = document.getElementById('ddns-run-btn');
 
+  // Guard: bail out if critical elements are missing
+  if (!form || !saveBtn) {
+    console.error('DDNS: Required form elements not found');
+    return;
+  }
+
   // Load config and status
   async function loadData() {
     try {
@@ -41,11 +47,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function formatTime(isoString) {
     if (!isoString) return 'Never';
-    try {
-      return new Date(isoString).toLocaleString();
-    } catch (e) {
-      return isoString;
+    const date = new Date(isoString);
+    if (Number.isNaN(date.getTime())) {
+      return 'Never';
     }
+    return date.toLocaleString();
   }
 
   function updateStatusTiles(status, config, dt) {
@@ -58,6 +64,7 @@ document.addEventListener('DOMContentLoaded', () => {
       duckBadge.textContent = 'Disabled';
       duckBadge.className = 'badge badge-neutral';
       document.getElementById('duckdns-message').textContent = '—';
+      document.getElementById('duckdns-message').title = '';
     } else if (duckStatus) {
       let isError = duckStatus.status !== 'Success';
       duckBadge.textContent = duckStatus.status || 'Unknown';
@@ -67,6 +74,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
       duckBadge.textContent = 'Pending';
       duckBadge.className = 'badge badge-warning';
+      document.getElementById('duckdns-message').title = '';
     }
     document.getElementById('duckdns-last-sync').textContent = formatTime(status?.last_check);
     document.getElementById('duckdns-next-run').textContent = config?.duckdns?.enabled ? (dt?.next_run || '—') : '—';
@@ -81,6 +89,7 @@ document.addEventListener('DOMContentLoaded', () => {
       cfBadge.textContent = 'Disabled';
       cfBadge.className = 'badge badge-neutral';
       document.getElementById('cf-message').textContent = '—';
+      document.getElementById('cf-message').title = '';
     } else if (cfStatus) {
       let isError = cfStatus.status !== 'Success';
       cfBadge.textContent = cfStatus.status || 'Unknown';
@@ -90,6 +99,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
       cfBadge.textContent = 'Pending';
       cfBadge.className = 'badge badge-warning';
+      document.getElementById('cf-message').title = '';
     }
     document.getElementById('cf-last-sync').textContent = formatTime(status?.last_check);
     document.getElementById('cf-next-run').textContent = config?.cloudflare?.enabled ? (dt?.next_run || '—') : '—';
@@ -189,7 +199,7 @@ document.addEventListener('DOMContentLoaded', () => {
       runBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running...';
 
       try {
-        const response = await fetch('/task/DDNS%20Update/start', {
+        const response = await fetch('/api/ddns/run', {
           method: 'POST',
           headers: { 'Accept': 'application/json' }
         });
