@@ -28,6 +28,7 @@ SCRIPT_FILES=(
   predict_health.py
   log_alert.py
   import_legacy.py
+  ddns_update.sh
   ddns_update.py
 )
 
