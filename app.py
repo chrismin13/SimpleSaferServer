@@ -1741,11 +1741,10 @@ def get_ddns_config():
         status_file = runtime.data_dir / 'ddns_status.json'
         status = {}
         if status_file.exists():
-             try:
-                 status = json.loads(status_file.read_text())
-             except Exception:
-                 pass
-                 
+            try:
+                status = json.loads(status_file.read_text())
+            except Exception:
+                pass
         ddns_task = get_task("DDNS Update")
         next_run = ddns_task.next_run if ddns_task else "Unknown"
 
