@@ -23,7 +23,7 @@
 
     {% if runtime_mode == 'fake' %}
     <div class="fake-mode-banner">
-        <i class="fas fa-flask me-1"></i> Fake mode — system services and destructive actions are simulated
+        <i class="fas fa-flask me-1"></i> Fake mode — local system actions are simulated
     </div>
     {% endif %}
 
@@ -58,6 +58,11 @@
                 <a href="{{ url_for('drives') }}" class="nav-item {% if request.endpoint == 'drives' %}active{% endif %}">
                     <i class="fas fa-hard-drive fa-fw"></i> Drive Health
                 </a>
+                {% if is_admin %}
+                <a href="{{ url_for('ddns') }}" class="nav-item {% if request.endpoint == 'ddns' %}active{% endif %}">
+                    <i class="fas fa-globe fa-fw"></i> DDNS
+                </a>
+                {% endif %}
                 <a href="{{ url_for('cloud_backup') }}" class="nav-item {% if request.endpoint == 'cloud_backup' %}active{% endif %}">
                     <i class="fas fa-cloud-arrow-up fa-fw"></i> Cloud Backup
                 </a>

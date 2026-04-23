@@ -16,3 +16,7 @@ instead just do
 ---
 
 Prefer refactoring code if the end result will mean that the code will be simpler, more effective, and easier to maintain, rather than sticking to existing conventions, even if it means more work in the short term
+
+---
+
+Consider if anything that you add needs to be removed during the uninstallation by the uninstall.sh script.

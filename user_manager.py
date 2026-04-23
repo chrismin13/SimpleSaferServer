@@ -284,51 +284,40 @@ class UserManager:
         except subprocess.CalledProcessError:
             return False
 
-def login_required(f):
-    """Decorator to require login for routes"""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if 'username' not in session:
-            flash('Please log in to access this page', 'error')
-            return redirect(url_for('login'))
-        return f(*args, **kwargs)
-    return decorated_function
-
 def admin_required(f):
-    """Decorator to require admin privileges for routes"""
+    """Require an administrator session for HTML management pages."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if 'username' not in session:
+        username = session.get('username')
+        if not username:
             flash('Please log in to access this page', 'error')
             return redirect(url_for('login'))
-        
+
+        # Web UI sessions are admin-only, but roles can change after a cookie is
+        # issued. Re-check the user store on every protected request so demoted
+        # accounts do not keep a stale management session.
         user_manager = UserManager()
-        if not user_manager.is_admin(session['username']):
+        if not user_manager.is_admin(username):
+            session.clear()
             flash('Admin privileges required', 'error')
-            return redirect(url_for('dashboard'))
-        return f(*args, **kwargs)
-    return decorated_function
-
-
-def api_login_required(f):
-    """Decorator to require login for JSON API routes"""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if 'username' not in session:
-            return jsonify({'success': False, 'error': 'Please log in again.'}), 401
+            return redirect(url_for('login'))
         return f(*args, **kwargs)
     return decorated_function
 
 
 def api_admin_required(f):
-    """Decorator to require admin privileges for JSON API routes"""
+    """Require an administrator session for JSON API routes."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if 'username' not in session:
+        username = session.get('username')
+        if not username:
             return jsonify({'success': False, 'error': 'Please log in again.'}), 401
 
+        # API callers need status codes and JSON instead of redirects; keep this
+        # separate from admin_required so fetch() handlers can fail predictably.
         user_manager = UserManager()
-        if not user_manager.is_admin(session['username']):
+        if not user_manager.is_admin(username):
+            session.clear()
             return jsonify({'success': False, 'error': 'Admin privileges required.'}), 403
         return f(*args, **kwargs)
     return decorated_function
