@@ -17,6 +17,12 @@ Use a disposable test domain, test subdomain, or scoped Cloudflare token when te
 
 The updater writes provider details to `ddns_status.json` before it exits. If any enabled provider reports `Error` or `Configuration Missing`, the task exits with a failure code so systemd and the Dashboard show the `DDNS Update` run as failed while the DDNS page still has the specific provider message.
 
+## Alerts
+
+DDNS connection errors do not create email alerts. A connection error often means the server, home network, DNS resolver, or provider API is temporarily unreachable, so the failed task status is enough signal without sending alert email for every outage check.
+
+Provider and API errors that are not connection errors create an email alert once per distinct error message. Repeated runs with the same provider error are suppressed, but a different provider error message creates a new alert.
+
 ## Cloudflare Proxy Mode
 
 Cloudflare proxy mode is off by default. Leave it off for typical home-network DDNS, especially when the DNS name points to services such as WireGuard, SSH, game servers, media servers, or any custom TCP/UDP port. In that mode Cloudflare acts as DNS only, so clients connect directly to the public IP address in the `A` record.
