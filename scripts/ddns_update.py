@@ -162,7 +162,10 @@ def main():
     status_data['last_check'] = datetime.now().isoformat()
     provider_failures = []
 
-    duckdns_new_status = status_data.get('duckdns', {})
+    previous_duckdns_message = status_data.get('duckdns', {}).get('message')
+    # Copy the saved provider status before updating it, so alert de-dupe can
+    # compare this run's message against the status from the last completed run.
+    duckdns_new_status = dict(status_data.get('duckdns', {}))
     if duckdns_enabled:
         domain = config.get_value('ddns', 'duckdns_domain', '')
         token = config.get_secret('duckdns_token', '')
@@ -174,9 +177,9 @@ def main():
             if not success:
                 provider_failures.append(f"DuckDNS: {msg}")
 
-            # Alert once per unique error message to avoid alert spam
+            # Alert once per unique error message to avoid alert spam.
             if not success and "Connection" not in msg:
-                if status_data.get('duckdns', {}).get('message') != msg:
+                if previous_duckdns_message != msg:
                     config.log_alert("DuckDNS DDNS Update Failed", f"Domain {domain}: {msg}", alert_type="error")
         else:
             duckdns_new_status['status'] = 'Configuration Missing'
@@ -185,7 +188,10 @@ def main():
     else:
         duckdns_new_status = {}
 
-    cf_new_status = status_data.get('cloudflare', {})
+    previous_cf_message = status_data.get('cloudflare', {}).get('message')
+    # Keep Cloudflare's new status independent from the saved data for the same
+    # reason as DuckDNS: the old message is what controls alert de-dupe.
+    cf_new_status = dict(status_data.get('cloudflare', {}))
     if cf_enabled:
         zone = config.get_value('ddns', 'cloudflare_zone', '')
         record = config.get_value('ddns', 'cloudflare_record', '')
@@ -199,9 +205,9 @@ def main():
                 logger.info(f"Cloudflare Update result: {cf_new_status['status']} - {msg}")
                 if not success:
                     provider_failures.append(f"Cloudflare: {msg}")
-                # Alert once per unique error message to avoid alert spam
+                # Alert once per unique error message to avoid alert spam.
                 if not success and "Connection" not in msg:
-                    if status_data.get('cloudflare', {}).get('message') != msg:
+                    if previous_cf_message != msg:
                         config.log_alert("Cloudflare DDNS Update Failed", f"Record {record}: {msg}", alert_type="error")
             else:
                 cf_new_status['status'] = 'Error'

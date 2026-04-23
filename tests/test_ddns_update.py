@@ -55,6 +55,7 @@ class CloudflareDdnsTests(unittest.TestCase):
         public_ip="203.0.113.10",
         duckdns_result=(True, "OK"),
         cloudflare_result=(True, "Updated successfully"),
+        initial_status=None,
     ):
         secrets = secrets or {}
         config_instances = []
@@ -76,6 +77,10 @@ class CloudflareDdnsTests(unittest.TestCase):
 
         with TemporaryDirectory() as temp_dir:
             runtime = types.SimpleNamespace(data_dir=Path(temp_dir))
+            if initial_status is not None:
+                # Seed the status file exactly like a prior scheduled run would
+                # leave it, because alert de-dupe depends on persisted messages.
+                (runtime.data_dir / "ddns_status.json").write_text(json.dumps(initial_status))
             with patch("scripts.ddns_update.get_runtime", return_value=runtime), patch(
                 "scripts.ddns_update.ConfigManager", FakeConfigManager
             ), patch("scripts.ddns_update.get_public_ip", return_value=public_ip), patch(
@@ -175,6 +180,70 @@ class CloudflareDdnsTests(unittest.TestCase):
         self.assertEqual(status_data["duckdns"]["status"], "Error")
         self.assertEqual(status_data["duckdns"]["message"], "API returned: KO")
         self.assertEqual(len(config.alerts), 1)
+
+    def test_main_alerts_when_duckdns_error_message_changes(self):
+        exit_code, status_data, config = self.run_main_with_config(
+            {
+                ("ddns", "duckdns_enabled"): "true",
+                ("ddns", "duckdns_domain"): "home",
+                ("ddns", "cloudflare_enabled"): "false",
+            },
+            secrets={"duckdns_token": "token"},
+            duckdns_result=(False, "API returned: KO"),
+            initial_status={"duckdns": {"status": "Error", "message": "API returned: BAD"}},
+        )
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(status_data["duckdns"]["message"], "API returned: KO")
+        self.assertEqual(len(config.alerts), 1)
+
+    def test_main_suppresses_repeated_duckdns_error_message(self):
+        _exit_code, status_data, config = self.run_main_with_config(
+            {
+                ("ddns", "duckdns_enabled"): "true",
+                ("ddns", "duckdns_domain"): "home",
+                ("ddns", "cloudflare_enabled"): "false",
+            },
+            secrets={"duckdns_token": "token"},
+            duckdns_result=(False, "API returned: KO"),
+            initial_status={"duckdns": {"status": "Error", "message": "API returned: KO"}},
+        )
+
+        self.assertEqual(status_data["duckdns"]["message"], "API returned: KO")
+        self.assertEqual(config.alerts, [])
+
+    def test_main_alerts_when_cloudflare_error_message_changes(self):
+        exit_code, status_data, config = self.run_main_with_config(
+            {
+                ("ddns", "duckdns_enabled"): "false",
+                ("ddns", "cloudflare_enabled"): "true",
+                ("ddns", "cloudflare_zone"): "zone-123",
+                ("ddns", "cloudflare_record"): "server.example.com",
+            },
+            secrets={"cloudflare_token": "token"},
+            cloudflare_result=(False, "Record does not exist."),
+            initial_status={"cloudflare": {"status": "Error", "message": "API returned failure"}},
+        )
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(status_data["cloudflare"]["message"], "Record does not exist.")
+        self.assertEqual(len(config.alerts), 1)
+
+    def test_main_suppresses_repeated_cloudflare_error_message(self):
+        _exit_code, status_data, config = self.run_main_with_config(
+            {
+                ("ddns", "duckdns_enabled"): "false",
+                ("ddns", "cloudflare_enabled"): "true",
+                ("ddns", "cloudflare_zone"): "zone-123",
+                ("ddns", "cloudflare_record"): "server.example.com",
+            },
+            secrets={"cloudflare_token": "token"},
+            cloudflare_result=(False, "Record does not exist."),
+            initial_status={"cloudflare": {"status": "Error", "message": "Record does not exist."}},
+        )
+
+        self.assertEqual(status_data["cloudflare"]["message"], "Record does not exist.")
+        self.assertEqual(config.alerts, [])
 
     def test_main_returns_failure_after_writing_missing_config_status(self):
         exit_code, status_data, _config = self.run_main_with_config(
