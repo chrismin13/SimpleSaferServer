@@ -237,14 +237,18 @@ from system_utils import SystemUtils
 
 rt = get_runtime()
 config = ConfigManager(runtime=rt).get_all_config()
+setup_complete = config.get('system', {}).get('setup_complete', 'false').lower() == 'true'
 # install_systemd_services_and_timers catches exceptions and returns (success, error)
 # rather than raising, so we must check the tuple explicitly.
-success, error = SystemUtils(runtime=rt).install_systemd_services_and_timers(config)
+success, error = SystemUtils(runtime=rt).install_systemd_services_and_timers(
+    config,
+    activate_timers=setup_complete,
+)
 if not success:
     print(f'Error: {error}', file=sys.stderr)
     sys.exit(1)
 "; then
-  echo -e "${GREEN}✔ Background services generated and restarted.${NC}\n"
+  echo -e "${GREEN}✔ Background services generated. Recurring timers are active only after setup is complete.${NC}\n"
 else
   echo -e "${RED}ERROR: Failed to generate and register background services.${NC}"
   echo -e "${RED}DDNS and other scheduled tasks will not run without the systemd units.${NC}"

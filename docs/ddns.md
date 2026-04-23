@@ -2,6 +2,12 @@
 
 Dynamic DNS keeps public DNS records pointed at the server's current public IPv4 address. The `DDNS Update` task can run on schedule from systemd or immediately from the Dashboard task controls.
 
+## Fake Mode Behavior
+
+Fake mode simulates local system services, disks, Samba, and destructive machine actions. It does not sandbox DDNS provider APIs. If DuckDNS or Cloudflare is enabled with valid credentials, saving the DDNS settings or manually forcing a sync can update live DNS records.
+
+Use a disposable test domain, test subdomain, or scoped Cloudflare token when testing DDNS provider behavior from fake mode.
+
 ## Providers
 
 - **DuckDNS** updates the configured DuckDNS domain. When SimpleSaferServer cannot detect a public IPv4 address, DuckDNS can still use its own automatic IP detection.

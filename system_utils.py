@@ -247,8 +247,8 @@ cloudflare_proxy = {ddns_config.get('cloudflare_proxy', 'false')}
             self.logger.error(f"Error creating systemd config file: {e}")
             return False, str(e)
 
-    def install_systemd_services_and_timers(self, config):
-        """Install systemd services and timers with proper formatting"""
+    def install_systemd_services_and_timers(self, config, activate_timers=True):
+        """Install systemd services/timers and optionally activate the recurring work."""
         try:
             schedule = config.get('schedule', {})
             backup_cloud_time = schedule.get('backup_cloud_time', '3:00:00')
@@ -385,10 +385,23 @@ WantedBy=timers.target
                 file_path.write_text(content)
                 self.logger.info(f"Created systemd file: {file_path}")
             
-            # Reload systemd daemon
+            # Reload after writing the units so systemd sees the current generated files even
+            # while first-run setup is still pending.
             if self.runtime.is_fake:
                 return True, None
             self.run_command(['systemctl', 'daemon-reload'])
+
+            if not activate_timers:
+                for service_name in ['check_mount', 'check_health', 'backup_cloud', 'ddns_update']:
+                    # Persistent timers replay missed runs as soon as they start. During first-run
+                    # setup the config still has empty mount/rclone/email fields, so keep every
+                    # generated recurring unit inactive until the wizard completes.
+                    self.run_command(['systemctl', 'stop', f'{service_name}.timer'], check=False)
+                    self.run_command(['systemctl', 'disable', f'{service_name}.timer'], check=False)
+                    self.run_command(['systemctl', 'disable', f'{service_name}.service'], check=False)
+                    self.logger.info(f"Generated {service_name} service and timer without activation")
+
+                return True, None
             
             # Enable and start services and timers
             for service_name in ['check_mount', 'check_health', 'backup_cloud', 'ddns_update']:
@@ -405,4 +418,4 @@ WantedBy=timers.target
             
         except Exception as e:
             self.logger.error(f"Error installing systemd services and timers: {e}")
-            return False, str(e) 
+            return False, str(e)
