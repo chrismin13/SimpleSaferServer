@@ -1,5 +1,7 @@
 import json
+from pathlib import Path
 import sys
+from tempfile import TemporaryDirectory
 import types
 import unittest
 from unittest.mock import patch
@@ -46,6 +48,48 @@ class FakeResponse:
 
 
 class CloudflareDdnsTests(unittest.TestCase):
+    def run_main_with_config(
+        self,
+        values,
+        secrets=None,
+        public_ip="203.0.113.10",
+        duckdns_result=(True, "OK"),
+        cloudflare_result=(True, "Updated successfully"),
+    ):
+        secrets = secrets or {}
+        config_instances = []
+
+        class FakeConfigManager:
+            def __init__(self, runtime):
+                self.runtime = runtime
+                self.alerts = []
+                config_instances.append(self)
+
+            def get_value(self, section, key, default=None):
+                return values.get((section, key), default)
+
+            def get_secret(self, key, default=None):
+                return secrets.get(key, default)
+
+            def log_alert(self, *args, **kwargs):
+                self.alerts.append((args, kwargs))
+
+        with TemporaryDirectory() as temp_dir:
+            runtime = types.SimpleNamespace(data_dir=Path(temp_dir))
+            with patch("scripts.ddns_update.get_runtime", return_value=runtime), patch(
+                "scripts.ddns_update.ConfigManager", FakeConfigManager
+            ), patch("scripts.ddns_update.get_public_ip", return_value=public_ip), patch(
+                "scripts.ddns_update.update_duckdns", return_value=duckdns_result
+            ), patch(
+                "scripts.ddns_update.update_cloudflare", return_value=cloudflare_result
+            ):
+                exit_code = ddns_update.main()
+
+            status_file = runtime.data_dir / "ddns_status.json"
+            status_data = json.loads(status_file.read_text()) if status_file.exists() else None
+
+        return exit_code, status_data, config_instances[0]
+
     def test_get_cloudflare_record_returns_proxy_state(self):
         payload = {
             "success": True,
@@ -115,6 +159,72 @@ class CloudflareDdnsTests(unittest.TestCase):
                 "ttl": 1,
             },
         )
+
+    def test_main_returns_failure_after_writing_duckdns_error_status(self):
+        exit_code, status_data, config = self.run_main_with_config(
+            {
+                ("ddns", "duckdns_enabled"): "true",
+                ("ddns", "duckdns_domain"): "home",
+                ("ddns", "cloudflare_enabled"): "false",
+            },
+            secrets={"duckdns_token": "token"},
+            duckdns_result=(False, "API returned: KO"),
+        )
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(status_data["duckdns"]["status"], "Error")
+        self.assertEqual(status_data["duckdns"]["message"], "API returned: KO")
+        self.assertEqual(len(config.alerts), 1)
+
+    def test_main_returns_failure_after_writing_missing_config_status(self):
+        exit_code, status_data, _config = self.run_main_with_config(
+            {
+                ("ddns", "duckdns_enabled"): "false",
+                ("ddns", "cloudflare_enabled"): "true",
+                ("ddns", "cloudflare_zone"): "zone-123",
+                ("ddns", "cloudflare_record"): "server.example.com",
+            },
+            secrets={},
+        )
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(status_data["cloudflare"]["status"], "Configuration Missing")
+        self.assertEqual(status_data["cloudflare"]["message"], "Zone, Record, or Token is missing.")
+
+    def test_main_returns_failure_when_cloudflare_requires_missing_public_ip(self):
+        exit_code, status_data, _config = self.run_main_with_config(
+            {
+                ("ddns", "duckdns_enabled"): "false",
+                ("ddns", "cloudflare_enabled"): "true",
+                ("ddns", "cloudflare_zone"): "zone-123",
+                ("ddns", "cloudflare_record"): "server.example.com",
+            },
+            secrets={"cloudflare_token": "token"},
+            public_ip=None,
+        )
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(status_data["cloudflare"]["status"], "Error")
+        self.assertEqual(
+            status_data["cloudflare"]["message"],
+            "Failed to fetch public IP required for Cloudflare.",
+        )
+
+    def test_main_returns_success_when_enabled_providers_succeed(self):
+        exit_code, status_data, _config = self.run_main_with_config(
+            {
+                ("ddns", "duckdns_enabled"): "true",
+                ("ddns", "duckdns_domain"): "home",
+                ("ddns", "cloudflare_enabled"): "true",
+                ("ddns", "cloudflare_zone"): "zone-123",
+                ("ddns", "cloudflare_record"): "server.example.com",
+            },
+            secrets={"duckdns_token": "token", "cloudflare_token": "token"},
+        )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(status_data["duckdns"]["status"], "Success")
+        self.assertEqual(status_data["cloudflare"]["status"], "Success")
 
 
 if __name__ == "__main__":

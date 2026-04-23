@@ -13,6 +13,10 @@ Use a disposable test domain, test subdomain, or scoped Cloudflare token when te
 - **DuckDNS** updates the configured DuckDNS domain. When SimpleSaferServer cannot detect a public IPv4 address, DuckDNS can still use its own automatic IP detection.
 - **Cloudflare** updates an existing `A` record in the configured zone. Cloudflare requires the public IPv4 address from SimpleSaferServer, so the Cloudflare update fails if that address cannot be detected.
 
+## Task Status
+
+The updater writes provider details to `ddns_status.json` before it exits. If any enabled provider reports `Error` or `Configuration Missing`, the task exits with a failure code so systemd and the Dashboard show the `DDNS Update` run as failed while the DDNS page still has the specific provider message.
+
 ## Cloudflare Proxy Mode
 
 Cloudflare proxy mode is off by default. Leave it off for typical home-network DDNS, especially when the DNS name points to services such as WireGuard, SSH, game servers, media servers, or any custom TCP/UDP port. In that mode Cloudflare acts as DNS only, so clients connect directly to the public IP address in the `A` record.

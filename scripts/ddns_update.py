@@ -142,7 +142,7 @@ def main():
 
     if not duckdns_enabled and not cf_enabled:
         logger.info("No DDNS services enabled.")
-        sys.exit(0)
+        return 0
 
     status_file = runtime.data_dir / 'ddns_status.json'
     try:
@@ -160,6 +160,7 @@ def main():
         logger.warning("Could not fetch IPv4. Falling back to duckdns auto-detect for DuckDNS, but Cloudflare will fail.")
 
     status_data['last_check'] = datetime.now().isoformat()
+    provider_failures = []
 
     duckdns_new_status = status_data.get('duckdns', {})
     if duckdns_enabled:
@@ -170,6 +171,8 @@ def main():
             duckdns_new_status['status'] = 'Success' if success else 'Error'
             duckdns_new_status['message'] = msg
             logger.info(f"DuckDNS Update result: {duckdns_new_status['status']} - {msg}")
+            if not success:
+                provider_failures.append(f"DuckDNS: {msg}")
 
             # Alert once per unique error message to avoid alert spam
             if not success and "Connection" not in msg:
@@ -178,6 +181,7 @@ def main():
         else:
             duckdns_new_status['status'] = 'Configuration Missing'
             duckdns_new_status['message'] = 'Domain or Token is missing.'
+            provider_failures.append(f"DuckDNS: {duckdns_new_status['message']}")
     else:
         duckdns_new_status = {}
 
@@ -193,6 +197,8 @@ def main():
                 cf_new_status['status'] = 'Success' if success else 'Error'
                 cf_new_status['message'] = msg
                 logger.info(f"Cloudflare Update result: {cf_new_status['status']} - {msg}")
+                if not success:
+                    provider_failures.append(f"Cloudflare: {msg}")
                 # Alert once per unique error message to avoid alert spam
                 if not success and "Connection" not in msg:
                     if status_data.get('cloudflare', {}).get('message') != msg:
@@ -200,9 +206,11 @@ def main():
             else:
                 cf_new_status['status'] = 'Error'
                 cf_new_status['message'] = 'Failed to fetch public IP required for Cloudflare.'
+                provider_failures.append(f"Cloudflare: {cf_new_status['message']}")
         else:
             cf_new_status['status'] = 'Configuration Missing'
             cf_new_status['message'] = 'Zone, Record, or Token is missing.'
+            provider_failures.append(f"Cloudflare: {cf_new_status['message']}")
     else:
         cf_new_status = {}
 
@@ -217,9 +225,16 @@ def main():
     tmp_file.chmod(0o644)
     os.replace(tmp_file, status_file)
 
+    if provider_failures:
+        # The status file is still the source of provider details; the exit code
+        # is the signal systemd and fake-mode task tracking use for success/failure.
+        logger.error("DDNS provider update failed: %s", "; ".join(provider_failures))
+        return 1
+    return 0
+
 if __name__ == '__main__':
     try:
-        main()
+        sys.exit(main())
     except Exception as e:
         logger.error(f"Unexpected error in DDNS Update script: {e}")
         sys.exit(1)
