@@ -80,6 +80,12 @@ class ConfigManager:
             'health_change_alert': 'true'
         }
 
+        self.config['apt_updates'] = {
+            'update_package_lists': 'false',
+            'unattended_upgrade': 'false',
+            'autoclean': 'true'
+        }
+
         self.save_config()
 
     def save_config(self):

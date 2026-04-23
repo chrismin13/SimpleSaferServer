@@ -61,6 +61,9 @@
                 <a href="{{ url_for('cloud_backup') }}" class="nav-item {% if request.endpoint == 'cloud_backup' %}active{% endif %}">
                     <i class="fas fa-cloud-arrow-up fa-fw"></i> Cloud Backup
                 </a>
+                <a href="{{ url_for('system_updates') }}" class="nav-item {% if request.endpoint == 'system_updates' %}active{% endif %}">
+                    <i class="fas fa-download fa-fw"></i> System Updates
+                </a>
                 <a href="{{ url_for('alerts') }}" class="nav-item {% if request.endpoint == 'alerts' %}active{% endif %}">
                     <i class="fas fa-bell fa-fw"></i> Alerts
                 </a>
