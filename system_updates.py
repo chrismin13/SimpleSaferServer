@@ -36,36 +36,36 @@ APT_PROCESS_MARKERS = (
 
 SUPPORT_INFO = {
     "debian": {
-        # Debian's wiki also lists LTS/ELTS columns, but this app uses the
-        # normal release-table EOL date so the status does not depend on paid or
-        # externally contracted extended support.
+        # Debian LTS dates are used for support status where available.
+        # Debian ELTS dates are intentionally excluded because ELTS is externally
+        # provided paid support and is not generally available by default.
         "13": {
             "standard_eol": "2028-08-09",
             "standard_eol_display": "August 9, 2028",
             "max_eol": "2030-06-30",
             "max_eol_display": "June 30, 2030",
-            "notes": "Support status uses Debian's normal end-of-life date.",
+            "notes": "Support status includes Debian LTS but excludes paid ELTS.",
         },
         "12": {
             "standard_eol": "2026-06-10",
             "standard_eol_display": "June 10, 2026",
-            "max_eol": "2026-06-10",
-            "max_eol_display": "June 10, 2026",
-            "notes": "Support status uses Debian's normal end-of-life date.",
+            "max_eol": "2028-06-30",
+            "max_eol_display": "June 30, 2028",
+            "notes": "Support status includes Debian LTS but excludes paid ELTS.",
         },
         "11": {
             "standard_eol": "2024-08-14",
             "standard_eol_display": "August 14, 2024",
-            "max_eol": "2024-08-14",
-            "max_eol_display": "August 14, 2024",
-            "notes": "Support status uses Debian's normal end-of-life date.",
+            "max_eol": "2026-08-31",
+            "max_eol_display": "August 31, 2026",
+            "notes": "Support status includes Debian LTS but excludes paid ELTS.",
         },
         "10": {
             "standard_eol": "2022-09-10",
             "standard_eol_display": "September 10, 2022",
-            "max_eol": "2022-09-10",
-            "max_eol_display": "September 10, 2022",
-            "notes": "Support status uses Debian's normal end-of-life date.",
+            "max_eol": "2024-06-30",
+            "max_eol_display": "June 30, 2024",
+            "notes": "Support status includes Debian LTS but excludes paid ELTS.",
         },
     },
     "ubuntu": {

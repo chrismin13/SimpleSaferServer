@@ -51,7 +51,7 @@ class SystemUpdatesTests(unittest.TestCase):
 
         self.assertTrue(support["known"])
         self.assertEqual(support["standard_eol"], "2026-06-10")
-        self.assertEqual(support["max_eol"], "2026-06-10")
+        self.assertEqual(support["max_eol"], "2028-06-30")
 
     def test_ubuntu_support_uses_major_minor_version(self):
         support = get_support_info("ubuntu", "24.04.4")
