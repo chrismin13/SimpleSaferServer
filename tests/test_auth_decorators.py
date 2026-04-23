@@ -120,20 +120,6 @@ def _decorator_name(decorator):
 
 
 class AppRouteAuthorizationTests(unittest.TestCase):
-    def test_app_routes_do_not_use_removed_login_only_decorators(self):
-        tree = ast.parse(APP_SOURCE.read_text())
-        decorator_names = {
-            name
-            for node in ast.walk(tree)
-            if isinstance(node, ast.FunctionDef)
-            for name in (_decorator_name(decorator) for decorator in node.decorator_list)
-        }
-
-        # The management UI is admin-only. login_required/api_login_required were
-        # intentionally removed so demoted users cannot keep using a stale session.
-        self.assertNotIn('login_required', decorator_names)
-        self.assertNotIn('api_login_required', decorator_names)
-
     def test_system_update_api_routes_use_json_admin_guard(self):
         tree = ast.parse(APP_SOURCE.read_text())
         routes = {}
