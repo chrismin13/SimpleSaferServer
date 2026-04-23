@@ -35,7 +35,7 @@ from drive_health import (
 )
 from setup_wizard import setup, install_systemd_tasks
 import logging
-from user_manager import UserManager, login_required, admin_required, api_login_required, api_admin_required
+from user_manager import UserManager, admin_required, api_admin_required
 from flask_socketio import SocketIO
 from logging.handlers import RotatingFileHandler
 import time
@@ -428,7 +428,7 @@ def auto_login_fake_mode_user():
     return None
 
 @app.route('/network_file_sharing')
-@login_required
+@admin_required
 def network_file_sharing():
     backup_mount_point = config_manager.get_value('backup', 'mount_point', runtime.default_mount_point)
     return render_template(
@@ -439,7 +439,7 @@ def network_file_sharing():
     )
 
 @app.route('/users')
-@login_required
+@admin_required
 def users():
     return render_template('users.html', username=session.get('username'))
 
@@ -451,7 +451,7 @@ def logout():
     return redirect(url_for('login'))
 
 @app.route('/dashboard')
-@login_required
+@admin_required
 def dashboard():
     if not config_manager.is_setup_complete():
         return redirect(url_for('setup.setup_page'))
@@ -509,7 +509,7 @@ def dashboard():
 
 
 @app.route("/task/<task_name>")
-@login_required
+@admin_required
 def task_detail(task_name):
     task = get_task(task_name)
     if not task:
@@ -519,7 +519,7 @@ def task_detail(task_name):
 
 
 @app.route("/task/<task_name>/logs")
-@login_required
+@admin_required
 def task_logs(task_name):
     """Return latest logs for the given task."""
     task = get_task(task_name)
@@ -531,7 +531,7 @@ def task_logs(task_name):
 
 
 @app.route("/task/<task_name>/start", methods=["POST"])
-@login_required
+@admin_required
 def start_task(task_name):
     task = get_task(task_name)
     if not task:
@@ -550,7 +550,7 @@ def start_task(task_name):
 
 
 @app.route("/task/<task_name>/stop", methods=["POST"])
-@login_required
+@admin_required
 def stop_task(task_name):
     task = get_task(task_name)
     if not task:
@@ -571,7 +571,7 @@ def stop_task(task_name):
 
 # API route for running a task
 @app.route("/run_task/<task_name>", methods=["POST"])
-@login_required
+@admin_required
 def run_task(task_name):
 
     task = get_task(task_name)
@@ -594,7 +594,7 @@ def _get_check_mount_next_run():
 
 # API route for unmounting storage
 @app.route("/unmount", methods=["POST"])
-@login_required
+@admin_required
 def unmount():
     mount_point = config_manager.get_value('backup', 'mount_point', runtime.default_mount_point)
     configured_uuid = config_manager.get_value('backup', 'uuid', None)
@@ -664,7 +664,7 @@ def shutdown():
 
 # Drive health page
 @app.route("/drives", methods=["GET", "POST"])
-@login_required
+@admin_required
 def drives():
     prediction = None
     probability = None
@@ -760,7 +760,7 @@ def drives():
 
 
 @app.route("/download_telemetry")
-@login_required
+@admin_required
 def download_telemetry():
     if runtime.telemetry_path.exists():
         return send_file(runtime.telemetry_path, as_attachment=True)
@@ -1083,18 +1083,18 @@ def ddns():
     return render_template('ddns.html', username=session.get('username'))
 
 @app.route('/cloud_backup')
-@login_required
+@admin_required
 def cloud_backup():
     return render_template('cloud_backup.html', username=session.get('username'))
 
 @app.route('/alerts')
-@login_required
+@admin_required
 def alerts():
     return render_template('alerts.html', username=session.get('username'))
 
 # Alerts API endpoints
 @app.route('/api/alerts/generate-test', methods=['POST'])
-@admin_required
+@api_admin_required
 def api_generate_test_alerts():
     """Debug route: Generate test alerts for UI testing. Only available in fake/dev mode."""
     if not runtime.is_fake:
@@ -1110,7 +1110,7 @@ def api_generate_test_alerts():
         return jsonify({'success': False, 'error': 'Failed to generate test alerts'}), 500
 
 @app.route('/api/alerts', methods=['GET'])
-@login_required
+@api_admin_required
 def api_get_alerts():
     """Get all alerts"""
     try:
@@ -1121,7 +1121,7 @@ def api_get_alerts():
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/alerts/<int:alert_id>', methods=['GET'])
-@login_required
+@api_admin_required
 def api_get_alert(alert_id):
     """Get a specific alert by ID"""
     try:
@@ -1137,7 +1137,7 @@ def api_get_alert(alert_id):
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/alerts/<int:alert_id>/mark-read', methods=['POST'])
-@login_required
+@api_admin_required
 def api_mark_alert_read(alert_id):
     """Mark an alert as read"""
     try:
@@ -1151,7 +1151,7 @@ def api_mark_alert_read(alert_id):
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/alerts/clear', methods=['POST'])
-@admin_required
+@api_admin_required
 def api_clear_alerts():
     """Clear all alerts"""
     try:
@@ -1165,7 +1165,7 @@ def api_clear_alerts():
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/alerts/mark-all-read', methods=['POST'])
-@login_required
+@api_admin_required
 def api_mark_all_alerts_read():
     """Mark all alerts as read"""
     try:
@@ -1179,7 +1179,7 @@ def api_mark_all_alerts_read():
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/alerts/email-config', methods=['GET'])
-@login_required
+@api_admin_required
 def api_get_email_config():
     """Get current email configuration"""
     try:
@@ -1201,7 +1201,7 @@ def api_get_email_config():
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/alerts/email-config', methods=['POST'])
-@admin_required
+@api_admin_required
 def api_set_email_config():
     """Set email configuration"""
     try:
@@ -1245,7 +1245,7 @@ def inject_username():
     )
 
 @app.route('/api/users', methods=['GET'])
-@admin_required
+@api_admin_required
 def api_list_users():
     # Reload user data to ensure we have the latest
     user_manager.users = user_manager._load_users()
@@ -1260,7 +1260,7 @@ def api_list_users():
     return jsonify({'success': True, 'users': users})
 
 @app.route('/api/users', methods=['POST'])
-@admin_required
+@api_admin_required
 def api_add_user():
     # Reload user data to ensure we have the latest
     user_manager.users = user_manager._load_users()
@@ -1281,7 +1281,7 @@ def api_add_user():
     return jsonify({'success': False, 'error': message})
 
 @app.route('/api/users/<username>', methods=['PUT'])
-@admin_required
+@api_admin_required
 def api_edit_user(username):
     # Reload user data to ensure we have the latest
     user_manager.users = user_manager._load_users()
@@ -1312,7 +1312,7 @@ def api_edit_user(username):
     return jsonify({'success': True})
 
 @app.route('/api/users/<username>', methods=['DELETE'])
-@admin_required
+@api_admin_required
 def api_delete_user(username):
     # Reload user data to ensure we have the latest
     user_manager.users = user_manager._load_users()
@@ -1328,7 +1328,7 @@ def api_delete_user(username):
 
 # SMB Share Management API endpoints
 @app.route('/api/smb/shares', methods=['GET'])
-@admin_required
+@api_admin_required
 def api_list_smb_shares():
     """Get the SimpleSaferServer-managed SMB shares plus unmanaged-share metadata."""
     try:
@@ -1345,7 +1345,7 @@ def api_list_smb_shares():
         return jsonify({'error': 'Failed to read SMB shares'}), 500
 
 @app.route('/api/smb/shares', methods=['POST'])
-@admin_required
+@api_admin_required
 def api_add_smb_share():
     """Add a new SMB share"""
     try:
@@ -1375,7 +1375,7 @@ def api_add_smb_share():
         return jsonify({'error': 'Failed to add SMB share'}), 500
 
 @app.route('/api/smb/shares/<share_name>', methods=['PUT'])
-@admin_required
+@api_admin_required
 def api_edit_smb_share(share_name):
     """Edit an existing SMB share"""
     try:
@@ -1405,7 +1405,7 @@ def api_edit_smb_share(share_name):
         return jsonify({'error': 'Failed to edit SMB share'}), 500
 
 @app.route('/api/smb/shares/<share_name>', methods=['DELETE'])
-@admin_required
+@api_admin_required
 def api_delete_smb_share(share_name):
     """Delete an SMB share"""
     try:
@@ -1418,7 +1418,7 @@ def api_delete_smb_share(share_name):
         return jsonify({'error': 'Failed to delete SMB share'}), 500
 
 @app.route('/api/smb/status')
-@login_required
+@api_admin_required
 def api_smb_status():
     """Get SMB service status"""
     try:
@@ -1429,7 +1429,7 @@ def api_smb_status():
         return jsonify({'error': 'Failed to get SMB status'}), 500
 
 @app.route('/api/smb/restart', methods=['POST'])
-@admin_required
+@api_admin_required
 def api_restart_smb():
     """Restart SMB services"""
     try:
@@ -1442,7 +1442,7 @@ def api_restart_smb():
         return jsonify({'error': 'Failed to restart SMB services'}), 500
 
 @app.route('/api/smb/shares/<share_name>/users', methods=['GET'])
-@admin_required
+@api_admin_required
 def api_get_share_users(share_name):
     """Get users who have access to a specific share"""
     try:
@@ -1461,7 +1461,7 @@ def api_get_share_users(share_name):
         return jsonify({'error': 'Failed to get share users'}), 500
 
 @app.route('/api/smb/shares/<share_name>/users', methods=['PUT'])
-@admin_required
+@api_admin_required
 def api_update_share_users(share_name):
     """Update users who have access to a specific share"""
     try:
@@ -1482,7 +1482,7 @@ def api_update_share_users(share_name):
         return jsonify({'error': 'Failed to update share users'}), 500
 
 @app.route('/api/list_dirs', methods=['GET'])
-@admin_required
+@api_admin_required
 def api_list_dirs():
     """List subdirectories of a given path for folder picker UI."""
     path = request.args.get('path', '/')
@@ -1506,7 +1506,7 @@ def api_list_dirs():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/storage/status')
-@login_required
+@api_admin_required
 def api_storage_status():
     mount_point = config_manager.get_value('backup', 'mount_point', runtime.default_mount_point)
     mounted = system_utils.is_mounted(mount_point)
@@ -1529,7 +1529,7 @@ def api_storage_status():
     })
 
 @app.route('/api/drive_health/summary')
-@login_required
+@api_admin_required
 def api_drive_health_summary():
     try:
         smart, missing_attrs, smart_error = get_smart_attributes(config_manager, system_utils, runtime=runtime)
@@ -1561,7 +1561,7 @@ def api_drive_health_summary():
         return jsonify({'status': 'unknown', 'probability': None, 'temperature': None})
 
 @app.route("/mount", methods=["POST"])
-@login_required
+@admin_required
 def dashboard_mount_drive():
     mount_point = config_manager.get_value('backup', 'mount_point', runtime.default_mount_point)
     uuid = config_manager.get_value('backup', 'uuid', None)
@@ -1597,7 +1597,7 @@ def dashboard_mount_drive():
         return jsonify({"success": False, "message": f"Unexpected error: {e}"}), 500
 
 @app.route('/api/system/resources')
-@login_required
+@api_admin_required
 def api_system_resources():
     try:
         cpu_percent = psutil.cpu_percent(interval=0.2)
@@ -1613,7 +1613,7 @@ def api_system_resources():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/tasks/schedule')
-@login_required
+@api_admin_required
 def api_tasks_schedule():
     try:
         tasks = []
@@ -1644,7 +1644,6 @@ def api_tasks_schedule():
 
 
 @app.route('/api/backup_drive/drives', methods=['GET'])
-@api_login_required
 @api_admin_required
 def api_backup_drive_drives():
     try:
@@ -1655,7 +1654,6 @@ def api_backup_drive_drives():
 
 
 @app.route('/api/backup_drive/unmount', methods=['POST'])
-@api_login_required
 @api_admin_required
 def api_backup_drive_unmount():
     try:
@@ -1693,7 +1691,6 @@ def api_backup_drive_unmount():
 
 
 @app.route('/api/backup_drive/configure', methods=['POST'])
-@api_login_required
 @api_admin_required
 def api_backup_drive_configure():
     try:
@@ -1717,7 +1714,6 @@ def api_backup_drive_configure():
         return jsonify({'success': False, 'error': 'Could not configure the backup drive.'})
 
 @app.route('/api/ddns/config', methods=['GET'])
-@api_login_required
 @api_admin_required
 def get_ddns_config():
     try:
@@ -1759,7 +1755,6 @@ def get_ddns_config():
         return jsonify({'success': False, 'message': 'Failed to load DDNS configuration.'}), 500
 
 @app.route('/api/ddns/config', methods=['POST'])
-@api_login_required
 @api_admin_required
 def save_ddns_config():
     try:
@@ -1835,7 +1830,6 @@ def save_ddns_config():
         return jsonify({'success': False, 'message': 'Failed to save DDNS configuration.'}), 500
 
 @app.route('/api/ddns/run', methods=['POST'])
-@api_login_required
 @api_admin_required
 def run_ddns_manual():
     """Admin-only endpoint to manually trigger DDNS update."""
@@ -1850,7 +1844,7 @@ def run_ddns_manual():
         return jsonify({'success': False, 'message': f'Failed to start DDNS sync: {str(e)}'}), 500
 
 @app.route('/api/cloud_backup/config', methods=['GET'])
-@login_required
+@api_admin_required
 def api_cloud_backup_get_config():
     """Get current cloud backup configuration (MEGA/rclone, schedule, bandwidth)"""
     try:
@@ -1880,7 +1874,7 @@ def api_cloud_backup_get_config():
         return jsonify({'success': False, 'error': 'Could not load backup settings.'})
 
 @app.route('/api/cloud_backup/config', methods=['POST'])
-@login_required
+@api_admin_required
 def api_cloud_backup_set_config():
     """Set cloud backup configuration (MEGA/rclone, schedule, bandwidth)"""
     try:
@@ -1943,7 +1937,7 @@ def api_cloud_backup_set_config():
         return jsonify({'success': False, 'error': 'Could not save backup settings.'})
 
 @app.route('/api/cloud_backup/status', methods=['GET'])
-@login_required
+@api_admin_required
 def api_cloud_backup_status():
     """Get status, last run, next run, and run duration for the cloud backup task."""
     try:
@@ -1962,7 +1956,7 @@ def api_cloud_backup_status():
         return jsonify({'success': False, 'error': 'Could not get backup status.'})
 
 @app.route('/api/cloud_backup/run', methods=['POST'])
-@login_required
+@api_admin_required
 def api_cloud_backup_run():
     """Trigger a manual cloud backup run."""
     try:
@@ -1976,7 +1970,7 @@ def api_cloud_backup_run():
         return jsonify({'success': False, 'error': 'Could not start backup.'})
 
 @app.route('/api/cloud_backup/mega/list_folders', methods=['POST'])
-@login_required
+@api_admin_required
 def api_cloud_backup_mega_list_folders():
     """List folders at a given MEGA path using provided or stored credentials."""
     try:
@@ -2023,7 +2017,7 @@ def api_cloud_backup_mega_list_folders():
 
 
 @app.route('/api/cloud_backup/mega/create_folder', methods=['POST'])
-@login_required
+@api_admin_required
 def api_cloud_backup_mega_create_folder():
     """Create a MEGA folder using provided or stored credentials."""
     try:
@@ -2076,7 +2070,7 @@ pass = {obscured_pw}
         return jsonify({'success': False, 'error': 'Could not create MEGA folder.'})
 
 @app.route('/api/cloud_backup/schedule', methods=['GET'])
-@login_required
+@api_admin_required
 def api_cloud_backup_get_schedule():
     """Get only the backup schedule and bandwidth limit."""
     try:
@@ -2093,7 +2087,7 @@ def api_cloud_backup_get_schedule():
         return jsonify({'success': False, 'error': 'Could not load backup settings.'})
 
 @app.route('/api/cloud_backup/schedule', methods=['POST'])
-@login_required
+@api_admin_required
 def api_cloud_backup_set_schedule():
     """Set only the backup schedule and bandwidth limit."""
     try:
@@ -2127,7 +2121,7 @@ def api_cloud_backup_set_schedule():
         return jsonify({'success': False, 'error': 'Could not save backup settings.'})
 
 @app.route('/api/cloud_backup/mega/validate', methods=['POST'])
-@login_required
+@api_admin_required
 def api_cloud_backup_mega_validate():
     """Validate MEGA credentials using rclone and save them if valid."""
     try:

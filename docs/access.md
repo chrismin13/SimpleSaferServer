@@ -8,6 +8,14 @@ SimpleSaferServer separates management access from file-share access.
 - The first account created during setup is an administrator.
 - Any later account must also have the admin flag enabled before it can sign in to the web UI.
 - A valid username and password are not enough for web UI access by themselves. The account must also be marked as an administrator.
+- Protected management pages re-check administrator status on every request. If an account is demoted after signing in, its existing web session no longer has management access.
+
+## Management APIs
+
+- Management API endpoints also require an administrator session.
+- API authentication failures return JSON responses with HTTP status codes instead of redirecting to a web page.
+- `401` means the browser does not have a valid management session.
+- `403` means the session exists but the account is not currently an administrator.
 
 ## Non-Admin Accounts
 

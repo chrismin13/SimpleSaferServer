@@ -1,5 +1,17 @@
 # Internal UI Patterns
 
+## Route Authorization
+
+The management interface is admin-only. Non-admin users may exist for Samba and
+system file sharing, but they are not Web UI users.
+
+Rules:
+
+- Use `@admin_required` for HTML routes and page-style routes that redirect or render templates.
+- Use `@api_admin_required` for JSON API routes used by `fetch()`.
+- Do not add login-only management routes. A signed session cookie is not enough by itself because an account can be demoted after the cookie was issued.
+- Setup API routes are the exception: they allow anonymous access only until setup is complete, then require admin access for maintenance use.
+
 ## Bunker Aesthetic
 - **Frosted Glass Components:** Use a dark frosted-glass treatment (for example, `hsla(220, 16%, 12%, 0.75–0.85)` with `backdrop-filter: blur(20–32px)` and matching `-webkit-backdrop-filter`) for main interface structures (e.g., `.card`, `.sidebar`, `.status-tile`, `.modal-container`). Individual components may tune opacity and blur within this range to meet contrast and legibility requirements.
 - **Global Background:** The animated `app-bg-container` creates an ambient textured environment behind the translucent glass elements.
