@@ -80,31 +80,35 @@ def get_cloudflare_record(zone_id, token, record_name):
             if data.get('success'):
                 records = data.get('result', [])
                 if records:
-                    return records[0]['id'], records[0].get('content')
+                    record = records[0]
+                    return record['id'], record.get('content'), record.get('proxied')
     except urllib.error.HTTPError as e:
         logger.error(f"Cloudflare record fetch API error: {e.code}")
         raise
     except Exception as e:
         logger.error(f"Cloudflare record fetch error: {e}")
         raise
-    return None, None
+    return None, None, None
 
 def update_cloudflare(zone_id, token, record_name, ip, proxy):
     logger.info(f"Updating Cloudflare record '{record_name}' in zone '{zone_id}' with IP {ip}...")
     try:
-        record_id, existing_ip = get_cloudflare_record(zone_id, token, record_name)
+        record_id, existing_ip, existing_proxied = get_cloudflare_record(zone_id, token, record_name)
         if not record_id:
             return False, "Record does not exist."
-        if existing_ip == ip:
-            return True, "IP hasn't changed."
+
+        desired_proxied = proxy.lower() == 'true'
+        if existing_ip == ip and existing_proxied == desired_proxied:
+            return True, "Record already current."
 
         url = f"https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records/{record_id}"
         payload = json.dumps({
             "type": "A",
             "name": record_name,
             "content": ip,
-            "proxied": proxy.lower() == 'true',
-            "ttl": 3600 if proxy.lower() != 'true' else 1
+            # Cloudflare requires TTL=1 while proxied records use their automatic TTL.
+            "proxied": desired_proxied,
+            "ttl": 1 if desired_proxied else 3600
         }).encode('utf-8')
         req = urllib.request.Request(url, data=payload, headers={
             'Authorization': f'Bearer {token}',

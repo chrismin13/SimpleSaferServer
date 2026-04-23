@@ -1310,7 +1310,8 @@ table .text-end { text-align: right; }
   box-shadow: var(--shadow-lg);
 }
 
-.tooltip-trigger:hover::after { opacity: 1; }
+.tooltip-trigger:hover::after,
+.tooltip-trigger:focus-visible::after { opacity: 1; }
 
 /* ── Code / pre ─────────────────────────────────────────────── */
 code {

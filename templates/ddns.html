@@ -161,10 +161,21 @@
             <input type="text" class="form-control" id="cfRecordName" placeholder="e.g. server.mydomain.com">
             <div class="invalid-feedback">Record name to update is required.</div>
           </div>
-          <div class="d-flex justify-between items-center mt-4 pt-3" style="border-top: 1px solid var(--border-color);">
+          <div class="d-flex justify-between items-center mt-4 pt-3 gap-3" style="border-top: 1px solid var(--border-color);">
             <div>
-              <strong id="cfProxyLabel" style="display: block; font-size: var(--text-sm); margin-bottom: 2px;">Proxy through Cloudflare (Orange Cloud)</strong>
-              <span id="cfProxyDesc" class="text-muted" style="font-size: var(--text-sm);">Route traffic through Cloudflare's network to conceal your IP address.</span>
+              <div class="d-flex items-center gap-2 flex-wrap" style="margin-bottom: 2px;">
+                <strong id="cfProxyLabel" style="display: block; font-size: var(--text-sm);">Proxy through Cloudflare</strong>
+                <span class="badge badge-neutral">Off by default</span>
+                <span
+                  class="tooltip-trigger text-muted"
+                  data-tooltip="Leave this off for home-network DDNS and non-HTTP services. Cloudflare proxying only supports Cloudflare-compatible web traffic and can break services such as WireGuard, SSH, game servers, and custom TCP/UDP ports."
+                  title="Leave this off for home-network DDNS and non-HTTP services."
+                  tabindex="0"
+                  aria-label="Cloudflare proxy mode help">
+                  <i class="fas fa-info-circle"></i>
+                </span>
+              </div>
+              <span id="cfProxyDesc" class="text-muted" style="font-size: var(--text-sm);">Leave off for normal DNS. Turn on only when this record should serve Cloudflare-supported web traffic through the orange-cloud proxy.</span>
             </div>
             <label class="toggle-switch">
               <input type="checkbox" id="cfProxyStatus" aria-labelledby="cfProxyLabel cfProxyDesc">
