@@ -69,7 +69,7 @@
     if (support.is_supported === true) {
       setBadge(els['support-status-badge'], 'Supported', 'success');
     } else if (support.is_supported === false) {
-      setBadge(els['support-status-badge'], 'Past max support', 'danger');
+      setBadge(els['support-status-badge'], 'Past support', 'danger');
     } else if (support.known) {
       setBadge(els['support-status-badge'], 'Dates pending', 'warning');
     } else {

@@ -36,38 +36,48 @@ APT_PROCESS_MARKERS = (
 
 SUPPORT_INFO = {
     "debian": {
-        # Debian 13 is released, but Debian had not published fixed EOL/LTS/ELTS
-        # dates in the official release table when this feature was added.
+        # Debian's wiki also lists LTS/ELTS columns, but this app uses the
+        # normal release-table EOL date so the status does not depend on paid or
+        # externally contracted extended support.
         "13": {
-            "standard_eol": None,
-            "standard_eol_display": "Not published",
-            "max_eol": None,
-            "max_eol_display": "Not published",
-            "notes": "Debian has not published fixed end-of-life dates for this release yet.",
+            "standard_eol": "2028-08-09",
+            "standard_eol_display": "August 9, 2028",
+            "max_eol": "2030-06-30",
+            "max_eol_display": "June 30, 2030",
+            "notes": "Support status uses Debian's normal end-of-life date.",
         },
         "12": {
             "standard_eol": "2026-06-10",
             "standard_eol_display": "June 10, 2026",
-            "max_eol": "2033-06-30",
-            "max_eol_display": "June 30, 2033",
-            "notes": "Max support uses Debian ELTS where available.",
+            "max_eol": "2026-06-10",
+            "max_eol_display": "June 10, 2026",
+            "notes": "Support status uses Debian's normal end-of-life date.",
         },
         "11": {
             "standard_eol": "2024-08-14",
             "standard_eol_display": "August 14, 2024",
-            "max_eol": "2031-06-30",
-            "max_eol_display": "June 30, 2031",
-            "notes": "Max support uses Debian ELTS where available.",
+            "max_eol": "2024-08-14",
+            "max_eol_display": "August 14, 2024",
+            "notes": "Support status uses Debian's normal end-of-life date.",
         },
         "10": {
             "standard_eol": "2022-09-10",
             "standard_eol_display": "September 10, 2022",
-            "max_eol": "2029-06-30",
-            "max_eol_display": "June 30, 2029",
-            "notes": "Max support uses Debian ELTS where available.",
+            "max_eol": "2022-09-10",
+            "max_eol_display": "September 10, 2022",
+            "notes": "Support status uses Debian's normal end-of-life date.",
         },
     },
     "ubuntu": {
+        # Ubuntu Pro ESM is available through free personal subscriptions; the
+        # paid Legacy support add-on dates are intentionally excluded here.
+        "26.04": {
+            "standard_eol": "2031-07-31",
+            "standard_eol_display": "July 2031",
+            "max_eol": "2036-04-30",
+            "max_eol_display": "April 2036",
+            "notes": "Support status includes Ubuntu Pro ESM but excludes the paid Legacy support add-on.",
+        },
         "25.10": {
             "standard_eol": "2026-07-31",
             "standard_eol_display": "July 2026",
@@ -78,30 +88,30 @@ SUPPORT_INFO = {
         "24.04": {
             "standard_eol": "2029-06-30",
             "standard_eol_display": "June 2029",
-            "max_eol": "2039-04-30",
-            "max_eol_display": "April 2039",
-            "notes": "Max support requires Ubuntu Pro and any applicable extended support add-ons.",
+            "max_eol": "2034-04-30",
+            "max_eol_display": "April 2034",
+            "notes": "Support status includes Ubuntu Pro ESM but excludes the paid Legacy support add-on.",
         },
         "22.04": {
             "standard_eol": "2027-06-30",
             "standard_eol_display": "June 2027",
-            "max_eol": "2037-04-30",
-            "max_eol_display": "April 2037",
-            "notes": "Max support requires Ubuntu Pro and any applicable extended support add-ons.",
+            "max_eol": "2032-04-30",
+            "max_eol_display": "April 2032",
+            "notes": "Support status includes Ubuntu Pro ESM but excludes the paid Legacy support add-on.",
         },
         "20.04": {
             "standard_eol": "2025-05-31",
             "standard_eol_display": "May 2025",
-            "max_eol": "2035-04-30",
-            "max_eol_display": "April 2035",
-            "notes": "Max support requires Ubuntu Pro and any applicable extended support add-ons.",
+            "max_eol": "2030-04-30",
+            "max_eol_display": "April 2030",
+            "notes": "Support status includes Ubuntu Pro ESM but excludes the paid Legacy support add-on.",
         },
         "18.04": {
             "standard_eol": "2023-05-31",
             "standard_eol_display": "May 2023",
-            "max_eol": "2033-04-30",
-            "max_eol_display": "April 2033",
-            "notes": "Max support requires Ubuntu Pro and any applicable extended support add-ons.",
+            "max_eol": "2028-04-30",
+            "max_eol_display": "April 2028",
+            "notes": "Support status includes Ubuntu Pro ESM but excludes the paid Legacy support add-on.",
         },
     },
 }

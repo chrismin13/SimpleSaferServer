@@ -5,10 +5,10 @@ The System Updates page manages Debian and Ubuntu package maintenance from the a
 ## Operating system support
 
 - Shows the current Debian or Ubuntu release from `/etc/os-release`.
-- Shows the standard support end date and max support end date when SimpleSaferServer has a built-in date for that release.
-- Links to the upstream release-date source used for the displayed dates.
-- Debian max support uses Debian ELTS dates where they are published.
-- Ubuntu max support uses the Ubuntu release-team EOL date, which may require Ubuntu Pro or extended support add-ons.
+- Shows the standard support end date and the support date used for the status badge when SimpleSaferServer has a built-in date for that release.
+- Returns the upstream release-date source URL in the support API response for diagnostics and future UI use.
+- Debian support status uses the normal Debian release-table end-of-life date, not Debian LTS or ELTS columns.
+- Ubuntu LTS support status includes Ubuntu Pro ESM dates because Ubuntu Pro has a free personal tier. Paid Legacy support add-on dates are not used.
 
 ## Apt operations
 

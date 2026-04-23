@@ -51,14 +51,21 @@ class SystemUpdatesTests(unittest.TestCase):
 
         self.assertTrue(support["known"])
         self.assertEqual(support["standard_eol"], "2026-06-10")
-        self.assertEqual(support["max_eol"], "2033-06-30")
+        self.assertEqual(support["max_eol"], "2026-06-10")
 
     def test_ubuntu_support_uses_major_minor_version(self):
         support = get_support_info("ubuntu", "24.04.4")
 
         self.assertTrue(support["known"])
         self.assertEqual(support["standard_eol_display"], "June 2029")
-        self.assertEqual(support["max_eol_display"], "April 2039")
+        self.assertEqual(support["max_eol_display"], "April 2034")
+
+    def test_ubuntu_support_excludes_paid_legacy_add_on_dates(self):
+        support = get_support_info("ubuntu", "22.04")
+
+        self.assertTrue(support["known"])
+        self.assertEqual(support["max_eol"], "2032-04-30")
+        self.assertIn("excludes the paid Legacy", support["notes"])
 
     def test_remove_stale_locks_refuses_active_apt_processes(self):
         with tempfile.TemporaryDirectory() as temp_dir:
