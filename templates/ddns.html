@@ -1,0 +1,206 @@
+{% extends "base.html" %}
+
+{% block title %}Dynamic DNS (DDNS) — SimpleSaferServer{% endblock %}
+{% block header %}Dynamic DNS{% endblock %}
+
+{% block content %}
+<!-- Status row -->
+<div class="grid-2 mb-5">
+  <!-- DuckDNS Status -->
+  <div class="status-tile">
+    <div class="status-tile-header">
+      <span class="status-tile-label">
+        <i class="fas fa-feather"></i> DuckDNS
+      </span>
+      <span id="duckdns-status-badge" class="badge">Loading…</span>
+    </div>
+    <div class="d-flex flex-column gap-2 mt-3">
+      <div class="d-flex gap-3 items-center backup-status-row">
+        <span class="text-muted" style="min-width: 120px; font-size: var(--text-sm);">Last Synchronized:</span>
+        <span class="text-mono" style="font-size: var(--text-sm);" id="duckdns-last-sync">—</span>
+      </div>
+      <div class="d-flex gap-3 items-center backup-status-row">
+        <span class="text-muted" style="min-width: 120px; font-size: var(--text-sm);">Next Scheduled:</span>
+        <span class="text-mono" style="font-size: var(--text-sm);" id="duckdns-next-run">—</span>
+      </div>
+      <div class="d-flex gap-3 items-center backup-status-row">
+        <span class="text-muted" style="min-width: 120px; font-size: var(--text-sm);">Active IPv4:</span>
+        <span class="text-mono" style="font-size: var(--text-sm);" id="duckdns-ipv4">—</span>
+      </div>
+      <div class="d-flex gap-3 items-center backup-status-row">
+        <span class="text-muted" style="min-width: 120px; font-size: var(--text-sm);">Message:</span>
+        <span class="text-mono text-truncate" style="font-size: var(--text-sm); max-width: 200px;" id="duckdns-message">—</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cloudflare Status -->
+  <div class="status-tile">
+    <div class="status-tile-header">
+      <span class="status-tile-label">
+        <i class="fas fa-cloud"></i> Cloudflare
+      </span>
+      <span id="cf-status-badge" class="badge">Loading…</span>
+    </div>
+    <div class="d-flex flex-column gap-2 mt-3">
+      <div class="d-flex gap-3 items-center backup-status-row">
+        <span class="text-muted" style="min-width: 120px; font-size: var(--text-sm);">Last Synchronized:</span>
+        <span class="text-mono" style="font-size: var(--text-sm);" id="cf-last-sync">—</span>
+      </div>
+      <div class="d-flex gap-3 items-center backup-status-row">
+        <span class="text-muted" style="min-width: 120px; font-size: var(--text-sm);">Next Scheduled:</span>
+        <span class="text-mono" style="font-size: var(--text-sm);" id="cf-next-run">—</span>
+      </div>
+      <div class="d-flex gap-3 items-center backup-status-row">
+        <span class="text-muted" style="min-width: 120px; font-size: var(--text-sm);">Active IPv4:</span>
+        <span class="text-mono" style="font-size: var(--text-sm);" id="cf-ipv4">—</span>
+      </div>
+      <div class="d-flex gap-3 items-center backup-status-row">
+        <span class="text-muted" style="min-width: 120px; font-size: var(--text-sm);">Message:</span>
+        <span class="text-mono text-truncate" style="font-size: var(--text-sm); max-width: 200px;" id="cf-message">—</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Global Action Buttons -->
+<div class="d-flex justify-end gap-3 mb-6">
+  <a id="ddns-log-link" href="/task/DDNS%20Update" class="btn btn-secondary">
+    <i class="fas fa-file-lines me-2"></i>View Sync Log
+  </a>
+  <!-- Confirmation and AJAX are handled in ddns.js; no data-confirm needed here -->
+  <button id="ddns-run-btn" class="btn btn-primary">
+    <i class="fas fa-rotate me-2"></i>Force Sync Now
+  </button>
+</div>
+
+<!-- DDNS Settings -->
+<section class="mb-6">
+  <h2 class="mb-4" style="font-size: var(--text-lg);">DDNS Providers</h2>
+  {% if runtime_mode == 'fake' %}
+  <div class="alert alert-warning mb-4" style="font-size: var(--text-sm);">
+    <div class="alert-content">
+      <i class="fas fa-triangle-exclamation"></i>
+      <span class="alert-message">Fake mode simulates local system services, but DDNS uses the real provider APIs. Saving enabled provider settings or forcing a sync can update live DNS records.</span>
+    </div>
+  </div>
+  {% endif %}
+  <form id="ddns-config-form" autocomplete="off">
+    <div class="tabs-container mb-4">
+      <div class="tabs-nav" role="tablist" aria-label="DDNS Provider config">
+        <button type="button" class="tab-btn active" data-tab="duckdns" id="tab-duckdns" role="tab" aria-selected="true" aria-controls="duckdnsConfigFields">DuckDNS</button>
+        <button type="button" class="tab-btn" data-tab="cloudflare" id="tab-cloudflare" role="tab" aria-selected="false" aria-controls="cloudflareConfigFields">Cloudflare</button>
+      </div>
+
+      <div class="tab-content">
+        <!-- DuckDNS Fields -->
+        <div id="duckdnsConfigFields" class="tab-pane active" role="tabpanel" aria-labelledby="tab-duckdns">
+          <div class="d-flex justify-between items-center mb-3 pb-2" style="border-bottom: 1px solid var(--border-color);">
+            <div>
+              <strong id="duckdnsEnabledLabel" style="display: block; font-size: var(--text-md); margin-bottom: 4px;">Enable DuckDNS</strong>
+              <span id="duckdnsEnabledDesc" class="text-muted" style="font-size: var(--text-sm);">Automatically update your public IP to DuckDNS every 5 minutes.</span>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="duckdnsEnabled" aria-labelledby="duckdnsEnabledLabel duckdnsEnabledDesc">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+
+          <div class="mb-4">
+            <div class="fw-semi" style="font-size: var(--text-md);">DuckDNS Setup Instructions</div>
+            <ol class="mt-2 text-muted" style="font-size: var(--text-sm); line-height: 1.6; padding-left: 1.5rem; list-style-type: decimal;">
+              <li style="padding-left: 0.25rem;">Go to <a href="https://www.duckdns.org/" target="_blank" rel="noopener">DuckDNS.org</a> and sign in.</li>
+              <li style="padding-left: 0.25rem;">Add a domain (e.g. <code>simple-safer-server</code>), which will grant you <code>simple-safer-server.duckdns.org</code></li>
+              <li style="padding-left: 0.25rem;">Copy your unique <strong>Token</strong> from the top of the DuckDNS dashboard page.</li>
+            </ol>
+          </div>
+
+          <div class="form-group mb-3">
+            <label class="form-label">Domain Name</label>
+            <div class="input-group d-flex">
+                <input type="text" class="form-control flex-grow-1" id="duckdnsDomain" placeholder="simple-safer-server">
+                <span class="input-group-text d-flex items-center px-3" style="background: var(--surface-2); border-color: var(--border-color); color: var(--text-muted); border-left: 0;">.duckdns.org</span>
+            </div>
+            <div class="invalid-feedback">Domain is required if enabled.</div>
+          </div>
+          <div class="form-group mb-3">
+            <label class="form-label">Token</label>
+            <input type="password" class="form-control" id="duckdnsToken" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+            <div class="invalid-feedback">Token is required if enabled.</div>
+          </div>
+        </div>
+
+        <!-- Cloudflare Fields -->
+        <div id="cloudflareConfigFields" class="tab-pane" role="tabpanel" aria-labelledby="tab-cloudflare">
+          <div class="d-flex justify-between items-center mb-3 pb-2" style="border-bottom: 1px solid var(--border-color);">
+            <div>
+              <strong id="cloudflareEnabledLabel" style="display: block; font-size: var(--text-md); margin-bottom: 4px;">Enable Cloudflare DDNS</strong>
+              <span id="cloudflareEnabledDesc" class="text-muted" style="font-size: var(--text-sm);">Automatically keep a specific Cloudflare 'A' record updated with your public IP.</span>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="cloudflareEnabled" aria-labelledby="cloudflareEnabledLabel cloudflareEnabledDesc">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+
+          <div class="mb-4">
+            <div class="fw-semi" style="font-size: var(--text-md);">Cloudflare Setup Instructions</div>
+            <ol class="mt-2 text-muted" style="font-size: var(--text-sm); line-height: 1.6; padding-left: 1.5rem; list-style-type: decimal;">
+              <li style="padding-left: 0.25rem;">Login to <a href="https://dash.cloudflare.com/" target="_blank" rel="noopener">Cloudflare Dashboard</a> and select your top-level domain.</li>
+              <li style="padding-left: 0.25rem;">Create a new 'A' record pointing to your server (e.g. <code>server.mydomain.com</code>). Make sure it exists!</li>
+              <li style="padding-left: 0.25rem;">Locate your <strong>Zone Identifier</strong> on the Overview page of your domain (bottom right).</li>
+              <li style="padding-left: 0.25rem;">Go to <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noopener">My Profile &gt; API Tokens</a>.</li>
+              <li style="padding-left: 0.25rem;">Create a <strong>Scoped Token</strong> using the "Edit zone DNS" template, restricting it to your specific zone. Note: Global API Keys are insecure and not recommended for this application.</li>
+            </ol>
+          </div>
+
+          <div class="form-group mb-3">
+            <label class="form-label">Zone Identifier</label>
+            <input type="text" class="form-control" id="cfZoneId" placeholder="e.g. 023e105f4ecef8ad9ca31a8372d0c353">
+            <div class="invalid-feedback">Zone Identifier is required if enabled.</div>
+          </div>
+          <div class="form-group mb-3">
+            <label class="form-label">API Token (Scoped)</label>
+            <input type="password" class="form-control" id="cfToken" placeholder="Your specific Scoped API Token">
+            <div class="invalid-feedback">Token is required if enabled.</div>
+          </div>
+          <div class="form-group mb-3">
+            <label class="form-label">DNS Record Name</label>
+            <input type="text" class="form-control" id="cfRecordName" placeholder="e.g. server.mydomain.com">
+            <div class="invalid-feedback">Record name to update is required.</div>
+          </div>
+          <div class="d-flex justify-between items-center mt-4 pt-3 gap-3" style="border-top: 1px solid var(--border-color);">
+            <div>
+              <div class="d-flex items-center gap-2 flex-wrap" style="margin-bottom: 2px;">
+                <strong id="cfProxyLabel" style="display: block; font-size: var(--text-sm);">Proxy through Cloudflare</strong>
+                <span class="badge badge-neutral">Off by default</span>
+                <span
+                  class="tooltip-trigger text-muted"
+                  data-tooltip="Leave this off for home-network DDNS and non-HTTP services. Cloudflare proxying only supports Cloudflare-compatible web traffic and can break services such as WireGuard, SSH, game servers, and custom TCP/UDP ports."
+                  title="Leave this off for home-network DDNS and non-HTTP services."
+                  tabindex="0"
+                  aria-label="Cloudflare proxy mode help">
+                  <i class="fas fa-info-circle"></i>
+                </span>
+              </div>
+              <span id="cfProxyDesc" class="text-muted" style="font-size: var(--text-sm);">Leave off for normal DNS. Turn on only when this record should serve Cloudflare-supported web traffic through the orange-cloud proxy.</span>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="cfProxyStatus" aria-labelledby="cfProxyLabel cfProxyDesc">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="d-flex gap-2 justify-end">
+      <button type="submit" id="ddns-save-btn" class="btn btn-primary">Save Changes</button>
+    </div>
+  </form>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/ddns.js') }}"></script>
+{% endblock %}

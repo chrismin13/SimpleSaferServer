@@ -86,6 +86,15 @@ class ConfigManager:
             'autoclean': 'true'
         }
 
+        self.config['ddns'] = {
+            'duckdns_enabled': 'false',
+            'duckdns_domain': '',
+            'cloudflare_enabled': 'false',
+            'cloudflare_zone': '',
+            'cloudflare_record': '',
+            'cloudflare_proxy': 'false'
+        }
+
         self.save_config()
 
     def save_config(self):

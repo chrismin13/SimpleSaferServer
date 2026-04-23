@@ -13,6 +13,7 @@ Four cards display real-time status:
 - **Table**: Lists all scheduled tasks with columns for Task, Next Run, Last Run, Duration, Status, and Actions.
 - **Actions**: Each task can be run immediately via the `Run Now` button.
 - **Refresh**: Button to reload the task schedule.
+- Scheduled task success follows the underlying command exit code. For DDNS, a provider-level error or missing provider configuration fails the `DDNS Update` task after the provider details are written for the DDNS page.
 
 ## System Actions
 - **Unmount Storage**: Opens a modal to confirm a temporary unmount of the configured backup drive.

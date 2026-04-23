@@ -94,6 +94,7 @@ Install the extracted binary:
 - Run `sudo systemctl enable simple_safer_server_web.service`.
 - Run `sudo systemctl restart simple_safer_server_web.service`.
 - After the service starts, use the Web UI setup flow to configure email alerts, backup settings, and the initial administrator account.
+- The recurring `check_mount`, `check_health`, `backup_cloud`, and `ddns_update` timers should stay inactive until the Web UI setup flow is complete. They use `Persistent=true`, so starting them before setup can immediately replay missed runs with incomplete backup and alert settings.
 
 ## 9. Open Firewall Port 5000 If Needed
 

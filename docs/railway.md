@@ -8,6 +8,10 @@ provide the local disks, Samba services, or systemd environment that the full
 Debian install uses, so the demo stores its writable state in a Railway volume
 instead.
 
+Fake mode is a local-system simulation, not a sandbox for outside APIs. DDNS can
+still contact DuckDNS or Cloudflare and update live DNS records if valid
+provider credentials are configured.
+
 Regular SimpleSaferServer users do not need any of this. This document is only
 for development and demo hosting on Railway.
 

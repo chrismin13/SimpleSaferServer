@@ -4,6 +4,7 @@ import psutil
 from datetime import datetime, timedelta
 import json
 import os
+import sys
 import queue
 import threading
 from dashboard_messages import build_dashboard_unmount_success_message
@@ -34,10 +35,9 @@ from drive_health import (
 )
 from setup_wizard import setup, install_systemd_tasks
 import logging
-from user_manager import UserManager, login_required, admin_required, api_login_required, api_admin_required
+from user_manager import UserManager, admin_required, api_admin_required
 from flask_socketio import SocketIO
 from logging.handlers import RotatingFileHandler
-import sys
 import time
 from typing import Dict, List, Tuple
 from system_utils import SystemUtils
@@ -198,6 +198,11 @@ class Task:
         a system command.
         """
         if runtime.is_fake:
+            if self.name == "DDNS Update":
+                now = datetime.now()
+                minutes = (now.minute // 5 + 1) * 5
+                next_r = now.replace(minute=0, second=0, microsecond=0) + timedelta(minutes=minutes)
+                return next_r.strftime("%Y-%m-%d %H:%M:00")
             return fake_state.get_next_run(self.name, config_manager.get_value('schedule', 'backup_cloud_time', '03:00'))
         try:
             # Example: using 'systemctl list-timers' or 'systemctl show'
@@ -425,7 +430,7 @@ def auto_login_fake_mode_user():
     return None
 
 @app.route('/network_file_sharing')
-@login_required
+@admin_required
 def network_file_sharing():
     backup_mount_point = config_manager.get_value('backup', 'mount_point', runtime.default_mount_point)
     return render_template(
@@ -436,7 +441,7 @@ def network_file_sharing():
     )
 
 @app.route('/users')
-@login_required
+@admin_required
 def users():
     return render_template('users.html', username=session.get('username'))
 
@@ -448,7 +453,7 @@ def logout():
     return redirect(url_for('login'))
 
 @app.route('/dashboard')
-@login_required
+@admin_required
 def dashboard():
     if not config_manager.is_setup_complete():
         return redirect(url_for('setup.setup_page'))
@@ -506,7 +511,7 @@ def dashboard():
 
 
 @app.route("/task/<task_name>")
-@login_required
+@admin_required
 def task_detail(task_name):
     task = get_task(task_name)
     if not task:
@@ -516,7 +521,7 @@ def task_detail(task_name):
 
 
 @app.route("/task/<task_name>/logs")
-@login_required
+@admin_required
 def task_logs(task_name):
     """Return latest logs for the given task."""
     task = get_task(task_name)
@@ -528,7 +533,7 @@ def task_logs(task_name):
 
 
 @app.route("/task/<task_name>/start", methods=["POST"])
-@login_required
+@admin_required
 def start_task(task_name):
     task = get_task(task_name)
     if not task:
@@ -547,7 +552,7 @@ def start_task(task_name):
 
 
 @app.route("/task/<task_name>/stop", methods=["POST"])
-@login_required
+@admin_required
 def stop_task(task_name):
     task = get_task(task_name)
     if not task:
@@ -568,7 +573,7 @@ def stop_task(task_name):
 
 # API route for running a task
 @app.route("/run_task/<task_name>", methods=["POST"])
-@login_required
+@admin_required
 def run_task(task_name):
 
     task = get_task(task_name)
@@ -605,7 +610,7 @@ def _apt_lock_block_response(action: str):
 
 # API route for unmounting storage
 @app.route("/unmount", methods=["POST"])
-@login_required
+@admin_required
 def unmount():
     mount_point = config_manager.get_value('backup', 'mount_point', runtime.default_mount_point)
     configured_uuid = config_manager.get_value('backup', 'uuid', None)
@@ -681,7 +686,7 @@ def shutdown():
 
 # Drive health page
 @app.route("/drives", methods=["GET", "POST"])
-@login_required
+@admin_required
 def drives():
     prediction = None
     probability = None
@@ -777,7 +782,7 @@ def drives():
 
 
 @app.route("/download_telemetry")
-@login_required
+@admin_required
 def download_telemetry():
     if runtime.telemetry_path.exists():
         return send_file(runtime.telemetry_path, as_attachment=True)
@@ -949,6 +954,99 @@ def run_fake_task(task_name: str, cancel_event: threading.Event):
                 fake_state.append_task_log(task_name, f"HDSentinel unavailable: {hdsentinel_snapshot['error']}")
         elif task_name == 'Cloud Backup':
             run_fake_cloud_backup(cancel_event)
+        elif task_name == 'DDNS Update':
+            if cancel_event.is_set():
+                raise RuntimeError('Task was cancelled.')
+            ddns_script = runtime.repo_root / 'scripts' / 'ddns_update.py'
+
+            # Start the process non-blocking to allow cancellation
+            try:
+                proc = subprocess.Popen(
+                    [sys.executable, str(ddns_script)],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    bufsize=1,
+                )
+                output_queue: queue.Queue[Tuple[str, str]] = queue.Queue()
+
+                def _drain_stream(stream, stream_name: str):
+                    try:
+                        for line in iter(stream.readline, ''):
+                            output_queue.put((stream_name, line))
+                    finally:
+                        stream.close()
+
+                stdout_thread = threading.Thread(
+                    target=_drain_stream,
+                    args=(proc.stdout, 'stdout'),
+                    name='ddns-update-stdout',
+                    daemon=True,
+                )
+                stderr_thread = threading.Thread(
+                    target=_drain_stream,
+                    args=(proc.stderr, 'stderr'),
+                    name='ddns-update-stderr',
+                    daemon=True,
+                )
+                stdout_thread.start()
+                stderr_thread.start()
+
+                stdout_chunks: List[str] = []
+                stderr_chunks: List[str] = []
+                while True:
+                    while True:
+                        try:
+                            stream_name, chunk = output_queue.get_nowait()
+                        except queue.Empty:
+                            break
+                        if stream_name == 'stdout':
+                            stdout_chunks.append(chunk)
+                        else:
+                            stderr_chunks.append(chunk)
+
+                    if proc.poll() is not None:
+                        break
+                    if cancel_event.is_set():
+                        proc.terminate()
+                        try:
+                            proc.wait(timeout=5.0)
+                        except subprocess.TimeoutExpired:
+                            proc.kill()
+                            proc.wait()
+                        break
+                    time.sleep(0.1)
+
+                stdout_thread.join(timeout=1.0)
+                stderr_thread.join(timeout=1.0)
+                while True:
+                    try:
+                        stream_name, chunk = output_queue.get_nowait()
+                    except queue.Empty:
+                        break
+                    if stream_name == 'stdout':
+                        stdout_chunks.append(chunk)
+                    else:
+                        stderr_chunks.append(chunk)
+
+                # Append collected output to task log
+                stdout_output = ''.join(stdout_chunks).strip()
+                stderr_output = ''.join(stderr_chunks).strip()
+                if stdout_output:
+                    fake_state.append_task_log(task_name, stdout_output)
+                if stderr_output:
+                    fake_state.append_task_log(task_name, stderr_output)
+
+                if cancel_event.is_set():
+                    raise RuntimeError('Task was cancelled.')
+
+                # Check exit code
+                if proc.returncode != 0:
+                    raise RuntimeError(f"DDNS update script exited with code {proc.returncode}")
+
+            except subprocess.SubprocessError as e:
+                fake_state.append_task_log(task_name, f"Subprocess error: {str(e)}")
+                raise RuntimeError(f"Failed to run DDNS update script: {str(e)}")
 
         if cancel_event.is_set():
             raise RuntimeError('Task was cancelled.')
@@ -991,7 +1089,8 @@ def run_fake_task(task_name: str, cancel_event: threading.Event):
 TASKS = [
     Task("Check Mount", "check_mount.service", "check_mount.timer"),
     Task("Drive Health Check", "check_health.service", "check_health.timer"),
-    Task("Cloud Backup", "backup_cloud.service", "backup_cloud.timer")
+    Task("Cloud Backup", "backup_cloud.service", "backup_cloud.timer"),
+    Task("DDNS Update", "ddns_update.service", "ddns_update.timer")
 ]
 
 def get_task(name: str):
@@ -1000,8 +1099,13 @@ def get_task(name: str):
             return task
     return None
 
+@app.route('/ddns')
+@admin_required
+def ddns():
+    return render_template('ddns.html', username=session.get('username'))
+
 @app.route('/cloud_backup')
-@login_required
+@admin_required
 def cloud_backup():
     return render_template('cloud_backup.html', username=session.get('username'))
 
@@ -1011,7 +1115,7 @@ def system_updates():
     return render_template('system_updates.html', username=session.get('username'))
 
 @app.route('/alerts')
-@login_required
+@admin_required
 def alerts():
     return render_template('alerts.html', username=session.get('username'))
 
@@ -1110,7 +1214,7 @@ def api_system_updates_livepatch_setup():
 
 # Alerts API endpoints
 @app.route('/api/alerts/generate-test', methods=['POST'])
-@admin_required
+@api_admin_required
 def api_generate_test_alerts():
     """Debug route: Generate test alerts for UI testing. Only available in fake/dev mode."""
     if not runtime.is_fake:
@@ -1126,7 +1230,7 @@ def api_generate_test_alerts():
         return jsonify({'success': False, 'error': 'Failed to generate test alerts'}), 500
 
 @app.route('/api/alerts', methods=['GET'])
-@login_required
+@api_admin_required
 def api_get_alerts():
     """Get all alerts"""
     try:
@@ -1137,7 +1241,7 @@ def api_get_alerts():
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/alerts/<int:alert_id>', methods=['GET'])
-@login_required
+@api_admin_required
 def api_get_alert(alert_id):
     """Get a specific alert by ID"""
     try:
@@ -1153,7 +1257,7 @@ def api_get_alert(alert_id):
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/alerts/<int:alert_id>/mark-read', methods=['POST'])
-@login_required
+@api_admin_required
 def api_mark_alert_read(alert_id):
     """Mark an alert as read"""
     try:
@@ -1167,7 +1271,7 @@ def api_mark_alert_read(alert_id):
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/alerts/clear', methods=['POST'])
-@admin_required
+@api_admin_required
 def api_clear_alerts():
     """Clear all alerts"""
     try:
@@ -1181,7 +1285,7 @@ def api_clear_alerts():
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/alerts/mark-all-read', methods=['POST'])
-@login_required
+@api_admin_required
 def api_mark_all_alerts_read():
     """Mark all alerts as read"""
     try:
@@ -1195,7 +1299,7 @@ def api_mark_all_alerts_read():
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/alerts/email-config', methods=['GET'])
-@login_required
+@api_admin_required
 def api_get_email_config():
     """Get current email configuration"""
     try:
@@ -1217,7 +1321,7 @@ def api_get_email_config():
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/alerts/email-config', methods=['POST'])
-@admin_required
+@api_admin_required
 def api_set_email_config():
     """Set email configuration"""
     try:
@@ -1251,14 +1355,17 @@ def api_set_email_config():
 
 @app.context_processor
 def inject_username():
+    username = session.get('username')
     return dict(
-        username=session.get('username'),
+        username=username,
         runtime_mode=runtime.mode,
         default_mount_point=runtime.default_mount_point,
+        # Expose admin status so templates can conditionally show admin-only nav items.
+        is_admin=user_manager.is_admin(username) if username else False,
     )
 
 @app.route('/api/users', methods=['GET'])
-@admin_required
+@api_admin_required
 def api_list_users():
     # Reload user data to ensure we have the latest
     user_manager.users = user_manager._load_users()
@@ -1273,7 +1380,7 @@ def api_list_users():
     return jsonify({'success': True, 'users': users})
 
 @app.route('/api/users', methods=['POST'])
-@admin_required
+@api_admin_required
 def api_add_user():
     # Reload user data to ensure we have the latest
     user_manager.users = user_manager._load_users()
@@ -1294,7 +1401,7 @@ def api_add_user():
     return jsonify({'success': False, 'error': message})
 
 @app.route('/api/users/<username>', methods=['PUT'])
-@admin_required
+@api_admin_required
 def api_edit_user(username):
     # Reload user data to ensure we have the latest
     user_manager.users = user_manager._load_users()
@@ -1325,7 +1432,7 @@ def api_edit_user(username):
     return jsonify({'success': True})
 
 @app.route('/api/users/<username>', methods=['DELETE'])
-@admin_required
+@api_admin_required
 def api_delete_user(username):
     # Reload user data to ensure we have the latest
     user_manager.users = user_manager._load_users()
@@ -1341,7 +1448,7 @@ def api_delete_user(username):
 
 # SMB Share Management API endpoints
 @app.route('/api/smb/shares', methods=['GET'])
-@admin_required
+@api_admin_required
 def api_list_smb_shares():
     """Get the SimpleSaferServer-managed SMB shares plus unmanaged-share metadata."""
     try:
@@ -1358,7 +1465,7 @@ def api_list_smb_shares():
         return jsonify({'error': 'Failed to read SMB shares'}), 500
 
 @app.route('/api/smb/shares', methods=['POST'])
-@admin_required
+@api_admin_required
 def api_add_smb_share():
     """Add a new SMB share"""
     try:
@@ -1388,7 +1495,7 @@ def api_add_smb_share():
         return jsonify({'error': 'Failed to add SMB share'}), 500
 
 @app.route('/api/smb/shares/<share_name>', methods=['PUT'])
-@admin_required
+@api_admin_required
 def api_edit_smb_share(share_name):
     """Edit an existing SMB share"""
     try:
@@ -1418,7 +1525,7 @@ def api_edit_smb_share(share_name):
         return jsonify({'error': 'Failed to edit SMB share'}), 500
 
 @app.route('/api/smb/shares/<share_name>', methods=['DELETE'])
-@admin_required
+@api_admin_required
 def api_delete_smb_share(share_name):
     """Delete an SMB share"""
     try:
@@ -1431,7 +1538,7 @@ def api_delete_smb_share(share_name):
         return jsonify({'error': 'Failed to delete SMB share'}), 500
 
 @app.route('/api/smb/status')
-@login_required
+@api_admin_required
 def api_smb_status():
     """Get SMB service status"""
     try:
@@ -1442,7 +1549,7 @@ def api_smb_status():
         return jsonify({'error': 'Failed to get SMB status'}), 500
 
 @app.route('/api/smb/restart', methods=['POST'])
-@admin_required
+@api_admin_required
 def api_restart_smb():
     """Restart SMB services"""
     try:
@@ -1455,7 +1562,7 @@ def api_restart_smb():
         return jsonify({'error': 'Failed to restart SMB services'}), 500
 
 @app.route('/api/smb/shares/<share_name>/users', methods=['GET'])
-@admin_required
+@api_admin_required
 def api_get_share_users(share_name):
     """Get users who have access to a specific share"""
     try:
@@ -1474,7 +1581,7 @@ def api_get_share_users(share_name):
         return jsonify({'error': 'Failed to get share users'}), 500
 
 @app.route('/api/smb/shares/<share_name>/users', methods=['PUT'])
-@admin_required
+@api_admin_required
 def api_update_share_users(share_name):
     """Update users who have access to a specific share"""
     try:
@@ -1495,7 +1602,7 @@ def api_update_share_users(share_name):
         return jsonify({'error': 'Failed to update share users'}), 500
 
 @app.route('/api/list_dirs', methods=['GET'])
-@admin_required
+@api_admin_required
 def api_list_dirs():
     """List subdirectories of a given path for folder picker UI."""
     path = request.args.get('path', '/')
@@ -1519,7 +1626,7 @@ def api_list_dirs():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/storage/status')
-@login_required
+@api_admin_required
 def api_storage_status():
     mount_point = config_manager.get_value('backup', 'mount_point', runtime.default_mount_point)
     mounted = system_utils.is_mounted(mount_point)
@@ -1542,7 +1649,7 @@ def api_storage_status():
     })
 
 @app.route('/api/drive_health/summary')
-@login_required
+@api_admin_required
 def api_drive_health_summary():
     try:
         smart, missing_attrs, smart_error = get_smart_attributes(config_manager, system_utils, runtime=runtime)
@@ -1574,7 +1681,7 @@ def api_drive_health_summary():
         return jsonify({'status': 'unknown', 'probability': None, 'temperature': None})
 
 @app.route("/mount", methods=["POST"])
-@login_required
+@admin_required
 def dashboard_mount_drive():
     mount_point = config_manager.get_value('backup', 'mount_point', runtime.default_mount_point)
     uuid = config_manager.get_value('backup', 'uuid', None)
@@ -1610,7 +1717,7 @@ def dashboard_mount_drive():
         return jsonify({"success": False, "message": f"Unexpected error: {e}"}), 500
 
 @app.route('/api/system/resources')
-@login_required
+@api_admin_required
 def api_system_resources():
     try:
         cpu_percent = psutil.cpu_percent(interval=0.2)
@@ -1626,7 +1733,7 @@ def api_system_resources():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/tasks/schedule')
-@login_required
+@api_admin_required
 def api_tasks_schedule():
     try:
         tasks = []
@@ -1657,7 +1764,6 @@ def api_tasks_schedule():
 
 
 @app.route('/api/backup_drive/drives', methods=['GET'])
-@api_login_required
 @api_admin_required
 def api_backup_drive_drives():
     try:
@@ -1668,7 +1774,6 @@ def api_backup_drive_drives():
 
 
 @app.route('/api/backup_drive/unmount', methods=['POST'])
-@api_login_required
 @api_admin_required
 def api_backup_drive_unmount():
     try:
@@ -1706,7 +1811,6 @@ def api_backup_drive_unmount():
 
 
 @app.route('/api/backup_drive/configure', methods=['POST'])
-@api_login_required
 @api_admin_required
 def api_backup_drive_configure():
     try:
@@ -1729,8 +1833,138 @@ def api_backup_drive_configure():
         current_app.logger.error(f"Error configuring backup drive: {e}")
         return jsonify({'success': False, 'error': 'Could not configure the backup drive.'})
 
+@app.route('/api/ddns/config', methods=['GET'])
+@api_admin_required
+def get_ddns_config():
+    try:
+        config = {
+            'duckdns': {
+                'enabled': config_manager.get_value('ddns', 'duckdns_enabled', 'false') == 'true',
+                'domain': config_manager.get_value('ddns', 'duckdns_domain', ''),
+                # Never return the actual token to the client; expose only a boolean so the
+                # UI can show a masked placeholder without leaking credentials to the browser.
+                'token_present': config_manager.get_secret('duckdns_token', '') != '',
+            },
+            'cloudflare': {
+                'enabled': config_manager.get_value('ddns', 'cloudflare_enabled', 'false') == 'true',
+                'zone': config_manager.get_value('ddns', 'cloudflare_zone', ''),
+                'record': config_manager.get_value('ddns', 'cloudflare_record', ''),
+                'token_present': config_manager.get_secret('cloudflare_token', '') != '',
+                'proxy': config_manager.get_value('ddns', 'cloudflare_proxy', 'false') == 'true'
+            }
+        }
+
+        status_file = runtime.data_dir / 'ddns_status.json'
+        status = {}
+        if status_file.exists():
+            try:
+                status = json.loads(status_file.read_text())
+            except Exception:
+                pass
+        ddns_task = get_task("DDNS Update")
+        next_run = ddns_task.next_run if ddns_task else "Unknown"
+
+        return jsonify({
+            'success': True,
+            'config': config,
+            'status': status,
+            'next_run': next_run
+        })
+    except Exception:
+        current_app.logger.exception("Error loading DDNS configuration")
+        return jsonify({'success': False, 'message': 'Failed to load DDNS configuration.'}), 500
+
+@app.route('/api/ddns/config', methods=['POST'])
+@api_admin_required
+def save_ddns_config():
+    try:
+        # get_json(silent=True) returns None on parse errors or wrong content-type,
+        # avoiding the BadRequest exception that request.json raises on malformed input.
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict) or not data:
+            return jsonify({'success': False, 'message': 'Invalid payload'}), 400
+        if 'duckdns' in data:
+            duckdns = data['duckdns']
+            domain = duckdns.get('domain', '').strip()
+            token = duckdns.get('token', '').strip()
+            enabled = duckdns.get('enabled', False)
+
+            # Validate required fields if enabled
+            if enabled:
+                existing_token = config_manager.get_secret('duckdns_token')
+                if not domain:
+                    return jsonify({'success': False, 'message': 'DuckDNS domain is required when enabled'}), 400
+                if not token and not existing_token:
+                    return jsonify({'success': False, 'message': 'DuckDNS token is required when enabled'}), 400
+
+            config_manager.set_value('ddns', 'duckdns_domain', domain)
+            config_manager.set_value('ddns', 'duckdns_enabled', str(enabled).lower())
+            if token:
+                config_manager.store_secret('duckdns_token', token)
+
+        if 'cloudflare' in data:
+            cf = data['cloudflare']
+            zone = cf.get('zone', '').strip()
+            record = cf.get('record', '').strip()
+            token = cf.get('token', '').strip()
+            proxy = cf.get('proxy', False)
+            enabled = cf.get('enabled', False)
+
+            # Validate required fields if enabled
+            if enabled:
+                existing_token = config_manager.get_secret('cloudflare_token')
+                if not zone:
+                    return jsonify({'success': False, 'message': 'Cloudflare zone is required when enabled'}), 400
+                if not record:
+                    return jsonify({'success': False, 'message': 'Cloudflare record is required when enabled'}), 400
+                if not token and not existing_token:
+                    return jsonify({'success': False, 'message': 'Cloudflare token is required when enabled'}), 400
+
+            config_manager.set_value('ddns', 'cloudflare_zone', zone)
+            config_manager.set_value('ddns', 'cloudflare_record', record)
+            config_manager.set_value('ddns', 'cloudflare_proxy', str(proxy).lower())
+            config_manager.set_value('ddns', 'cloudflare_enabled', str(enabled).lower())
+            if token:
+                config_manager.store_secret('cloudflare_token', token)
+
+        # ConfigManager.set_value already persists each key to disk, so there is no
+        # need to rewrite the entire config file here. Doing so would overwrite keys
+        # written by other subsystems (e.g., email, backup) that aren't in the DDNS
+        # section of the template, silently dropping them.
+
+        # Trigger an immediate sync so the user sees the result of their new config.
+        # If the task start fails (e.g. systemd unavailable), we still consider the
+        # save successful — the periodic timer will pick up the new config on the
+        # next scheduled run regardless.
+        try:
+            ddns_task = get_task("DDNS Update")
+            if ddns_task:
+                ddns_task.start()
+        except Exception:
+            current_app.logger.warning("Could not trigger immediate DDNS sync; config was saved successfully", exc_info=True)
+            return jsonify({'success': True, 'message': 'DDNS configuration saved. Immediate sync could not be triggered — the next scheduled run will use the new config.'})
+
+        return jsonify({'success': True, 'message': 'DDNS configuration saved and update triggered.'})
+    except Exception:
+        current_app.logger.exception("Error saving DDNS configuration")
+        return jsonify({'success': False, 'message': 'Failed to save DDNS configuration.'}), 500
+
+@app.route('/api/ddns/run', methods=['POST'])
+@api_admin_required
+def run_ddns_manual():
+    """Admin-only endpoint to manually trigger DDNS update."""
+    try:
+        ddns_task = get_task("DDNS Update")
+        if not ddns_task:
+            return jsonify({'success': False, 'message': 'DDNS Update task not found'}), 404
+        ddns_task.start()
+        return jsonify({'success': True, 'message': 'DDNS sync started successfully.'})
+    except Exception as e:
+        current_app.logger.exception("Error starting DDNS sync")
+        return jsonify({'success': False, 'message': f'Failed to start DDNS sync: {str(e)}'}), 500
+
 @app.route('/api/cloud_backup/config', methods=['GET'])
-@login_required
+@api_admin_required
 def api_cloud_backup_get_config():
     """Get current cloud backup configuration (MEGA/rclone, schedule, bandwidth)"""
     try:
@@ -1760,7 +1994,7 @@ def api_cloud_backup_get_config():
         return jsonify({'success': False, 'error': 'Could not load backup settings.'})
 
 @app.route('/api/cloud_backup/config', methods=['POST'])
-@login_required
+@api_admin_required
 def api_cloud_backup_set_config():
     """Set cloud backup configuration (MEGA/rclone, schedule, bandwidth)"""
     try:
@@ -1823,7 +2057,7 @@ def api_cloud_backup_set_config():
         return jsonify({'success': False, 'error': 'Could not save backup settings.'})
 
 @app.route('/api/cloud_backup/status', methods=['GET'])
-@login_required
+@api_admin_required
 def api_cloud_backup_status():
     """Get status, last run, next run, and run duration for the cloud backup task."""
     try:
@@ -1842,7 +2076,7 @@ def api_cloud_backup_status():
         return jsonify({'success': False, 'error': 'Could not get backup status.'})
 
 @app.route('/api/cloud_backup/run', methods=['POST'])
-@login_required
+@api_admin_required
 def api_cloud_backup_run():
     """Trigger a manual cloud backup run."""
     try:
@@ -1856,7 +2090,7 @@ def api_cloud_backup_run():
         return jsonify({'success': False, 'error': 'Could not start backup.'})
 
 @app.route('/api/cloud_backup/mega/list_folders', methods=['POST'])
-@login_required
+@api_admin_required
 def api_cloud_backup_mega_list_folders():
     """List folders at a given MEGA path using provided or stored credentials."""
     try:
@@ -1903,7 +2137,7 @@ def api_cloud_backup_mega_list_folders():
 
 
 @app.route('/api/cloud_backup/mega/create_folder', methods=['POST'])
-@login_required
+@api_admin_required
 def api_cloud_backup_mega_create_folder():
     """Create a MEGA folder using provided or stored credentials."""
     try:
@@ -1956,7 +2190,7 @@ pass = {obscured_pw}
         return jsonify({'success': False, 'error': 'Could not create MEGA folder.'})
 
 @app.route('/api/cloud_backup/schedule', methods=['GET'])
-@login_required
+@api_admin_required
 def api_cloud_backup_get_schedule():
     """Get only the backup schedule and bandwidth limit."""
     try:
@@ -1973,7 +2207,7 @@ def api_cloud_backup_get_schedule():
         return jsonify({'success': False, 'error': 'Could not load backup settings.'})
 
 @app.route('/api/cloud_backup/schedule', methods=['POST'])
-@login_required
+@api_admin_required
 def api_cloud_backup_set_schedule():
     """Set only the backup schedule and bandwidth limit."""
     try:
@@ -2007,7 +2241,7 @@ def api_cloud_backup_set_schedule():
         return jsonify({'success': False, 'error': 'Could not save backup settings.'})
 
 @app.route('/api/cloud_backup/mega/validate', methods=['POST'])
-@login_required
+@api_admin_required
 def api_cloud_backup_mega_validate():
     """Validate MEGA credentials using rclone and save them if valid."""
     try:

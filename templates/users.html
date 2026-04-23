@@ -218,6 +218,7 @@ function openEditUserModal(username) {
   document.getElementById('editUsername').value = user.username;
   document.getElementById('editPassword').value = '';
   document.getElementById('editIsAdmin').checked = user.is_admin;
+  // The API also rejects self-demotion; this keeps the form from inviting a change that cannot be saved.
   if (user.username === '{{ username }}') {
     document.getElementById('editIsAdmin').disabled = true;
   } else {

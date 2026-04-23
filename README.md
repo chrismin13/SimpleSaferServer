@@ -33,6 +33,7 @@ bash reset_fake_mode.sh
 ```
 
 - Fake mode stores its state under `.dev-data/`.
+- Fake mode simulates local system services, disks, Samba, and destructive machine actions. It does not sandbox external provider APIs; DDNS can update real DuckDNS or Cloudflare records when enabled with valid credentials.
 - `reset_fake_mode.sh` deletes `.dev-data/` so you can rerun setup from a clean fake-mode state.
 - Use the setup wizard's mount step to point the backup source at a local folder on your machine.
 - Cloud backup can still use real `rclone` destinations such as MEGA when `rclone` is installed.

@@ -102,6 +102,8 @@ Advanced mode:
 - Set the backup time.
 - Optionally set a bandwidth limit.
 - Save to complete setup.
+- Completing setup installs and activates the recurring systemd timers for mount checks, drive-health checks, cloud backups, and DDNS updates.
+- The installer may generate those unit files earlier, but it keeps the timers inactive while `system.setup_complete` is false so persistent timers cannot run with placeholder setup values.
 
 ## Later Changes
 
