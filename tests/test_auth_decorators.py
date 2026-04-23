@@ -1,8 +1,14 @@
+import ast
+from pathlib import Path
+import unittest
 from unittest.mock import MagicMock, patch
 
 from flask import Flask
 
 from user_manager import admin_required, api_admin_required
+
+
+APP_SOURCE = Path(__file__).resolve().parents[1] / 'app.py'
 
 
 def build_test_app():
@@ -103,3 +109,56 @@ def test_api_admin_required_allows_admin_sessions():
     assert response.status_code == 200
     assert response.get_json() == {'success': True}
     user_manager.is_admin.assert_called_once_with('admin')
+
+
+def _decorator_name(decorator):
+    if isinstance(decorator, ast.Name):
+        return decorator.id
+    if isinstance(decorator, ast.Call) and isinstance(decorator.func, ast.Name):
+        return decorator.func.id
+    return None
+
+
+class AppRouteAuthorizationTests(unittest.TestCase):
+    def test_app_routes_do_not_use_removed_login_only_decorators(self):
+        tree = ast.parse(APP_SOURCE.read_text())
+        decorator_names = {
+            name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.FunctionDef)
+            for name in (_decorator_name(decorator) for decorator in node.decorator_list)
+        }
+
+        # The management UI is admin-only. login_required/api_login_required were
+        # intentionally removed so demoted users cannot keep using a stale session.
+        self.assertNotIn('login_required', decorator_names)
+        self.assertNotIn('api_login_required', decorator_names)
+
+    def test_system_update_api_routes_use_json_admin_guard(self):
+        tree = ast.parse(APP_SOURCE.read_text())
+        routes = {}
+
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.FunctionDef):
+                continue
+            route_paths = []
+            guard_names = set()
+            for decorator in node.decorator_list:
+                if isinstance(decorator, ast.Call) and isinstance(decorator.func, ast.Attribute):
+                    if decorator.func.attr == 'route' and decorator.args and isinstance(decorator.args[0], ast.Constant):
+                        route_paths.append(decorator.args[0].value)
+                else:
+                    name = _decorator_name(decorator)
+                    if name:
+                        guard_names.add(name)
+            for path in route_paths:
+                routes[path] = guard_names
+
+        system_update_api_routes = {
+            path: guards
+            for path, guards in routes.items()
+            if path.startswith('/api/system_updates')
+        }
+
+        self.assertTrue(system_update_api_routes)
+        self.assertTrue(all('api_admin_required' in guards for guards in system_update_api_routes.values()))

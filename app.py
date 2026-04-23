@@ -1110,7 +1110,7 @@ def cloud_backup():
     return render_template('cloud_backup.html', username=session.get('username'))
 
 @app.route('/system_updates')
-@login_required
+@admin_required
 def system_updates():
     return render_template('system_updates.html', username=session.get('username'))
 
@@ -1121,7 +1121,7 @@ def alerts():
 
 
 @app.route('/api/system_updates/summary', methods=['GET'])
-@login_required
+@api_admin_required
 def api_system_updates_summary():
     try:
         return jsonify({
@@ -1137,7 +1137,7 @@ def api_system_updates_summary():
 
 
 @app.route('/api/system_updates/status', methods=['GET'])
-@login_required
+@api_admin_required
 def api_system_updates_status():
     try:
         return jsonify({'success': True, 'operation': system_updates_manager.get_status()})
@@ -1147,7 +1147,7 @@ def api_system_updates_status():
 
 
 @app.route('/api/system_updates/<operation>/start', methods=['POST'])
-@admin_required
+@api_admin_required
 def api_system_updates_start(operation):
     try:
         status = system_updates_manager.start_operation(operation)
@@ -1160,7 +1160,7 @@ def api_system_updates_start(operation):
 
 
 @app.route('/api/system_updates/stop', methods=['POST'])
-@admin_required
+@api_admin_required
 def api_system_updates_stop():
     try:
         status = system_updates_manager.stop_operation()
@@ -1171,7 +1171,7 @@ def api_system_updates_stop():
 
 
 @app.route('/api/system_updates/settings', methods=['POST'])
-@admin_required
+@api_admin_required
 def api_system_updates_save_settings():
     try:
         settings = system_updates_manager.save_settings(request.get_json() or {})
@@ -1185,7 +1185,7 @@ def api_system_updates_save_settings():
 
 
 @app.route('/api/system_updates/remove_stale_locks', methods=['POST'])
-@admin_required
+@api_admin_required
 def api_system_updates_remove_stale_locks():
     try:
         result = system_updates_manager.remove_stale_locks()
@@ -1199,7 +1199,7 @@ def api_system_updates_remove_stale_locks():
 
 
 @app.route('/api/system_updates/livepatch/setup', methods=['POST'])
-@admin_required
+@api_admin_required
 def api_system_updates_livepatch_setup():
     try:
         data = request.get_json() or {}
