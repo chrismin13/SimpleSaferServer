@@ -752,8 +752,25 @@ textarea.form-control {
   border-color: var(--accent);
 }
 
+.form-check-input:disabled {
+  background: var(--bg-raised);
+  border-color: var(--border-default);
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+/* A checked disabled box needs its own color, or it still looks actionable. */
+.form-check-input:checked:disabled {
+  background: var(--bg-raised);
+  border-color: var(--border-default);
+}
+
 .form-check-input:checked::after {
   transform: rotate(-45deg) scale(1);
+}
+
+.form-check-input:disabled::after {
+  border-color: var(--text-muted);
 }
 
 .form-check-input:focus {
@@ -764,6 +781,11 @@ textarea.form-control {
 .form-check-label {
   font-size: var(--text-sm);
   color: var(--text-secondary);
+}
+
+.form-check-input:disabled + .form-check-label {
+  color: var(--text-muted);
+  cursor: not-allowed;
 }
 
 .input-group {

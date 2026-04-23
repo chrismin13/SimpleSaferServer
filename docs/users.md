@@ -15,7 +15,7 @@ The Users page allows administrators to manage user accounts.
 - **Modal**: Edit User form with fields for new password and admin checkbox.
 - **Validation**: Password (min 4 chars, optional).
 - **Feedback**: Inline error messages for invalid input.
-- **Admin Restriction**: Cannot remove your own admin privileges while logged in.
+- **Admin Restriction**: When editing your own account, the admin checkbox is disabled and shown as unavailable. The server also rejects requests that would remove your own admin privileges while you are logged in.
 
 ## Alerts
 - **Success/Error Alerts**: Shown for all user actions (add, edit, delete).
