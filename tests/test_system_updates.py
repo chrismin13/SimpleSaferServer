@@ -9,6 +9,7 @@ from system_updates import (
     DEFAULT_AUTOCLEAN_INTERVAL_DAYS,
     SystemUpdatesManager,
     get_support_info,
+    _is_apt_process,
     parse_os_release_text,
 )
 
@@ -110,6 +111,21 @@ class SystemUpdatesTests(unittest.TestCase):
             ):
                 with self.assertRaises(RuntimeError):
                     manager.remove_stale_locks()
+
+    def test_apt_process_matching_uses_executable_tokens(self):
+        self.assertTrue(_is_apt_process("sudo", ["sudo", "apt-get", "update"]))
+        self.assertTrue(
+            _is_apt_process(
+                "sudo",
+                ["sudo", "env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "-y", "upgrade"],
+            )
+        )
+        self.assertTrue(_is_apt_process("dpkg", ["/usr/bin/dpkg", "--configure", "-a"]))
+        self.assertTrue(_is_apt_process("unattended-upgrade", ["/usr/bin/unattended-upgrade"]))
+
+        self.assertFalse(_is_apt_process("adapt", ["/tmp/adapt", "--scan"]))
+        self.assertFalse(_is_apt_process("python3", ["/srv/capture/report.py", "apt"]))
+        self.assertFalse(_is_apt_process("backup", ["/usr/local/bin/backup", "/var/log/apt/history.log"]))
 
     def test_status_clears_stale_running_state_after_restart_when_apt_is_idle(self):
         with tempfile.TemporaryDirectory() as temp_dir:

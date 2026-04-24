@@ -36,6 +36,48 @@ APT_PROCESS_MARKERS = (
 )
 
 
+def _apt_process_token(value: Any) -> str:
+    # Process names can be bare executable names, while argv entries may be full
+    # paths; compare only the executable token so paths like /tmp/adapt do not
+    # look like package-manager work.
+    return Path(str(value or "")).name.lower()
+
+
+def _apt_executable_candidates(name: str, cmdline_parts: List[str]) -> List[str]:
+    candidates = [_apt_process_token(name)]
+    argv_tokens = [_apt_process_token(part) for part in cmdline_parts if str(part or "").strip()]
+    if not argv_tokens:
+        return candidates
+
+    candidates.append(argv_tokens[0])
+
+    index = 0
+    while index < len(argv_tokens):
+        token = argv_tokens[index]
+        if token == "sudo":
+            index += 1
+            while index < len(argv_tokens) and argv_tokens[index].startswith("-"):
+                index += 1
+            continue
+        if token == "env":
+            index += 1
+            while index < len(argv_tokens):
+                env_token = argv_tokens[index]
+                if env_token.startswith("-") or "=" in env_token:
+                    index += 1
+                    continue
+                break
+            continue
+        candidates.append(token)
+        break
+
+    return candidates
+
+
+def _is_apt_process(name: str, cmdline_parts: List[str]) -> bool:
+    return any(token in APT_PROCESS_MARKERS for token in _apt_executable_candidates(name, cmdline_parts))
+
+
 SUPPORT_INFO = {
     "debian": {
         # Debian LTS dates are used for support status where available.
@@ -290,13 +332,12 @@ class SystemUpdatesManager:
                 info = proc.info
                 if info.get("pid") == current_pid:
                     continue
-                name = (info.get("name") or "").lower()
+                name = info.get("name") or ""
                 cmdline_parts = info.get("cmdline") or []
-                cmdline = " ".join(cmdline_parts).lower()
-                if any(marker in name or marker in cmdline for marker in APT_PROCESS_MARKERS):
+                if _is_apt_process(name, cmdline_parts):
                     processes.append({
                         "pid": info.get("pid"),
-                        "name": info.get("name") or "",
+                        "name": name,
                         "cmdline": " ".join(cmdline_parts),
                     })
             except (psutil.NoSuchProcess, psutil.AccessDenied):
@@ -319,12 +360,16 @@ class SystemUpdatesManager:
                 continue
             try:
                 name = (pid_dir / "comm").read_text().strip()
-                raw_cmdline = (pid_dir / "cmdline").read_bytes().replace(b"\x00", b" ").decode(errors="ignore")
+                raw_cmdline_bytes = (pid_dir / "cmdline").read_bytes()
+                cmdline_parts = [
+                    part.decode(errors="ignore")
+                    for part in raw_cmdline_bytes.split(b"\x00")
+                    if part
+                ]
             except Exception:
                 continue
-            lowered = f"{name} {raw_cmdline}".lower()
-            if any(marker in lowered for marker in APT_PROCESS_MARKERS):
-                processes.append({"pid": pid, "name": name, "cmdline": raw_cmdline.strip()})
+            if _is_apt_process(name, cmdline_parts):
+                processes.append({"pid": pid, "name": name, "cmdline": " ".join(cmdline_parts)})
         return processes
 
     def _held_lock_paths(self) -> List[str]:
