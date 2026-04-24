@@ -515,7 +515,9 @@ class SystemUpdatesManager:
                 text=True,
                 bufsize=1,
                 env=env,
-                preexec_fn=os.setsid,
+                # Keep apt in its own session so Stop can terminate the whole
+                # process group without using preexec_fn in Flask's threaded process.
+                start_new_session=True,
             )
             with self._lock:
                 self._process = proc
