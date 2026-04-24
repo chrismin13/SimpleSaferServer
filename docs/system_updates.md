@@ -19,6 +19,7 @@ The System Updates page manages Debian and Ubuntu package maintenance from the a
 - The page keeps the apt log as the primary visible area and polls progress while an operation runs.
 - Progress is estimated from apt output phases because apt does not provide one stable machine-readable progress stream for both update and upgrade.
 - Operating system, support, automatic update, and Livepatch status stay visible above the log; only stale lock removal stays collapsed under Advanced.
+- If SimpleSaferServer restarts during an apt operation, the next status read reconciles the saved running state with the current process and lock state. The page will report active external apt work as busy, or mark the saved operation interrupted once apt is idle.
 
 ## Shutdown and reboot lockout
 
@@ -59,9 +60,14 @@ The advanced action removes stale apt lock files only when SimpleSaferServer can
 Livepatch status is shown only on Ubuntu.
 
 - If `canonical-livepatch` is installed, the page runs `canonical-livepatch status --format json`.
-- If it is not installed, setup uses `sudo snap install canonical-livepatch` and then `sudo canonical-livepatch enable <token>`.
-- Livepatch setup requires a Canonical Livepatch token.
+- Setup requires the Ubuntu Pro Client (`pro`) and a Canonical Ubuntu Pro token.
+- Setup writes the token to a temporary `0600` attach-config file, runs `sudo pro attach --attach-config <file>`, removes the file, and then runs `sudo pro enable livepatch`.
+- The token is not passed as a command-line argument, because local process listings and process audit logs can expose argv while a command is running.
 
 Ubuntu Livepatch status behavior follows Canonical's Livepatch client documentation:
 
 https://ubuntu.com/security/livepatch/docs/livepatch/how-to/status
+
+Ubuntu Pro attach-config behavior follows Canonical's Ubuntu Pro Client documentation:
+
+https://documentation.ubuntu.com/pro-client/en/latest/howtoguides/how_to_attach_with_config_file/

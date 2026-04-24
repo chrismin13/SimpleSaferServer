@@ -23,6 +23,16 @@ def make_runtime(root: Path):
     )
 
 
+def make_real_runtime(root: Path):
+    return SimpleNamespace(
+        mode="real",
+        is_fake=False,
+        data_dir=root,
+        config_dir=root / "config",
+        default_mount_point=str(root / "backup"),
+    )
+
+
 class FakeConfigManager:
     def __init__(self):
         self.values = {}
@@ -100,6 +110,68 @@ class SystemUpdatesTests(unittest.TestCase):
             ):
                 with self.assertRaises(RuntimeError):
                     manager.remove_stale_locks()
+
+    def test_status_clears_stale_running_state_after_restart_when_apt_is_idle(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime = make_real_runtime(Path(temp_dir))
+            manager = SystemUpdatesManager(FakeConfigManager(), runtime=runtime)
+            manager._update_state(operation="update", status="running", phase="Downloading", progress=42)
+
+            with patch.object(
+                manager,
+                "get_lock_status",
+                return_value={
+                    "locked": False,
+                    "own_operation_running": False,
+                    "held_locks": [],
+                    "processes": [],
+                },
+            ):
+                status = manager.get_status()
+
+            self.assertEqual(status["status"], "failure")
+            self.assertEqual(status["phase"], "Interrupted")
+            self.assertIn("restarted", status["error"])
+            self.assertIsNotNone(status["finished_at"])
+
+    def test_status_marks_stale_running_state_external_when_apt_is_still_busy(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime = make_real_runtime(Path(temp_dir))
+            manager = SystemUpdatesManager(FakeConfigManager(), runtime=runtime)
+            manager._update_state(operation="upgrade", status="running", phase="Configuring", progress=74)
+
+            lock_status = {
+                "locked": True,
+                "own_operation_running": False,
+                "held_locks": ["/var/lib/dpkg/lock-frontend"],
+                "processes": [{"pid": 123, "name": "apt-get", "cmdline": "apt-get upgrade"}],
+            }
+            with patch.object(manager, "get_lock_status", return_value=lock_status):
+                status = manager.get_status()
+
+            self.assertEqual(status["status"], "external")
+            self.assertEqual(status["phase"], "Package manager busy")
+            self.assertIn("still active", status["error"])
+            self.assertEqual(status["lock"], lock_status)
+
+    def test_status_keeps_running_state_for_current_worker(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime = make_real_runtime(Path(temp_dir))
+            manager = SystemUpdatesManager(FakeConfigManager(), runtime=runtime)
+            manager._update_state(operation="update", status="running", phase="Starting", progress=3)
+
+            lock_status = {
+                "locked": True,
+                "own_operation_running": True,
+                "held_locks": [],
+                "processes": [],
+            }
+            with patch.object(manager, "get_lock_status", return_value=lock_status):
+                status = manager.get_status()
+
+            self.assertEqual(status["status"], "running")
+            self.assertEqual(status["phase"], "Starting")
+            self.assertEqual(status["lock"], lock_status)
 
     def test_settings_are_saved_to_config_in_fake_mode(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -259,13 +331,7 @@ class SystemUpdatesTests(unittest.TestCase):
     def test_failed_real_write_does_not_claim_apt_update_ownership(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            runtime = SimpleNamespace(
-                mode="real",
-                is_fake=False,
-                data_dir=root,
-                config_dir=root / "config",
-                default_mount_point=str(root / "backup"),
-            )
+            runtime = make_real_runtime(root)
             config = FakeConfigManager()
             manager = SystemUpdatesManager(config, runtime=runtime)
 
@@ -279,6 +345,63 @@ class SystemUpdatesTests(unittest.TestCase):
                         })
 
             self.assertIsNone(config.get_value("apt_updates", "managed", None))
+
+    def test_livepatch_setup_uses_pro_attach_config_without_token_in_argv(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            manager = SystemUpdatesManager(FakeConfigManager(), runtime=make_real_runtime(root))
+            calls = []
+            seen_attach_config = {}
+
+            def fake_run(args, **kwargs):
+                calls.append(args)
+                self.assertNotIn("secret-token", args)
+                if args[:3] == ["sudo", "/usr/bin/pro", "attach"]:
+                    attach_config = Path(args[-1])
+                    seen_attach_config["path"] = attach_config
+                    seen_attach_config["content"] = attach_config.read_text()
+                return SimpleNamespace(returncode=0, stdout="", stderr="", args=args)
+
+            with patch.object(manager, "get_distribution_info", return_value={"id": "ubuntu"}):
+                with patch.object(manager, "get_livepatch_status", return_value={"enabled": True}) as status:
+                    with patch("system_updates.shutil.which", return_value="/usr/bin/pro"):
+                        with patch("system_updates.subprocess.run", side_effect=fake_run):
+                            result = manager.setup_livepatch("secret-token")
+
+            self.assertEqual(result, {"enabled": True})
+            self.assertEqual(calls[0][:4], ["sudo", "/usr/bin/pro", "attach", "--attach-config"])
+            self.assertEqual(calls[1], ["sudo", "/usr/bin/pro", "enable", "livepatch"])
+            self.assertIn('token: "secret-token"', seen_attach_config["content"])
+            self.assertFalse(seen_attach_config["path"].exists())
+            status.assert_called_once()
+
+    def test_livepatch_setup_enables_livepatch_when_machine_is_already_attached(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            manager = SystemUpdatesManager(FakeConfigManager(), runtime=make_real_runtime(Path(temp_dir)))
+            calls = []
+
+            def fake_run(args, **kwargs):
+                calls.append(args)
+                if args[:3] == ["sudo", "/usr/bin/pro", "attach"]:
+                    return SimpleNamespace(returncode=2, stdout="", stderr="already attached", args=args)
+                return SimpleNamespace(returncode=0, stdout="", stderr="", args=args)
+
+            with patch.object(manager, "get_distribution_info", return_value={"id": "ubuntu"}):
+                with patch.object(manager, "get_livepatch_status", return_value={"enabled": True}):
+                    with patch("system_updates.shutil.which", return_value="/usr/bin/pro"):
+                        with patch("system_updates.subprocess.run", side_effect=fake_run):
+                            manager.setup_livepatch("secret-token")
+
+            self.assertEqual(calls[-1], ["sudo", "/usr/bin/pro", "enable", "livepatch"])
+
+    def test_livepatch_setup_requires_ubuntu_pro_client(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            manager = SystemUpdatesManager(FakeConfigManager(), runtime=make_real_runtime(Path(temp_dir)))
+
+            with patch.object(manager, "get_distribution_info", return_value={"id": "ubuntu"}):
+                with patch("system_updates.shutil.which", return_value=None):
+                    with self.assertRaisesRegex(RuntimeError, "Ubuntu Pro Client is required"):
+                        manager.setup_livepatch("secret-token")
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@ import re
 import shutil
 import signal
 import subprocess
+import tempfile
 import threading
 import time
 from datetime import date, datetime
@@ -328,8 +329,7 @@ class SystemUpdatesManager:
 
     def _held_lock_paths(self) -> List[str]:
         if self.runtime.is_fake:
-            state = self._read_state()
-            return [str(APT_LOCK_PATHS[0])] if state.get("status") == "running" else []
+            return []
 
         held: List[str] = []
         fuser = shutil.which("fuser")
@@ -554,9 +554,38 @@ class SystemUpdatesManager:
         self._update_state(phase="Stopping")
         return self.get_status()
 
+    def _reconcile_running_state(self, state: Dict[str, Any], lock_status: Dict[str, Any]) -> Dict[str, Any]:
+        if state.get("status") != "running" or lock_status["own_operation_running"]:
+            return state
+
+        if lock_status["processes"] or lock_status["held_locks"]:
+            updates = {
+                "status": "external",
+                "phase": "Package manager busy",
+                "finished_at": datetime.now().isoformat(timespec="seconds"),
+                "error": (
+                    "SimpleSaferServer restarted while this apt operation was running. "
+                    "Another apt or dpkg process is still active."
+                ),
+            }
+        else:
+            updates = {
+                "status": "failure",
+                "phase": "Interrupted",
+                "finished_at": datetime.now().isoformat(timespec="seconds"),
+                "error": "SimpleSaferServer restarted before this apt operation finished.",
+            }
+
+        # A persisted running state only proves a previous service process
+        # started work; after restart, only the in-memory worker can be stopped.
+        updates["returncode"] = None
+        return self._update_state(**updates)
+
     def get_status(self) -> Dict[str, Any]:
         state = self._read_state()
-        state["lock"] = self.get_lock_status()
+        lock_status = self.get_lock_status()
+        state = self._reconcile_running_state(state, lock_status)
+        state["lock"] = lock_status
         return state
 
     def remove_stale_locks(self) -> Dict[str, Any]:
@@ -793,12 +822,43 @@ class SystemUpdatesManager:
         if self.runtime.is_fake:
             return self.get_livepatch_status()
 
-        binary = shutil.which("canonical-livepatch")
-        if not binary:
-            if not shutil.which("snap"):
-                raise RuntimeError("snap is required to install canonical-livepatch.")
-            subprocess.run(["sudo", "snap", "install", "canonical-livepatch"], check=True, capture_output=True, text=True)
-            binary = shutil.which("canonical-livepatch") or "/snap/bin/canonical-livepatch"
+        pro_binary = shutil.which("pro")
+        if not pro_binary:
+            raise RuntimeError("Ubuntu Pro Client is required to set up Livepatch. Install ubuntu-pro-client and try again.")
 
-        subprocess.run(["sudo", binary, "enable", token], check=True, capture_output=True, text=True)
+        with tempfile.NamedTemporaryFile(
+            "w",
+            dir=self.runtime.data_dir,
+            prefix="ubuntu-pro-attach-",
+            suffix=".yaml",
+            delete=False,
+        ) as attach_config:
+            attach_config_path = Path(attach_config.name)
+            attach_config.write("\n".join([
+                f"token: {json.dumps(token)}",
+                "enable_services:",
+                "  - livepatch",
+                "",
+            ]))
+        # The Pro client intentionally supports attach-config so subscription
+        # tokens do not end up in process argv or shell history.
+        attach_config_path.chmod(0o600)
+        try:
+            attach = subprocess.run(
+                ["sudo", pro_binary, "attach", "--attach-config", str(attach_config_path)],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            if attach.returncode not in (0, 2):
+                raise subprocess.CalledProcessError(
+                    attach.returncode,
+                    attach.args,
+                    output=attach.stdout,
+                    stderr=attach.stderr,
+                )
+        finally:
+            attach_config_path.unlink(missing_ok=True)
+
+        subprocess.run(["sudo", pro_binary, "enable", "livepatch"], check=True, capture_output=True, text=True)
         return self.get_livepatch_status()
