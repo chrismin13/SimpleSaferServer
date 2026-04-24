@@ -9,6 +9,7 @@ The System Updates page manages Debian and Ubuntu package maintenance from the a
 - Returns the upstream release-date source URL in the support API response for diagnostics and future UI use.
 - Debian support status includes Debian LTS dates, but excludes paid ELTS dates.
 - Ubuntu LTS support status includes Ubuntu Pro ESM dates because Ubuntu Pro has a free personal tier. Paid Legacy support add-on dates are not used.
+- The support badge turns amber with `EOL Soon` when the support end date is 183 days or less away.
 
 ## Apt operations
 

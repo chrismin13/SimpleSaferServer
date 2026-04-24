@@ -66,7 +66,9 @@
     ].filter(Boolean).join(' ') || 'Unknown';
     els['max-eol'].textContent = support.max_eol_display || 'Unknown';
 
-    if (support.is_supported === true) {
+    if (support.is_supported === true && support.approaching_eol) {
+      setBadge(els['support-status-badge'], 'EOL Soon', 'warning');
+    } else if (support.is_supported === true) {
       setBadge(els['support-status-badge'], 'Supported', 'success');
     } else if (support.is_supported === false) {
       setBadge(els['support-status-badge'], 'Past support', 'danger');

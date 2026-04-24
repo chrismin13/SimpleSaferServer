@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -66,6 +67,20 @@ class SystemUpdatesTests(unittest.TestCase):
         self.assertTrue(support["known"])
         self.assertEqual(support["max_eol"], "2032-04-30")
         self.assertIn("excludes the paid Legacy", support["notes"])
+
+    def test_support_warns_when_eol_is_within_six_months(self):
+        support = get_support_info("debian", "11", today=date(2026, 3, 1))
+
+        self.assertTrue(support["is_supported"])
+        self.assertTrue(support["approaching_eol"])
+        self.assertEqual(support["days_until_eol"], 183)
+
+    def test_support_does_not_warn_more_than_six_months_before_eol(self):
+        support = get_support_info("debian", "11", today=date(2026, 2, 28))
+
+        self.assertTrue(support["is_supported"])
+        self.assertFalse(support["approaching_eol"])
+        self.assertEqual(support["days_until_eol"], 184)
 
     def test_remove_stale_locks_refuses_active_apt_processes(self):
         with tempfile.TemporaryDirectory() as temp_dir:

@@ -122,6 +122,8 @@ SUPPORT_SOURCES = {
     "livepatch": "https://ubuntu.com/security/livepatch/docs/livepatch/how-to/status",
 }
 
+EOL_WARNING_DAYS = 183
+
 
 def parse_os_release_text(text: str) -> Dict[str, str]:
     """Parse os-release without shelling out; this file is the distro source of truth."""
@@ -146,7 +148,7 @@ def _major_ubuntu_version(version_id: str) -> str:
     return version_id
 
 
-def get_support_info(distro_id: str, version_id: str) -> Dict[str, Any]:
+def get_support_info(distro_id: str, version_id: str, today: Optional[date] = None) -> Dict[str, Any]:
     distro = (distro_id or "").lower()
     lookup_version = version_id
     if distro == "debian":
@@ -164,13 +166,22 @@ def get_support_info(distro_id: str, version_id: str) -> Dict[str, Any]:
             "max_eol_display": "Unknown",
             "notes": "Support dates are not built into this version of SimpleSaferServer.",
             "source_url": SUPPORT_SOURCES.get(distro),
+            "approaching_eol": False,
+            "days_until_eol": None,
         }
 
-    today = date.today()
+    today = today or date.today()
     max_eol = info.get("max_eol")
     is_supported = None
+    days_until_eol = None
+    approaching_eol = False
     if max_eol:
-        is_supported = today <= datetime.strptime(max_eol, "%Y-%m-%d").date()
+        max_eol_date = datetime.strptime(max_eol, "%Y-%m-%d").date()
+        days_until_eol = (max_eol_date - today).days
+        is_supported = days_until_eol >= 0
+        # Six calendar months is not a fixed number of days; 183 keeps the UI
+        # warning threshold simple and errs slightly early.
+        approaching_eol = is_supported and days_until_eol <= EOL_WARNING_DAYS
 
     return {
         "known": True,
@@ -181,6 +192,8 @@ def get_support_info(distro_id: str, version_id: str) -> Dict[str, Any]:
         "notes": info.get("notes", ""),
         "source_url": SUPPORT_SOURCES.get(distro),
         "is_supported": is_supported,
+        "approaching_eol": approaching_eol,
+        "days_until_eol": days_until_eol,
     }
 
 
