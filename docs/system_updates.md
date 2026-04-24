@@ -32,15 +32,23 @@ The block checks:
 
 ## Automatic apt settings
 
-Automatic update settings are stored in the `apt_updates` section of `config.conf`.
+Before the first save, the page shows the current system apt periodic settings. This keeps an existing server's automatic update policy visible without treating generated SimpleSaferServer defaults as an administrator choice.
 
-On real systems the page writes `/etc/apt/apt.conf.d/20auto-upgrades`:
+After an administrator saves the form, SimpleSaferServer stores `managed = true` in the `apt_updates` section of `config.conf`. From then on, the saved app settings are the source of truth for the apt periodic values shown on this page.
+
+On real systems, saving the form writes `/etc/apt/apt.conf.d/20auto-upgrades` with a SimpleSaferServer header and these values:
 
 - `APT::Periodic::Update-Package-Lists`
 - `APT::Periodic::Unattended-Upgrade`
 - `APT::Periodic::AutocleanInterval`
 
+`AutocleanInterval` is stored as a number of days. The checkbox stays simple in the UI: unchecked writes `0`, and checked writes a positive interval. When SimpleSaferServer first adopts an existing positive system interval, it preserves that number. If autoclean is enabled and there is no existing positive interval, the app uses 7 days.
+
+Other apt configuration files under `/etc/apt/apt.conf.d/` may still define additional apt behavior that this page does not edit.
+
 `unattended-upgrades` must be installed for unattended upgrades to actually run.
+
+Uninstalling SimpleSaferServer does not remove or revert `/etc/apt/apt.conf.d/20auto-upgrades`. These are normal operating system update settings, and an administrator may want them to keep applying after the app is removed.
 
 ## Advanced stale lock removal
 

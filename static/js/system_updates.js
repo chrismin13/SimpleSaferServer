@@ -123,9 +123,13 @@
       els['auto-updates-summary'].textContent = 'Manual';
     }
     els['auto-updates-badge'].classList.add('d-none');
-    els['auto-updates-hint'].textContent = settings.unattended_upgrades_installed
-      ? 'These settings use the system apt periodic configuration.'
-      : 'unattended-upgrades is not installed; automatic upgrades will need that package.';
+    if (!settings.unattended_upgrades_installed) {
+      els['auto-updates-hint'].textContent = 'unattended-upgrades is not installed; automatic upgrades will need that package.';
+    } else if (settings.apt_updates_managed) {
+      els['auto-updates-hint'].textContent = 'SimpleSaferServer manages these apt periodic settings.';
+    } else {
+      els['auto-updates-hint'].textContent = 'Showing the current system apt periodic settings. Save to manage them here.';
+    }
   }
 
   function renderLivepatch(livepatch) {

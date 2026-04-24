@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -123,6 +124,7 @@ SUPPORT_SOURCES = {
 }
 
 EOL_WARNING_DAYS = 183
+DEFAULT_AUTOCLEAN_INTERVAL_DAYS = 7
 
 
 def parse_os_release_text(text: str) -> Dict[str, str]:
@@ -571,7 +573,22 @@ class SystemUpdatesManager:
         subprocess.run(["sudo", "rm", "-f", *existing], check=True, capture_output=True, text=True)
         return {"removed": existing, "message": "Stale apt lock files removed."}
 
-    def _read_apt_periodic_config(self) -> Dict[str, bool]:
+    def _parse_apt_periodic_config(self, text: str) -> Dict[str, Any]:
+        values: Dict[str, Any] = {}
+        key_map = {
+            "Update-Package-Lists": "update_package_lists",
+            "Unattended-Upgrade": "unattended_upgrade",
+            "AutocleanInterval": "autoclean_interval",
+        }
+        for apt_key, settings_key in key_map.items():
+            match = re.search(r'APT::Periodic::{}\s+"?(\d+)"?\s*;'.format(re.escape(apt_key)), text)
+            if not match:
+                continue
+            parsed_value = int(match.group(1))
+            values[settings_key] = parsed_value if settings_key == "autoclean_interval" else parsed_value > 0
+        return values
+
+    def _read_apt_periodic_config(self) -> Dict[str, Any]:
         path = Path("/etc/apt/apt.conf.d/20auto-upgrades")
         if self.runtime.is_fake or not path.exists():
             return {}
@@ -579,21 +596,42 @@ class SystemUpdatesManager:
             text = path.read_text()
         except Exception:
             return {}
-        return {
-            "update_package_lists": 'APT::Periodic::Update-Package-Lists "1"' in text,
-            "unattended_upgrade": 'APT::Periodic::Unattended-Upgrade "1"' in text,
-            "autoclean": 'APT::Periodic::AutocleanInterval "7"' in text,
-        }
+        return self._parse_apt_periodic_config(text)
+
+    def _app_manages_apt_updates(self) -> bool:
+        return self._coerce_bool(self.config_manager.get_value("apt_updates", "managed", "false"), False)
+
+    def _saved_autoclean_interval(self, default: int) -> int:
+        stored_interval = self.config_manager.get_value("apt_updates", "autoclean_interval", None)
+        if stored_interval is not None:
+            return self._coerce_nonnegative_int(stored_interval, default)
+
+        # Older app config only had an autoclean boolean, so keep loading that
+        # shape if someone manually carries a partial config across upgrades.
+        stored_bool = self.config_manager.get_value("apt_updates", "autoclean", None)
+        if stored_bool is None:
+            return default
+        return DEFAULT_AUTOCLEAN_INTERVAL_DAYS if self._coerce_bool(stored_bool, True) else 0
 
     def get_settings(self) -> Dict[str, Any]:
         system_values = self._read_apt_periodic_config()
-        update_lists = self.config_manager.get_value("apt_updates", "update_package_lists", None)
-        unattended = self.config_manager.get_value("apt_updates", "unattended_upgrade", None)
-        autoclean = self.config_manager.get_value("apt_updates", "autoclean", None)
+        managed = self._app_manages_apt_updates()
+        if managed:
+            update_lists = self.config_manager.get_value("apt_updates", "update_package_lists", None)
+            unattended = self.config_manager.get_value("apt_updates", "unattended_upgrade", None)
+            autoclean_interval = self._saved_autoclean_interval(
+                system_values.get("autoclean_interval", DEFAULT_AUTOCLEAN_INTERVAL_DAYS)
+            )
+        else:
+            update_lists = system_values.get("update_package_lists", False)
+            unattended = system_values.get("unattended_upgrade", False)
+            autoclean_interval = system_values.get("autoclean_interval", DEFAULT_AUTOCLEAN_INTERVAL_DAYS)
         return {
-            "update_package_lists": self._coerce_bool(update_lists, system_values.get("update_package_lists", False)),
-            "unattended_upgrade": self._coerce_bool(unattended, system_values.get("unattended_upgrade", False)),
-            "autoclean": self._coerce_bool(autoclean, system_values.get("autoclean", True)),
+            "apt_updates_managed": managed,
+            "update_package_lists": self._coerce_bool(update_lists, False),
+            "unattended_upgrade": self._coerce_bool(unattended, False),
+            "autoclean": autoclean_interval > 0,
+            "autoclean_interval": autoclean_interval,
             "unattended_upgrades_installed": bool(shutil.which("unattended-upgrade")) or self.runtime.is_fake,
         }
 
@@ -602,24 +640,62 @@ class SystemUpdatesManager:
             return default
         return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
+    def _coerce_nonnegative_int(self, value: Any, default: int) -> int:
+        try:
+            return max(0, int(str(value).strip()))
+        except (TypeError, ValueError):
+            return default
+
+    def _resolve_autoclean_interval(self, data: Dict[str, Any], system_values: Dict[str, Any]) -> int:
+        if not bool(data.get("autoclean")):
+            return 0
+
+        requested_interval = data.get("autoclean_interval")
+        if requested_interval is not None:
+            interval = self._coerce_nonnegative_int(requested_interval, DEFAULT_AUTOCLEAN_INTERVAL_DAYS)
+            if interval > 0:
+                return interval
+
+        current_interval = self._coerce_nonnegative_int(
+            self.get_settings().get("autoclean_interval"),
+            system_values.get("autoclean_interval", DEFAULT_AUTOCLEAN_INTERVAL_DAYS),
+        )
+        if current_interval > 0:
+            return current_interval
+
+        system_interval = self._coerce_nonnegative_int(system_values.get("autoclean_interval"), 0)
+        if system_interval > 0:
+            return system_interval
+
+        return DEFAULT_AUTOCLEAN_INTERVAL_DAYS
+
     def save_settings(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        system_values = self._read_apt_periodic_config()
         settings = {
             "update_package_lists": bool(data.get("update_package_lists")),
             "unattended_upgrade": bool(data.get("unattended_upgrade")),
-            "autoclean": bool(data.get("autoclean")),
+            "autoclean_interval": self._resolve_autoclean_interval(data, system_values),
         }
-        for key, value in settings.items():
-            self.config_manager.set_value("apt_updates", key, "true" if value else "false")
 
         if not self.runtime.is_fake:
             self._write_apt_periodic_config(settings)
+
+        self.config_manager.set_value("apt_updates", "managed", "true")
+        for key, value in settings.items():
+            if isinstance(value, bool):
+                self.config_manager.set_value("apt_updates", key, "true" if value else "false")
+            else:
+                self.config_manager.set_value("apt_updates", key, str(value))
+
         return self.get_settings()
 
-    def _write_apt_periodic_config(self, settings: Dict[str, bool]) -> None:
+    def _write_apt_periodic_config(self, settings: Dict[str, Any]) -> None:
         content = "\n".join([
+            "// Managed by SimpleSaferServer.",
+            "// The System Updates page controls these APT::Periodic values.",
             f'APT::Periodic::Update-Package-Lists "{1 if settings["update_package_lists"] else 0}";',
             f'APT::Periodic::Unattended-Upgrade "{1 if settings["unattended_upgrade"] else 0}";',
-            f'APT::Periodic::AutocleanInterval "{7 if settings["autoclean"] else 0}";',
+            f'APT::Periodic::AutocleanInterval "{settings["autoclean_interval"]}";',
             "",
         ])
         temp_path = self.runtime.data_dir / "20auto-upgrades"

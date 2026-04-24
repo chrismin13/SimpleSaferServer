@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from system_updates import (
+    DEFAULT_AUTOCLEAN_INTERVAL_DAYS,
     SystemUpdatesManager,
     get_support_info,
     parse_os_release_text,
@@ -115,7 +116,169 @@ class SystemUpdatesTests(unittest.TestCase):
             self.assertTrue(settings["update_package_lists"])
             self.assertTrue(settings["unattended_upgrade"])
             self.assertFalse(settings["autoclean"])
+            self.assertTrue(settings["apt_updates_managed"])
+            self.assertEqual(settings["autoclean_interval"], 0)
+            self.assertEqual(config.get_value("apt_updates", "managed"), "true")
             self.assertEqual(config.get_value("apt_updates", "update_package_lists"), "true")
+
+    def test_unmanaged_settings_ignore_seeded_app_defaults_and_use_system_values(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime = make_runtime(Path(temp_dir))
+            config = FakeConfigManager()
+            config.set_value("apt_updates", "managed", "false")
+            config.set_value("apt_updates", "update_package_lists", "false")
+            config.set_value("apt_updates", "unattended_upgrade", "false")
+            config.set_value("apt_updates", "autoclean_interval", "7")
+            manager = SystemUpdatesManager(config, runtime=runtime)
+
+            with patch.object(
+                manager,
+                "_read_apt_periodic_config",
+                return_value={
+                    "update_package_lists": True,
+                    "unattended_upgrade": True,
+                    "autoclean_interval": 14,
+                },
+            ):
+                settings = manager.get_settings()
+
+            self.assertFalse(settings["apt_updates_managed"])
+            self.assertTrue(settings["update_package_lists"])
+            self.assertTrue(settings["unattended_upgrade"])
+            self.assertTrue(settings["autoclean"])
+            self.assertEqual(settings["autoclean_interval"], 14)
+
+    def test_parse_apt_periodic_config_keeps_numeric_autoclean_interval(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime = make_runtime(Path(temp_dir))
+            manager = SystemUpdatesManager(FakeConfigManager(), runtime=runtime)
+
+            values = manager._parse_apt_periodic_config(
+                '''
+                APT::Periodic::Update-Package-Lists "1";
+                APT::Periodic::Unattended-Upgrade "0";
+                APT::Periodic::AutocleanInterval "14";
+                '''
+            )
+
+            self.assertTrue(values["update_package_lists"])
+            self.assertFalse(values["unattended_upgrade"])
+            self.assertEqual(values["autoclean_interval"], 14)
+
+    def test_first_save_preserves_existing_positive_autoclean_interval(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime = make_runtime(Path(temp_dir))
+            config = FakeConfigManager()
+            manager = SystemUpdatesManager(config, runtime=runtime)
+
+            with patch.object(
+                manager,
+                "_read_apt_periodic_config",
+                return_value={
+                    "update_package_lists": True,
+                    "unattended_upgrade": False,
+                    "autoclean_interval": 14,
+                },
+            ):
+                settings = manager.save_settings({
+                    "update_package_lists": True,
+                    "unattended_upgrade": False,
+                    "autoclean": True,
+                })
+
+            self.assertTrue(settings["apt_updates_managed"])
+            self.assertEqual(settings["autoclean_interval"], 14)
+            self.assertEqual(config.get_value("apt_updates", "autoclean_interval"), "14")
+
+    def test_enabling_autoclean_without_existing_interval_uses_default_interval(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime = make_runtime(Path(temp_dir))
+            config = FakeConfigManager()
+            manager = SystemUpdatesManager(config, runtime=runtime)
+
+            with patch.object(manager, "_read_apt_periodic_config", return_value={}):
+                settings = manager.save_settings({
+                    "update_package_lists": False,
+                    "unattended_upgrade": False,
+                    "autoclean": True,
+                })
+
+            self.assertEqual(settings["autoclean_interval"], DEFAULT_AUTOCLEAN_INTERVAL_DAYS)
+            self.assertEqual(config.get_value("apt_updates", "autoclean_interval"), str(DEFAULT_AUTOCLEAN_INTERVAL_DAYS))
+
+    def test_managed_config_overrides_system_values(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime = make_runtime(Path(temp_dir))
+            config = FakeConfigManager()
+            config.set_value("apt_updates", "managed", "true")
+            config.set_value("apt_updates", "update_package_lists", "false")
+            config.set_value("apt_updates", "unattended_upgrade", "true")
+            config.set_value("apt_updates", "autoclean_interval", "30")
+            manager = SystemUpdatesManager(config, runtime=runtime)
+
+            with patch.object(
+                manager,
+                "_read_apt_periodic_config",
+                return_value={
+                    "update_package_lists": True,
+                    "unattended_upgrade": False,
+                    "autoclean_interval": 14,
+                },
+            ):
+                settings = manager.get_settings()
+
+            self.assertTrue(settings["apt_updates_managed"])
+            self.assertFalse(settings["update_package_lists"])
+            self.assertTrue(settings["unattended_upgrade"])
+            self.assertEqual(settings["autoclean_interval"], 30)
+
+    def test_write_apt_periodic_config_emits_managed_comments_and_interval(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime = make_runtime(Path(temp_dir))
+            manager = SystemUpdatesManager(FakeConfigManager(), runtime=runtime)
+            captured = {}
+
+            def fake_run(args, **kwargs):
+                captured["args"] = args
+                captured["content"] = kwargs["stdin"].read()
+                return SimpleNamespace(returncode=0)
+
+            with patch("system_updates.subprocess.run", side_effect=fake_run):
+                manager._write_apt_periodic_config({
+                    "update_package_lists": True,
+                    "unattended_upgrade": False,
+                    "autoclean_interval": 14,
+                })
+
+        self.assertEqual(captured["args"], ["sudo", "tee", "/etc/apt/apt.conf.d/20auto-upgrades"])
+        self.assertIn("// Managed by SimpleSaferServer.", captured["content"])
+        self.assertIn('APT::Periodic::Update-Package-Lists "1";', captured["content"])
+        self.assertIn('APT::Periodic::Unattended-Upgrade "0";', captured["content"])
+        self.assertIn('APT::Periodic::AutocleanInterval "14";', captured["content"])
+
+    def test_failed_real_write_does_not_claim_apt_update_ownership(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            runtime = SimpleNamespace(
+                mode="real",
+                is_fake=False,
+                data_dir=root,
+                config_dir=root / "config",
+                default_mount_point=str(root / "backup"),
+            )
+            config = FakeConfigManager()
+            manager = SystemUpdatesManager(config, runtime=runtime)
+
+            with patch.object(manager, "_read_apt_periodic_config", return_value={}):
+                with patch.object(manager, "_write_apt_periodic_config", side_effect=RuntimeError("write failed")):
+                    with self.assertRaisesRegex(RuntimeError, "write failed"):
+                        manager.save_settings({
+                            "update_package_lists": True,
+                            "unattended_upgrade": True,
+                            "autoclean": True,
+                        })
+
+            self.assertIsNone(config.get_value("apt_updates", "managed", None))
 
 
 if __name__ == "__main__":

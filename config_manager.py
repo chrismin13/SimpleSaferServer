@@ -81,9 +81,10 @@ class ConfigManager:
         }
 
         self.config['apt_updates'] = {
+            'managed': 'false',
             'update_package_lists': 'false',
             'unattended_upgrade': 'false',
-            'autoclean': 'true'
+            'autoclean_interval': '7'
         }
 
         self.config['ddns'] = {
