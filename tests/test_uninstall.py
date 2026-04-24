@@ -64,6 +64,79 @@ class UninstallScriptTests(unittest.TestCase):
 
         self.assertNotEqual(result.returncode, 0)
 
+    def test_apt_updates_were_managed_detects_managed_config(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            config_path = Path(tempdir) / "config.conf"
+            config_path.write_text(
+                textwrap.dedent(
+                    """\
+                    [apt_updates]
+                    managed = true
+                    """
+                )
+            )
+
+            self.run_bash(
+                textwrap.dedent(
+                    f"""\
+                    source "{UNINSTALL_SCRIPT}"
+                    CONFIG_FILE="{config_path}"
+                    apt_updates_were_managed
+                    """
+                )
+            )
+
+    def test_apt_updates_were_managed_ignores_unmanaged_config(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            config_path = Path(tempdir) / "config.conf"
+            config_path.write_text(
+                textwrap.dedent(
+                    """\
+                    [apt_updates]
+                    managed = false
+                    """
+                )
+            )
+
+            result = self.run_bash_raw(
+                textwrap.dedent(
+                    f"""\
+                    source "{UNINSTALL_SCRIPT}"
+                    CONFIG_FILE="{config_path}"
+                    apt_updates_were_managed
+                    """
+                )
+            )
+
+        self.assertNotEqual(result.returncode, 0)
+
+    def test_apt_updates_were_managed_ignores_other_sections(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            config_path = Path(tempdir) / "config.conf"
+            config_path.write_text(
+                textwrap.dedent(
+                    """\
+                    [other]
+                    managed = true
+
+                    [apt_updates]
+                    update_package_lists = true
+                    """
+                )
+            )
+
+            result = self.run_bash_raw(
+                textwrap.dedent(
+                    f"""\
+                    source "{UNINSTALL_SCRIPT}"
+                    CONFIG_FILE="{config_path}"
+                    apt_updates_were_managed
+                    """
+                )
+            )
+
+        self.assertNotEqual(result.returncode, 0)
+
     def test_remove_managed_fstab_entries_only_removes_tagged_lines(self):
         with tempfile.TemporaryDirectory() as tempdir:
             fstab_path = Path(tempdir) / "fstab"

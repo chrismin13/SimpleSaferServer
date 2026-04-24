@@ -26,7 +26,7 @@ SimpleSaferServer separates management access from file-share access.
 ## Why This Matters
 
 - The web UI can change backup settings, schedules, alerts, cloud destinations, and managed storage configuration.
-- Some actions also trigger privileged system changes such as service restarts, Samba updates, and managed `/etc/fstab` changes.
+- Some actions also trigger privileged system changes such as service restarts, Samba updates, apt package operations, Livepatch setup, and managed `/etc/fstab` changes.
 - Keeping the management interface admin-only avoids mixing day-to-day file access with system administration privileges.
 
 ## Related Documentation
@@ -34,3 +34,4 @@ SimpleSaferServer separates management access from file-share access.
 - [Setup Wizard](setup.md)
 - [Login Page](login.md)
 - [Users](users.md)
+- [System Updates](system_updates.md)

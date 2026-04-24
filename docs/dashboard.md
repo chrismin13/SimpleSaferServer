@@ -23,6 +23,7 @@ Four cards display real-time status:
 - **Mount Storage**: Opens a modal to mount the storage drive.
 - **Restart System**: Opens a modal to confirm and restart the system.
 - **Shutdown System**: Opens a modal to confirm and shut down the system.
+- Restart and shutdown are blocked while apt or dpkg is active so package operations are not interrupted.
 
 ## Modals
 - **Unmount, Mount, Restart, Shutdown**: Each action temporarily disables its button and uses completion/error messaging.

@@ -59,7 +59,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const duckEnabled = config?.duckdns?.enabled;
     const duckBadge = document.getElementById('duckdns-status-badge');
     const duckStatus = status?.duckdns;
-    
+
     if (!duckEnabled) {
       duckBadge.textContent = 'Disabled';
       duckBadge.className = 'badge badge-neutral';

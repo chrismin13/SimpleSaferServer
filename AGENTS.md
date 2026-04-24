@@ -19,4 +19,8 @@ Prefer refactoring code if the end result will mean that the code will be simple
 
 ---
 
+When designing any UI elements, always use the frontend-design and uncodixfy skills. Try to reuse existing UI elements and UI patterns from elsewhere in the system or, if creating new ones, follow the same "Bunker" style. Make better use of the vertical space. Consider how this would be viewed both on desktop and mobile.
+
+---
+
 Consider if anything that you add needs to be removed during the uninstallation by the uninstall.sh script.

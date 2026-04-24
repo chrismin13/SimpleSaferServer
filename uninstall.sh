@@ -11,11 +11,13 @@ NC='\033[0m' # No Color
 
 APP_DIR="/opt/SimpleSaferServer"
 CONFIG_DIR="/etc/SimpleSaferServer"
+CONFIG_FILE="$CONFIG_DIR/config.conf"
 USERS_FILE="$CONFIG_DIR/users.json"
 DATA_DIR="/var/lib/SimpleSaferServer"
 LOG_DIR="/var/log/SimpleSaferServer"
 SYSTEMD_DIR="/etc/systemd/system"
 SMB_CONF="/etc/samba/smb.conf"
+APT_AUTO_UPGRADES_CONF="/etc/apt/apt.conf.d/20auto-upgrades"
 FSTAB_MARKER="SimpleSaferServer managed backup drive"
 LEGACY_FSTAB_MARKER="SimpleSaferServer"
 MANAGED_SHARE_BEGIN_PREFIX="# BEGIN SimpleSaferServer share: "
@@ -87,6 +89,24 @@ elif isinstance(data, list):
             if isinstance(username, str) and username.strip():
                 print(username)
 PY
+}
+
+apt_updates_were_managed() {
+    if [ ! -f "$CONFIG_FILE" ]; then
+        return 1
+    fi
+
+    awk '
+        /^[[:space:]]*\[/ {
+            in_apt_updates = ($0 ~ /^[[:space:]]*\[apt_updates\][[:space:]]*$/)
+            next
+        }
+        in_apt_updates && /^[[:space:]]*managed[[:space:]]*=[[:space:]]*true[[:space:]]*$/ {
+            found = 1
+            exit
+        }
+        END { exit found ? 0 : 1 }
+    ' "$CONFIG_FILE"
 }
 
 backup_file_if_present() {
@@ -278,6 +298,13 @@ main() {
 
     echo "Starting SimpleSaferServer uninstallation..."
 
+    # Read this before CONFIG_DIR is removed so the final report can tell the
+    # admin about OS-level apt settings that intentionally survive uninstall.
+    local apt_updates_managed="false"
+    if apt_updates_were_managed; then
+        apt_updates_managed="true"
+    fi
+
     echo "Stopping and disabling systemd units..."
     for svc in check_mount check_health backup_cloud ddns_update; do
         remove_systemd_unit "${svc}.timer"
@@ -346,6 +373,10 @@ main() {
     echo "Samba user accounts created from SimpleSaferServer users were removed."
     echo "Marker-wrapped SimpleSaferServer-managed Samba share blocks were removed from $SMB_CONF."
     echo "Unmanaged or legacy untagged Samba share blocks were left untouched."
+    if [ "$apt_updates_managed" = "true" ]; then
+        echo "SimpleSaferServer had managed apt periodic settings in $APT_AUTO_UPGRADES_CONF."
+        echo "That file was left in place. Review it manually if you want to disable automatic apt updates."
+    fi
 }
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then

@@ -80,6 +80,13 @@ class ConfigManager:
             'health_change_alert': 'true'
         }
 
+        self.config['apt_updates'] = {
+            'managed': 'false',
+            'update_package_lists': 'false',
+            'unattended_upgrade': 'false',
+            'autoclean_interval': '7'
+        }
+
         self.config['ddns'] = {
             'duckdns_enabled': 'false',
             'duckdns_domain': '',

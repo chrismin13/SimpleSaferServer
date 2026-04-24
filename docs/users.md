@@ -26,4 +26,4 @@ The Users page allows administrators to manage user accounts.
 
 ---
 
-This page provides full user management for the system. 
+This page provides full user management for the system.

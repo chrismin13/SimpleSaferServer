@@ -41,6 +41,7 @@ from logging.handlers import RotatingFileHandler
 import time
 from typing import Dict, List, Tuple
 from system_utils import SystemUtils
+from system_updates import SystemUpdatesManager
 from smb_manager import SMBManager, SMB_DOCS_URL
 from tempfile import NamedTemporaryFile
 from runtime import get_runtime, get_fake_state, get_flask_secret_key
@@ -79,6 +80,7 @@ if runtime.is_fake and os.environ.get('RAILWAY_PROJECT_ID') and not os.environ.g
 
 # Initialize configuration
 config_manager = ConfigManager(runtime=runtime)
+system_updates_manager = SystemUpdatesManager(config_manager, runtime=runtime)
 
 # Register setup blueprint
 app.register_blueprint(setup)
@@ -592,6 +594,20 @@ def _get_check_mount_next_run():
     return check_mount_task.next_run
 
 
+def _apt_lock_block_response(action: str):
+    lock_status = system_updates_manager.get_lock_status()
+    if not lock_status["locked"]:
+        return None
+    return jsonify({
+        "success": False,
+        "message": (
+            f"System {action} is blocked because apt or dpkg is running. "
+            "Wait for System Updates to finish, or use the System Updates page to stop the SimpleSaferServer apt operation."
+        ),
+        "lock": lock_status,
+    }), 409
+
+
 # API route for unmounting storage
 @app.route("/unmount", methods=["POST"])
 @admin_required
@@ -637,6 +653,9 @@ def unmount():
 @admin_required
 def restart():
     try:
+        blocked = _apt_lock_block_response("restart")
+        if blocked:
+            return blocked
         if runtime.is_fake:
             return jsonify({"success": True, "message": "Fake mode: restart simulated."})
         subprocess.run(["sudo", "systemctl", "reboot"], check=True)
@@ -652,6 +671,9 @@ def restart():
 @admin_required
 def shutdown():
     try:
+        blocked = _apt_lock_block_response("shutdown")
+        if blocked:
+            return blocked
         if runtime.is_fake:
             return jsonify({"success": True, "message": "Fake mode: shutdown simulated."})
         subprocess.run(["sudo", "systemctl", "poweroff"], check=True)
@@ -1087,10 +1109,108 @@ def ddns():
 def cloud_backup():
     return render_template('cloud_backup.html', username=session.get('username'))
 
+@app.route('/system_updates')
+@admin_required
+def system_updates():
+    return render_template('system_updates.html', username=session.get('username'))
+
 @app.route('/alerts')
 @admin_required
 def alerts():
     return render_template('alerts.html', username=session.get('username'))
+
+
+@app.route('/api/system_updates/summary', methods=['GET'])
+@api_admin_required
+def api_system_updates_summary():
+    try:
+        return jsonify({
+            'success': True,
+            'distribution': system_updates_manager.get_distribution_info(),
+            'operation': system_updates_manager.get_status(),
+            'settings': system_updates_manager.get_settings(),
+            'livepatch': system_updates_manager.get_livepatch_status(),
+        })
+    except Exception as e:
+        current_app.logger.exception("Error loading system update summary")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/system_updates/status', methods=['GET'])
+@api_admin_required
+def api_system_updates_status():
+    try:
+        return jsonify({'success': True, 'operation': system_updates_manager.get_status()})
+    except Exception as e:
+        current_app.logger.exception("Error loading system update status")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/system_updates/<operation>/start', methods=['POST'])
+@api_admin_required
+def api_system_updates_start(operation):
+    try:
+        status = system_updates_manager.start_operation(operation)
+        return jsonify({'success': True, 'operation': status})
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+    except Exception as e:
+        current_app.logger.warning("Could not start apt %s: %s", operation, e)
+        return jsonify({'success': False, 'error': str(e)}), 409
+
+
+@app.route('/api/system_updates/stop', methods=['POST'])
+@api_admin_required
+def api_system_updates_stop():
+    try:
+        status = system_updates_manager.stop_operation()
+        return jsonify({'success': True, 'operation': status})
+    except Exception as e:
+        current_app.logger.warning("Could not stop apt operation: %s", e)
+        return jsonify({'success': False, 'error': str(e)}), 409
+
+
+@app.route('/api/system_updates/settings', methods=['POST'])
+@api_admin_required
+def api_system_updates_save_settings():
+    try:
+        settings = system_updates_manager.save_settings(request.get_json() or {})
+        return jsonify({'success': True, 'settings': settings})
+    except subprocess.CalledProcessError as e:
+        message = e.stderr.strip() if e.stderr else str(e)
+        return jsonify({'success': False, 'error': message}), 500
+    except Exception as e:
+        current_app.logger.exception("Could not save apt update settings")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/system_updates/remove_stale_locks', methods=['POST'])
+@api_admin_required
+def api_system_updates_remove_stale_locks():
+    try:
+        result = system_updates_manager.remove_stale_locks()
+        return jsonify({'success': True, **result})
+    except subprocess.CalledProcessError as e:
+        message = e.stderr.strip() if e.stderr else str(e)
+        return jsonify({'success': False, 'error': message}), 500
+    except Exception as e:
+        current_app.logger.warning("Could not remove stale apt locks: %s", e)
+        return jsonify({'success': False, 'error': str(e)}), 409
+
+
+@app.route('/api/system_updates/livepatch/setup', methods=['POST'])
+@api_admin_required
+def api_system_updates_livepatch_setup():
+    try:
+        data = request.get_json() or {}
+        status = system_updates_manager.setup_livepatch(data.get('token', ''))
+        return jsonify({'success': True, 'livepatch': status})
+    except subprocess.CalledProcessError as e:
+        message = e.stderr.strip() if e.stderr else str(e)
+        return jsonify({'success': False, 'error': message}), 500
+    except Exception as e:
+        current_app.logger.warning("Could not set up Livepatch: %s", e)
+        return jsonify({'success': False, 'error': str(e)}), 400
 
 # Alerts API endpoints
 @app.route('/api/alerts/generate-test', methods=['POST'])
@@ -1733,7 +1853,7 @@ def get_ddns_config():
                 'proxy': config_manager.get_value('ddns', 'cloudflare_proxy', 'false') == 'true'
             }
         }
-        
+
         status_file = runtime.data_dir / 'ddns_status.json'
         status = {}
         if status_file.exists():
