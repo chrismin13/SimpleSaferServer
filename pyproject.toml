@@ -1,0 +1,42 @@
+[tool.ruff]
+target-version = "py37"
+line-length = 100
+extend-exclude = [
+  ".dev-data",
+  ".venv",
+  "third_party",
+  "harddrive_model",
+]
+
+[tool.ruff.lint]
+select = [
+  "E",
+  "F",
+  "I",
+  "UP",
+  "B",
+  "SIM",
+  "C4",
+  "PIE",
+  "RUF",
+]
+ignore = [
+  "E501",
+]
+
+[tool.ruff.format]
+quote-style = "preserve"
+indent-style = "space"
+line-ending = "lf"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+
+[tool.bandit]
+exclude_dirs = [
+  ".venv",
+  ".dev-data",
+  "third_party",
+  "tests",
+]

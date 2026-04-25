@@ -1,3 +1,11 @@
+Follow `docs/development.md` as the canonical coding standard for this repository.
+New Python code must preserve Python 3.7 compatibility for Debian 10 support.
+Avoid Python 3.8+ syntax and APIs unless a compatibility layer is documented next to the code.
+When refactoring old code, move touched code toward the standard without unrelated churn.
+The quality gates are advisory until the planned cleanup/refactor pass removes advisory mode.
+
+---
+
 Always sprinkle comments about things we might forget in a few months, or that might not immediately seem obvious on a first read.
 
 ---

@@ -39,6 +39,23 @@ bash reset_fake_mode.sh
 - Cloud backup can still use real `rclone` destinations such as MEGA when `rclone` is installed.
 - `run_fake.sh` enables fake-mode auto-login by default. Set `SSS_SKIP_LOGIN=false` if you want the normal login screen.
 
+## Development
+
+SimpleSaferServer targets Python 3.7+ for Debian 10 compatibility. Development conventions, architecture rules, and quality commands live in [docs/development.md](docs/development.md).
+
+Set up local development tooling with:
+
+```bash
+bash install_dev.sh
+.venv/bin/pre-commit install
+```
+
+Run the configured checks with:
+
+```bash
+.venv/bin/pre-commit run --all-files
+```
+
 ---
 
 # Documentation
