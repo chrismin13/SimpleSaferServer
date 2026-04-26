@@ -47,9 +47,10 @@ execution boundary. `SystemdAdapter` wraps task-related systemd and journalctl c
 `StorageCommandAdapter` wraps dashboard storage controls, and `BackupDriveCommandAdapter` wraps
 managed backup-drive setup and detach commands. `SystemUpdatesCommandAdapter` wraps System Updates
 package-manager, lock, config-write, Livepatch, and long-running apt worker commands. Future work
-should continue moving setup wizard, drive health, legacy migration, system utility, and standalone
-helper script subprocess behavior behind adapters where those modules remain part of the supported
-runtime.
+`SetupCommandAdapter` wraps setup wizard disk-format, SMB enable, and MEGA picker commands.
+`DriveHealthCommandAdapter` wraps SMART, HDSentinel, backup-drive lookup, and alert email commands.
+Future work should continue moving legacy migration, system utility, and standalone helper script
+subprocess behavior behind adapters where those modules remain part of the supported runtime.
 
 Bandit skips generic subprocess rules because SimpleSaferServer is a local admin tool that
 intentionally calls Debian system utilities. Subprocess use should still validate user-controlled

@@ -1,23 +1,24 @@
 import logging
 import shutil
-import subprocess
 from pathlib import Path
 
 from runtime import get_fake_state, get_runtime
+from simple_safer_server.adapters.command_runner import CalledProcessError, CommandRunner
 
 
 class SystemUtils:
-    def __init__(self, runtime=None):
+    def __init__(self, runtime=None, command_runner=None):
         self.runtime = runtime or get_runtime()
+        self.command_runner = command_runner or CommandRunner()
         self.fake_state = get_fake_state() if self.runtime.is_fake else None
         self.logger = logging.getLogger(__name__)
 
     def run_command(self, command, check=True):
         """Run a system command and return the result"""
         try:
-            result = subprocess.run(command, check=check, capture_output=True, text=True)
+            result = self.command_runner.run(command, check=check, capture_output=True, text=True)
             return result.stdout.strip()
-        except subprocess.CalledProcessError as e:
+        except CalledProcessError as e:
             self.logger.error(f"Command failed: {e.stderr}")
             raise
 

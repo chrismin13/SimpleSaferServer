@@ -29,7 +29,11 @@
 - [x] Phase 3a: Move System Updates support commands behind a command adapter.
 - [x] Phase 3b: Move the long-running apt worker process behind a package-manager adapter.
 - [x] Phase 4: Move SMB and local user command behavior behind Samba and system-user adapters.
-- [ ] Phase 5: Review top-level compatibility entrypoints after install/operator docs are ready to migrate.
+- [x] Phase 5a: Move setup wizard command behavior behind an adapter.
+- [x] Phase 5b: Move Drive Health command behavior behind an adapter.
+- [x] Phase 5c: Move SystemUtils command behavior behind the shared command runner.
+- [x] Phase 5d: Move legacy migration and standalone helper script commands behind the shared command runner.
+- [x] Phase 5e: Review top-level compatibility entrypoints after install/operator docs are ready to migrate.
 
 ## Work Log
 
@@ -240,6 +244,124 @@ Verification:
 - Dependency audit: passed with no known vulnerabilities found, retaining the documented Debian 10 pytest advisory ignore.
 - Full pytest: 163 passed, with one pre-existing Python 3.14 `datetime.utcnow()` deprecation warning in `user_manager.py`.
 
+### Phase 5a
+
+- Added `SetupCommandAdapter` for setup wizard disk type checks, partition creation, partprobe, NTFS formatting, SMB boot enable, and MEGA rclone picker commands.
+- Updated `setup_wizard.py` so it no longer imports or calls `subprocess` directly.
+- Updated setup wizard tests to patch the setup command adapter instead of subprocess.
+- Widened `CommandRunner.run(input=...)` typing because the setup wizard passes fdisk input as bytes, matching existing behavior.
+
+Docs and uninstall impact:
+
+- Updated `docs/architecture.md` to include the setup wizard adapter boundary.
+- `index.html` did not need updates because public documentation links did not change.
+- `uninstall.sh` did not need updates because this phase added only package source and tests.
+
+Verification:
+
+- Focused setup wizard tests: passed.
+- Focused Ruff check for touched setup files: passed.
+- Focused Pyright check for touched setup files: passed.
+- Python 3.7 syntax compatibility check: passed.
+- Ruff format check: passed.
+- Ruff lint: passed.
+- Pyright: passed with 0 errors and 0 warnings.
+- Bandit: passed with no issues identified.
+- Dependency audit: passed with no known vulnerabilities found, retaining the documented Debian 10 pytest advisory ignore.
+- Full pytest: 163 passed, with one pre-existing Python 3.14 `datetime.utcnow()` deprecation warning in `user_manager.py`.
+
+### Phase 5b
+
+- Added `DriveHealthCommandAdapter` for SMART, HDSentinel, backup-drive UUID lookup, and alert email commands.
+- Updated `drive_health.py` so it no longer imports or calls `subprocess` directly.
+- Updated Drive Health tests to patch the drive-health adapter methods instead of subprocess.
+
+Docs and uninstall impact:
+
+- Updated `docs/architecture.md` to include the Drive Health adapter boundary.
+- `index.html` did not need updates because public documentation links did not change.
+- `uninstall.sh` did not need updates because this phase added only package source and tests.
+
+Verification:
+
+- Focused Drive Health tests: passed.
+- Focused Ruff check for touched Drive Health files: passed.
+- Focused Pyright check for touched Drive Health files: passed.
+- Python 3.7 syntax compatibility check: passed.
+- Ruff format check: passed.
+- Ruff lint: passed.
+- Pyright: passed with 0 errors and 0 warnings.
+- Bandit: passed with no issues identified.
+- Dependency audit: passed with no known vulnerabilities found, retaining the documented Debian 10 pytest advisory ignore.
+- Full pytest: 163 passed, with one pre-existing Python 3.14 `datetime.utcnow()` deprecation warning in `user_manager.py`.
+
+### Phase 5c
+
+- Updated `SystemUtils` so `run_command()` delegates to the shared `CommandRunner`.
+- Preserved `SystemUtils.run_command()` as the compatibility method used by existing tests and helper flows.
+- `system_utils.py` no longer imports or calls `subprocess` directly.
+
+Docs and uninstall impact:
+
+- `docs/architecture.md` already describes the shared low-level `CommandRunner` boundary.
+- `index.html` did not need updates because public documentation links did not change.
+- `uninstall.sh` did not need updates because this phase changed only source.
+
+Verification:
+
+- Focused SystemUtils tests: passed.
+- Focused Ruff check for touched SystemUtils files: passed.
+- Focused Pyright check for touched SystemUtils files: passed.
+
+### Phase 5d
+
+- Updated `legacy_migration.py` so service enable/restart commands use the shared `CommandRunner`.
+- Updated standalone `backup_to_mega.py` so rclone commands use the shared `CommandRunner`.
+- Preserved both top-level scripts as compatibility entrypoints.
+
+Docs and uninstall impact:
+
+- No user/operator behavior changed, and public commands did not change.
+- `index.html` did not need updates because public documentation links did not change.
+- `uninstall.sh` did not need updates because this phase changed only source.
+
+Verification:
+
+- Focused uninstall and SystemUtils tests: passed.
+- Focused Ruff check for touched legacy/helper scripts: passed.
+- Focused Pyright check for touched legacy/helper scripts: passed.
+- Python 3.7 syntax compatibility check for touched legacy/helper scripts: passed.
+- Python 3.7 syntax compatibility check: passed.
+- Ruff format check: passed.
+- Ruff lint: passed.
+- Pyright: passed with 0 errors and 0 warnings.
+- Bandit: passed with no issues identified.
+- Dependency audit: passed with no known vulnerabilities found, retaining the documented Debian 10 pytest advisory ignore.
+- Full pytest: 163 passed, with one pre-existing Python 3.14 `datetime.utcnow()` deprecation warning in `user_manager.py`.
+
+### Phase 5e
+
+- Reviewed install, service, manual install, migration, and docs references to top-level entrypoints.
+- Kept `app.py` as the service/development compatibility entrypoint because `simple_safer_server_web.service`, `install.sh`, and `docs/manual_install.md` still intentionally run it.
+- Kept top-level compatibility modules such as `backup_drive_setup.py`, `backup_drive_unmount.py`, `system_updates.py`, `smb_manager.py`, `user_manager.py`, and `legacy_migration.py` because setup, routes, migration scripts, and operator docs still reference those stable module paths.
+- Confirmed only adapter modules own direct subprocess execution after this pass.
+
+Docs and uninstall impact:
+
+- `docs/architecture.md` already documents that compatibility entrypoints stay until install, service, and operator docs are intentionally migrated.
+- `index.html` did not need updates because public documentation links did not change.
+- `uninstall.sh` did not need updates because no installed files, generated state, service names, timers, config files, or directories changed.
+
+Verification:
+
+- Python 3.7 syntax compatibility check: passed.
+- Ruff format check: passed.
+- Ruff lint: passed.
+- Pyright: passed with 0 errors and 0 warnings.
+- Bandit: passed with no issues identified.
+- Dependency audit: passed with no known vulnerabilities found, retaining the documented Debian 10 pytest advisory ignore.
+- Full pytest: 163 passed, with one pre-existing Python 3.14 `datetime.utcnow()` deprecation warning in `user_manager.py`.
+
 ## Decisions
 
 - `CommandRunner.popen()` mirrors the small subset of `subprocess.Popen` currently needed so adapters can move command construction out of services without a broad process-management rewrite.
@@ -248,7 +370,7 @@ Verification:
 
 ## Follow-Up Backlog
 
-- Review remaining subprocess surfaces in setup wizard, drive health, legacy migration, system utils, and standalone helper scripts.
+- Decide whether a later package-entrypoint migration should update service files, install docs, and migration scripts away from top-level compatibility modules.
 - Move `backup_drive_setup.py` and `backup_drive_unmount.py` command execution behind mount/system adapters while keeping compatibility imports stable.
 - Move `SystemUpdatesManager` apt/dpkg command behavior behind a package-manager adapter.
 - Move SMB and local user commands behind Samba and system-user adapters.

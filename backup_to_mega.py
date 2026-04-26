@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 
 import os
-import subprocess
 import tempfile
 from getpass import getpass
+
+from simple_safer_server.adapters.command_runner import PIPE, CalledProcessError, CommandRunner
 
 RCLONE_CONFIG_TEMPLATE = """
 [mega]
@@ -11,6 +12,7 @@ type = mega
 user = {email}
 pass = {password}
 """
+command_runner = CommandRunner()
 
 
 def encrypt_password(password):
@@ -18,9 +20,7 @@ def encrypt_password(password):
     Run `rclone obscure` to encrypt the MEGA password.
     This is what rclone expects in the config.
     """
-    result = subprocess.run(
-        ["rclone", "obscure", password], stdout=subprocess.PIPE, check=True, text=True
-    )
+    result = command_runner.run(["rclone", "obscure", password], stdout=PIPE, check=True, text=True)
     return result.stdout.strip()
 
 
@@ -48,7 +48,7 @@ def main():
 
     try:
         print(f"\n🚀 Uploading {local_path} to MEGA:{remote_folder} ...\n")
-        subprocess.run(
+        command_runner.run(
             [
                 "rclone",
                 "copy",
@@ -65,7 +65,7 @@ def main():
             check=True,
         )
         print("\n✅ Backup completed successfully.")
-    except subprocess.CalledProcessError as e:
+    except CalledProcessError as e:
         print(f"\n❌ rclone failed: {e}")
     finally:
         os.remove(config_path)

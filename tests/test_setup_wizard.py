@@ -399,7 +399,9 @@ class SetupWizardTests(unittest.TestCase):
             with patch('os.path.exists', return_value=True):
                 with patch('os.stat', return_value=blk_stat):
                     with patch.object(
-                        self.setup_wizard.subprocess, 'run', return_value=lsblk_result
+                        self.setup_wizard.setup_command_adapter,
+                        'whole_disk_type',
+                        return_value=lsblk_result,
                     ):
                         with self.app.test_client() as client:
                             response = self._post_format(client, '/dev/sda1')
@@ -419,8 +421,8 @@ class SetupWizardTests(unittest.TestCase):
             with patch('os.path.exists', return_value=True):
                 with patch('os.stat', return_value=blk_stat):
                     with patch.object(
-                        self.setup_wizard.subprocess,
-                        'run',
+                        self.setup_wizard.setup_command_adapter,
+                        'whole_disk_type',
                         side_effect=FileNotFoundError,
                     ):
                         with self.app.test_client() as client:
@@ -445,13 +447,6 @@ class SetupWizardTests(unittest.TestCase):
         fdisk_ok = MagicMock(returncode=0, stdout='', stderr='')
         mkfs_ok = MagicMock(returncode=0, stdout='', stderr='')
 
-        subprocess_call_results = iter([lsblk_ok, fdisk_ok, mkfs_ok])
-
-        def fake_run(cmd, **kwargs):
-            if cmd[0] == 'partprobe':
-                raise FileNotFoundError
-            return next(subprocess_call_results)
-
         partition_stat = MagicMock()
         partition_stat.st_mode = stat_module.S_IFBLK | 0o660
 
@@ -464,15 +459,32 @@ class SetupWizardTests(unittest.TestCase):
                 with patch('os.stat', side_effect=fake_os_stat):
                     with patch('os.lstat', side_effect=fake_os_stat):
                         with patch.object(
-                            self.setup_wizard.subprocess, 'run', side_effect=fake_run
+                            self.setup_wizard.setup_command_adapter,
+                            'whole_disk_type',
+                            return_value=lsblk_ok,
                         ):
                             with patch.object(
-                                self.setup_wizard,
-                                '_get_mounted_partitions_for_disk',
-                                return_value=[],
+                                self.setup_wizard.setup_command_adapter,
+                                'create_partition',
+                                return_value=fdisk_ok,
                             ):
-                                with self.app.test_client() as client:
-                                    response = self._post_format(client, '/dev/sdb')
+                                with patch.object(
+                                    self.setup_wizard.setup_command_adapter,
+                                    'partprobe',
+                                    side_effect=FileNotFoundError,
+                                ):
+                                    with patch.object(
+                                        self.setup_wizard.setup_command_adapter,
+                                        'format_ntfs',
+                                        return_value=mkfs_ok,
+                                    ):
+                                        with patch.object(
+                                            self.setup_wizard,
+                                            '_get_mounted_partitions_for_disk',
+                                            return_value=[],
+                                        ):
+                                            with self.app.test_client() as client:
+                                                response = self._post_format(client, '/dev/sdb')
 
         self.assertEqual(response.get_json()['success'], True)
 
@@ -487,13 +499,6 @@ class SetupWizardTests(unittest.TestCase):
         fdisk_ok = MagicMock(returncode=0, stdout='', stderr='')
         mkfs_ok = MagicMock(returncode=0, stdout='', stderr='')
 
-        subprocess_call_results = iter([lsblk_ok, fdisk_ok, mkfs_ok])
-
-        def fake_run(cmd, **kwargs):
-            if cmd[0] == 'partprobe':
-                raise PermissionError("operation not permitted")
-            return next(subprocess_call_results)
-
         partition_stat = MagicMock()
         partition_stat.st_mode = stat_module.S_IFBLK | 0o660
 
@@ -502,15 +507,32 @@ class SetupWizardTests(unittest.TestCase):
                 with patch('os.stat', return_value=partition_stat):
                     with patch('os.lstat', return_value=partition_stat):
                         with patch.object(
-                            self.setup_wizard.subprocess, 'run', side_effect=fake_run
+                            self.setup_wizard.setup_command_adapter,
+                            'whole_disk_type',
+                            return_value=lsblk_ok,
                         ):
                             with patch.object(
-                                self.setup_wizard,
-                                '_get_mounted_partitions_for_disk',
-                                return_value=[],
+                                self.setup_wizard.setup_command_adapter,
+                                'create_partition',
+                                return_value=fdisk_ok,
                             ):
-                                with self.app.test_client() as client:
-                                    response = self._post_format(client, '/dev/sdb')
+                                with patch.object(
+                                    self.setup_wizard.setup_command_adapter,
+                                    'partprobe',
+                                    side_effect=PermissionError("operation not permitted"),
+                                ):
+                                    with patch.object(
+                                        self.setup_wizard.setup_command_adapter,
+                                        'format_ntfs',
+                                        return_value=mkfs_ok,
+                                    ):
+                                        with patch.object(
+                                            self.setup_wizard,
+                                            '_get_mounted_partitions_for_disk',
+                                            return_value=[],
+                                        ):
+                                            with self.app.test_client() as client:
+                                                response = self._post_format(client, '/dev/sdb')
 
         self.assertEqual(response.get_json()['success'], True)
 
@@ -526,8 +548,6 @@ class SetupWizardTests(unittest.TestCase):
         partprobe_fail = MagicMock(returncode=1, stdout='', stderr='ioctl error')
         mkfs_ok = MagicMock(returncode=0, stdout='', stderr='')
 
-        subprocess_calls = iter([lsblk_ok, fdisk_ok, partprobe_fail, mkfs_ok])
-
         partition_stat = MagicMock()
         partition_stat.st_mode = stat_module.S_IFBLK | 0o660
 
@@ -539,17 +559,32 @@ class SetupWizardTests(unittest.TestCase):
                 with patch('os.stat', side_effect=fake_os_stat):
                     with patch('os.lstat', side_effect=fake_os_stat):
                         with patch.object(
-                            self.setup_wizard.subprocess,
-                            'run',
-                            side_effect=lambda cmd, **kw: next(subprocess_calls),
+                            self.setup_wizard.setup_command_adapter,
+                            'whole_disk_type',
+                            return_value=lsblk_ok,
                         ):
                             with patch.object(
-                                self.setup_wizard,
-                                '_get_mounted_partitions_for_disk',
-                                return_value=[],
+                                self.setup_wizard.setup_command_adapter,
+                                'create_partition',
+                                return_value=fdisk_ok,
                             ):
-                                with self.app.test_client() as client:
-                                    response = self._post_format(client, '/dev/sdb')
+                                with patch.object(
+                                    self.setup_wizard.setup_command_adapter,
+                                    'partprobe',
+                                    return_value=partprobe_fail,
+                                ):
+                                    with patch.object(
+                                        self.setup_wizard.setup_command_adapter,
+                                        'format_ntfs',
+                                        return_value=mkfs_ok,
+                                    ):
+                                        with patch.object(
+                                            self.setup_wizard,
+                                            '_get_mounted_partitions_for_disk',
+                                            return_value=[],
+                                        ):
+                                            with self.app.test_client() as client:
+                                                response = self._post_format(client, '/dev/sdb')
 
         self.assertEqual(response.get_json()['success'], True)
 
@@ -573,15 +608,6 @@ class SetupWizardTests(unittest.TestCase):
             # Partition node (/dev/sdb1) never appears — always raises OSError.
             raise OSError('no such file')
 
-        def fake_run(cmd, **kwargs):
-            if cmd[0] == 'partprobe':
-                raise FileNotFoundError
-            if cmd[0] == 'lsblk':
-                return lsblk_ok
-            if cmd[0] == 'fdisk':
-                return fdisk_ok
-            raise AssertionError(f'Unexpected subprocess call: {cmd}')
-
         # Return a low timestamp on the first call (deadline = 0 + timeout),
         # then a timestamp past the deadline on the second call so the poll
         # loop exits immediately.
@@ -591,15 +617,38 @@ class SetupWizardTests(unittest.TestCase):
         with patch('os.path.realpath', return_value='/dev/sdb'):
             with patch('os.path.exists', side_effect=lambda p: p == '/dev/sdb'):
                 with patch('os.stat', side_effect=fake_os_stat):
-                    with patch.object(self.setup_wizard.subprocess, 'run', side_effect=fake_run):
+                    with patch.object(
+                        self.setup_wizard.setup_command_adapter,
+                        'whole_disk_type',
+                        return_value=lsblk_ok,
+                    ):
                         with patch.object(
-                            self.setup_wizard, '_get_mounted_partitions_for_disk', return_value=[]
+                            self.setup_wizard.setup_command_adapter,
+                            'create_partition',
+                            return_value=fdisk_ok,
                         ):
                             with patch.object(
-                                self.setup_wizard.time, 'monotonic', side_effect=monotonic_seq
+                                self.setup_wizard.setup_command_adapter,
+                                'partprobe',
+                                side_effect=FileNotFoundError,
                             ):
-                                with self.app.test_client() as client:
-                                    response = self._post_format(client, '/dev/sdb')
+                                with patch.object(
+                                    self.setup_wizard.setup_command_adapter,
+                                    'format_ntfs',
+                                    side_effect=AssertionError('Unexpected format call'),
+                                ):
+                                    with patch.object(
+                                        self.setup_wizard,
+                                        '_get_mounted_partitions_for_disk',
+                                        return_value=[],
+                                    ):
+                                        with patch.object(
+                                            self.setup_wizard.time,
+                                            'monotonic',
+                                            side_effect=monotonic_seq,
+                                        ):
+                                            with self.app.test_client() as client:
+                                                response = self._post_format(client, '/dev/sdb')
 
         data = response.get_json()
         self.assertEqual(data['success'], False)

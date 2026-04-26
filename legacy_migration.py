@@ -3,7 +3,6 @@ import logging
 import os
 import re
 import shutil
-import subprocess
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -13,6 +12,7 @@ from werkzeug.security import generate_password_hash
 
 from config_manager import ConfigManager
 from runtime import get_runtime
+from simple_safer_server.adapters.command_runner import CalledProcessError, CommandRunner
 from smb_manager import SMBManager
 from system_utils import SystemUtils
 from user_manager import PasswordPolicy, UserManager
@@ -20,6 +20,7 @@ from user_manager import PasswordPolicy, UserManager
 LOGGER = logging.getLogger(__name__)
 LEGACY_BUNDLE_FORMAT = 1
 WEB_SERVICE_NAME = "simple_safer_server_web.service"
+command_runner = CommandRunner()
 
 
 class MigrationError(Exception):
@@ -259,16 +260,16 @@ def _configure_backup_share(
     )
 
     try:
-        subprocess.run(["systemctl", "enable", "smbd"], check=True)
-        subprocess.run(["systemctl", "enable", "nmbd"], check=True)
-    except subprocess.CalledProcessError as exc:
+        command_runner.run(["systemctl", "enable", "smbd"], check=True)
+        command_runner.run(["systemctl", "enable", "nmbd"], check=True)
+    except CalledProcessError as exc:
         LOGGER.warning("Failed to enable SMB services for boot: %s", exc)
 
 
 def _restart_web_service(runtime) -> None:
     if runtime.is_fake:
         return
-    subprocess.run(["systemctl", "restart", WEB_SERVICE_NAME], check=True)
+    command_runner.run(["systemctl", "restart", WEB_SERVICE_NAME], check=True)
 
 
 def import_legacy_bundle(

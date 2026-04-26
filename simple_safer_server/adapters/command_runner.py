@@ -18,7 +18,7 @@ class CommandRunner:
         *,
         capture_output: bool = False,
         check: bool = False,
-        input: Optional[str] = None,
+        input: Optional[Any] = None,
         stdout: Optional[Any] = None,
         stderr: Optional[Any] = None,
         text: bool = False,

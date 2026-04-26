@@ -26,7 +26,7 @@ class DriveHealthTests(unittest.TestCase):
         self.assertEqual(error, drive_health.SMARTCTL_JSON_UPGRADE_MESSAGE)
 
     @patch("drive_health.get_smartctl_json_support", return_value=(True, None))
-    @patch("drive_health.subprocess.run")
+    @patch("drive_health.drive_health_command_adapter.smartctl_attributes")
     def test_get_smart_attributes_treats_json_error_response_as_failure(
         self, mock_run, _mock_json_support
     ):
@@ -59,7 +59,7 @@ class DriveHealthTests(unittest.TestCase):
         self.assertIn("Read Device Identity failed", error)
 
     @patch("drive_health.get_smartctl_json_support", return_value=(True, None))
-    @patch("drive_health.subprocess.run")
+    @patch("drive_health.drive_health_command_adapter.smartctl_attributes")
     def test_get_smart_attributes_accepts_nonzero_exit_when_attributes_are_present(
         self, mock_run, _mock_json_support
     ):
@@ -93,7 +93,7 @@ class DriveHealthTests(unittest.TestCase):
         self.assertIn("smart_1_raw", missing)
 
     @patch("drive_health.get_smartctl_json_support", return_value=(True, None))
-    @patch("drive_health.subprocess.run")
+    @patch("drive_health.drive_health_command_adapter.smartctl_attributes")
     def test_get_smart_attributes_preserves_parse_failure_when_json_supported(
         self, mock_run, _mock_json_support
     ):

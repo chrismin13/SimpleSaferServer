@@ -2,7 +2,6 @@ import logging
 import os
 import re
 import stat
-import subprocess
 import time
 from datetime import datetime
 from functools import wraps
@@ -26,6 +25,8 @@ from backup_drive_unmount import (
 )
 from config_manager import ConfigManager
 from runtime import get_fake_state, get_runtime
+from simple_safer_server.adapters.command_runner import CalledProcessError, SubprocessError
+from simple_safer_server.adapters.setup_commands import SetupCommandAdapter
 from smb_manager import SMBManager
 from system_utils import SystemUtils
 from user_manager import UserManager
@@ -37,6 +38,7 @@ config_manager = ConfigManager(runtime=runtime)
 system_utils = SystemUtils(runtime=runtime)
 user_manager = UserManager(runtime=runtime)
 smb_manager = SMBManager(runtime=runtime)
+setup_command_adapter = SetupCommandAdapter()
 logger = logging.getLogger(__name__)
 
 # How long to wait for udev to create a newly-partitioned device node
@@ -349,13 +351,8 @@ def format_drive():
         # has TYPE=disk; /dev/sda1 has TYPE=part).  Passing a partition path here
         # would corrupt get_partition_node output (e.g. /dev/sda1 → /dev/sda11).
         try:
-            lsblk_result = subprocess.run(
-                ['lsblk', '-dn', '-o', 'TYPE', disk],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-        except (subprocess.SubprocessError, OSError):
+            lsblk_result = setup_command_adapter.whole_disk_type(disk)
+        except (SubprocessError, OSError):
             return jsonify({'success': False, 'error': 'Unable to verify disk type'})
 
         if lsblk_result.stdout.strip() != 'disk':
@@ -386,9 +383,7 @@ def format_drive():
         if not os.path.exists(partition):
             # Create partition using fdisk
             fdisk_input = "n\np\n1\n\n\nw\n"
-            result = subprocess.run(
-                ['fdisk', disk], input=fdisk_input.encode(), capture_output=True
-            )
+            result = setup_command_adapter.create_partition(disk, fdisk_input.encode())
             if result.returncode != 0:
                 return jsonify(
                     {
@@ -404,7 +399,7 @@ def format_drive():
             # most kernels without it, but we log at debug so failures are
             # visible if troubleshooting a race condition.
             try:
-                result_probe = subprocess.run(['partprobe', disk], capture_output=True, text=True)
+                result_probe = setup_command_adapter.partprobe(disk)
                 if result_probe.returncode != 0:
                     logger.debug(
                         "partprobe %s exited %d: %s",
@@ -470,7 +465,7 @@ def format_drive():
                 )
             time.sleep(PARTITION_POLL_INTERVAL_SECONDS)
         # Format the partition as NTFS
-        result = subprocess.run(['mkfs.ntfs', '-f', partition], capture_output=True, text=True)
+        result = setup_command_adapter.format_ntfs(partition)
 
         if result.returncode != 0:
             error_msg = result.stderr.strip() if result.stderr else 'Unknown error occurred'
@@ -738,10 +733,10 @@ def setup_smb_share(config):
 
         # Enable SMB services to start on boot
         try:
-            subprocess.run(['systemctl', 'enable', 'smbd'], check=True)
-            subprocess.run(['systemctl', 'enable', 'nmbd'], check=True)
+            setup_command_adapter.enable_smb_unit('smbd')
+            setup_command_adapter.enable_smb_unit('nmbd')
             logger.info("SMB services enabled for boot")
-        except subprocess.CalledProcessError as e:
+        except CalledProcessError as e:
             logger.error(f"Failed to enable SMB services: {e}")
             # Don't fail setup for this, just log it
 
@@ -858,10 +853,7 @@ def mega_connect():
         if not email or not password:
             return jsonify({'success': False, 'error': 'Email and password are required.'})
         # Obscure password using rclone
-        result = subprocess.run(
-            ["rclone", "obscure", password], stdout=subprocess.PIPE, check=True, text=True
-        )
-        obscured_pw = result.stdout.strip()
+        obscured_pw = setup_command_adapter.obscure_rclone_password(password)
         # Build temp rclone config
         config_text = f"""
 [mega]
@@ -876,11 +868,7 @@ pass = {obscured_pw}
             config_path = config_file.name
         try:
             # List folders at root
-            lsjson = subprocess.run(
-                ["rclone", "lsjson", "mega:/", "--config", config_path],
-                capture_output=True,
-                text=True,
-            )
+            lsjson = setup_command_adapter.rclone_lsjson("mega:/", config_path)
             if lsjson.returncode != 0:
                 return jsonify(
                     {'success': False, 'error': 'Failed to list MEGA folders. Check credentials.'}
@@ -907,10 +895,7 @@ def mega_list_folders():
         password = data.get('password')
         if not email or not password:
             return jsonify({'error': 'Email and password are required.'})
-        result = subprocess.run(
-            ["rclone", "obscure", password], stdout=subprocess.PIPE, check=True, text=True
-        )
-        obscured_pw = result.stdout.strip()
+        obscured_pw = setup_command_adapter.obscure_rclone_password(password)
         config_text = f"""
 [mega]
 type = mega
@@ -925,11 +910,7 @@ pass = {obscured_pw}
             config_file.write(config_text)
             config_path = config_file.name
         try:
-            lsjson = subprocess.run(
-                ["rclone", "lsjson", f"mega:{path}", "--config", config_path],
-                capture_output=True,
-                text=True,
-            )
+            lsjson = setup_command_adapter.rclone_lsjson(f"mega:{path}", config_path)
             if lsjson.returncode != 0:
                 return jsonify({'error': 'Failed to list MEGA folders. Check credentials or path.'})
             import json as pyjson
@@ -957,10 +938,7 @@ def mega_create_folder_picker():
         password = data.get('password')
         if not folder_name or not email or not password:
             return jsonify({'error': 'Folder name, email, and password are required.'})
-        result = subprocess.run(
-            ["rclone", "obscure", password], stdout=subprocess.PIPE, check=True, text=True
-        )
-        obscured_pw = result.stdout.strip()
+        obscured_pw = setup_command_adapter.obscure_rclone_password(password)
         config_text = f"""
 [mega]
 type = mega
@@ -977,11 +955,7 @@ pass = {obscured_pw}
         try:
             # Create folder at mega:{path}/{folder_name}
             full_path = f"{path.rstrip('/')}/{folder_name}" if path != '/' else f"/{folder_name}"
-            mkdir = subprocess.run(
-                ["rclone", "mkdir", f"mega:{full_path}", "--config", config_path],
-                capture_output=True,
-                text=True,
-            )
+            mkdir = setup_command_adapter.rclone_mkdir(f"mega:{full_path}", config_path)
             if mkdir.returncode != 0:
                 return jsonify({'error': 'Failed to create folder on MEGA.'})
             return jsonify({'success': True})
@@ -1002,10 +976,7 @@ def mega_save():
         folder = data.get('folder')
         if not email or not password or not folder:
             return jsonify({'success': False, 'error': 'Email, password, and folder are required.'})
-        result = subprocess.run(
-            ["rclone", "obscure", password], stdout=subprocess.PIPE, check=True, text=True
-        )
-        obscured_pw = result.stdout.strip()
+        obscured_pw = setup_command_adapter.obscure_rclone_password(password)
         # Save to config/secrets (for demo, store in config_manager, but should use encrypted secrets in production)
         config_manager.set_value('backup', 'cloud_mode', 'mega')
         config_manager.set_value('backup', 'mega_email', email)

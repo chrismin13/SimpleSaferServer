@@ -5,13 +5,16 @@ import logging
 import os
 import re
 import shutil
-import subprocess
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 from runtime import get_runtime
+from simple_safer_server.adapters.drive_health_commands import (
+    CalledProcessError,
+    DriveHealthCommandAdapter,
+)
 
 try:
     import joblib
@@ -24,6 +27,7 @@ except (ImportError, OSError):
 
 
 LOGGER = logging.getLogger(__name__)
+drive_health_command_adapter = DriveHealthCommandAdapter()
 SMARTCTL_JSON_UPGRADE_MESSAGE = (
     "The installed smartctl version does not support JSON output required for SMART-based health prediction. "
     "Upgrade smartmontools on this machine to enable SMART prediction."
@@ -132,7 +136,7 @@ def get_smartctl_json_support():
     if not shutil.which("smartctl"):
         return False, "smartctl is not installed on this machine."
 
-    result = subprocess.run(["smartctl", "-h"], capture_output=True, text=True)
+    result = drive_health_command_adapter.smartctl_help()
     help_output = "\n".join(part for part in [result.stdout, result.stderr] if part)
     if "-j" in help_output or "--json" in help_output:
         return True, None
@@ -196,11 +200,7 @@ def resolve_backup_partition_device(config_manager, runtime=None):
     if not uuid:
         return None, "No backup drive UUID configured."
 
-    blkid_out = subprocess.run(
-        ["blkid", "-t", f"UUID={uuid}", "-o", "device"],
-        capture_output=True,
-        text=True,
-    )
+    blkid_out = drive_health_command_adapter.find_device_by_uuid(uuid)
     partition_device = blkid_out.stdout.strip()
     if not partition_device:
         return None, f"Backup drive with UUID {uuid} was not found."
@@ -248,7 +248,7 @@ def get_smart_attributes(config_manager, system_utils, device=None, runtime=None
         if os.geteuid() != 0 and shutil.which("sudo"):
             command.insert(0, "sudo")
 
-        result = subprocess.run(command, capture_output=True, text=True)
+        result = drive_health_command_adapter.smartctl_attributes(command)
         stdout = (result.stdout or "").strip()
         stderr = (result.stderr or "").strip()
 
@@ -554,7 +554,7 @@ def _run_hdsentinel_command(binary_path: Path, args):
     command = [str(binary_path), *args]
     if os.geteuid() != 0 and shutil.which("sudo"):
         command.insert(0, "sudo")
-    return subprocess.run(command, capture_output=True, text=True)
+    return drive_health_command_adapter.hdsentinel(command)
 
 
 def collect_hdsentinel_snapshot(config_manager, system_utils, runtime=None, device=None):
@@ -670,13 +670,8 @@ def _log_and_email_alert(config_manager, runtime, title, message, *, alert_type,
 
     email_body = f"Subject: {title}\nFrom: {from_address}\n\n{message}"
     try:
-        subprocess.run(
-            ["msmtp", f"--from={from_address}", email_address],
-            input=email_body,
-            text=True,
-            check=True,
-        )
-    except subprocess.CalledProcessError as exc:
+        drive_health_command_adapter.send_email(from_address, email_address, email_body)
+    except CalledProcessError as exc:
         LOGGER.warning("Failed to send alert email '%s': %s", title, exc)
 
 

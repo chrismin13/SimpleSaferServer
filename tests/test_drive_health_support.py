@@ -6,7 +6,7 @@ import drive_health
 
 
 class DriveHealthSupportTests(unittest.TestCase):
-    @patch("drive_health.subprocess.run")
+    @patch("drive_health.drive_health_command_adapter.smartctl_help")
     @patch("drive_health.shutil.which")
     def test_get_smartctl_json_support_rechecks_after_runtime_upgrade(self, mock_which, mock_run):
         # This guards the easy-to-forget case where operators install or
@@ -22,4 +22,4 @@ class DriveHealthSupportTests(unittest.TestCase):
         self.assertEqual(first_result, (False, "smartctl is not installed on this machine."))
         self.assertEqual(second_result, (True, None))
         self.assertEqual(mock_which.call_count, 2)
-        mock_run.assert_called_once_with(["smartctl", "-h"], capture_output=True, text=True)
+        mock_run.assert_called_once_with()
