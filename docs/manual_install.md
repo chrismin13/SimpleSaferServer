@@ -73,7 +73,7 @@ Install the extracted binary:
 - Because the virtualenv lives under `/opt`, open a root shell with `sudo -s` before activating it so `pip` can write into that environment.
 - In that root shell, run `source /opt/SimpleSaferServer/venv/bin/activate`.
 - Run `pip install --upgrade pip wheel`.
-- Run `pip install Flask-SocketIO==5.4.1 cryptography psutil joblib pandas scikit-learn xgboost`.
+- Run `pip install Flask-SocketIO==5.4.1 simple-websocket cryptography psutil joblib pandas scikit-learn xgboost`.
 - If you want the rest of the Python packages from the repository list, run `pip install -r /opt/SimpleSaferServer/requirements.txt`.
 - Run `deactivate`, then run `exit` to leave the root shell when you are done installing Python packages.
 
@@ -88,6 +88,7 @@ Install the extracted binary:
 ## 8. Set Up the Systemd Service
 
 - Copy `simple_safer_server_web.service` to `/etc/systemd/system/simple_safer_server_web.service`.
+- Hosted deployments use Gunicorn's threaded worker instead of Eventlet. Set `WEB_THREADS` to tune concurrent request handling for the host; the default is `4`.
 - `simple_safer_server_web.service` uses `ExecStart=/opt/SimpleSaferServer/venv/bin/python /opt/SimpleSaferServer/app.py --host=0.0.0.0 --port=5000 --no-debug`, so `/opt/SimpleSaferServer/venv` must exist before you start the service.
 - This matches the `VENV_DIR="/opt/SimpleSaferServer/venv"` flow in `install.sh`, which is why the manual install should use the same venv path instead of distro Python packages for the app runtime.
 - Run `sudo systemctl daemon-reload`.

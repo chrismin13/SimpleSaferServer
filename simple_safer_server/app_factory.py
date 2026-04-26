@@ -48,7 +48,9 @@ def create_app() -> Tuple[Flask, SocketIO]:
     # Keep the session secret stable across deploys so a restart does not
     # invalidate every login cookie when the app's config directory persists.
     app.secret_key = get_flask_secret_key(runtime)
-    socketio = SocketIO(app)
+    # Use Flask-SocketIO's threading backend unless a future real-time feature
+    # needs a different async worker. Eventlet is deprecated and noisy in dev.
+    socketio = SocketIO(app, async_mode="threading")
     user_manager = UserManager(runtime=runtime)
 
     system_utils = SystemUtils(runtime=runtime)
