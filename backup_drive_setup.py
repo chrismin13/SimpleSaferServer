@@ -3,17 +3,21 @@ import logging
 import os
 import re
 import shutil
-import subprocess
 from datetime import datetime
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 from runtime import get_fake_state, get_runtime
+from simple_safer_server.adapters.backup_drive_commands import BackupDriveCommandAdapter
 
 LOGGER = logging.getLogger(__name__)
 FSTAB_MARKER = "# SimpleSaferServer managed backup drive"
 LEGACY_FSTAB_MARKER = "SimpleSaferServer"
 NTFS_FILESYSTEM_TYPES = {'ntfs', 'ntfs3', 'ntfs-3g'}
+
+
+def _command_adapter(command_adapter=None):
+    return command_adapter or BackupDriveCommandAdapter()
 
 
 class BackupDriveSetupError(Exception):
@@ -76,16 +80,12 @@ def _is_ntfs_filesystem(filesystem_type):
     return (filesystem_type or '').strip().lower() in NTFS_FILESYSTEM_TYPES
 
 
-def _get_blkid_filesystem_type(device_path):
+def _get_blkid_filesystem_type(device_path, command_adapter=None):
     # lsblk can report a mounted ntfs-3g partition as "fuseblk", which tells
     # us how it is mounted right now rather than what is on disk. For the
     # NTFS-only picker we verify that narrower case with blkid so we do not
     # accidentally treat every FUSE-backed block device as NTFS months later.
-    result = subprocess.run(
-        ['blkid', '-o', 'value', '-s', 'TYPE', device_path],
-        capture_output=True,
-        text=True,
-    )
+    result = _command_adapter(command_adapter).blkid_filesystem_type(device_path)
     if result.returncode != 0:
         return ''
     return result.stdout.strip().lower()
@@ -138,10 +138,10 @@ def _get_drive_connection_type(block):
     return 'internal'
 
 
-def _get_current_mounts():
+def _get_current_mounts(command_adapter=None):
     # Use the live mount table for operation safety checks instead of lsblk's
     # mountpoint field so we always act on what the kernel currently reports.
-    mount_check = subprocess.run(['mount'], capture_output=True, text=True)
+    mount_check = _command_adapter(command_adapter).current_mounts()
     mounts = []
     for line in mount_check.stdout.splitlines():
         parts = line.split()
@@ -150,14 +150,10 @@ def _get_current_mounts():
     return mounts
 
 
-def _load_lsblk_devices():
+def _load_lsblk_devices(command_adapter=None):
     # Keep one shared inventory source for both setup and rerun flows. The
     # flows differ in target semantics, not in how we discover block devices.
-    lsblk_result = subprocess.run(
-        ['lsblk', '-J', '-o', 'NAME,PATH,FSTYPE,LABEL,SIZE,MODEL,MOUNTPOINT,TYPE,TRAN,RM,HOTPLUG'],
-        capture_output=True,
-        text=True,
-    )
+    lsblk_result = _command_adapter(command_adapter).lsblk_devices_json()
     if lsblk_result.returncode != 0:
         raise BackupDriveSetupError('Failed to list drives.')
 
@@ -169,10 +165,8 @@ def _load_lsblk_devices():
     return lsblk_data.get('blockdevices', [])
 
 
-def _get_system_drive_path():
-    root_mount = subprocess.run(
-        ['findmnt', '-n', '-o', 'SOURCE', '/'], capture_output=True, text=True
-    )
+def _get_system_drive_path(command_adapter=None):
+    root_mount = _command_adapter(command_adapter).system_drive()
     return root_mount.stdout.strip() if root_mount.returncode == 0 else None
 
 
@@ -245,12 +239,8 @@ def _get_mount_for_partition(partition_path, mounts=None):
     return None
 
 
-def _get_partition_filesystem_type(drive):
-    lsblk_result = subprocess.run(
-        ['lsblk', '-no', 'FSTYPE', drive],
-        capture_output=True,
-        text=True,
-    )
+def _get_partition_filesystem_type(drive, command_adapter=None):
+    lsblk_result = _command_adapter(command_adapter).partition_filesystem_type(drive)
     if lsblk_result.returncode != 0:
         error_msg = lsblk_result.stderr.strip() if lsblk_result.stderr else 'Unknown error occurred'
         raise BackupDriveSetupError(
@@ -388,7 +378,7 @@ def restore_fstab_backup(backup_path, runtime=None, fstab_path=None):
     shutil.copy2(backup_path, path)
 
 
-def _reload_systemd_mount_units(runtime=None):
+def _reload_systemd_mount_units(runtime=None, command_adapter=None):
     runtime = runtime or get_runtime()
     if runtime.is_fake:
         return
@@ -396,11 +386,7 @@ def _reload_systemd_mount_units(runtime=None):
     # Keep daemon-reload outside update_managed_fstab() so callers can treat
     # "rewrite /etc/fstab" and "refresh systemd's generated mount units" as
     # one rollback-aware transaction.
-    result = subprocess.run(
-        ['systemctl', 'daemon-reload'],
-        capture_output=True,
-        text=True,
-    )
+    result = _command_adapter(command_adapter).reload_systemd_mount_units()
     if result.returncode != 0:
         raise BackupDriveSetupError(
             'Failed to reload systemd after updating /etc/fstab: {}'.format(
@@ -409,10 +395,8 @@ def _reload_systemd_mount_units(runtime=None):
         )
 
 
-def get_drive_uuid(drive):
-    result = subprocess.run(
-        ['blkid', '-s', 'UUID', '-o', 'value', drive], capture_output=True, text=True
-    )
+def get_drive_uuid(drive, command_adapter=None):
+    result = _command_adapter(command_adapter).drive_uuid(drive)
     if result.returncode != 0 or not result.stdout.strip():
         raise BackupDriveSetupError(f'Could not determine the UUID for {drive}.')
     return result.stdout.strip()
@@ -518,8 +502,9 @@ def list_available_drives(runtime=None, ntfs_only=False):
     return drives
 
 
-def unmount_disk_partitions(disk_path, runtime=None):
+def unmount_disk_partitions(disk_path, runtime=None, command_adapter=None):
     runtime = runtime or get_runtime()
+    command_adapter = _command_adapter(command_adapter)
     fake_state = get_fake_state() if runtime.is_fake else None
 
     if runtime.is_fake:
@@ -540,7 +525,7 @@ def unmount_disk_partitions(disk_path, runtime=None):
 
     failures = []
     for partition in mounted_partitions:
-        result = subprocess.run(['umount', partition['device']], capture_output=True, text=True)
+        result = command_adapter.unmount_partition(partition['device'])
         if result.returncode != 0:
             failures.append(
                 '{}: {}'.format(
@@ -555,8 +540,9 @@ def unmount_disk_partitions(disk_path, runtime=None):
     return f'Successfully unmounted {len(mounted_partitions)} partition(s).'
 
 
-def unmount_selected_partition(partition_path, runtime=None):
+def unmount_selected_partition(partition_path, runtime=None, command_adapter=None):
     runtime = runtime or get_runtime()
+    command_adapter = _command_adapter(command_adapter)
     fake_state = get_fake_state() if runtime.is_fake else None
 
     if runtime.is_fake:
@@ -573,7 +559,7 @@ def unmount_selected_partition(partition_path, runtime=None):
     if not mount:
         raise BackupDriveSetupError('The selected partition is not currently mounted.')
 
-    result = subprocess.run(['umount', mount['device']], capture_output=True, text=True)
+    result = command_adapter.unmount_partition(mount['device'])
     if result.returncode != 0:
         raise BackupDriveSetupError(
             'Failed to unmount partition: {}'.format(
@@ -602,9 +588,16 @@ def _sync_backup_share_path(smb_manager, new_path):
 
 
 def apply_backup_drive_configuration(
-    partition, mount_point, auto_mount, config_manager, smb_manager, runtime=None
+    partition,
+    mount_point,
+    auto_mount,
+    config_manager,
+    smb_manager,
+    runtime=None,
+    command_adapter=None,
 ):
     runtime = runtime or get_runtime()
+    command_adapter = _command_adapter(command_adapter)
     fake_state = get_fake_state() if runtime.is_fake else None
 
     mount_point = (mount_point or '').strip()
@@ -707,9 +700,9 @@ def apply_backup_drive_configuration(
             )
         )
 
-    uuid = get_drive_uuid(partition)
+    uuid = get_drive_uuid(partition, command_adapter=command_adapter)
     usb_id = get_drive_usb_id(partition)
-    filesystem_type = _get_partition_filesystem_type(partition)
+    filesystem_type = _get_partition_filesystem_type(partition, command_adapter=command_adapter)
     if not _is_ntfs_filesystem(filesystem_type):
         raise BackupDriveSetupError('The selected partition must be formatted as NTFS.')
 
@@ -724,11 +717,7 @@ def apply_backup_drive_configuration(
         fstab_backup = update_managed_fstab(uuid, mount_point, bool(auto_mount), runtime=runtime)
         _reload_systemd_mount_units(runtime=runtime)
 
-        mount_result = subprocess.run(
-            ['ntfs-3g', partition, mount_point, '-o', 'rw,uid=1000,gid=1000'],
-            capture_output=True,
-            text=True,
-        )
+        mount_result = command_adapter.mount_ntfs(partition, mount_point)
         if mount_result.returncode != 0:
             error_msg = (
                 mount_result.stderr.strip() if mount_result.stderr else 'Unknown error occurred'
@@ -755,7 +744,7 @@ def apply_backup_drive_configuration(
         }
     except Exception:
         if mounted:
-            subprocess.run(['umount', partition], check=False)
+            command_adapter.cleanup_unmount(partition)
         if fstab_backup:
             restore_fstab_backup(fstab_backup, runtime=runtime)
             _reload_systemd_mount_units(runtime=runtime)

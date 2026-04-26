@@ -1,10 +1,10 @@
 import contextlib
 import logging
 import os
-import subprocess
 
 from backup_drive_setup import BackupDriveSetupError, _get_mount_for_partition
 from runtime import get_fake_state, get_runtime
+from simple_safer_server.adapters.backup_drive_commands import BackupDriveCommandAdapter
 
 LOGGER = logging.getLogger(__name__)
 MANAGED_BACKUP_UNMOUNT_TASKS = (
@@ -40,23 +40,18 @@ def is_selected_partition_managed_backup_drive(
     return os.path.realpath(mount['mount_point']) == os.path.realpath(configured_mount_point)
 
 
-def _power_down_managed_backup_drive(configured_uuid, system_utils):
+def _power_down_managed_backup_drive(configured_uuid, system_utils, command_adapter):
     if not configured_uuid:
         return
 
     try:
-        blkid_out = subprocess.run(
-            ['blkid', '-t', f'UUID={configured_uuid}', '-o', 'device'],
-            capture_output=True,
-            text=True,
-        )
-        partition_device = blkid_out.stdout.strip()
+        partition_device = command_adapter.find_device_by_uuid(configured_uuid)
         if not partition_device:
             return
 
         parent_device = system_utils.get_parent_device(partition_device)
         if parent_device:
-            subprocess.run(['sudo', 'hdparm', '-y', parent_device], check=False)
+            command_adapter.power_down_device(parent_device)
     except Exception as exc:
         LOGGER.warning('Failed to power down configured backup drive: %s', exc)
 
@@ -68,8 +63,10 @@ def unmount_managed_backup_drive(
     *,
     runtime=None,
     power_down=False,
+    command_adapter=None,
 ):
     runtime = runtime or get_runtime()
+    command_adapter = command_adapter or BackupDriveCommandAdapter()
     fake_state = get_fake_state() if runtime.is_fake else None
 
     if runtime.is_fake:
@@ -86,21 +83,15 @@ def unmount_managed_backup_drive(
     # partition umount because Samba and background jobs can keep busy handles
     # on the share even when the user only asked to unmount one partition.
     with contextlib.suppress(Exception):
-        subprocess.run(
-            ['sudo', 'smbcontrol', 'all', 'close-share', configured_mount_point], check=False
-        )
+        command_adapter.close_smb_share(configured_mount_point)
 
     for service in MANAGED_BACKUP_UNMOUNT_TASKS:
-        subprocess.run(['sudo', 'systemctl', 'stop', service], check=False)
-    subprocess.run(['sudo', 'systemctl', 'stop', 'smbd'], check=False)
-    subprocess.run(['sudo', 'systemctl', 'stop', 'nmbd'], check=False)
+        command_adapter.stop_unit(service)
+    command_adapter.stop_unit('smbd')
+    command_adapter.stop_unit('nmbd')
 
     try:
-        result = subprocess.run(
-            ['sudo', 'umount', configured_mount_point],
-            capture_output=True,
-            text=True,
-        )
+        result = command_adapter.unmount(configured_mount_point)
         if result.returncode != 0:
             raise BackupDriveSetupError(
                 'Failed to unmount drive: {}'.format(
@@ -109,8 +100,8 @@ def unmount_managed_backup_drive(
             )
 
         if power_down:
-            _power_down_managed_backup_drive(configured_uuid, system_utils)
+            _power_down_managed_backup_drive(configured_uuid, system_utils, command_adapter)
     finally:
         with contextlib.suppress(Exception):
-            subprocess.run(['sudo', 'systemctl', 'start', 'smbd'], check=False)
-            subprocess.run(['sudo', 'systemctl', 'start', 'nmbd'], check=False)
+            command_adapter.start_unit('smbd')
+            command_adapter.start_unit('nmbd')

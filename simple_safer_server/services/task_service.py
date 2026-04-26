@@ -1,6 +1,5 @@
 import os
 import queue
-import subprocess
 import sys
 import threading
 import time
@@ -8,6 +7,14 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from drive_health import run_scheduled_drive_health_check
+from simple_safer_server.adapters.command_runner import (
+    PIPE,
+    CommandRunner,
+    SubprocessError,
+    TimeoutExpired,
+)
+from simple_safer_server.adapters.rclone import RcloneAdapter
+from simple_safer_server.adapters.systemd import CalledProcessError, SystemdAdapter
 
 
 class Status:
@@ -64,12 +71,18 @@ class TaskService:
         system_utils: Any,
         fake_state: Optional[Any] = None,
         logger: Optional[Any] = None,
+        command_runner: Optional[CommandRunner] = None,
+        systemd_adapter: Optional[SystemdAdapter] = None,
+        rclone_adapter: Optional[RcloneAdapter] = None,
     ):
         self.runtime = runtime
         self.config_manager = config_manager
         self.system_utils = system_utils
         self.fake_state = fake_state
         self.logger = logger
+        self.command_runner = command_runner or CommandRunner()
+        self.systemd_adapter = systemd_adapter or SystemdAdapter(self.command_runner)
+        self.rclone_adapter = rclone_adapter or RcloneAdapter(self.command_runner)
         self._fake_task_threads = {}  # type: Dict[str, threading.Thread]
         self._fake_task_cancel_events = {}  # type: Dict[str, threading.Event]
         self._fake_task_lock = threading.Lock()
@@ -127,21 +140,8 @@ class TaskService:
         if self.runtime.is_fake:
             return self._require_fake_state().get_task_log(task.name)
         try:
-            result = subprocess.run(
-                [
-                    "journalctl",
-                    "-u",
-                    task.service_name,
-                    "-n",
-                    str(lines),
-                    "--no-pager",
-                ],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            return result.stdout
-        except subprocess.CalledProcessError:
+            return self.systemd_adapter.journal(task.service_name, lines)
+        except CalledProcessError:
             return "Retrieval Error"
 
     def start_task(self, task: Task) -> None:
@@ -149,11 +149,7 @@ class TaskService:
             self._start_fake_task(task.name)
             return
         try:
-            subprocess.Popen(
-                ["systemctl", "start", task.service_name, "--no-block"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
+            self.systemd_adapter.start_unit(task.service_name)
         except Exception as exc:
             raise RuntimeError(f"Failed to start {task.service_name}: {exc}") from exc
 
@@ -177,11 +173,7 @@ class TaskService:
             fake_state.set_task_state(task.name, status=Status.STOPPED)
             return
         try:
-            subprocess.Popen(
-                ["systemctl", "stop", task.service_name, "--no-block"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
+            self.systemd_adapter.stop_unit(task.service_name)
         except Exception as exc:
             raise RuntimeError(f"Failed to stop {task.service_name}: {exc}") from exc
 
@@ -197,17 +189,11 @@ class TaskService:
             backup_time = self.config_manager.get_value("schedule", "backup_cloud_time", "03:00")
             return self._require_fake_state().get_next_run(task.name, backup_time or "03:00")
         try:
-            result = subprocess.run(
-                ["systemctl", "show", task.timer_name, "--property=NextElapseUSecRealtime"],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            output = result.stdout.strip()
+            output = self.systemd_adapter.show_property(task.timer_name, "NextElapseUSecRealtime")
             if "=" in output:
                 return output.split("=")[-1].strip()
             return "Unknown"
-        except subprocess.CalledProcessError:
+        except CalledProcessError:
             return "Retrieval Error"
 
     def get_last_run(self, task: Task) -> str:
@@ -215,17 +201,11 @@ class TaskService:
             task_state = self._require_fake_state().get_task_state(task.name)
             return task_state.get("last_run") or "Not Run Yet"
         try:
-            result = subprocess.run(
-                ["systemctl", "show", task.service_name, "--property=ExecMainStartTimestamp"],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            output = result.stdout.strip()
+            output = self.systemd_adapter.show_property(task.service_name, "ExecMainStartTimestamp")
             if "=" in output:
                 return output.split("=")[-1].strip()
             return "Unknown"
-        except subprocess.CalledProcessError:
+        except CalledProcessError:
             return "Retrieval Error"
 
     def get_last_run_duration(self, task: Task) -> str:
@@ -233,20 +213,13 @@ class TaskService:
             task_state = self._require_fake_state().get_task_state(task.name)
             return task_state.get("last_run_duration", "-")
         try:
-            result = subprocess.run(
-                [
-                    "systemctl",
-                    "show",
-                    task.service_name,
-                    "--property=ExecMainStartTimestampMonotonic",
-                    "--property=ExecMainExitTimestampMonotonic",
-                ],
-                capture_output=True,
-                text=True,
-                check=True,
+            output = self.systemd_adapter.show_properties(
+                task.service_name,
+                "ExecMainStartTimestampMonotonic",
+                "ExecMainExitTimestampMonotonic",
             )
             start = exit_ts = None
-            for line in result.stdout.splitlines():
+            for line in output.splitlines():
                 if line.startswith("ExecMainStartTimestampMonotonic="):
                     value = line.split("=", 1)[1].strip()
                     if value:
@@ -274,7 +247,7 @@ class TaskService:
                 parts.append(f"{seconds}s")
                 return " ".join(parts)
             return "Unknown"
-        except subprocess.CalledProcessError:
+        except CalledProcessError:
             return "Retrieval Error"
 
     def get_status(self, task: Task) -> str:
@@ -282,55 +255,28 @@ class TaskService:
             task_state = self._require_fake_state().get_task_state(task.name)
             return task_state.get("status", Status.NOT_RUN_YET)
         try:
-            result = subprocess.run(
-                ["systemctl", "show", task.service_name, "--property=LoadState"],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            output = result.stdout.strip()
+            output = self.systemd_adapter.show_property(task.service_name, "LoadState")
             if "not-found" in output:
                 return Status.MISSING
 
-            result = subprocess.run(
-                ["systemctl", "is-active", task.service_name],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            output = result.stdout.strip()
+            output = self.systemd_adapter.is_active(task.service_name)
             if output == "activating":
                 return Status.RUNNING
 
-            result = subprocess.run(
-                ["systemctl", "show", task.service_name, "--property=Result"],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            result_output = result.stdout.strip()
+            result_output = self.systemd_adapter.show_property(task.service_name, "Result")
             if "=" in result_output:
                 result_value = result_output.split("=")[-1].strip()
                 if result_value == "success":
-                    result = subprocess.run(
-                        [
-                            "systemctl",
-                            "show",
-                            task.service_name,
-                            "--property=ExecMainStartTimestamp",
-                        ],
-                        capture_output=True,
-                        text=True,
-                        check=True,
+                    output = self.systemd_adapter.show_property(
+                        task.service_name, "ExecMainStartTimestamp"
                     )
-                    output = result.stdout.strip()
                     if output.endswith("=") or output == "":
                         return Status.NOT_RUN_YET
                     return Status.SUCCESS
                 return Status.FAILURE
 
             return Status.ERROR
-        except subprocess.CalledProcessError:
+        except CalledProcessError:
             return Status.ERROR
 
     def _run_fake_cloud_backup(self, cancel_event: threading.Event) -> None:
@@ -355,18 +301,11 @@ class TaskService:
             "Cloud Backup", f"Starting backup from {source} to {destination}"
         )
         bandwidth_limit = self.config_manager.get_value("backup", "bandwidth_limit", "").strip()
-        command = ["rclone", "sync", source, destination, "--create-empty-src-dirs", "-v"]
-        if rclone_config_path.exists():
-            command.extend(["--config", str(rclone_config_path)])
-        if bandwidth_limit:
-            command.extend(["--bwlimit", bandwidth_limit])
-
-        proc = subprocess.Popen(
-            command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            bufsize=1,
+        proc = self.rclone_adapter.sync(
+            source,
+            destination,
+            config_path=str(rclone_config_path) if rclone_config_path.exists() else None,
+            bandwidth_limit=bandwidth_limit,
         )
         stdout_output, stderr_output = self._collect_process_output(
             proc, cancel_event, "fake-cloud-backup"
@@ -512,10 +451,10 @@ class TaskService:
         # Fake mode simulates systemd, not provider APIs; this can still touch
         # live DuckDNS or Cloudflare records when real credentials are configured.
         try:
-            proc = subprocess.Popen(
+            proc = self.command_runner.popen(
                 [sys.executable, str(ddns_script)],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stdout=PIPE,
+                stderr=PIPE,
                 text=True,
                 bufsize=1,
             )
@@ -531,13 +470,13 @@ class TaskService:
 
             if proc.returncode != 0:
                 raise RuntimeError(f"DDNS update script exited with code {proc.returncode}")
-        except subprocess.SubprocessError as exc:
+        except (OSError, SubprocessError) as exc:
             fake_state.append_task_log(task_name, f"Subprocess error: {exc!s}")
             raise RuntimeError(f"Failed to run DDNS update script: {exc!s}") from exc
 
     def _collect_process_output(
         self,
-        proc: subprocess.Popen,
+        proc: Any,
         cancel_event: threading.Event,
         thread_name_prefix: str,
     ) -> Tuple[str, str]:
@@ -575,7 +514,7 @@ class TaskService:
                 proc.terminate()
                 try:
                     proc.wait(timeout=5.0)
-                except subprocess.TimeoutExpired:
+                except TimeoutExpired:
                     proc.kill()
                     proc.wait()
                 break

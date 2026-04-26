@@ -1,5 +1,3 @@
-import os
-import subprocess
 from typing import Any
 
 import psutil
@@ -102,12 +100,8 @@ def restart():
         blocked = _apt_lock_block_response("restart")
         if blocked:
             return blocked
-        if services.runtime.is_fake:
-            return jsonify({"success": True, "message": "Fake mode: restart simulated."})
-        subprocess.run(["sudo", "systemctl", "reboot"], check=True)
-        return jsonify({"success": True, "message": "System is restarting..."})
-    except subprocess.CalledProcessError as exc:
-        return jsonify({"success": False, "message": f"Failed to restart system: {exc}"}), 500
+        payload, status_code = services.storage_service.restart_system()
+        return jsonify(payload), status_code
     except Exception as exc:
         return jsonify({"success": False, "message": f"Unexpected error: {exc}"}), 500
 
@@ -120,12 +114,8 @@ def shutdown():
         blocked = _apt_lock_block_response("shutdown")
         if blocked:
             return blocked
-        if services.runtime.is_fake:
-            return jsonify({"success": True, "message": "Fake mode: shutdown simulated."})
-        subprocess.run(["sudo", "systemctl", "poweroff"], check=True)
-        return jsonify({"success": True, "message": "System is shutting down..."})
-    except subprocess.CalledProcessError as exc:
-        return jsonify({"success": False, "message": f"Failed to shut down system: {exc}"}), 500
+        payload, status_code = services.storage_service.shutdown_system()
+        return jsonify(payload), status_code
     except Exception as exc:
         return jsonify({"success": False, "message": f"Unexpected error: {exc}"}), 500
 
@@ -163,41 +153,9 @@ def api_storage_status():
 @admin_required
 def dashboard_mount_drive():
     services = _get_services()
-    mount_point = services.config_manager.get_value(
-        "backup", "mount_point", services.runtime.default_mount_point
-    )
-    uuid = services.config_manager.get_value("backup", "uuid", None)
     try:
-        if services.runtime.is_fake:
-            if not os.path.isdir(mount_point):
-                return jsonify(
-                    {"success": False, "message": f"Source folder not found: {mount_point}"}
-                ), 400
-            services.fake_state.set_mount(True, mount_point=mount_point)
-            services.fake_state.append_task_log(
-                "Check Mount", f"Backup source connected at {mount_point}."
-            )
-            return jsonify({"success": True, "message": "Local backup source connected."})
-
-        if not uuid:
-            return jsonify({"success": False, "message": "No drive UUID configured."}), 400
-        blkid_out = subprocess.run(
-            ["blkid", "-t", f"UUID={uuid}", "-o", "device"], capture_output=True, text=True
-        )
-        partition_device = blkid_out.stdout.strip()
-        if not partition_device:
-            return jsonify(
-                {"success": False, "message": "Drive not found. Please check the connection."}
-            ), 400
-        os.makedirs(mount_point, exist_ok=True)
-        subprocess.run(["sudo", "mount", partition_device, mount_point], check=True)
-        for service in ["check_mount.service", "check_health.service", "backup_cloud.service"]:
-            subprocess.run(["sudo", "systemctl", "start", service], check=False)
-        subprocess.run(["sudo", "systemctl", "start", "smbd"], check=False)
-        subprocess.run(["sudo", "systemctl", "start", "nmbd"], check=False)
-        return jsonify({"success": True, "message": "Drive mounted and available for use."})
-    except subprocess.CalledProcessError as exc:
-        return jsonify({"success": False, "message": f"Failed to mount drive: {exc}"}), 500
+        payload, status_code = services.storage_service.mount_dashboard_drive()
+        return jsonify(payload), status_code
     except Exception as exc:
         return jsonify({"success": False, "message": f"Unexpected error: {exc}"}), 500
 

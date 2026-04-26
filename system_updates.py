@@ -2,14 +2,15 @@ import json
 import os
 import re
 import shutil
-import signal
-import subprocess
 import tempfile
 import threading
 import time
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
+from simple_safer_server.adapters.command_runner import CalledProcessError
+from simple_safer_server.adapters.system_updates_commands import SystemUpdatesCommandAdapter
 
 try:
     import psutil
@@ -248,13 +249,14 @@ def get_support_info(
 
 
 class SystemUpdatesManager:
-    def __init__(self, config_manager, runtime=None):
+    def __init__(self, config_manager, runtime=None, command_adapter=None):
         self.config_manager = config_manager
         self.runtime = runtime or get_runtime()
+        self.command_adapter = command_adapter or SystemUpdatesCommandAdapter()
         self.state_path = self.runtime.data_dir / "system_updates_state.json"
         self._lock = threading.RLock()
         self._thread: Optional[threading.Thread] = None
-        self._process: Optional[subprocess.Popen] = None
+        self._process: Optional[Any] = None
         self._cancel_event: Optional[threading.Event] = None
         self.state_path.parent.mkdir(parents=True, exist_ok=True)
         if not self.state_path.exists():
@@ -395,10 +397,7 @@ class SystemUpdatesManager:
         for path in APT_LOCK_PATHS:
             if not path.exists():
                 continue
-            result = subprocess.run(
-                [fuser, str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-            )
-            if result.returncode == 0:
+            if self.command_adapter.is_lock_held(fuser, path):
                 held.append(str(path))
         return held
 
@@ -531,17 +530,7 @@ class SystemUpdatesManager:
         env["DEBIAN_FRONTEND"] = "noninteractive"
         try:
             self._append_log(f"Running: {' '.join(command)}")
-            proc = subprocess.Popen(
-                command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,
-                env=env,
-                # Keep apt in its own session so Stop can terminate the whole
-                # process group without using preexec_fn in Flask's threaded process.
-                start_new_session=True,
-            )
+            proc = self.command_adapter.start_apt_operation(command, env)
             with self._lock:
                 self._process = proc
 
@@ -559,7 +548,7 @@ class SystemUpdatesManager:
                         break
 
             if cancel_event.is_set() and proc.poll() is None:
-                self._terminate_process(proc)
+                self.command_adapter.terminate_process(proc)
 
             returncode = proc.wait()
             if cancel_event.is_set():
@@ -600,19 +589,6 @@ class SystemUpdatesManager:
                 self._process = None
                 self._cancel_event = None
 
-    def _terminate_process(self, proc: subprocess.Popen) -> None:
-        try:
-            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
-        except Exception:
-            proc.terminate()
-        try:
-            proc.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            try:
-                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-            except Exception:
-                proc.kill()
-
     def stop_operation(self) -> Dict[str, Any]:
         with self._lock:
             if not self.is_own_operation_running() or not self._cancel_event:
@@ -620,7 +596,7 @@ class SystemUpdatesManager:
             self._cancel_event.set()
             proc = self._process
         if proc and proc.poll() is None:
-            self._terminate_process(proc)
+            self.command_adapter.terminate_process(proc)
         self._update_state(phase="Stopping")
         return self.get_status()
 
@@ -680,7 +656,7 @@ class SystemUpdatesManager:
         if not existing:
             return {"removed": [], "message": "No apt lock files exist."}
 
-        subprocess.run(["sudo", "rm", "-f", *existing], check=True, capture_output=True, text=True)
+        self.command_adapter.remove_files(existing)
         return {"removed": existing, "message": "Stale apt lock files removed."}
 
     def _parse_apt_periodic_config(self, text: str) -> Dict[str, Any]:
@@ -829,14 +805,7 @@ class SystemUpdatesManager:
         # tee avoids shell redirection and works whether the Flask process is
         # root or is allowed to sudo only this write.
         with temp_path.open("r") as temp_file:
-            subprocess.run(
-                ["sudo", "tee", "/etc/apt/apt.conf.d/20auto-upgrades"],
-                stdin=temp_file,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.PIPE,
-                text=True,
-                check=True,
-            )
+            self.command_adapter.write_apt_periodic_config(temp_file)
 
     def get_livepatch_status(self) -> Dict[str, Any]:
         distro = self.get_distribution_info()
@@ -868,12 +837,7 @@ class SystemUpdatesManager:
                 "source_url": SUPPORT_SOURCES["livepatch"],
             }
 
-        result = subprocess.run(
-            [binary, "status", "--format", "json"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        result = self.command_adapter.livepatch_status_json(binary)
         if result.returncode == 0:
             try:
                 details = json.loads(result.stdout or "{}")
@@ -889,7 +853,7 @@ class SystemUpdatesManager:
                 "source_url": SUPPORT_SOURCES["livepatch"],
             }
 
-        fallback = subprocess.run([binary, "status"], capture_output=True, text=True, check=False)
+        fallback = self.command_adapter.livepatch_status_text(binary)
         output = (
             fallback.stdout or fallback.stderr or result.stderr or "Livepatch status unavailable."
         ).strip()
@@ -948,14 +912,9 @@ class SystemUpdatesManager:
         # tokens do not end up in process argv or shell history.
         attach_config_path.chmod(0o600)
         try:
-            attach = subprocess.run(
-                ["sudo", pro_binary, "attach", "--attach-config", str(attach_config_path)],
-                check=False,
-                capture_output=True,
-                text=True,
-            )
+            attach = self.command_adapter.pro_attach(pro_binary, attach_config_path)
             if attach.returncode not in (0, 2):
-                raise subprocess.CalledProcessError(
+                raise CalledProcessError(
                     attach.returncode,
                     attach.args,
                     output=attach.stdout,
@@ -964,7 +923,5 @@ class SystemUpdatesManager:
         finally:
             attach_config_path.unlink(missing_ok=True)
 
-        subprocess.run(
-            ["sudo", pro_binary, "enable", "livepatch"], check=True, capture_output=True, text=True
-        )
+        self.command_adapter.pro_enable_livepatch(pro_binary)
         return self.get_livepatch_status()

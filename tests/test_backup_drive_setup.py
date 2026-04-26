@@ -2,9 +2,31 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import backup_drive_setup
+
+
+class FakeBackupDriveCommandAdapter:
+    def __init__(self):
+        self.unmount_results = []
+        self.mount_ntfs_result = SimpleNamespace(returncode=0, stderr='', stdout='')
+        self.unmounted_partitions = []
+        self.mounted_ntfs = []
+        self.cleanup_unmounted = []
+
+    def unmount_partition(self, device):
+        self.unmounted_partitions.append(device)
+        if self.unmount_results:
+            return self.unmount_results.pop(0)
+        return SimpleNamespace(returncode=0, stderr='', stdout='')
+
+    def mount_ntfs(self, partition, mount_point):
+        self.mounted_ntfs.append((partition, mount_point))
+        return self.mount_ntfs_result
+
+    def cleanup_unmount(self, device):
+        self.cleanup_unmounted.append(device)
 
 
 class BackupDriveSetupTests(unittest.TestCase):
@@ -235,42 +257,35 @@ class BackupDriveSetupTests(unittest.TestCase):
 
         self.assertEqual(mount, {'device': '/dev/sdb1', 'mount_point': '/media/one'})
 
-    @patch('backup_drive_setup.subprocess.run')
     @patch('backup_drive_setup._get_mounted_partitions_for_disk')
-    def test_unmount_disk_partitions_unmounts_all_members(self, mock_get_mounted, mock_run):
+    def test_unmount_disk_partitions_unmounts_all_members(self, mock_get_mounted):
         runtime = SimpleNamespace(is_fake=False)
+        command_adapter = FakeBackupDriveCommandAdapter()
         mock_get_mounted.return_value = [
             {'device': '/dev/sdb1', 'mount_point': '/media/one'},
             {'device': '/dev/sdb2', 'mount_point': '/media/two'},
         ]
-        mock_run.return_value = SimpleNamespace(returncode=0, stderr='')
 
-        message = backup_drive_setup.unmount_disk_partitions('/dev/sdb', runtime=runtime)
-
-        self.assertEqual(message, 'Successfully unmounted 2 partition(s).')
-        self.assertEqual(
-            mock_run.call_args_list,
-            [
-                call(['umount', '/dev/sdb1'], capture_output=True, text=True),
-                call(['umount', '/dev/sdb2'], capture_output=True, text=True),
-            ],
+        message = backup_drive_setup.unmount_disk_partitions(
+            '/dev/sdb', runtime=runtime, command_adapter=command_adapter
         )
 
-    @patch('backup_drive_setup.subprocess.run')
-    @patch('backup_drive_setup._get_mount_for_partition')
-    def test_unmount_selected_partition_only_unmounts_exact_partition(
-        self, mock_get_mount, mock_run
-    ):
-        runtime = SimpleNamespace(is_fake=False)
-        mock_get_mount.return_value = {'device': '/dev/sdb1', 'mount_point': '/media/one'}
-        mock_run.return_value = SimpleNamespace(returncode=0, stderr='')
+        self.assertEqual(message, 'Successfully unmounted 2 partition(s).')
+        self.assertEqual(command_adapter.unmounted_partitions, ['/dev/sdb1', '/dev/sdb2'])
 
-        message = backup_drive_setup.unmount_selected_partition('/dev/sdb1', runtime=runtime)
+    @patch('backup_drive_setup._get_mount_for_partition')
+    def test_unmount_selected_partition_only_unmounts_exact_partition(self, mock_get_mount):
+        runtime = SimpleNamespace(is_fake=False)
+        command_adapter = FakeBackupDriveCommandAdapter()
+        mock_get_mount.return_value = {'device': '/dev/sdb1', 'mount_point': '/media/one'}
+
+        message = backup_drive_setup.unmount_selected_partition(
+            '/dev/sdb1', runtime=runtime, command_adapter=command_adapter
+        )
 
         self.assertEqual(message, 'Successfully unmounted /dev/sdb1.')
-        mock_run.assert_called_once_with(['umount', '/dev/sdb1'], capture_output=True, text=True)
+        self.assertEqual(command_adapter.unmounted_partitions, ['/dev/sdb1'])
 
-    @patch('backup_drive_setup.subprocess.run')
     @patch('backup_drive_setup.os.makedirs')
     @patch('backup_drive_setup._reload_systemd_mount_units')
     @patch('backup_drive_setup.update_managed_fstab')
@@ -287,9 +302,9 @@ class BackupDriveSetupTests(unittest.TestCase):
         mock_update_fstab,
         mock_reload_mount_units,
         mock_makedirs,
-        mock_run,
     ):
         runtime = SimpleNamespace(is_fake=False, default_mount_point='/media/backup')
+        command_adapter = FakeBackupDriveCommandAdapter()
         config_manager = MagicMock()
         config_manager.get_value.side_effect = ['/media/backup', '', '']
         smb_manager = MagicMock()
@@ -300,7 +315,6 @@ class BackupDriveSetupTests(unittest.TestCase):
         mock_get_usb_id.return_value = '1234:5678'
         mock_get_fstype.return_value = 'ntfs'
         mock_update_fstab.return_value = None
-        mock_run.return_value = SimpleNamespace(returncode=0, stderr='', stdout='')
 
         result = backup_drive_setup.apply_backup_drive_configuration(
             '/dev/sdb1',
@@ -309,18 +323,14 @@ class BackupDriveSetupTests(unittest.TestCase):
             config_manager,
             smb_manager,
             runtime=runtime,
+            command_adapter=command_adapter,
         )
 
         self.assertEqual(result['uuid'], 'UUID-1')
         mock_get_mount.assert_called_once_with('/dev/sdb1')
         mock_reload_mount_units.assert_called_once_with(runtime=runtime)
-        mock_run.assert_called_once_with(
-            ['ntfs-3g', '/dev/sdb1', '/media/backup', '-o', 'rw,uid=1000,gid=1000'],
-            capture_output=True,
-            text=True,
-        )
+        self.assertEqual(command_adapter.mounted_ntfs, [('/dev/sdb1', '/media/backup')])
 
-    @patch('backup_drive_setup.subprocess.run')
     @patch('backup_drive_setup.restore_fstab_backup')
     @patch('backup_drive_setup.os.makedirs')
     @patch('backup_drive_setup._reload_systemd_mount_units')
@@ -339,9 +349,9 @@ class BackupDriveSetupTests(unittest.TestCase):
         mock_reload_mount_units,
         mock_makedirs,
         mock_restore_fstab_backup,
-        mock_run,
     ):
         runtime = SimpleNamespace(is_fake=False, default_mount_point='/media/backup')
+        command_adapter = FakeBackupDriveCommandAdapter()
         config_manager = MagicMock()
         config_manager.get_value.side_effect = ['/media/backup', 'OLD-UUID', '1234:5678']
         smb_manager = MagicMock()
@@ -352,7 +362,7 @@ class BackupDriveSetupTests(unittest.TestCase):
         mock_get_usb_id.return_value = '1234:5678'
         mock_get_fstype.return_value = 'ntfs'
         mock_update_fstab.return_value = '/tmp/fstab.backup'
-        mock_run.return_value = SimpleNamespace(returncode=1, stderr='busy', stdout='')
+        command_adapter.mount_ntfs_result = SimpleNamespace(returncode=1, stderr='busy', stdout='')
 
         with self.assertRaisesRegex(
             backup_drive_setup.BackupDriveSetupError, 'Error mounting drive: busy'
@@ -364,12 +374,12 @@ class BackupDriveSetupTests(unittest.TestCase):
                 config_manager,
                 smb_manager,
                 runtime=runtime,
+                command_adapter=command_adapter,
             )
 
         mock_restore_fstab_backup.assert_called_once_with('/tmp/fstab.backup', runtime=runtime)
         self.assertEqual(mock_reload_mount_units.call_count, 2)
 
-    @patch('backup_drive_setup.subprocess.run')
     @patch('backup_drive_setup.restore_fstab_backup')
     @patch('backup_drive_setup.os.makedirs')
     @patch('backup_drive_setup._reload_systemd_mount_units')
@@ -388,9 +398,9 @@ class BackupDriveSetupTests(unittest.TestCase):
         mock_reload_mount_units,
         mock_makedirs,
         mock_restore_fstab_backup,
-        mock_run,
     ):
         runtime = SimpleNamespace(is_fake=False, default_mount_point='/media/backup')
+        command_adapter = FakeBackupDriveCommandAdapter()
         config_manager = MagicMock()
         config_manager.get_value.side_effect = ['/media/backup', 'OLD-UUID', '1234:5678']
         smb_manager = MagicMock()
@@ -419,11 +429,12 @@ class BackupDriveSetupTests(unittest.TestCase):
                 config_manager,
                 smb_manager,
                 runtime=runtime,
+                command_adapter=command_adapter,
             )
 
         mock_restore_fstab_backup.assert_called_once_with('/tmp/fstab.backup', runtime=runtime)
         self.assertEqual(mock_reload_mount_units.call_count, 2)
-        mock_run.assert_not_called()
+        self.assertEqual(command_adapter.mounted_ntfs, [])
 
     @patch('backup_drive_setup.get_fake_state')
     @patch('backup_drive_setup.restore_fstab_backup')

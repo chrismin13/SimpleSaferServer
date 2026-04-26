@@ -55,10 +55,57 @@ class FakeState:
         self.mounted = mounted
 
 
+class FakeSystemdAdapter:
+    def __init__(self):
+        self.started = []
+        self.stopped = []
+        self.journal_output = "journal output"
+        self.properties = {
+            ("backup_cloud.timer", "NextElapseUSecRealtime"): (
+                "NextElapseUSecRealtime=Mon 2026-04-27 03:00:00 UTC"
+            ),
+            ("backup_cloud.service", "ExecMainStartTimestamp"): (
+                "ExecMainStartTimestamp=Sun 2026-04-26 03:00:00 UTC"
+            ),
+            ("backup_cloud.service", "LoadState"): "LoadState=loaded",
+            ("backup_cloud.service", "Result"): "Result=success",
+        }
+        self.multi_properties = {
+            "backup_cloud.service": (
+                "ExecMainStartTimestampMonotonic=1000000\nExecMainExitTimestampMonotonic=4000000\n"
+            )
+        }
+        self.active = "inactive"
+
+    def journal(self, unit_name, lines):
+        return self.journal_output
+
+    def start_unit(self, unit_name):
+        self.started.append(unit_name)
+
+    def stop_unit(self, unit_name):
+        self.stopped.append(unit_name)
+
+    def show_property(self, unit_name, property_name):
+        return self.properties[(unit_name, property_name)]
+
+    def show_properties(self, unit_name, *property_names):
+        return self.multi_properties[unit_name]
+
+    def is_active(self, unit_name):
+        return self.active
+
+
 class TaskServiceTests(unittest.TestCase):
-    def build_service(self, mount_point="/tmp/simple-safer-server-test"):
+    def build_service(
+        self,
+        mount_point="/tmp/simple-safer-server-test",
+        *,
+        is_fake=True,
+        systemd_adapter=None,
+    ):
         runtime = SimpleNamespace(
-            is_fake=True,
+            is_fake=is_fake,
             default_mount_point=mount_point,
             repo_root=Path("."),
             rclone_config_dir=Path("."),
@@ -70,6 +117,7 @@ class TaskServiceTests(unittest.TestCase):
             system_utils=MagicMock(),
             fake_state=fake_state,
             logger=MagicMock(),
+            systemd_adapter=systemd_adapter,
         )
         return service, fake_state
 
@@ -126,3 +174,30 @@ class TaskServiceTests(unittest.TestCase):
             ("Cloud Backup", "Stop requested for Cloud Backup, but it was not running."),
             fake_state.logs,
         )
+
+    def test_real_task_status_and_timestamps_use_systemd_adapter(self):
+        systemd_adapter = FakeSystemdAdapter()
+        service, _fake_state = self.build_service(is_fake=False, systemd_adapter=systemd_adapter)
+        task = service.get_task("Cloud Backup")
+        assert task is not None
+
+        self.assertEqual(
+            task.next_run,
+            "Mon 2026-04-27 03:00:00 UTC",
+        )
+        self.assertEqual(task.last_run, "Sun 2026-04-26 03:00:00 UTC")
+        self.assertEqual(task.last_run_duration, "3s")
+        self.assertEqual(task.status, Status.SUCCESS)
+
+    def test_real_task_start_stop_and_logs_use_systemd_adapter(self):
+        systemd_adapter = FakeSystemdAdapter()
+        service, _fake_state = self.build_service(is_fake=False, systemd_adapter=systemd_adapter)
+        task = service.get_task("Cloud Backup")
+        assert task is not None
+
+        task.start()
+        task.stop()
+
+        self.assertEqual(task.get_logs(), "journal output")
+        self.assertEqual(systemd_adapter.started, ["backup_cloud.service"])
+        self.assertEqual(systemd_adapter.stopped, ["backup_cloud.service"])

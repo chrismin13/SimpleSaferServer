@@ -2,13 +2,14 @@ import datetime
 import json
 import logging
 import re
-import subprocess
 from functools import wraps
 
 from flask import flash, jsonify, redirect, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from runtime import get_runtime
+from simple_safer_server.adapters.command_runner import CalledProcessError
+from simple_safer_server.adapters.user_commands import UserCommandAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -24,8 +25,9 @@ class PasswordPolicy:
 
 
 class UserManager:
-    def __init__(self, runtime=None):
+    def __init__(self, runtime=None, command_adapter=None):
         self.runtime = runtime or get_runtime()
+        self.command_adapter = command_adapter or UserCommandAdapter()
         self.users_file = self.runtime.config_dir / 'users.json'
         self.users = self._load_users()
         self._ensure_secure_permissions()
@@ -83,41 +85,25 @@ class UserManager:
             return True
         try:
             # First, ensure the user exists in the system
-            try:
-                # Check if user exists in system
-                subprocess.run(['id', username], check=True, capture_output=True)
-            except subprocess.CalledProcessError:
+            if not self.command_adapter.system_user_exists(username):
                 # User doesn't exist, create them
                 logger.info(f"Creating system user {username}")
-                subprocess.run(['sudo', 'useradd', '-m', '-s', '/bin/bash', username], check=True)
+                self.command_adapter.create_system_user(username)
 
             # Check if user already exists in Samba
-            result = subprocess.run(['sudo', 'pdbedit', '-L'], capture_output=True, text=True)
-            existing_users = {
-                line.split(':', 1)[0].strip() for line in result.stdout.splitlines() if line.strip()
-            }
+            existing_users = self.command_adapter.samba_users()
 
             if username in existing_users:
                 # Update existing user password
-                subprocess.run(
-                    ['sudo', 'smbpasswd', '-s', '-a', username],
-                    input=f"{password}\n{password}\n",
-                    text=True,
-                    check=True,
-                )
+                self.command_adapter.set_samba_password(username, password)
                 logger.info(f"Updated Samba password for user {username}")
             else:
                 # Create new Samba user
-                subprocess.run(
-                    ['sudo', 'smbpasswd', '-s', '-a', username],
-                    input=f"{password}\n{password}\n",
-                    text=True,
-                    check=True,
-                )
+                self.command_adapter.set_samba_password(username, password)
                 logger.info(f"Created Samba user {username}")
 
             return True
-        except subprocess.CalledProcessError as e:
+        except CalledProcessError as e:
             logger.error(f"Error syncing user {username} to Samba: {e}")
             return False
 
@@ -127,10 +113,10 @@ class UserManager:
             logger.info(f"Fake mode: skipping Samba removal for {username}")
             return True
         try:
-            subprocess.run(['sudo', 'smbpasswd', '-x', username], check=True)
+            self.command_adapter.remove_samba_user(username)
             logger.info(f"Removed Samba user {username}")
             return True
-        except subprocess.CalledProcessError as e:
+        except CalledProcessError as e:
             logger.error(f"Error removing user {username} from Samba: {e}")
             return False
 
@@ -271,23 +257,15 @@ class UserManager:
         if self.runtime.is_fake:
             return username in self.users
         try:
-            result = subprocess.run(['sudo', 'pdbedit', '-L'], capture_output=True, text=True)
-            existing_users = {
-                line.split(':', 1)[0].strip() for line in result.stdout.splitlines() if line.strip()
-            }
-            return username in existing_users
-        except subprocess.CalledProcessError:
+            return username in self.command_adapter.samba_users()
+        except CalledProcessError:
             return False
 
     def user_exists_in_system(self, username):
         """Check if user exists in system user database"""
         if self.runtime.is_fake:
             return username in self.users
-        try:
-            subprocess.run(['id', username], check=True, capture_output=True)
-            return True
-        except subprocess.CalledProcessError:
-            return False
+        return self.command_adapter.system_user_exists(username)
 
 
 def admin_required(f):

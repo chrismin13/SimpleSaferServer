@@ -1,8 +1,8 @@
-import subprocess
 from typing import Any
 
 from flask import Blueprint, current_app, render_template, request, session
 
+from simple_safer_server.adapters.command_runner import CalledProcessError
 from simple_safer_server.web.api import json_error, json_success
 from user_manager import admin_required, api_admin_required
 
@@ -80,7 +80,7 @@ def api_system_updates_save_settings():
     try:
         settings = _manager().save_settings(request.get_json() or {})
         return json_success(settings=settings)
-    except subprocess.CalledProcessError as exc:
+    except CalledProcessError as exc:
         message = exc.stderr.strip() if exc.stderr else str(exc)
         return json_error(message, status_code=500)
     except Exception as exc:
@@ -94,7 +94,7 @@ def api_system_updates_remove_stale_locks():
     try:
         result = _manager().remove_stale_locks()
         return json_success(**result)
-    except subprocess.CalledProcessError as exc:
+    except CalledProcessError as exc:
         message = exc.stderr.strip() if exc.stderr else str(exc)
         return json_error(message, status_code=500)
     except Exception as exc:
@@ -109,7 +109,7 @@ def api_system_updates_livepatch_setup():
         data = request.get_json() or {}
         status = _manager().setup_livepatch(data.get("token", ""))
         return json_success(livepatch=status)
-    except subprocess.CalledProcessError as exc:
+    except CalledProcessError as exc:
         message = exc.stderr.strip() if exc.stderr else str(exc)
         return json_error(message, status_code=500)
     except Exception as exc:

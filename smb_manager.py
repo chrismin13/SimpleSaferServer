@@ -2,7 +2,6 @@ import logging
 import os
 import re
 import shutil
-import subprocess
 import tempfile
 import time
 from dataclasses import dataclass, field
@@ -10,6 +9,8 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 from runtime import get_fake_state, get_runtime
+from simple_safer_server.adapters.command_runner import CalledProcessError
+from simple_safer_server.adapters.smb_commands import SmbCommandAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -64,8 +65,9 @@ def _contains_control_characters(value: str) -> bool:
 
 
 class SMBManager:
-    def __init__(self, runtime=None):
+    def __init__(self, runtime=None, command_adapter=None):
         self.runtime = runtime or get_runtime()
+        self.command_adapter = command_adapter or SmbCommandAdapter()
         self.smb_conf_path = str(self.runtime.samba_dir / "smb.conf")
         self.backup_dir = str(self.runtime.samba_backup_dir)
         self.fake_state = get_fake_state() if self.runtime.is_fake else None
@@ -81,7 +83,7 @@ class SMBManager:
         if self.runtime.is_fake:
             Path(backup_path).write_text(self._read_smb_conf())
         else:
-            subprocess.run(["sudo", "cp", self.smb_conf_path, backup_path], check=True)
+            self.command_adapter.copy_config(self.smb_conf_path, backup_path)
         logger.info("Created backup of smb.conf at %s", backup_path)
         return backup_path
 
@@ -310,17 +312,14 @@ class SMBManager:
 
     def _validate_smb_conf_candidate(self, candidate_path: Path):
         validator = shutil.which("testparm")
-        if validator:
-            command = [validator, "-s", str(candidate_path)]
-        else:
+        if not validator:
             validator = shutil.which("smbd")
             if not validator:
                 raise RuntimeError(
                     "Could not validate smb.conf because neither 'testparm' nor 'smbd' is available."
                 )
-            command = [validator, "-t", "-s", str(candidate_path)]
 
-        result = subprocess.run(command, capture_output=True, text=True)
+        result = self.command_adapter.validate_config(validator, candidate_path)
         if result.returncode != 0:
             details = result.stderr.strip() or result.stdout.strip() or "unknown validation error"
             raise SMBConfigError(f"Samba configuration validation failed: {details}")
@@ -393,11 +392,11 @@ class SMBManager:
             logger.info("Fake mode: marked SMB services as active")
             return True
         try:
-            subprocess.run(["sudo", "systemctl", "restart", "smbd"], check=True)
-            subprocess.run(["sudo", "systemctl", "restart", "nmbd"], check=True)
+            self.command_adapter.restart_unit("smbd")
+            self.command_adapter.restart_unit("nmbd")
             logger.info("SMB services restarted successfully")
             return True
-        except subprocess.CalledProcessError as exc:
+        except CalledProcessError as exc:
             logger.error("Failed to restart SMB services: %s", exc)
             return False
 
@@ -788,15 +787,9 @@ class SMBManager:
                 raise RuntimeError("Fake runtime is missing fake state.")
             return self.fake_state.get_smb_services()
         try:
-            smbd_result = subprocess.run(
-                ["systemctl", "is-active", "smbd"], capture_output=True, text=True
-            )
-            nmbd_result = subprocess.run(
-                ["systemctl", "is-active", "nmbd"], capture_output=True, text=True
-            )
             return {
-                "smbd": smbd_result.stdout.strip(),
-                "nmbd": nmbd_result.stdout.strip(),
+                "smbd": self.command_adapter.unit_status("smbd"),
+                "nmbd": self.command_adapter.unit_status("nmbd"),
             }
         except Exception as exc:
             logger.error("Error getting service status: %s", exc)

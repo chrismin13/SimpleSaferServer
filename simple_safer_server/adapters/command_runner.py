@@ -1,7 +1,12 @@
 import subprocess
 from typing import Any, List, Optional
 
+DEVNULL = subprocess.DEVNULL
 PIPE = subprocess.PIPE
+STDOUT = subprocess.STDOUT
+CalledProcessError = subprocess.CalledProcessError
+SubprocessError = subprocess.SubprocessError
+TimeoutExpired = subprocess.TimeoutExpired
 
 
 class CommandRunner:
@@ -28,4 +33,25 @@ class CommandRunner:
             stdout=stdout,
             stderr=stderr,
             text=text,
+        )
+
+    def popen(
+        self,
+        command: List[str],
+        *,
+        stdout: Optional[Any] = None,
+        stderr: Optional[Any] = None,
+        text: bool = False,
+        bufsize: int = -1,
+        env: Optional[Any] = None,
+        start_new_session: bool = False,
+    ) -> subprocess.Popen:
+        return subprocess.Popen(
+            command,
+            stdout=stdout,
+            stderr=stderr,
+            text=text,
+            bufsize=bufsize,
+            env=env,
+            start_new_session=start_new_session,
         )

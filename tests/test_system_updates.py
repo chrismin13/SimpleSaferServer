@@ -45,6 +45,31 @@ class FakeConfigManager:
         self.values[(section, key)] = str(value)
 
 
+class FakeSystemUpdatesCommandAdapter:
+    def __init__(self):
+        self.calls = []
+        self.apt_periodic_content = ""
+        self.attach_returncode = 0
+
+    def write_apt_periodic_config(self, temp_file):
+        self.calls.append(("write_apt_periodic_config",))
+        self.apt_periodic_content = temp_file.read()
+        return SimpleNamespace(returncode=0)
+
+    def pro_attach(self, pro_binary, attach_config_path):
+        self.calls.append(("pro_attach", pro_binary, str(attach_config_path)))
+        return SimpleNamespace(
+            returncode=self.attach_returncode,
+            stdout="",
+            stderr="already attached" if self.attach_returncode == 2 else "",
+            args=["sudo", pro_binary, "attach", "--attach-config", str(attach_config_path)],
+        )
+
+    def pro_enable_livepatch(self, pro_binary):
+        self.calls.append(("pro_enable_livepatch", pro_binary))
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+
 class SystemUpdatesTests(unittest.TestCase):
     def test_parse_os_release_text_handles_quotes_and_comments(self):
         values = parse_os_release_text(
@@ -339,28 +364,30 @@ class SystemUpdatesTests(unittest.TestCase):
     def test_write_apt_periodic_config_emits_managed_comments_and_interval(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             runtime = make_runtime(Path(temp_dir))
-            manager = SystemUpdatesManager(FakeConfigManager(), runtime=runtime)
-            captured = {}
+            command_adapter = FakeSystemUpdatesCommandAdapter()
+            manager = SystemUpdatesManager(
+                FakeConfigManager(), runtime=runtime, command_adapter=command_adapter
+            )
 
-            def fake_run(args, **kwargs):
-                captured["args"] = args
-                captured["content"] = kwargs["stdin"].read()
-                return SimpleNamespace(returncode=0)
+            manager._write_apt_periodic_config(
+                {
+                    "update_package_lists": True,
+                    "unattended_upgrade": False,
+                    "autoclean_interval": 14,
+                }
+            )
 
-            with patch("system_updates.subprocess.run", side_effect=fake_run):
-                manager._write_apt_periodic_config(
-                    {
-                        "update_package_lists": True,
-                        "unattended_upgrade": False,
-                        "autoclean_interval": 14,
-                    }
-                )
-
-        self.assertEqual(captured["args"], ["sudo", "tee", "/etc/apt/apt.conf.d/20auto-upgrades"])
-        self.assertIn("// Managed by SimpleSaferServer.", captured["content"])
-        self.assertIn('APT::Periodic::Update-Package-Lists "1";', captured["content"])
-        self.assertIn('APT::Periodic::Unattended-Upgrade "0";', captured["content"])
-        self.assertIn('APT::Periodic::AutocleanInterval "14";', captured["content"])
+        self.assertEqual(command_adapter.calls, [("write_apt_periodic_config",)])
+        self.assertIn("// Managed by SimpleSaferServer.", command_adapter.apt_periodic_content)
+        self.assertIn(
+            'APT::Periodic::Update-Package-Lists "1";', command_adapter.apt_periodic_content
+        )
+        self.assertIn(
+            'APT::Periodic::Unattended-Upgrade "0";', command_adapter.apt_periodic_content
+        )
+        self.assertIn(
+            'APT::Periodic::AutocleanInterval "14";', command_adapter.apt_periodic_content
+        )
 
     def test_failed_real_write_does_not_claim_apt_update_ownership(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -387,56 +414,53 @@ class SystemUpdatesTests(unittest.TestCase):
     def test_livepatch_setup_uses_pro_attach_config_without_token_in_argv(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            manager = SystemUpdatesManager(FakeConfigManager(), runtime=make_real_runtime(root))
-            calls = []
+            command_adapter = FakeSystemUpdatesCommandAdapter()
+            manager = SystemUpdatesManager(
+                FakeConfigManager(),
+                runtime=make_real_runtime(root),
+                command_adapter=command_adapter,
+            )
             seen_attach_config = {}
+            original_pro_attach = command_adapter.pro_attach
 
-            def fake_run(args, **kwargs):
-                calls.append(args)
-                self.assertNotIn("secret-token", args)
-                if args[:3] == ["sudo", "/usr/bin/pro", "attach"]:
-                    attach_config = Path(args[-1])
-                    seen_attach_config["path"] = attach_config
-                    seen_attach_config["content"] = attach_config.read_text()
-                return SimpleNamespace(returncode=0, stdout="", stderr="", args=args)
+            def record_attach_config(pro_binary, attach_config_path):
+                self.assertNotIn("secret-token", [pro_binary, str(attach_config_path)])
+                seen_attach_config["path"] = attach_config_path
+                seen_attach_config["content"] = attach_config_path.read_text()
+                return original_pro_attach(pro_binary, attach_config_path)
+
+            command_adapter.pro_attach = record_attach_config
 
             with patch.object(manager, "get_distribution_info", return_value={"id": "ubuntu"}):
                 with patch.object(
                     manager, "get_livepatch_status", return_value={"enabled": True}
                 ) as status:
                     with patch("system_updates.shutil.which", return_value="/usr/bin/pro"):
-                        with patch("system_updates.subprocess.run", side_effect=fake_run):
-                            result = manager.setup_livepatch("secret-token")
+                        result = manager.setup_livepatch("secret-token")
 
             self.assertEqual(result, {"enabled": True})
-            self.assertEqual(calls[0][:4], ["sudo", "/usr/bin/pro", "attach", "--attach-config"])
-            self.assertEqual(calls[1], ["sudo", "/usr/bin/pro", "enable", "livepatch"])
+            self.assertEqual(command_adapter.calls[0][0], "pro_attach")
+            self.assertEqual(command_adapter.calls[1], ("pro_enable_livepatch", "/usr/bin/pro"))
             self.assertIn('token: "secret-token"', seen_attach_config["content"])
             self.assertFalse(seen_attach_config["path"].exists())
             status.assert_called_once()
 
     def test_livepatch_setup_enables_livepatch_when_machine_is_already_attached(self):
         with tempfile.TemporaryDirectory() as temp_dir:
+            command_adapter = FakeSystemUpdatesCommandAdapter()
+            command_adapter.attach_returncode = 2
             manager = SystemUpdatesManager(
-                FakeConfigManager(), runtime=make_real_runtime(Path(temp_dir))
+                FakeConfigManager(),
+                runtime=make_real_runtime(Path(temp_dir)),
+                command_adapter=command_adapter,
             )
-            calls = []
-
-            def fake_run(args, **kwargs):
-                calls.append(args)
-                if args[:3] == ["sudo", "/usr/bin/pro", "attach"]:
-                    return SimpleNamespace(
-                        returncode=2, stdout="", stderr="already attached", args=args
-                    )
-                return SimpleNamespace(returncode=0, stdout="", stderr="", args=args)
 
             with patch.object(manager, "get_distribution_info", return_value={"id": "ubuntu"}):
                 with patch.object(manager, "get_livepatch_status", return_value={"enabled": True}):
                     with patch("system_updates.shutil.which", return_value="/usr/bin/pro"):
-                        with patch("system_updates.subprocess.run", side_effect=fake_run):
-                            manager.setup_livepatch("secret-token")
+                        manager.setup_livepatch("secret-token")
 
-            self.assertEqual(calls[-1], ["sudo", "/usr/bin/pro", "enable", "livepatch"])
+            self.assertEqual(command_adapter.calls[-1], ("pro_enable_livepatch", "/usr/bin/pro"))
 
     def test_livepatch_setup_requires_ubuntu_pro_client(self):
         with tempfile.TemporaryDirectory() as temp_dir:
