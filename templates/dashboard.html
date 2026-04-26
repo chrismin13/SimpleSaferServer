@@ -129,13 +129,13 @@
   <div class="d-flex gap-3 flex-wrap">
     <div id="drive-action-slot">
       {% if mount_info and mount_info.is_mounted %}
-      <form method="post" action="{{ url_for('unmount') }}" class="d-inline dashboard-action-form" data-success-action="refresh-drive-ui" data-dashboard-unmount="true">
+      <form method="post" action="{{ url_for('storage_routes.unmount') }}" class="d-inline dashboard-action-form" data-success-action="refresh-drive-ui" data-dashboard-unmount="true">
         <button type="submit" class="btn btn-warning btn-sm">
           <i class="fas fa-eject me-1"></i> Unmount Drive
         </button>
       </form>
       {% else %}
-      <form method="post" action="{{ url_for('dashboard_mount_drive') }}" class="d-inline dashboard-action-form" data-success-action="refresh-drive-ui">
+      <form method="post" action="{{ url_for('storage_routes.dashboard_mount_drive') }}" class="d-inline dashboard-action-form" data-success-action="refresh-drive-ui">
         <button type="submit" class="btn btn-secondary btn-sm"
           data-confirm="Are you sure you want to mount the backup drive?"
           data-confirm-title="Mount Drive"
@@ -146,7 +146,7 @@
       </form>
       {% endif %}
     </div>
-    <form method="post" action="{{ url_for('restart') }}" class="d-inline dashboard-action-form">
+    <form method="post" action="{{ url_for('storage_routes.restart') }}" class="d-inline dashboard-action-form">
       <button type="submit" class="btn btn-secondary btn-sm"
         data-confirm="Are you sure you want to restart the system?"
         data-confirm-title="Restart System"
@@ -155,7 +155,7 @@
         <i class="fas fa-rotate-right me-1"></i> Restart
       </button>
     </form>
-    <form method="post" action="{{ url_for('shutdown') }}" class="d-inline dashboard-action-form">
+    <form method="post" action="{{ url_for('storage_routes.shutdown') }}" class="d-inline dashboard-action-form">
       <button type="submit" class="btn btn-danger btn-sm"
         data-confirm="Are you sure you want to shut down the system?"
         data-confirm-title="Shutdown System"
@@ -367,12 +367,12 @@ Remove the drive now if you do not want it mounted again.`;
     if (!driveActionSlot) return;
 
     driveActionSlot.innerHTML = isMounted
-      ? `<form method="post" action="{{ url_for('unmount') }}" class="d-inline dashboard-action-form" data-success-action="refresh-drive-ui" data-dashboard-unmount="true">
+      ? `<form method="post" action="{{ url_for('storage_routes.unmount') }}" class="d-inline dashboard-action-form" data-success-action="refresh-drive-ui" data-dashboard-unmount="true">
           <button type="submit" class="btn btn-warning btn-sm">
             <i class="fas fa-eject me-1"></i> Unmount Drive
           </button>
         </form>`
-      : `<form method="post" action="{{ url_for('dashboard_mount_drive') }}" class="d-inline dashboard-action-form" data-success-action="refresh-drive-ui">
+      : `<form method="post" action="{{ url_for('storage_routes.dashboard_mount_drive') }}" class="d-inline dashboard-action-form" data-success-action="refresh-drive-ui">
           <button type="submit" class="btn btn-secondary btn-sm"
             data-confirm="Are you sure you want to mount the backup drive?"
             data-confirm-title="Mount Drive"

@@ -55,7 +55,7 @@
                 <a href="{{ url_for('users_routes.users_page') }}" class="nav-item {% if request.endpoint == 'users_routes.users_page' %}active{% endif %}">
                     <i class="fas fa-users fa-fw"></i> Users
                 </a>
-                <a href="{{ url_for('drives') }}" class="nav-item {% if request.endpoint == 'drives' %}active{% endif %}">
+                <a href="{{ url_for('drive_health_routes.drives') }}" class="nav-item {% if request.endpoint == 'drive_health_routes.drives' %}active{% endif %}">
                     <i class="fas fa-hard-drive fa-fw"></i> Drive Health
                 </a>
                 {% if is_admin %}
