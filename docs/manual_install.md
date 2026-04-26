@@ -89,7 +89,7 @@ Install the extracted binary:
 
 - Copy `simple_safer_server_web.service` to `/etc/systemd/system/simple_safer_server_web.service`.
 - Hosted deployments use Gunicorn's threaded worker instead of Eventlet. Set `WEB_THREADS` to tune concurrent request handling for the host; the default is `4`.
-- `simple_safer_server_web.service` uses `ExecStart=/opt/SimpleSaferServer/venv/bin/python /opt/SimpleSaferServer/app.py --host=0.0.0.0 --port=5000 --no-debug`, so `/opt/SimpleSaferServer/venv` must exist before you start the service.
+- `simple_safer_server_web.service` uses `ExecStart=/opt/SimpleSaferServer/venv/bin/python -m simple_safer_server --host=0.0.0.0 --port=5000 --no-debug`, so `/opt/SimpleSaferServer/venv` must exist before you start the service.
 - This matches the `VENV_DIR="/opt/SimpleSaferServer/venv"` flow in `install.sh`, which is why the manual install should use the same venv path instead of distro Python packages for the app runtime.
 - Run `sudo systemctl daemon-reload`.
 - Run `sudo systemctl enable simple_safer_server_web.service`.

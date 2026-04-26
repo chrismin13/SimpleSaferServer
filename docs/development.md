@@ -77,6 +77,9 @@ appropriate docs when they stop being task-specific.
 
 When adding files, services, timers, state directories, generated artifacts, or system config, check whether `uninstall.sh` should remove them.
 
+Remove standalone proof-of-concept scripts once their behavior is supported inside the app. If a
+script is retained only for operator migration, document that status and avoid expanding it.
+
 ## Frontend Rules
 
 Use the `frontend-design` and `uncodixfy` skills for UI work.

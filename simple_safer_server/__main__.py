@@ -1,11 +1,9 @@
-from simple_safer_server.app_factory import create_app
+import argparse
 
-app, socketio = create_app()
+from simple_safer_server.wsgi import app
 
 
-if __name__ == "__main__":
-    import argparse
-
+def main() -> None:
     parser = argparse.ArgumentParser(description="Run the SimpleSaferServer Flask app.")
     parser.add_argument(
         "--host",
@@ -19,3 +17,7 @@ if __name__ == "__main__":
     parser.set_defaults(debug=False)
     args = parser.parse_args()
     app.run(host=args.host, port=args.port, debug=args.debug)
+
+
+if __name__ == "__main__":
+    main()

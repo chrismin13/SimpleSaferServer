@@ -1,8 +1,8 @@
 # Architecture
 
-SimpleSaferServer is a Flask application with a package-based architecture. The top-level
-`app.py` remains as a compatibility entrypoint for existing service files, deployment commands,
-and `python app.py` development usage.
+SimpleSaferServer is a Flask application with a package-based architecture. The package entrypoints
+are canonical: local/service startup uses `python -m simple_safer_server`, and WSGI deployments use
+`simple_safer_server.wsgi:app`.
 
 ## Application Composition
 
@@ -10,7 +10,8 @@ and `python app.py` development usage.
 Socket.IO wrapper, runtime/config managers, feature services, and blueprints.
 
 Shared services are stored in `app.extensions["simple_safer_server"]` as an `AppServices`
-container. Blueprints fetch dependencies from that container instead of importing `app.py`.
+container. Blueprints fetch dependencies from that container instead of importing the startup
+entrypoint.
 
 ## Package Layout
 
@@ -46,18 +47,20 @@ execution boundary. `SystemdAdapter` wraps task-related systemd and journalctl c
 `RcloneAdapter` wraps rclone process creation used by scheduled Cloud Backup runs, and
 `StorageCommandAdapter` wraps dashboard storage controls, and `BackupDriveCommandAdapter` wraps
 managed backup-drive setup and detach commands. `SystemUpdatesCommandAdapter` wraps System Updates
-package-manager, lock, config-write, Livepatch, and long-running apt worker commands. Future work
+package-manager, lock, config-write, Livepatch, and long-running apt worker commands.
 `SetupCommandAdapter` wraps setup wizard disk-format, SMB enable, and MEGA picker commands.
 `DriveHealthCommandAdapter` wraps SMART, HDSentinel, backup-drive lookup, and alert email commands.
-Future work should continue moving legacy migration, system utility, and standalone helper script
-subprocess behavior behind adapters where those modules remain part of the supported runtime.
+Future work should continue moving deprecated legacy migration and top-level runtime modules behind
+package modules where those modules remain part of the supported runtime.
 
 Bandit skips generic subprocess rules because SimpleSaferServer is a local admin tool that
 intentionally calls Debian system utilities. Subprocess use should still validate user-controlled
 arguments before execution and document operational assumptions near the code.
 
-## Compatibility Entry Points
+## Legacy And Compatibility Code
 
-Keep top-level compatibility modules until install, service, and operator documentation are
-intentionally migrated to package entrypoints. Do not remove `app.py` just because the app factory
-exists.
+Standalone proof-of-concept scripts should be removed when their behavior is available through the
+app. The legacy import tool remains as a deprecated operator escape hatch, but it should not receive
+new feature work. Top-level modules such as `backup_drive_setup.py`, `drive_health.py`, and
+`system_updates.py` still contain active runtime behavior and should be migrated deliberately rather
+than deleted as dead code.

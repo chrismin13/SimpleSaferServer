@@ -175,7 +175,6 @@ account default : simplesaferserver
                 'check_health.sh',
                 'check_health.py',
                 'backup_cloud.sh',
-                'predict_health.py',
                 'log_alert.py',
                 'ddns_update.sh',
                 'ddns_update.py',

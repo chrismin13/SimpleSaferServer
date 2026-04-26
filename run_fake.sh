@@ -12,4 +12,4 @@ if [ ! -x ".venv/bin/python" ]; then
   exit 1
 fi
 
-exec .venv/bin/python app.py --host "$HOST" --port "$PORT" --debug
+exec .venv/bin/python -m simple_safer_server --host "$HOST" --port "$PORT" --debug
