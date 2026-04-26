@@ -45,7 +45,7 @@ Fake mode should be an alternate implementation behind those boundaries. Avoid s
 
 Shared response and validation helpers should be preferred over per-route ad hoc response shapes. Until a formal API schema pass happens, keep API responses predictable and use clear status codes.
 
-`ROADMAP.md` is the living plan for the monolith-to-package refactor. New refactored code should move toward:
+`docs/architecture.md` describes the current package architecture. New refactored code should move toward:
 
 - `simple_safer_server/routes/` for Flask blueprints.
 - `simple_safer_server/services/` for route-independent behavior.
@@ -70,6 +70,10 @@ Keep `__init__.py` files minimal. Put meaningful behavior in clearly named modul
 Any behavior change should check the related docs and the documentation links in `index.html`.
 
 User and operator behavior belongs in `docs/*.md`. Contributor-only rules belong here.
+
+Chronological task notes belong in `notes/`. Notes are handoff history, not canonical
+documentation; move durable behavior, commands, architecture, and workflow details into the
+appropriate docs when they stop being task-specific.
 
 When adding files, services, timers, state directories, generated artifacts, or system config, check whether `uninstall.sh` should remove them.
 

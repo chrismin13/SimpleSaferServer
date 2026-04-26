@@ -1,8 +1,15 @@
-# SimpleSaferServer Refactor Roadmap
+# 0001 Monolith To Package Refactor
 
-This is the living roadmap for moving SimpleSaferServer from a flat legacy Flask app toward a package-based architecture. Update this file during every roadmap phase so it reflects the current code, the next safe slice, and the verification results that were actually run.
+## Summary
 
-## Roadmap Rules
+This note preserves the full work history of moving SimpleSaferServer from a flat legacy Flask
+application toward a package-based architecture. It replaces `ROADMAP.md` as the historical task
+record for this refactor.
+
+The durable architecture guidance from this task now lives in `docs/architecture.md`; the durable
+coding and quality standards remain in `docs/development.md`.
+
+## Rules / Constraints
 
 - Keep every phase behavior-preserving unless a bug is clearly found and documented.
 - Keep slices small enough to review without a broad formatting-only sweep.
@@ -10,9 +17,9 @@ This is the living roadmap for moving SimpleSaferServer from a flat legacy Flask
 - Move touched code toward `docs/development.md` without unrelated churn.
 - Update related docs and `index.html` links when behavior, commands, architecture, or developer workflow changes.
 - Check `uninstall.sh` whenever a phase adds installed files, generated state, timers, services, config, or directories.
-- Mark a phase complete only after verification has run and remaining advisory debt is recorded here.
+- Mark a phase complete only after verification has run and remaining debt is recorded.
 
-## Target Architecture
+## Target State
 
 Refactored code lives under `simple_safer_server/`:
 
@@ -21,11 +28,13 @@ Refactored code lives under `simple_safer_server/`:
 - `simple_safer_server/adapters/`: boundaries for systemd, rclone, filesystem, provider APIs, and fake-mode implementations.
 - `simple_safer_server/web/`: shared API response and validation helpers.
 
-The long-term goal is for `app.py` to become thin composition code or a compatibility entrypoint that delegates to an app factory. Services must not import `app.py`; blueprints should receive shared dependencies through the Flask app service container.
+The long-term goal is for `app.py` to remain a thin compatibility entrypoint that delegates to an
+app factory. Services must not import `app.py`; blueprints should receive shared dependencies
+through the Flask app service container.
 
 ## Phase Checklist
 
-- [x] Phase 0: Create this living roadmap and document the target architecture.
+- [x] Phase 0: Create the living roadmap and document the target architecture.
 - [x] Phase 1: Add package scaffold and the app service container.
 - [x] Phase 2: Extract task/status/fake-task behavior into `TaskService`.
 - [x] Phase 3: Move dashboard and task routes into blueprints.
@@ -35,8 +44,12 @@ The long-term goal is for `app.py` to become thin composition code or a compatib
 - [x] Phase 7: Extract remaining route groups and services.
 - [x] Phase 8: Introduce an app factory while keeping a compatibility `app.py`.
 - [x] Phase 9: Tighten advisory gates one at a time.
+- [x] Phase 10: Make quality gates strict.
+- [x] Phase 11: Add the first command adapter boundary.
+- [x] Phase 12: Fix stale blueprint endpoint references found by fake-mode dashboard rendering.
+- [x] Phase 13: Replace Eventlet deployment/runtime path with Flask-SocketIO threading mode.
 
-## Completed Work
+## Work Log
 
 ### Phases 0-2
 
@@ -49,9 +62,9 @@ The long-term goal is for `app.py` to become thin composition code or a compatib
 
 Docs and uninstall impact:
 
-- `docs/development.md` now points refactor work at this roadmap and the package layout.
+- `docs/development.md` pointed refactor work at the roadmap and package layout at this stage.
 - `index.html` did not need updates because public documentation links did not change.
-- `uninstall.sh` did not need updates because these phases add only source, tests, and docs.
+- `uninstall.sh` did not need updates because these phases added only source, tests, and docs.
 
 Verification:
 
@@ -59,9 +72,9 @@ Verification:
 - Focused Ruff check for `app.py`, `simple_safer_server/`, and `tests/test_task_service.py`: passed.
 - Focused Pyright check for `simple_safer_server/` and `tests/test_task_service.py`: passed.
 - Full pytest: 138 passed.
-- Full Ruff: advisory failure remains with 128 legacy findings outside the completed task-service slice.
-- Full Pyright: advisory failure remains with 53 errors and 18 warnings, mostly legacy optional fake-state typing, missing third-party import resolution, and test module monkeypatch typing.
-- Full Bandit: advisory failure remains with 192 low and 6 medium findings, mostly subprocess review items and the existing all-interface development bind default.
+- Full Ruff: advisory failure remained with 128 legacy findings outside the completed task-service slice.
+- Full Pyright: advisory failure remained with 53 errors and 18 warnings, mostly legacy optional fake-state typing, missing third-party import resolution, and test module monkeypatch typing.
+- Full Bandit: advisory failure remained with 192 low and 6 medium findings, mostly subprocess review items and the existing all-interface development bind default.
 
 ### Phases 3-4
 
@@ -74,8 +87,8 @@ Verification:
 
 Docs and uninstall impact:
 
-- `docs/ddns.md`, `docs/dashboard.md`, and `index.html` describe unchanged user/operator behavior, so no link or behavior docs changed in this slice.
-- `uninstall.sh` did not need updates because these phases add only source, tests, and docs.
+- `docs/ddns.md`, `docs/dashboard.md`, and `index.html` described unchanged user/operator behavior, so no link or behavior docs changed.
+- `uninstall.sh` did not need updates because these phases added only source, tests, and docs.
 
 Verification:
 
@@ -95,8 +108,8 @@ Verification:
 
 Docs and uninstall impact:
 
-- `docs/cloud_backup.md`, `docs/setup.md`, and `index.html` describe unchanged user/operator behavior, so no docs links changed in this slice.
-- `uninstall.sh` did not need updates because this phase adds only source and tests.
+- `docs/cloud_backup.md`, `docs/setup.md`, and `index.html` described unchanged user/operator behavior, so no docs links changed.
+- `uninstall.sh` did not need updates because this phase added only source and tests.
 
 Verification:
 
@@ -115,7 +128,7 @@ Verification:
 Docs and uninstall impact:
 
 - No user/operator behavior changed, so no docs or `index.html` updates were needed.
-- `uninstall.sh` did not need updates because this phase adds only source and tests.
+- `uninstall.sh` did not need updates because this phase added only source and tests.
 
 Verification:
 
@@ -141,7 +154,7 @@ Verification:
 Docs and uninstall impact:
 
 - User/operator behavior did not change, so feature docs and `index.html` links did not need updates.
-- `uninstall.sh` did not need updates because this phase adds only source and tests.
+- `uninstall.sh` did not need updates because this phase added only source and tests.
 
 Verification:
 
@@ -160,8 +173,8 @@ Verification:
 
 Docs and uninstall impact:
 
-- Runtime commands and service entrypoints still use `app.py`, so install/setup docs and `index.html` links did not need behavior updates.
-- `uninstall.sh` did not need updates because this phase adds only source.
+- Runtime commands and service entrypoints still used `app.py`, so install/setup docs and `index.html` links did not need behavior updates.
+- `uninstall.sh` did not need updates because this phase added only source.
 
 Verification:
 
@@ -171,23 +184,23 @@ Verification:
 
 ### Phase 9
 
-- Updated `.github/workflows/quality.yml` so pytest is now a strict CI gate.
-- Updated `docs/development.md` to document that pytest is strict while Ruff, Pyright, Bandit, and dependency audit checks remain advisory during the cleanup pass.
-- Kept advisory gates visible instead of forcing broad churn into this behavior-preserving refactor.
+- Updated `.github/workflows/quality.yml` so pytest became a strict CI gate.
+- Updated `docs/development.md` to document that pytest was strict while Ruff, Pyright, Bandit, and dependency audit checks remained advisory during the cleanup pass.
+- Kept advisory gates visible instead of forcing broad churn into the behavior-preserving refactor.
 
 Docs and uninstall impact:
 
 - `docs/development.md` was updated for the developer workflow change.
 - `index.html` did not need updates because documentation URLs did not change.
-- `uninstall.sh` did not need updates because this phase changes only source, tests, docs, and CI metadata.
+- `uninstall.sh` did not need updates because this phase changed only source, tests, docs, and CI metadata.
 
 Verification:
 
 - Python 3.7 syntax compatibility check: passed for 58 Python files.
 - Full pytest: 153 passed.
-- Full Ruff: advisory failure remains with 124 legacy findings.
-- Full Pyright: advisory failure remains with 37 errors and 31 warnings, mostly legacy optional fake-state typing, missing third-party import resolution, and test monkeypatch typing.
-- Full Bandit: advisory failure remains with 188 low and 6 medium findings, mostly subprocess review items and the existing all-interface development bind default.
+- Full Ruff: advisory failure remained with 124 legacy findings.
+- Full Pyright: advisory failure remained with 37 errors and 31 warnings, mostly legacy optional fake-state typing, missing third-party import resolution, and test monkeypatch typing.
+- Full Bandit: advisory failure remained with 188 low and 6 medium findings, mostly subprocess review items and the existing all-interface development bind default.
 
 ### Phase 10
 
@@ -201,9 +214,9 @@ Verification:
 
 Docs and uninstall impact:
 
-- `docs/development.md` now documents the strict quality baseline and the accepted Bandit subprocess policy.
+- `docs/development.md` documented the strict quality baseline and accepted Bandit subprocess policy.
 - `index.html` did not need updates because documentation URLs did not change.
-- `uninstall.sh` did not need updates because this phase changes only source, tests, docs, and CI metadata.
+- `uninstall.sh` did not need updates because this phase changed only source, tests, docs, and CI metadata.
 
 Verification:
 
@@ -225,16 +238,68 @@ Verification:
 
 Docs and uninstall impact:
 
-- The existing target architecture already documents `simple_safer_server/adapters/`, so no user/operator docs or `index.html` links changed.
-- `uninstall.sh` did not need updates because this phase adds only package source and tests.
+- The target architecture already documented `simple_safer_server/adapters/`, so no user/operator docs or `index.html` links changed.
+- `uninstall.sh` did not need updates because this phase added only package source and tests.
 
 Verification:
 
 - Focused Cloud Backup service tests: passed.
 
-## Living Follow-Up Backlog
+### Phase 12
 
-The roadmap phases above are complete. Future cleanup should keep the strict gates green and avoid changing behavior opportunistically.
+- Fixed stale template endpoint references after blueprint extraction.
+- Updated dashboard mount/unmount/restart/shutdown forms to use `storage_routes.*`.
+- Updated the Drive Health navigation link to use `drive_health_routes.drives`.
+- Added an app-factory render test for fake-mode `/dashboard` so stale template endpoint names fail in tests.
+
+Docs and uninstall impact:
+
+- User-facing URLs did not change.
+- `index.html` did not need updates because documentation links did not change.
+- `uninstall.sh` did not need updates because this phase changed only source and tests.
+
+Verification:
+
+- Python 3.7 syntax compatibility check: passed for 61 Python files.
+- Ruff format check: passed.
+- Ruff lint: passed.
+- Pyright: passed with 0 errors and 0 warnings.
+- Bandit: passed with no issues identified.
+- Dependency audit: passed with no known vulnerabilities found.
+- Full pytest: 156 passed.
+
+### Phase 13
+
+- Forced Flask-SocketIO to use `async_mode="threading"` so local fake mode no longer imports Eventlet.
+- Replaced Eventlet deployment commands with Gunicorn `gthread`.
+- Made Gunicorn thread count configurable through `WEB_THREADS`, with a default of `4`.
+- Replaced the runtime dependency on `eventlet` with `simple-websocket`.
+- Updated Railway/Nixpacks/Procfile and manual install docs.
+
+Docs and uninstall impact:
+
+- `docs/manual_install.md` now documents `simple-websocket` and `WEB_THREADS`.
+- Deployment metadata changed; user/operator feature docs and `index.html` did not need updates.
+- `uninstall.sh` did not need updates because no installed files, generated state, services, timers, config, or directories changed.
+
+Verification:
+
+- `timeout 5 ./run_fake.sh` showed the Eventlet deprecation warning was gone.
+- `python -m json.tool railway.json`: passed.
+- Ruff format check: passed.
+- Ruff lint: passed.
+- Pyright: passed with 0 errors and 0 warnings.
+- Focused dashboard render test: passed.
+
+## Decisions
+
+- Keep `app.py` as a compatibility entrypoint until install, service, and operator docs intentionally move to package entrypoints.
+- Use `notes/` for task history and handoff context, not canonical behavior documentation.
+- Keep `docs/development.md` as the coding standard and `docs/architecture.md` as the durable architecture reference.
+- Use Flask-SocketIO threading mode by default; Eventlet is deprecated and no current Socket.IO event handlers require it.
+- Keep `WEB_THREADS` configurable instead of deriving it from CPU count, because deployment CPU quotas can be misleading and this is a small admin app.
+
+## Follow-Up Backlog
 
 - Continue moving subprocess-heavy operations behind adapters, especially systemd, package manager, SMB, and mount helpers.
 - Keep top-level compatibility modules until install, service, and operator docs are intentionally migrated to package entrypoints.
