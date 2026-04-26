@@ -19,29 +19,22 @@ jobs:
           python -m pip install --upgrade "pip<24.1" wheel
           python -m pip install -r requirements.txt -r requirements-dev.txt
 
-      # These gates are advisory while the existing codebase is moved toward
-      # the standard in docs/development.md. Remove continue-on-error one gate
-      # at a time after the related legacy debt has been cleaned up.
+      # Keep every gate strict so refactors do not quietly drift away from
+      # the repository standard in docs/development.md.
       - name: Check formatting
-        continue-on-error: true
         run: python -m ruff format --check .
 
       - name: Lint
-        continue-on-error: true
         run: python -m ruff check .
 
       - name: Test
-        continue-on-error: true
         run: python -m pytest
 
       - name: Type check
-        continue-on-error: true
         run: pyright
 
       - name: Security scan
-        continue-on-error: true
         run: python -m bandit -c pyproject.toml -r .
 
       - name: Dependency audit
-        continue-on-error: true
         run: python -m pip_audit -r requirements.txt -r requirements-dev.txt --ignore-vuln GHSA-6w46-j5rx-g56g

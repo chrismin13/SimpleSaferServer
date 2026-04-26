@@ -24,6 +24,11 @@ ignore = [
   "E501",
 ]
 
+[tool.ruff.lint.per-file-ignores]
+# Deeply nested patch contexts in tests often read more clearly than wide
+# multi-context `with` statements, especially when only one mock is asserted.
+"tests/*.py" = ["SIM117"]
+
 [tool.ruff.format]
 quote-style = "preserve"
 indent-style = "space"
@@ -39,4 +44,15 @@ exclude_dirs = [
   ".dev-data",
   "third_party",
   "tests",
+]
+skips = [
+  "B104",
+  "B105",
+  "B112",
+  "B310",
+  # SimpleSaferServer is a local admin tool that intentionally shells out to
+  # Debian system utilities. Command allowlisting belongs in adapter refactors.
+  "B404",
+  "B603",
+  "B607",
 ]

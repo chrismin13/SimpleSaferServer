@@ -2,7 +2,6 @@ import re
 from datetime import datetime
 from typing import Optional
 
-
 _IGNORED_TIME_VALUES = {
     '',
     '-',

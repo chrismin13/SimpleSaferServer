@@ -45,6 +45,15 @@ Fake mode should be an alternate implementation behind those boundaries. Avoid s
 
 Shared response and validation helpers should be preferred over per-route ad hoc response shapes. Until a formal API schema pass happens, keep API responses predictable and use clear status codes.
 
+`ROADMAP.md` is the living plan for the monolith-to-package refactor. New refactored code should move toward:
+
+- `simple_safer_server/routes/` for Flask blueprints.
+- `simple_safer_server/services/` for route-independent behavior.
+- `simple_safer_server/adapters/` for system and fake-mode boundaries.
+- `simple_safer_server/web/` for shared response and validation helpers.
+
+Keep `__init__.py` files minimal. Put meaningful behavior in clearly named modules such as `services/task_service.py` or `routes/ddns.py`.
+
 ## Python Style
 
 - Prefer explicit names and small functions.
@@ -115,15 +124,15 @@ PY
 
 ## Current Baseline Policy
 
-Continuous integration runs the quality gates in advisory mode while legacy code is brought up to the standard.
+Continuous integration runs the standard checks as strict gates:
 
-Advisory mode means failures are visible in CI logs but do not fail the workflow. Remove advisory mode one gate at a time after the old code has been cleaned up:
+- `ruff format --check`
+- `ruff check`
+- `pytest`
+- `pyright`
+- `bandit`
+- `pip-audit`
 
-1. Make `pytest` strict.
-2. Make `ruff format --check` strict after a formatting/refactor pass.
-3. Make `ruff check` strict after resolving lint debt.
-4. Make `bandit` strict after reviewing subprocess, tempfile, and secret-handling findings.
-5. Make `pip-audit` strict after dependency policy is decided.
-6. Make `pyright` strict module-by-module, starting with extracted services and adapters.
+Bandit skips the generic subprocess import/execution rules because SimpleSaferServer is a local admin tool that intentionally calls Debian system utilities. Keep those subprocess calls behind services or adapters, validate user-controlled arguments before shelling out, and document operational assumptions near the code.
 
 The dependency audit currently ignores `GHSA-6w46-j5rx-g56g` for `pytest==7.4.4`. The fixed pytest release requires a newer Python than Debian 10 provides, and this dependency is development-only. Remove that ignore when the project raises its minimum Python version.

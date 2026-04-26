@@ -7,7 +7,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, ClassVar, Dict, List, Optional
 
 
 @dataclass(frozen=True)
@@ -43,8 +43,8 @@ class Runtime:
 
 
 class FakeState:
-    TASK_NAMES = ["Check Mount", "Drive Health Check", "Cloud Backup"]
-    TASK_SERVICE_NAMES = {
+    TASK_NAMES: ClassVar[List[str]] = ["Check Mount", "Drive Health Check", "Cloud Backup"]
+    TASK_SERVICE_NAMES: ClassVar[Dict[str, str]] = {
         "Check Mount": "check_mount.service",
         "Drive Health Check": "check_health.service",
         "Cloud Backup": "backup_cloud.service",
@@ -137,7 +137,9 @@ class FakeState:
             }
         ]
 
-    def set_mount(self, mounted: bool, mount_point: Optional[str] = None, drive: Optional[str] = None) -> None:
+    def set_mount(
+        self, mounted: bool, mount_point: Optional[str] = None, drive: Optional[str] = None
+    ) -> None:
         with self._lock:
             state = self.load()
             state["mounted"] = mounted
@@ -325,7 +327,12 @@ def get_runtime() -> Runtime:
 
     if mode == "fake":
         data_dir = resolve_fake_data_dir(repo_root)
-        skip_login = os.environ.get("SSS_SKIP_LOGIN", "false").strip().lower() in {"1", "true", "yes", "on"}
+        skip_login = os.environ.get("SSS_SKIP_LOGIN", "false").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
         _runtime = Runtime(
             mode="fake",
             skip_login=skip_login,
@@ -365,7 +372,7 @@ def get_runtime() -> Runtime:
             model_dir=Path("/opt/SimpleSaferServer/harddrive_model"),
             telemetry_path=repo_root / "telemetry.csv",
             msmtp_config_path=Path("/etc/msmtprc"),
-            state_path=Path("/tmp/simple_safer_server_unused_state.json"),
+            state_path=Path(tempfile.gettempdir()) / "simple_safer_server_unused_state.json",
         )
 
     if _runtime.is_fake:

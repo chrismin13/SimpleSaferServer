@@ -67,7 +67,9 @@ class BackupDriveUnmountTests(unittest.TestCase):
         system_utils.is_mounted.assert_not_called()
 
     @patch('backup_drive_unmount.subprocess.run')
-    def test_unmount_managed_backup_drive_stops_services_and_restarts_smb_without_power_down(self, mock_run):
+    def test_unmount_managed_backup_drive_stops_services_and_restarts_smb_without_power_down(
+        self, mock_run
+    ):
         runtime = SimpleNamespace(is_fake=False)
         system_utils = MagicMock()
         mock_run.return_value = SimpleNamespace(returncode=0, stderr='', stdout='')
@@ -126,7 +128,9 @@ class BackupDriveUnmountTests(unittest.TestCase):
             call(['blkid', '-t', 'UUID=UUID-1', '-o', 'device'], capture_output=True, text=True),
             mock_run.call_args_list,
         )
-        self.assertIn(call(['sudo', 'hdparm', '-y', '/dev/sdb'], check=False), mock_run.call_args_list)
+        self.assertIn(
+            call(['sudo', 'hdparm', '-y', '/dev/sdb'], check=False), mock_run.call_args_list
+        )
 
     @patch('backup_drive_unmount.subprocess.run')
     def test_unmount_managed_backup_drive_restarts_smb_after_unmount_failure(self, mock_run):

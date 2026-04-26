@@ -7,7 +7,10 @@ import drive_health
 
 
 class DriveHealthTests(unittest.TestCase):
-    @patch("drive_health.get_smartctl_json_support", return_value=(False, drive_health.SMARTCTL_JSON_UPGRADE_MESSAGE))
+    @patch(
+        "drive_health.get_smartctl_json_support",
+        return_value=(False, drive_health.SMARTCTL_JSON_UPGRADE_MESSAGE),
+    )
     def test_get_smart_attributes_keeps_json_unsupported_flow(self, _mock_json_support):
         runtime = SimpleNamespace(is_fake=False)
 
@@ -24,7 +27,9 @@ class DriveHealthTests(unittest.TestCase):
 
     @patch("drive_health.get_smartctl_json_support", return_value=(True, None))
     @patch("drive_health.subprocess.run")
-    def test_get_smart_attributes_treats_json_error_response_as_failure(self, mock_run, _mock_json_support):
+    def test_get_smart_attributes_treats_json_error_response_as_failure(
+        self, mock_run, _mock_json_support
+    ):
         runtime = SimpleNamespace(is_fake=False)
         mock_run.return_value = SimpleNamespace(
             returncode=2,
@@ -32,7 +37,9 @@ class DriveHealthTests(unittest.TestCase):
                 {
                     "smartctl": {
                         "messages": [
-                            {"string": "Read Device Identity failed: scsi error unsupported scsi opcode"}
+                            {
+                                "string": "Read Device Identity failed: scsi error unsupported scsi opcode"
+                            }
                         ]
                     }
                 }
@@ -53,7 +60,9 @@ class DriveHealthTests(unittest.TestCase):
 
     @patch("drive_health.get_smartctl_json_support", return_value=(True, None))
     @patch("drive_health.subprocess.run")
-    def test_get_smart_attributes_accepts_nonzero_exit_when_attributes_are_present(self, mock_run, _mock_json_support):
+    def test_get_smart_attributes_accepts_nonzero_exit_when_attributes_are_present(
+        self, mock_run, _mock_json_support
+    ):
         runtime = SimpleNamespace(is_fake=False)
         mock_run.return_value = SimpleNamespace(
             returncode=4,
@@ -85,7 +94,9 @@ class DriveHealthTests(unittest.TestCase):
 
     @patch("drive_health.get_smartctl_json_support", return_value=(True, None))
     @patch("drive_health.subprocess.run")
-    def test_get_smart_attributes_preserves_parse_failure_when_json_supported(self, mock_run, _mock_json_support):
+    def test_get_smart_attributes_preserves_parse_failure_when_json_supported(
+        self, mock_run, _mock_json_support
+    ):
         runtime = SimpleNamespace(is_fake=False)
         mock_run.return_value = SimpleNamespace(
             returncode=2,

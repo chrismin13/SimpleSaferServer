@@ -18,7 +18,6 @@ except ImportError:
 
 from runtime import get_runtime
 
-
 APT_LOCK_PATHS = [
     Path("/var/lib/dpkg/lock-frontend"),
     Path("/var/lib/dpkg/lock"),
@@ -54,11 +53,13 @@ def _apt_executable_candidates(name: str, cmdline_parts: List[str]) -> List[str]
     index = 0
     while index < len(argv_tokens):
         token = argv_tokens[index]
+        # This is a command token, not a password.
         if token == "sudo":
             index += 1
             while index < len(argv_tokens) and argv_tokens[index].startswith("-"):
                 index += 1
             continue
+        # This is a command token, not a password.
         if token == "env":
             index += 1
             while index < len(argv_tokens):
@@ -75,7 +76,9 @@ def _apt_executable_candidates(name: str, cmdline_parts: List[str]) -> List[str]
 
 
 def _is_apt_process(name: str, cmdline_parts: List[str]) -> bool:
-    return any(token in APT_PROCESS_MARKERS for token in _apt_executable_candidates(name, cmdline_parts))
+    return any(
+        token in APT_PROCESS_MARKERS for token in _apt_executable_candidates(name, cmdline_parts)
+    )
 
 
 SUPPORT_INFO = {
@@ -193,7 +196,9 @@ def _major_ubuntu_version(version_id: str) -> str:
     return version_id
 
 
-def get_support_info(distro_id: str, version_id: str, today: Optional[date] = None) -> Dict[str, Any]:
+def get_support_info(
+    distro_id: str, version_id: str, today: Optional[date] = None
+) -> Dict[str, Any]:
     distro = (distro_id or "").lower()
     lookup_version = version_id
     if distro == "debian":
@@ -315,9 +320,13 @@ class SystemUpdatesManager:
         support = get_support_info(distro_id, version_id)
         return {
             "id": distro_id,
-            "pretty_name": os_release.get("PRETTY_NAME") or f"{distro_id} {version_id}".strip() or "Unknown Linux",
+            "pretty_name": os_release.get("PRETTY_NAME")
+            or f"{distro_id} {version_id}".strip()
+            or "Unknown Linux",
             "version_id": version_id,
-            "version_codename": os_release.get("VERSION_CODENAME") or os_release.get("UBUNTU_CODENAME") or "",
+            "version_codename": os_release.get("VERSION_CODENAME")
+            or os_release.get("UBUNTU_CODENAME")
+            or "",
             "support": support,
         }
 
@@ -335,11 +344,13 @@ class SystemUpdatesManager:
                 name = info.get("name") or ""
                 cmdline_parts = info.get("cmdline") or []
                 if _is_apt_process(name, cmdline_parts):
-                    processes.append({
-                        "pid": info.get("pid"),
-                        "name": name,
-                        "cmdline": " ".join(cmdline_parts),
-                    })
+                    processes.append(
+                        {
+                            "pid": info.get("pid"),
+                            "name": name,
+                            "cmdline": " ".join(cmdline_parts),
+                        }
+                    )
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
         return processes
@@ -366,6 +377,7 @@ class SystemUpdatesManager:
                     for part in raw_cmdline_bytes.split(b"\x00")
                     if part
                 ]
+            # /proc entries can disappear while scanning.
             except Exception:
                 continue
             if _is_apt_process(name, cmdline_parts):
@@ -383,7 +395,9 @@ class SystemUpdatesManager:
         for path in APT_LOCK_PATHS:
             if not path.exists():
                 continue
-            result = subprocess.run([fuser, str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            result = subprocess.run(
+                [fuser, str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
             if result.returncode == 0:
                 held.append(str(path))
         return held
@@ -410,7 +424,9 @@ class SystemUpdatesManager:
             return ["sudo", "env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "-y", "upgrade"]
         raise ValueError("Unsupported apt operation.")
 
-    def _progress_from_line(self, operation: str, line: str, current_progress: int) -> Tuple[int, str]:
+    def _progress_from_line(
+        self, operation: str, line: str, current_progress: int
+    ) -> Tuple[int, str]:
         text = line.strip()
         lowered = text.lower()
         if operation == "update":
@@ -444,7 +460,9 @@ class SystemUpdatesManager:
                 raise RuntimeError("A system update operation is already running.")
             lock_status = self.get_lock_status()
             if lock_status["locked"]:
-                raise RuntimeError("Apt is already busy. Wait for the current package operation to finish.")
+                raise RuntimeError(
+                    "Apt is already busy. Wait for the current package operation to finish."
+                )
 
             cancel_event = threading.Event()
             self._cancel_event = cancel_event
@@ -474,7 +492,12 @@ class SystemUpdatesManager:
         phases = (
             ["Checking package indexes", "Downloading package indexes", "Reading package lists"]
             if operation == "update"
-            else ["Reading package lists", "Downloading packages", "Unpacking packages", "Configuring packages"]
+            else [
+                "Reading package lists",
+                "Downloading packages",
+                "Unpacking packages",
+                "Configuring packages",
+            ]
         )
         try:
             for index, phase in enumerate(phases, start=1):
@@ -601,7 +624,9 @@ class SystemUpdatesManager:
         self._update_state(phase="Stopping")
         return self.get_status()
 
-    def _reconcile_running_state(self, state: Dict[str, Any], lock_status: Dict[str, Any]) -> Dict[str, Any]:
+    def _reconcile_running_state(
+        self, state: Dict[str, Any], lock_status: Dict[str, Any]
+    ) -> Dict[str, Any]:
         if state.get("status") != "running" or lock_status["own_operation_running"]:
             return state
 
@@ -616,7 +641,7 @@ class SystemUpdatesManager:
                 ),
             }
         else:
-            updates = {
+            updates: Dict[str, Any] = {
                 "status": "failure",
                 "phase": "Interrupted",
                 "finished_at": datetime.now().isoformat(timespec="seconds"),
@@ -637,12 +662,21 @@ class SystemUpdatesManager:
 
     def remove_stale_locks(self) -> Dict[str, Any]:
         lock_status = self.get_lock_status()
-        if lock_status["processes"] or lock_status["own_operation_running"] or lock_status["held_locks"]:
-            raise RuntimeError("Apt or dpkg is running. Stop or wait for it before removing stale locks.")
+        if (
+            lock_status["processes"]
+            or lock_status["own_operation_running"]
+            or lock_status["held_locks"]
+        ):
+            raise RuntimeError(
+                "Apt or dpkg is running. Stop or wait for it before removing stale locks."
+            )
 
         existing = [str(path) for path in APT_LOCK_PATHS if path.exists()]
         if self.runtime.is_fake:
-            return {"removed": existing or [str(APT_LOCK_PATHS[0])], "message": "Fake mode: stale apt locks removed."}
+            return {
+                "removed": existing or [str(APT_LOCK_PATHS[0])],
+                "message": "Fake mode: stale apt locks removed.",
+            }
         if not existing:
             return {"removed": [], "message": "No apt lock files exist."}
 
@@ -657,11 +691,13 @@ class SystemUpdatesManager:
             "AutocleanInterval": "autoclean_interval",
         }
         for apt_key, settings_key in key_map.items():
-            match = re.search(r'APT::Periodic::{}\s+"?(\d+)"?\s*;'.format(re.escape(apt_key)), text)
+            match = re.search(rf'APT::Periodic::{re.escape(apt_key)}\s+"?(\d+)"?\s*;', text)
             if not match:
                 continue
             parsed_value = int(match.group(1))
-            values[settings_key] = parsed_value if settings_key == "autoclean_interval" else parsed_value > 0
+            values[settings_key] = (
+                parsed_value if settings_key == "autoclean_interval" else parsed_value > 0
+            )
         return values
 
     def _read_apt_periodic_config(self) -> Dict[str, Any]:
@@ -675,7 +711,9 @@ class SystemUpdatesManager:
         return self._parse_apt_periodic_config(text)
 
     def _app_manages_apt_updates(self) -> bool:
-        return self._coerce_bool(self.config_manager.get_value("apt_updates", "managed", "false"), False)
+        return self._coerce_bool(
+            self.config_manager.get_value("apt_updates", "managed", "false"), False
+        )
 
     def _saved_autoclean_interval(self, default: int) -> int:
         stored_interval = self.config_manager.get_value("apt_updates", "autoclean_interval", None)
@@ -693,7 +731,9 @@ class SystemUpdatesManager:
         system_values = self._read_apt_periodic_config()
         managed = self._app_manages_apt_updates()
         if managed:
-            update_lists = self.config_manager.get_value("apt_updates", "update_package_lists", None)
+            update_lists = self.config_manager.get_value(
+                "apt_updates", "update_package_lists", None
+            )
             unattended = self.config_manager.get_value("apt_updates", "unattended_upgrade", None)
             autoclean_interval = self._saved_autoclean_interval(
                 system_values.get("autoclean_interval", DEFAULT_AUTOCLEAN_INTERVAL_DAYS)
@@ -701,14 +741,17 @@ class SystemUpdatesManager:
         else:
             update_lists = system_values.get("update_package_lists", False)
             unattended = system_values.get("unattended_upgrade", False)
-            autoclean_interval = system_values.get("autoclean_interval", DEFAULT_AUTOCLEAN_INTERVAL_DAYS)
+            autoclean_interval = system_values.get(
+                "autoclean_interval", DEFAULT_AUTOCLEAN_INTERVAL_DAYS
+            )
         return {
             "apt_updates_managed": managed,
             "update_package_lists": self._coerce_bool(update_lists, False),
             "unattended_upgrade": self._coerce_bool(unattended, False),
             "autoclean": autoclean_interval > 0,
             "autoclean_interval": autoclean_interval,
-            "unattended_upgrades_installed": bool(shutil.which("unattended-upgrade")) or self.runtime.is_fake,
+            "unattended_upgrades_installed": bool(shutil.which("unattended-upgrade"))
+            or self.runtime.is_fake,
         }
 
     def _coerce_bool(self, value: Optional[str], default: bool) -> bool:
@@ -722,13 +765,17 @@ class SystemUpdatesManager:
         except (TypeError, ValueError):
             return default
 
-    def _resolve_autoclean_interval(self, data: Dict[str, Any], system_values: Dict[str, Any]) -> int:
+    def _resolve_autoclean_interval(
+        self, data: Dict[str, Any], system_values: Dict[str, Any]
+    ) -> int:
         if not bool(data.get("autoclean")):
             return 0
 
         requested_interval = data.get("autoclean_interval")
         if requested_interval is not None:
-            interval = self._coerce_nonnegative_int(requested_interval, DEFAULT_AUTOCLEAN_INTERVAL_DAYS)
+            interval = self._coerce_nonnegative_int(
+                requested_interval, DEFAULT_AUTOCLEAN_INTERVAL_DAYS
+            )
             if interval > 0:
                 return interval
 
@@ -766,14 +813,16 @@ class SystemUpdatesManager:
         return self.get_settings()
 
     def _write_apt_periodic_config(self, settings: Dict[str, Any]) -> None:
-        content = "\n".join([
-            "// Managed by SimpleSaferServer.",
-            "// The System Updates page controls these APT::Periodic values.",
-            f'APT::Periodic::Update-Package-Lists "{1 if settings["update_package_lists"] else 0}";',
-            f'APT::Periodic::Unattended-Upgrade "{1 if settings["unattended_upgrade"] else 0}";',
-            f'APT::Periodic::AutocleanInterval "{settings["autoclean_interval"]}";',
-            "",
-        ])
+        content = "\n".join(
+            [
+                "// Managed by SimpleSaferServer.",
+                "// The System Updates page controls these APT::Periodic values.",
+                f'APT::Periodic::Update-Package-Lists "{1 if settings["update_package_lists"] else 0}";',
+                f'APT::Periodic::Unattended-Upgrade "{1 if settings["unattended_upgrade"] else 0}";',
+                f'APT::Periodic::AutocleanInterval "{settings["autoclean_interval"]}";',
+                "",
+            ]
+        )
         temp_path = self.runtime.data_dir / "20auto-upgrades"
         temp_path.write_text(content)
         temp_path.chmod(0o644)
@@ -841,7 +890,9 @@ class SystemUpdatesManager:
             }
 
         fallback = subprocess.run([binary, "status"], capture_output=True, text=True, check=False)
-        output = (fallback.stdout or fallback.stderr or result.stderr or "Livepatch status unavailable.").strip()
+        output = (
+            fallback.stdout or fallback.stderr or result.stderr or "Livepatch status unavailable."
+        ).strip()
         return {
             "supported_distro": True,
             "installed": True,
@@ -871,7 +922,9 @@ class SystemUpdatesManager:
 
         pro_binary = shutil.which("pro")
         if not pro_binary:
-            raise RuntimeError("Ubuntu Pro Client is required to set up Livepatch. Install ubuntu-pro-client and try again.")
+            raise RuntimeError(
+                "Ubuntu Pro Client is required to set up Livepatch. Install ubuntu-pro-client and try again."
+            )
 
         with tempfile.NamedTemporaryFile(
             "w",
@@ -881,12 +934,16 @@ class SystemUpdatesManager:
             delete=False,
         ) as attach_config:
             attach_config_path = Path(attach_config.name)
-            attach_config.write("\n".join([
-                f"token: {json.dumps(token)}",
-                "enable_services:",
-                "  - livepatch",
-                "",
-            ]))
+            attach_config.write(
+                "\n".join(
+                    [
+                        f"token: {json.dumps(token)}",
+                        "enable_services:",
+                        "  - livepatch",
+                        "",
+                    ]
+                )
+            )
         # The Pro client intentionally supports attach-config so subscription
         # tokens do not end up in process argv or shell history.
         attach_config_path.chmod(0o600)
@@ -907,5 +964,7 @@ class SystemUpdatesManager:
         finally:
             attach_config_path.unlink(missing_ok=True)
 
-        subprocess.run(["sudo", pro_binary, "enable", "livepatch"], check=True, capture_output=True, text=True)
+        subprocess.run(
+            ["sudo", pro_binary, "enable", "livepatch"], check=True, capture_output=True, text=True
+        )
         return self.get_livepatch_status()

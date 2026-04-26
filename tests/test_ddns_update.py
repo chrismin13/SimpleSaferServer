@@ -1,9 +1,10 @@
+# pyright: reportArgumentType=false, reportAttributeAccessIssue=false, reportOptionalSubscript=false
 import json
-from pathlib import Path
 import sys
-from tempfile import TemporaryDirectory
 import types
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 # The script imports the full app runtime for main(); these unit tests only need
@@ -85,9 +86,7 @@ class CloudflareDdnsTests(unittest.TestCase):
                 "scripts.ddns_update.ConfigManager", FakeConfigManager
             ), patch("scripts.ddns_update.get_public_ip", return_value=public_ip), patch(
                 "scripts.ddns_update.update_duckdns", return_value=duckdns_result
-            ), patch(
-                "scripts.ddns_update.update_cloudflare", return_value=cloudflare_result
-            ):
+            ), patch("scripts.ddns_update.update_cloudflare", return_value=cloudflare_result):
                 exit_code = ddns_update.main()
 
             status_file = runtime.data_dir / "ddns_status.json"
@@ -107,7 +106,9 @@ class CloudflareDdnsTests(unittest.TestCase):
             ],
         }
 
-        with patch("scripts.ddns_update.urllib.request.urlopen", return_value=FakeResponse(payload)):
+        with patch(
+            "scripts.ddns_update.urllib.request.urlopen", return_value=FakeResponse(payload)
+        ):
             self.assertEqual(
                 ddns_update.get_cloudflare_record("zone-123", "token", "server.example.com"),
                 ("record-123", "203.0.113.10", True),

@@ -1,11 +1,12 @@
 import configparser
-import os
-from pathlib import Path
-from cryptography.fernet import Fernet
 import json
 import logging
 from datetime import datetime
+
+from cryptography.fernet import Fernet
+
 from runtime import get_runtime
+
 
 class ConfigManager:
     def __init__(self, runtime=None):
@@ -17,10 +18,10 @@ class ConfigManager:
         self.alerts_path = self.config_dir / 'alerts.json'
         self.config = configparser.ConfigParser()
         self.logger = logging.getLogger(__name__)
-        
+
         # Ensure config directory exists
         self.config_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # Initialize configuration
         self.load_config()
         self._init_secrets()
@@ -33,11 +34,11 @@ class ConfigManager:
             self.key_path.write_bytes(key)
             # Set proper permissions
             self.key_path.chmod(0o600)
-        
+
         if not self.secrets_path.exists():
             self.secrets_path.write_text('{}')
             self.secrets_path.chmod(0o600)
-        
+
         self.cipher = Fernet(self.key_path.read_bytes())
 
     def _init_alerts(self):
@@ -55,12 +56,8 @@ class ConfigManager:
 
     def create_default_config(self):
         """Create default configuration"""
-        self.config['system'] = {
-            'username': '',
-            'server_name': '',
-            'setup_complete': 'false'
-        }
-        
+        self.config['system'] = {'username': '', 'server_name': '', 'setup_complete': 'false'}
+
         self.config['backup'] = {
             'email_address': '',
             'from_address': '',
@@ -68,23 +65,18 @@ class ConfigManager:
             'usb_id': '',
             'mount_point': self.runtime.default_mount_point,
             'rclone_dir': '',
-            'bandwidth_limit': ''
-        }
-        
-        self.config['schedule'] = {
-            'backup_cloud_time': '3:00'
+            'bandwidth_limit': '',
         }
 
-        self.config['hdsentinel'] = {
-            'enabled': 'true',
-            'health_change_alert': 'true'
-        }
+        self.config['schedule'] = {'backup_cloud_time': '3:00'}
+
+        self.config['hdsentinel'] = {'enabled': 'true', 'health_change_alert': 'true'}
 
         self.config['apt_updates'] = {
             'managed': 'false',
             'update_package_lists': 'false',
             'unattended_upgrade': 'false',
-            'autoclean_interval': '7'
+            'autoclean_interval': '7',
         }
 
         self.config['ddns'] = {
@@ -93,7 +85,7 @@ class ConfigManager:
             'cloudflare_enabled': 'false',
             'cloudflare_zone': '',
             'cloudflare_record': '',
-            'cloudflare_proxy': 'false'
+            'cloudflare_proxy': 'false',
         }
 
         self.save_config()
@@ -153,14 +145,14 @@ class ConfigManager:
                 'type': alert_type,
                 'source': source,
                 'timestamp': datetime.now().isoformat(),
-                'read': False
+                'read': False,
             }
             alerts.append(alert)
-            
+
             # Keep only the last 1000 alerts to prevent file from growing too large
             if len(alerts) > 1000:
                 alerts = alerts[-1000:]
-            
+
             self.alerts_path.write_text(json.dumps(alerts, indent=2))
             self.logger.info(f"Alert logged: {title}")
             return True
@@ -173,15 +165,15 @@ class ConfigManager:
         try:
             if not self.alerts_path.exists():
                 return []
-            
+
             alerts = json.loads(self.alerts_path.read_text())
-            
+
             if unread_only:
                 alerts = [alert for alert in alerts if not alert.get('read', False)]
-            
+
             if limit:
                 alerts = alerts[-limit:]
-            
+
             return alerts
         except Exception as e:
             self.logger.error(f"Error reading alerts: {e}")
@@ -195,7 +187,7 @@ class ConfigManager:
                 if alert['id'] == alert_id:
                     alert['read'] = True
                     break
-            
+
             self.alerts_path.write_text(json.dumps(alerts, indent=2))
             return True
         except Exception as e:
@@ -227,7 +219,7 @@ class ConfigManager:
     def is_setup_complete(self):
         """Check if initial setup is complete; always reload config to ensure freshness"""
         self.load_config()
-        return self.get_value('system', 'setup_complete', 'false').lower() == 'true'
+        return str(self.get_value('system', 'setup_complete', 'false')).lower() == 'true'
 
     def mark_setup_complete(self):
         """Mark the initial setup as complete"""
@@ -244,13 +236,13 @@ class ConfigManager:
         """Validate the current configuration"""
         required_fields = {
             'system': ['username', 'server_name'],
-            'backup': ['email_address', 'uuid', 'usb_id', 'mount_point', 'rclone_dir']
+            'backup': ['email_address', 'uuid', 'usb_id', 'mount_point', 'rclone_dir'],
         }
-        
+
         missing_fields = []
         for section, fields in required_fields.items():
             for field in fields:
                 if not self.get_value(section, field):
                     missing_fields.append(f"{section}.{field}")
-        
-        return len(missing_fields) == 0, missing_fields 
+
+        return len(missing_fields) == 0, missing_fields

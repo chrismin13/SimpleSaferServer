@@ -89,7 +89,9 @@ class RuntimeHelpersTests(unittest.TestCase):
                     side_effect=[None, None, "winner-secret"],
                 ) as mock_read_secret:
                     with patch("runtime.time.sleep") as mock_sleep:
-                        self.assertEqual(runtime.load_or_create_text_secret(secret_path), "winner-secret")
+                        self.assertEqual(
+                            runtime.load_or_create_text_secret(secret_path), "winner-secret"
+                        )
 
             self.assertEqual(mock_read_secret.call_count, 3)
             self.assertEqual(mock_sleep.call_count, 1)

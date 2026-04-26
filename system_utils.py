@@ -1,11 +1,10 @@
+import logging
 import shutil
 import subprocess
-import json
-import logging
 from pathlib import Path
-import os
-import re
-from runtime import get_runtime, get_fake_state
+
+from runtime import get_fake_state, get_runtime
+
 
 class SystemUtils:
     def __init__(self, runtime=None):
@@ -16,12 +15,7 @@ class SystemUtils:
     def run_command(self, command, check=True):
         """Run a system command and return the result"""
         try:
-            result = subprocess.run(
-                command,
-                check=check,
-                capture_output=True,
-                text=True
-            )
+            result = subprocess.run(command, check=check, capture_output=True, text=True)
             return result.stdout.strip()
         except subprocess.CalledProcessError as e:
             self.logger.error(f"Command failed: {e.stderr}")
@@ -33,12 +27,12 @@ class SystemUtils:
             # Create rclone config directory if it doesn't exist
             rclone_dir = self.runtime.rclone_config_dir
             rclone_dir.mkdir(parents=True, exist_ok=True)
-            
+
             # Write rclone config
             config_path = rclone_dir / 'rclone.conf'
             config_path.write_text(config)
             config_path.chmod(0o600)
-            
+
             return True
         except Exception as e:
             self.logger.error(f"Error setting up rclone: {e}")
@@ -61,10 +55,10 @@ Restart=on-failure
 [Install]
 WantedBy=multi-user.target
 """
-            
+
             service_path = self.runtime.systemd_dir / f'{service_name}.service'
             service_path.write_text(service_content)
-            
+
             # Create timer if specified
             if timer:
                 timer_content = f"""[Unit]
@@ -79,7 +73,7 @@ WantedBy=timers.target
 """
                 timer_path = self.runtime.systemd_dir / f'{service_name}.timer'
                 timer_path.write_text(timer_content)
-            
+
             # Reload systemd and enable service
             if self.runtime.is_fake:
                 return True
@@ -88,7 +82,7 @@ WantedBy=timers.target
             if timer:
                 self.run_command(['systemctl', 'enable', f'{service_name}.timer'])
                 self.run_command(['systemctl', 'start', f'{service_name}.timer'])
-            
+
             return True
         except Exception as e:
             self.logger.error(f"Error setting up systemd service: {e}")
@@ -118,7 +112,7 @@ account default : simplesaferserver
             return True
         except Exception as e:
             self.logger.error(f"Error writing msmtp config: {e}")
-            return False 
+            return False
 
     def get_parent_device(self, partition_path):
         """Given a partition device path (e.g. /dev/sda1), return the parent drive (e.g. /dev/sda)."""
@@ -132,20 +126,23 @@ account default : simplesaferserver
                 return f"/dev/{parent}"
             # Fallback: strip trailing digits (works for /dev/sda1, /dev/nvme0n1p1, etc.)
             import re
+
             m = re.match(r"(/dev/[a-zA-Z0-9]+)", partition_path)
             if m:
                 return m.group(1)
             return None
         except Exception as e:
             self.logger.error(f"Error getting parent device for {partition_path}: {e}")
-            return None 
+            return None
 
     def is_mounted(self, mount_point):
         """Check if the given mount point is currently mounted."""
         if self.runtime.is_fake:
+            if self.fake_state is None:
+                raise RuntimeError("Fake runtime is missing fake state.")
             return self.fake_state.is_mounted(mount_point)
         try:
-            with open('/proc/mounts', 'r') as f:
+            with open('/proc/mounts') as f:
                 for line in f:
                     if mount_point in line.split():
                         return True
@@ -161,34 +158,43 @@ account default : simplesaferserver
             current_dir = Path(__file__).parent
             scripts_source_dir = current_dir / 'scripts'
             scripts_dest_dir = self.runtime.bin_dir
-            
+
             if not scripts_source_dir.exists():
                 self.logger.error(f"Scripts source directory not found: {scripts_source_dir}")
                 return False, "Scripts source directory not found"
-            
+
             # Create destination directory if it doesn't exist
             scripts_dest_dir.mkdir(parents=True, exist_ok=True)
-            
+
             # Copy each script as-is. The scripts read live values from
             # /etc/SimpleSaferServer/config.conf, so templating them here can
             # accidentally bake stale UUID/USB_ID values into the installed copy.
-            script_files = ['check_mount.sh', 'check_health.sh', 'check_health.py', 'backup_cloud.sh', 'predict_health.py', 'log_alert.py', 'ddns_update.sh', 'ddns_update.py']
-            
+            script_files = [
+                'check_mount.sh',
+                'check_health.sh',
+                'check_health.py',
+                'backup_cloud.sh',
+                'predict_health.py',
+                'log_alert.py',
+                'ddns_update.sh',
+                'ddns_update.py',
+            ]
+
             for script_file in script_files:
                 source_path = scripts_source_dir / script_file
                 dest_path = scripts_dest_dir / script_file
-                
+
                 if not source_path.exists():
                     self.logger.warning(f"Script file not found: {source_path}")
                     continue
-                
+
                 shutil.copy2(source_path, dest_path)
                 dest_path.chmod(0o755)  # Make executable
-                
+
                 self.logger.info(f"Installed script: {dest_path}")
-            
+
             return True, None
-            
+
         except Exception as e:
             self.logger.error(f"Error installing systemd scripts: {e}")
             return False, str(e)
@@ -252,10 +258,10 @@ cloudflare_proxy = {ddns_config.get('cloudflare_proxy', 'false')}
         try:
             schedule = config.get('schedule', {})
             backup_cloud_time = schedule.get('backup_cloud_time', '3:00:00')
-            
+
             # Parse the backup time and calculate sequential times
             backup_hour, backup_minute = map(int, backup_cloud_time.split(':'))
-            
+
             # Calculate check_health time (1 minute before backup)
             check_health_minute = backup_minute - 1
             check_health_hour = backup_hour
@@ -263,7 +269,7 @@ cloudflare_proxy = {ddns_config.get('cloudflare_proxy', 'false')}
                 check_health_minute += 60
                 check_health_hour = (check_health_hour - 1) % 24
             check_health_time = f"{check_health_hour:02d}:{check_health_minute:02d}:00"
-            
+
             # Calculate check_mount time (2 minutes before backup)
             check_mount_minute = backup_minute - 2
             check_mount_hour = backup_hour
@@ -271,7 +277,7 @@ cloudflare_proxy = {ddns_config.get('cloudflare_proxy', 'false')}
                 check_mount_minute += 60
                 check_mount_hour = (check_mount_hour - 1) % 24
             check_mount_time = f"{check_mount_hour:02d}:{check_mount_minute:02d}:00"
-            
+
             # Define services and timers with proper formatting
             services = {
                 'check_mount.service': """[Unit]
@@ -376,15 +382,15 @@ Persistent=true
 
 [Install]
 WantedBy=timers.target
-"""
+""",
             }
-            
+
             # Write all service and timer files
             for filename, content in services.items():
                 file_path = self.runtime.systemd_dir / filename
                 file_path.write_text(content)
                 self.logger.info(f"Created systemd file: {file_path}")
-            
+
             # Reload after writing the units so systemd sees the current generated files even
             # while first-run setup is still pending.
             if self.runtime.is_fake:
@@ -398,11 +404,15 @@ WantedBy=timers.target
                     # generated recurring unit inactive until the wizard completes.
                     self.run_command(['systemctl', 'stop', f'{service_name}.timer'], check=False)
                     self.run_command(['systemctl', 'disable', f'{service_name}.timer'], check=False)
-                    self.run_command(['systemctl', 'disable', f'{service_name}.service'], check=False)
-                    self.logger.info(f"Generated {service_name} service and timer without activation")
+                    self.run_command(
+                        ['systemctl', 'disable', f'{service_name}.service'], check=False
+                    )
+                    self.logger.info(
+                        f"Generated {service_name} service and timer without activation"
+                    )
 
                 return True, None
-            
+
             # Enable and start services and timers
             for service_name in ['check_mount', 'check_health', 'backup_cloud', 'ddns_update']:
                 # Enable services
@@ -411,11 +421,11 @@ WantedBy=timers.target
                 self.run_command(['systemctl', 'enable', f'{service_name}.timer'])
                 # Start timers (services will be started by timers)
                 self.run_command(['systemctl', 'start', f'{service_name}.timer'])
-                
+
                 self.logger.info(f"Enabled and started {service_name} service and timer")
-            
+
             return True, None
-            
+
         except Exception as e:
             self.logger.error(f"Error installing systemd services and timers: {e}")
             return False, str(e)

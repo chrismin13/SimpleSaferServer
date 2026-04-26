@@ -12,7 +12,9 @@ class DriveHealthSupportTests(unittest.TestCase):
         # This guards the easy-to-forget case where operators install or
         # upgrade smartmontools without restarting the web process.
         mock_which.side_effect = [None, "/usr/sbin/smartctl"]
-        mock_run.return_value = SimpleNamespace(returncode=0, stdout="smartctl supports -j", stderr="")
+        mock_run.return_value = SimpleNamespace(
+            returncode=0, stdout="smartctl supports -j", stderr=""
+        )
 
         first_result = drive_health.get_smartctl_json_support()
         second_result = drive_health.get_smartctl_json_support()

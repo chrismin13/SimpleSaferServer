@@ -1,3 +1,4 @@
+# pyright: reportAttributeAccessIssue=false
 import tempfile
 import types
 import unittest

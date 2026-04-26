@@ -1,0 +1,112 @@
+from typing import Any
+
+from flask import Blueprint, current_app, jsonify, render_template, request, session
+
+from simple_safer_server.web.api import json_error, json_success
+from user_manager import admin_required, api_admin_required
+
+cloud_backup = Blueprint("cloud_backup_routes", __name__)
+
+
+def _get_services() -> Any:
+    """Return app-level services registered during Flask startup."""
+    return current_app.extensions["simple_safer_server"]
+
+
+@cloud_backup.route("/cloud_backup")
+@admin_required
+def cloud_backup_page():
+    return render_template("cloud_backup.html", username=session.get("username"))
+
+
+@cloud_backup.route("/api/cloud_backup/config", methods=["GET"])
+@api_admin_required
+def api_cloud_backup_get_config():
+    try:
+        return json_success(config=_get_services().cloud_backup_service.get_config())
+    except Exception as exc:
+        current_app.logger.error("Error getting cloud backup config: %s", exc)
+        return json_error("Could not load backup settings.")
+
+
+@cloud_backup.route("/api/cloud_backup/config", methods=["POST"])
+@api_admin_required
+def api_cloud_backup_set_config():
+    try:
+        return jsonify(_get_services().cloud_backup_service.save_config(request.get_json()))
+    except Exception as exc:
+        current_app.logger.error("Error saving cloud backup config: %s", exc)
+        return json_error("Could not save backup settings.")
+
+
+@cloud_backup.route("/api/cloud_backup/status", methods=["GET"])
+@api_admin_required
+def api_cloud_backup_status():
+    try:
+        return jsonify(_get_services().cloud_backup_service.get_status())
+    except Exception as exc:
+        current_app.logger.error("Error getting cloud backup status: %s", exc)
+        return json_error("Could not get backup status.")
+
+
+@cloud_backup.route("/api/cloud_backup/run", methods=["POST"])
+@api_admin_required
+def api_cloud_backup_run():
+    try:
+        return jsonify(_get_services().cloud_backup_service.run_backup())
+    except Exception as exc:
+        current_app.logger.error("Error running cloud backup: %s", exc)
+        return json_error("Could not start backup.")
+
+
+@cloud_backup.route("/api/cloud_backup/mega/list_folders", methods=["POST"])
+@api_admin_required
+def api_cloud_backup_mega_list_folders():
+    try:
+        return jsonify(
+            _get_services().cloud_backup_service.list_mega_folders(request.get_json() or {})
+        )
+    except Exception as exc:
+        current_app.logger.error("Error listing MEGA folders: %s", exc)
+        return json_error("Could not list MEGA folders.")
+
+
+@cloud_backup.route("/api/cloud_backup/mega/create_folder", methods=["POST"])
+@api_admin_required
+def api_cloud_backup_mega_create_folder():
+    try:
+        return jsonify(
+            _get_services().cloud_backup_service.create_mega_folder(request.get_json() or {})
+        )
+    except Exception as exc:
+        current_app.logger.error("Error creating MEGA folder: %s", exc)
+        return json_error("Could not create MEGA folder.")
+
+
+@cloud_backup.route("/api/cloud_backup/schedule", methods=["GET"])
+@api_admin_required
+def api_cloud_backup_get_schedule():
+    try:
+        return jsonify(_get_services().cloud_backup_service.get_schedule())
+    except Exception as exc:
+        current_app.logger.error("Error getting backup schedule: %s", exc)
+        return json_error("Could not load backup settings.")
+
+
+@cloud_backup.route("/api/cloud_backup/schedule", methods=["POST"])
+@api_admin_required
+def api_cloud_backup_set_schedule():
+    try:
+        return jsonify(_get_services().cloud_backup_service.save_schedule(request.get_json()))
+    except Exception as exc:
+        current_app.logger.error("Error saving backup schedule: %s", exc)
+        return json_error("Could not save backup settings.")
+
+
+@cloud_backup.route("/api/cloud_backup/mega/validate", methods=["POST"])
+@api_admin_required
+def api_cloud_backup_mega_validate():
+    try:
+        return jsonify(_get_services().cloud_backup_service.validate_mega(request.get_json()))
+    except Exception as exc:
+        return json_error(f"Error connecting to MEGA: {exc!s}")

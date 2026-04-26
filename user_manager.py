@@ -1,16 +1,17 @@
-from werkzeug.security import generate_password_hash, check_password_hash
-import json
-from pathlib import Path
-import logging
-from functools import wraps
-from flask import session, redirect, url_for, flash, jsonify
-import re
-import os
 import datetime
+import json
+import logging
+import re
 import subprocess
+from functools import wraps
+
+from flask import flash, jsonify, redirect, session, url_for
+from werkzeug.security import check_password_hash, generate_password_hash
+
 from runtime import get_runtime
 
 logger = logging.getLogger(__name__)
+
 
 class PasswordPolicy:
     def __init__(self):
@@ -20,6 +21,7 @@ class PasswordPolicy:
         if len(password) < self.min_length:
             return False, f"Password must be at least {self.min_length} characters long"
         return True, "Password is valid"
+
 
 class UserManager:
     def __init__(self, runtime=None):
@@ -34,7 +36,7 @@ class UserManager:
             # Ensure directory has correct permissions
             self.users_file.parent.mkdir(parents=True, exist_ok=True)
             self.users_file.parent.chmod(0o700)
-            
+
             # Ensure file has correct permissions
             if self.users_file.exists():
                 self.users_file.chmod(0o600)
@@ -57,17 +59,17 @@ class UserManager:
         try:
             # Create directory if it doesn't exist
             self.users_file.parent.mkdir(parents=True, exist_ok=True)
-            
+
             # Write to temporary file first
             temp_file = self.users_file.with_suffix('.tmp')
             temp_file.write_text(json.dumps(self.users, indent=2))
-            
+
             # Set secure permissions on temp file
             temp_file.chmod(0o600)
-            
+
             # Atomic rename
             temp_file.rename(self.users_file)
-            
+
             # Ensure secure permissions
             self._ensure_secure_permissions()
         except Exception as e:
@@ -88,26 +90,32 @@ class UserManager:
                 # User doesn't exist, create them
                 logger.info(f"Creating system user {username}")
                 subprocess.run(['sudo', 'useradd', '-m', '-s', '/bin/bash', username], check=True)
-            
+
             # Check if user already exists in Samba
             result = subprocess.run(['sudo', 'pdbedit', '-L'], capture_output=True, text=True)
             existing_users = {
-                line.split(':', 1)[0].strip()
-                for line in result.stdout.splitlines()
-                if line.strip()
+                line.split(':', 1)[0].strip() for line in result.stdout.splitlines() if line.strip()
             }
 
             if username in existing_users:
                 # Update existing user password
-                subprocess.run(['sudo', 'smbpasswd', '-s', '-a', username], 
-                             input=f"{password}\n{password}\n", text=True, check=True)
+                subprocess.run(
+                    ['sudo', 'smbpasswd', '-s', '-a', username],
+                    input=f"{password}\n{password}\n",
+                    text=True,
+                    check=True,
+                )
                 logger.info(f"Updated Samba password for user {username}")
             else:
                 # Create new Samba user
-                subprocess.run(['sudo', 'smbpasswd', '-s', '-a', username], 
-                             input=f"{password}\n{password}\n", text=True, check=True)
+                subprocess.run(
+                    ['sudo', 'smbpasswd', '-s', '-a', username],
+                    input=f"{password}\n{password}\n",
+                    text=True,
+                    check=True,
+                )
                 logger.info(f"Created Samba user {username}")
-            
+
             return True
         except subprocess.CalledProcessError as e:
             logger.error(f"Error syncing user {username} to Samba: {e}")
@@ -131,16 +139,16 @@ class UserManager:
         # Validate username
         if not re.match(r'^[a-zA-Z0-9_-]+$', username):
             return False, "Username may only contain letters, numbers, underscores, and hyphens"
-        
+
         if username in self.users:
             return False, "Username already exists"
-        
+
         # Validate password
         policy = PasswordPolicy()
         is_valid, message = policy.validate(password)
         if not is_valid:
             return False, message
-        
+
         # Store user with additional security measures
         self.users[username] = {
             'password_hash': generate_password_hash(password),
@@ -148,24 +156,24 @@ class UserManager:
             'created_at': str(datetime.datetime.utcnow()),
             'last_login': None,
             'failed_attempts': 0,
-            'locked_until': None
+            'locked_until': None,
         }
-        
+
         self._save_users()
-        
+
         # Sync to Samba
         if not self._sync_user_to_samba(username, password):
             return False, "User created but failed to sync with Samba"
-        
+
         return True, "User created successfully"
 
     def verify_user(self, username, password):
         """Verify user credentials with rate limiting"""
         if username not in self.users:
             return False
-        
+
         user = self.users[username]
-        
+
         # Check if account is locked
         if user.get('locked_until'):
             if datetime.datetime.utcnow() < datetime.datetime.fromisoformat(user['locked_until']):
@@ -173,23 +181,22 @@ class UserManager:
             # Reset lock if time has passed
             user['locked_until'] = None
             user['failed_attempts'] = 0
-        
-        # Verify password
-        policy = PasswordPolicy()
+
+        # Successful login clears rate-limit state; password policy applies when credentials are created.
         if check_password_hash(user['password_hash'], password):
             # Reset failed attempts on successful login
             user['failed_attempts'] = 0
             user['last_login'] = str(datetime.datetime.utcnow())
             self._save_users()
             return True
-        
+
         # Increment failed attempts
         user['failed_attempts'] = user.get('failed_attempts', 0) + 1
-        
+
         # Lock account after 5 failed attempts
         if user['failed_attempts'] >= 5:
             user['locked_until'] = str(datetime.datetime.utcnow() + datetime.timedelta(minutes=15))
-        
+
         self._save_users()
         return False
 
@@ -205,7 +212,7 @@ class UserManager:
                 'username': username,
                 'is_admin': user.get('is_admin', False),
                 'created_at': user.get('created_at'),
-                'last_login': user.get('last_login')
+                'last_login': user.get('last_login'),
             }
         return None
 
@@ -213,40 +220,40 @@ class UserManager:
         """Change user password"""
         if not self.verify_user(username, current_password):
             return False, "Current password is incorrect"
-        
+
         # Validate new password
         policy = PasswordPolicy()
         is_valid, message = policy.validate(new_password)
         if not is_valid:
             return False, message
-        
+
         # Update password
         self.users[username]['password_hash'] = generate_password_hash(new_password)
         self._save_users()
-        
+
         # Sync to Samba
         if not self._sync_user_to_samba(username, new_password):
             return False, "Password changed but failed to sync with Samba"
-        
+
         return True, "Password changed successfully"
 
     def delete_user(self, username):
         """Delete a user"""
         if username not in self.users:
             return False, "User does not exist"
-        
+
         # Remove from Samba first
         self._remove_user_from_samba(username)
-        
+
         # Remove from JSON store
         del self.users[username]
         self._save_users()
-        
+
         return True, "User deleted successfully"
 
     def get_all_users(self):
         """Get all users (excluding sensitive data)"""
-        return [self.get_user(username) for username in self.users.keys()]
+        return [self.get_user(username) for username in self.users]
 
     def get_preferred_admin_username(self, preferred_username=None):
         """Return the best admin user to auto-login for local fake mode."""
@@ -266,9 +273,7 @@ class UserManager:
         try:
             result = subprocess.run(['sudo', 'pdbedit', '-L'], capture_output=True, text=True)
             existing_users = {
-                line.split(':', 1)[0].strip()
-                for line in result.stdout.splitlines()
-                if line.strip()
+                line.split(':', 1)[0].strip() for line in result.stdout.splitlines() if line.strip()
             }
             return username in existing_users
         except subprocess.CalledProcessError:
@@ -284,8 +289,10 @@ class UserManager:
         except subprocess.CalledProcessError:
             return False
 
+
 def admin_required(f):
     """Require an administrator session for HTML management pages."""
+
     @wraps(f)
     def decorated_function(*args, **kwargs):
         username = session.get('username')
@@ -302,11 +309,13 @@ def admin_required(f):
             flash('Admin privileges required', 'error')
             return redirect(url_for('login'))
         return f(*args, **kwargs)
+
     return decorated_function
 
 
 def api_admin_required(f):
     """Require an administrator session for JSON API routes."""
+
     @wraps(f)
     def decorated_function(*args, **kwargs):
         username = session.get('username')
@@ -320,4 +329,5 @@ def api_admin_required(f):
             session.clear()
             return jsonify({'success': False, 'error': 'Admin privileges required.'}), 403
         return f(*args, **kwargs)
+
     return decorated_function

@@ -8,8 +8,8 @@ from unittest.mock import patch
 from system_updates import (
     DEFAULT_AUTOCLEAN_INTERVAL_DAYS,
     SystemUpdatesManager,
-    get_support_info,
     _is_apt_process,
+    get_support_info,
     parse_os_release_text,
 )
 
@@ -108,9 +108,8 @@ class SystemUpdatesTests(unittest.TestCase):
                     "held_locks": [],
                     "processes": [{"pid": 123, "name": "apt-get"}],
                 },
-            ):
-                with self.assertRaises(RuntimeError):
-                    manager.remove_stale_locks()
+            ), self.assertRaises(RuntimeError):
+                manager.remove_stale_locks()
 
     def test_apt_process_matching_uses_executable_tokens(self):
         self.assertTrue(_is_apt_process("sudo", ["sudo", "apt-get", "update"]))
@@ -125,13 +124,17 @@ class SystemUpdatesTests(unittest.TestCase):
 
         self.assertFalse(_is_apt_process("adapt", ["/tmp/adapt", "--scan"]))
         self.assertFalse(_is_apt_process("python3", ["/srv/capture/report.py", "apt"]))
-        self.assertFalse(_is_apt_process("backup", ["/usr/local/bin/backup", "/var/log/apt/history.log"]))
+        self.assertFalse(
+            _is_apt_process("backup", ["/usr/local/bin/backup", "/var/log/apt/history.log"])
+        )
 
     def test_status_clears_stale_running_state_after_restart_when_apt_is_idle(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             runtime = make_real_runtime(Path(temp_dir))
             manager = SystemUpdatesManager(FakeConfigManager(), runtime=runtime)
-            manager._update_state(operation="update", status="running", phase="Downloading", progress=42)
+            manager._update_state(
+                operation="update", status="running", phase="Downloading", progress=42
+            )
 
             with patch.object(
                 manager,
@@ -154,7 +157,9 @@ class SystemUpdatesTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             runtime = make_real_runtime(Path(temp_dir))
             manager = SystemUpdatesManager(FakeConfigManager(), runtime=runtime)
-            manager._update_state(operation="upgrade", status="running", phase="Configuring", progress=74)
+            manager._update_state(
+                operation="upgrade", status="running", phase="Configuring", progress=74
+            )
 
             lock_status = {
                 "locked": True,
@@ -174,7 +179,9 @@ class SystemUpdatesTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             runtime = make_real_runtime(Path(temp_dir))
             manager = SystemUpdatesManager(FakeConfigManager(), runtime=runtime)
-            manager._update_state(operation="update", status="running", phase="Starting", progress=3)
+            manager._update_state(
+                operation="update", status="running", phase="Starting", progress=3
+            )
 
             lock_status = {
                 "locked": True,
@@ -195,11 +202,13 @@ class SystemUpdatesTests(unittest.TestCase):
             config = FakeConfigManager()
             manager = SystemUpdatesManager(config, runtime=runtime)
 
-            settings = manager.save_settings({
-                "update_package_lists": True,
-                "unattended_upgrade": True,
-                "autoclean": False,
-            })
+            settings = manager.save_settings(
+                {
+                    "update_package_lists": True,
+                    "unattended_upgrade": True,
+                    "autoclean": False,
+                }
+            )
 
             self.assertTrue(settings["update_package_lists"])
             self.assertTrue(settings["unattended_upgrade"])
@@ -268,11 +277,13 @@ class SystemUpdatesTests(unittest.TestCase):
                     "autoclean_interval": 14,
                 },
             ):
-                settings = manager.save_settings({
-                    "update_package_lists": True,
-                    "unattended_upgrade": False,
-                    "autoclean": True,
-                })
+                settings = manager.save_settings(
+                    {
+                        "update_package_lists": True,
+                        "unattended_upgrade": False,
+                        "autoclean": True,
+                    }
+                )
 
             self.assertTrue(settings["apt_updates_managed"])
             self.assertEqual(settings["autoclean_interval"], 14)
@@ -285,14 +296,19 @@ class SystemUpdatesTests(unittest.TestCase):
             manager = SystemUpdatesManager(config, runtime=runtime)
 
             with patch.object(manager, "_read_apt_periodic_config", return_value={}):
-                settings = manager.save_settings({
-                    "update_package_lists": False,
-                    "unattended_upgrade": False,
-                    "autoclean": True,
-                })
+                settings = manager.save_settings(
+                    {
+                        "update_package_lists": False,
+                        "unattended_upgrade": False,
+                        "autoclean": True,
+                    }
+                )
 
             self.assertEqual(settings["autoclean_interval"], DEFAULT_AUTOCLEAN_INTERVAL_DAYS)
-            self.assertEqual(config.get_value("apt_updates", "autoclean_interval"), str(DEFAULT_AUTOCLEAN_INTERVAL_DAYS))
+            self.assertEqual(
+                config.get_value("apt_updates", "autoclean_interval"),
+                str(DEFAULT_AUTOCLEAN_INTERVAL_DAYS),
+            )
 
     def test_managed_config_overrides_system_values(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -332,11 +348,13 @@ class SystemUpdatesTests(unittest.TestCase):
                 return SimpleNamespace(returncode=0)
 
             with patch("system_updates.subprocess.run", side_effect=fake_run):
-                manager._write_apt_periodic_config({
-                    "update_package_lists": True,
-                    "unattended_upgrade": False,
-                    "autoclean_interval": 14,
-                })
+                manager._write_apt_periodic_config(
+                    {
+                        "update_package_lists": True,
+                        "unattended_upgrade": False,
+                        "autoclean_interval": 14,
+                    }
+                )
 
         self.assertEqual(captured["args"], ["sudo", "tee", "/etc/apt/apt.conf.d/20auto-upgrades"])
         self.assertIn("// Managed by SimpleSaferServer.", captured["content"])
@@ -352,13 +370,17 @@ class SystemUpdatesTests(unittest.TestCase):
             manager = SystemUpdatesManager(config, runtime=runtime)
 
             with patch.object(manager, "_read_apt_periodic_config", return_value={}):
-                with patch.object(manager, "_write_apt_periodic_config", side_effect=RuntimeError("write failed")):
+                with patch.object(
+                    manager, "_write_apt_periodic_config", side_effect=RuntimeError("write failed")
+                ):
                     with self.assertRaisesRegex(RuntimeError, "write failed"):
-                        manager.save_settings({
-                            "update_package_lists": True,
-                            "unattended_upgrade": True,
-                            "autoclean": True,
-                        })
+                        manager.save_settings(
+                            {
+                                "update_package_lists": True,
+                                "unattended_upgrade": True,
+                                "autoclean": True,
+                            }
+                        )
 
             self.assertIsNone(config.get_value("apt_updates", "managed", None))
 
@@ -379,7 +401,9 @@ class SystemUpdatesTests(unittest.TestCase):
                 return SimpleNamespace(returncode=0, stdout="", stderr="", args=args)
 
             with patch.object(manager, "get_distribution_info", return_value={"id": "ubuntu"}):
-                with patch.object(manager, "get_livepatch_status", return_value={"enabled": True}) as status:
+                with patch.object(
+                    manager, "get_livepatch_status", return_value={"enabled": True}
+                ) as status:
                     with patch("system_updates.shutil.which", return_value="/usr/bin/pro"):
                         with patch("system_updates.subprocess.run", side_effect=fake_run):
                             result = manager.setup_livepatch("secret-token")
@@ -393,13 +417,17 @@ class SystemUpdatesTests(unittest.TestCase):
 
     def test_livepatch_setup_enables_livepatch_when_machine_is_already_attached(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            manager = SystemUpdatesManager(FakeConfigManager(), runtime=make_real_runtime(Path(temp_dir)))
+            manager = SystemUpdatesManager(
+                FakeConfigManager(), runtime=make_real_runtime(Path(temp_dir))
+            )
             calls = []
 
             def fake_run(args, **kwargs):
                 calls.append(args)
                 if args[:3] == ["sudo", "/usr/bin/pro", "attach"]:
-                    return SimpleNamespace(returncode=2, stdout="", stderr="already attached", args=args)
+                    return SimpleNamespace(
+                        returncode=2, stdout="", stderr="already attached", args=args
+                    )
                 return SimpleNamespace(returncode=0, stdout="", stderr="", args=args)
 
             with patch.object(manager, "get_distribution_info", return_value={"id": "ubuntu"}):
@@ -412,7 +440,9 @@ class SystemUpdatesTests(unittest.TestCase):
 
     def test_livepatch_setup_requires_ubuntu_pro_client(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            manager = SystemUpdatesManager(FakeConfigManager(), runtime=make_real_runtime(Path(temp_dir)))
+            manager = SystemUpdatesManager(
+                FakeConfigManager(), runtime=make_real_runtime(Path(temp_dir))
+            )
 
             with patch.object(manager, "get_distribution_info", return_value={"id": "ubuntu"}):
                 with patch("system_updates.shutil.which", return_value=None):

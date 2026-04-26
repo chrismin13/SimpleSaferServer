@@ -88,7 +88,7 @@ class SMBManager:
     def _read_smb_conf(self):
         """Read the current smb.conf file."""
         try:
-            with open(self.smb_conf_path, "r") as handle:
+            with open(self.smb_conf_path) as handle:
                 return handle.read()
         except FileNotFoundError:
             return self._get_default_config()
@@ -370,17 +370,16 @@ class SMBManager:
                 try:
                     self._restore_smb_conf_backup(backup_path)
                     if not self._restart_services():
-                        raise RuntimeError("Failed to restart SMB services after restoring smb.conf backup")
+                        raise RuntimeError(
+                            "Failed to restart SMB services after restoring smb.conf backup"
+                        )
                 except Exception as rollback_error:
                     logger.error(
                         "Failed to restore smb.conf after SMB update error: %s",
                         rollback_error,
                     )
                     raise RuntimeError(
-                        "Failed to roll back smb.conf after SMB update error: {}. Original error: {}".format(
-                            rollback_error,
-                            original_error,
-                        )
+                        f"Failed to roll back smb.conf after SMB update error: {rollback_error}. Original error: {original_error}"
                     ) from rollback_error
 
             raise original_error
@@ -388,6 +387,8 @@ class SMBManager:
     def _restart_services(self):
         """Restart SMB services."""
         if self.runtime.is_fake:
+            if self.fake_state is None:
+                raise RuntimeError("Fake runtime is missing fake state.")
             self.fake_state.set_smb_services("active", "active")
             logger.info("Fake mode: marked SMB services as active")
             return True
@@ -412,7 +413,7 @@ class SMBManager:
 
         for raw_line in block_lines:
             stripped = raw_line.strip()
-            if not stripped or stripped.startswith("#") or stripped.startswith(";"):
+            if not stripped or stripped.startswith(("#", ";")):
                 continue
 
             section_name = _extract_section_name(stripped)
@@ -450,7 +451,7 @@ class SMBManager:
 
         if marker_name is not None and share_name != marker_name:
             raise SMBConfigError(
-                "Managed share markers do not match the enclosed share name for '{}'.".format(marker_name)
+                f"Managed share markers do not match the enclosed share name for '{marker_name}'."
             )
 
         return ParsedShare(name=share_name, managed=managed, **share_data)
@@ -464,7 +465,7 @@ class SMBManager:
             stripped = lines[index].strip()
 
             if stripped.startswith(MANAGED_SHARE_BEGIN_PREFIX):
-                marker_name = stripped[len(MANAGED_SHARE_BEGIN_PREFIX):].strip()
+                marker_name = stripped[len(MANAGED_SHARE_BEGIN_PREFIX) :].strip()
                 if not marker_name:
                     raise SMBConfigError("Managed share marker is missing a share name.")
 
@@ -483,12 +484,12 @@ class SMBManager:
 
                 if index >= len(lines):
                     raise SMBConfigError(
-                        "Managed share '{}' is missing its END marker in smb.conf.".format(marker_name)
+                        f"Managed share '{marker_name}' is missing its END marker in smb.conf."
                     )
 
                 block_end = index + 1
                 share = self._parse_share_block(
-                    lines[start_line + 1:index],
+                    lines[start_line + 1 : index],
                     managed=True,
                     marker_name=marker_name,
                 )
@@ -500,11 +501,9 @@ class SMBManager:
                 continue
 
             if stripped.startswith(MANAGED_SHARE_END_PREFIX):
-                marker_name = stripped[len(MANAGED_SHARE_END_PREFIX):].strip() or stripped
+                marker_name = stripped[len(MANAGED_SHARE_END_PREFIX) :].strip() or stripped
                 raise SMBConfigError(
-                    "Unexpected SimpleSaferServer END marker was found in smb.conf for '{}'.".format(
-                        marker_name
-                    )
+                    f"Unexpected SimpleSaferServer END marker was found in smb.conf for '{marker_name}'."
                 )
 
             section_name = _extract_section_name(stripped)
@@ -536,20 +535,25 @@ class SMBManager:
 
     def _find_share_record(self, shares, name, *, managed=None):
         matches = [
-            share for share in shares
+            share
+            for share in shares
             if share.name == name and (managed is None or share.managed == managed)
         ]
         if len(matches) > 1:
             raise SMBConfigError(
-                "Multiple Samba shares named '{}' were found, so SimpleSaferServer cannot act safely. "
-                "See {} for manual cleanup guidance.".format(name, SMB_DOCS_URL)
+                f"Multiple Samba shares named '{name}' were found, so SimpleSaferServer cannot act safely. "
+                f"See {SMB_DOCS_URL} for manual cleanup guidance."
             )
         return matches[0] if matches else None
 
     def _validate_share_input(self, name, path):
         if not name or not path:
             raise ValueError("Share name and path are required")
-        if not isinstance(name, str) or _contains_control_characters(name) or not VALID_SHARE_NAME_RE.fullmatch(name):
+        if (
+            not isinstance(name, str)
+            or _contains_control_characters(name)
+            or not VALID_SHARE_NAME_RE.fullmatch(name)
+        ):
             raise ValueError(
                 "Share name may only contain letters, numbers, hyphens, and underscores."
             )
@@ -575,7 +579,9 @@ class SMBManager:
         for username in valid_users:
             if not isinstance(username, str):
                 raise ValueError("Share usernames must be strings.")
-            if _contains_control_characters(username) or not VALID_SHARE_NAME_RE.fullmatch(username):
+            if _contains_control_characters(username) or not VALID_SHARE_NAME_RE.fullmatch(
+                username
+            ):
                 raise ValueError(
                     "Share usernames may only contain letters, numbers, hyphens, and underscores."
                 )
@@ -636,8 +642,8 @@ class SMBManager:
         lines, shares = self._load_shares()
         if self._find_share_record(shares, name) is not None:
             raise ValueError(
-                "Share '{}' already exists. SimpleSaferServer will not overwrite an existing share "
-                "with the same name. See {} for manual conversion guidance.".format(name, SMB_DOCS_URL)
+                f"Share '{name}' already exists. SimpleSaferServer will not overwrite an existing share "
+                f"with the same name. See {SMB_DOCS_URL} for manual conversion guidance."
             )
 
         block_lines = self._render_managed_share_block(name, path, writable, comment, valid_users)
@@ -646,7 +652,9 @@ class SMBManager:
 
         return True
 
-    def update_managed_share(self, old_name, new_name, path, writable=True, comment="", valid_users=None):
+    def update_managed_share(
+        self, old_name, new_name, path, writable=True, comment="", valid_users=None
+    ):
         self._validate_share_input(new_name, path)
 
         lines, shares = self._load_shares()
@@ -654,21 +662,23 @@ class SMBManager:
         if share is None:
             if self._find_share_record(shares, old_name, managed=False) is not None:
                 raise ValueError(
-                    "Share '{}' is not managed by SimpleSaferServer, so it cannot be edited here. "
-                    "See {} for manual conversion guidance.".format(old_name, SMB_DOCS_URL)
+                    f"Share '{old_name}' is not managed by SimpleSaferServer, so it cannot be edited here. "
+                    f"See {SMB_DOCS_URL} for manual conversion guidance."
                 )
             raise ValueError(f"Share {old_name} not found")
 
         conflict = self._find_share_record(shares, new_name)
         if conflict is not None and not (conflict.managed and conflict.name == old_name):
             raise ValueError(
-                "Share '{}' already exists. SimpleSaferServer will not overwrite an existing share "
-                "with the same name. See {} for manual conversion guidance.".format(new_name, SMB_DOCS_URL)
+                f"Share '{new_name}' already exists. SimpleSaferServer will not overwrite an existing share "
+                f"with the same name. See {SMB_DOCS_URL} for manual conversion guidance."
             )
 
         new_lines = list(lines)
-        replacement = self._render_managed_share_block(new_name, path, writable, comment, valid_users)
-        new_lines[share.start_line:share.end_line] = replacement
+        replacement = self._render_managed_share_block(
+            new_name, path, writable, comment, valid_users
+        )
+        new_lines[share.start_line : share.end_line] = replacement
         self._commit_smb_conf("".join(new_lines))
 
         return True
@@ -679,18 +689,20 @@ class SMBManager:
         if share is None:
             if self._find_share_record(shares, name, managed=False) is not None:
                 raise ValueError(
-                    "Share '{}' is not managed by SimpleSaferServer, so it cannot be deleted here. "
-                    "See {} for manual conversion guidance.".format(name, SMB_DOCS_URL)
+                    f"Share '{name}' is not managed by SimpleSaferServer, so it cannot be deleted here. "
+                    f"See {SMB_DOCS_URL} for manual conversion guidance."
                 )
             raise ValueError(f"Share {name} not found")
 
         new_lines = list(lines)
-        del new_lines[share.start_line:share.end_line]
+        del new_lines[share.start_line : share.end_line]
         self._commit_smb_conf("".join(new_lines))
 
         return True
 
-    def ensure_default_backup_share(self, mount_point, admin_username, fake_mode_comment=None, comment=None):
+    def ensure_default_backup_share(
+        self, mount_point, admin_username, fake_mode_comment=None, comment=None
+    ):
         if comment is None and self.runtime.is_fake and fake_mode_comment is not None:
             comment = fake_mode_comment
         elif comment is None and self.runtime.is_fake:
@@ -702,7 +714,7 @@ class SMBManager:
         if unmanaged_backup is not None:
             raise ValueError(
                 "An unmanaged Samba share named 'backup' already exists. SimpleSaferServer will not overwrite it. "
-                "Convert it manually or remove it first. See {} for manual conversion guidance.".format(SMB_DOCS_URL)
+                f"Convert it manually or remove it first. See {SMB_DOCS_URL} for manual conversion guidance."
             )
 
         managed_backup = self.get_managed_share("backup")
@@ -747,8 +759,8 @@ class SMBManager:
             raise ValueError(f"Share {share_name} not found")
         if not share.managed:
             raise ValueError(
-                "Share '{}' is not managed by SimpleSaferServer, so it cannot be edited here. "
-                "See {} for manual conversion guidance.".format(share_name, SMB_DOCS_URL)
+                f"Share '{share_name}' is not managed by SimpleSaferServer, so it cannot be edited here. "
+                f"See {SMB_DOCS_URL} for manual conversion guidance."
             )
         return share.as_dict()
 
@@ -772,10 +784,16 @@ class SMBManager:
     def get_service_status(self):
         """Get SMB service status."""
         if self.runtime.is_fake:
+            if self.fake_state is None:
+                raise RuntimeError("Fake runtime is missing fake state.")
             return self.fake_state.get_smb_services()
         try:
-            smbd_result = subprocess.run(["systemctl", "is-active", "smbd"], capture_output=True, text=True)
-            nmbd_result = subprocess.run(["systemctl", "is-active", "nmbd"], capture_output=True, text=True)
+            smbd_result = subprocess.run(
+                ["systemctl", "is-active", "smbd"], capture_output=True, text=True
+            )
+            nmbd_result = subprocess.run(
+                ["systemctl", "is-active", "nmbd"], capture_output=True, text=True
+            )
             return {
                 "smbd": smbd_result.stdout.strip(),
                 "nmbd": nmbd_result.stdout.strip(),

@@ -1,31 +1,34 @@
-from flask import Blueprint, render_template, jsonify, request, redirect, session
+import logging
+import os
+import re
+import stat
+import subprocess
+import time
+from datetime import datetime
+from functools import wraps
+from tempfile import NamedTemporaryFile
+
+from flask import Blueprint, jsonify, redirect, render_template, request, session
+
 from backup_drive_setup import (
     BackupDriveSetupError,
-    apply_backup_drive_configuration,
-    list_available_drives as get_available_backup_drives,
     _get_mounted_partitions_for_disk,
+    apply_backup_drive_configuration,
     unmount_disk_partitions,
     unmount_selected_partition,
+)
+from backup_drive_setup import (
+    list_available_drives as get_available_backup_drives,
 )
 from backup_drive_unmount import (
     is_selected_partition_managed_backup_drive,
     unmount_managed_backup_drive,
 )
 from config_manager import ConfigManager
+from runtime import get_fake_state, get_runtime
+from smb_manager import SMBManager
 from system_utils import SystemUtils
 from user_manager import UserManager
-from smb_manager import SMBManager
-import logging
-import subprocess
-import os
-import re
-import stat
-import time
-from datetime import datetime
-from functools import wraps
-from tempfile import NamedTemporaryFile
-from pathlib import Path
-from runtime import get_runtime, get_fake_state
 
 setup = Blueprint('setup', __name__)
 runtime = get_runtime()
@@ -39,11 +42,12 @@ logger = logging.getLogger(__name__)
 # How long to wait for udev to create a newly-partitioned device node
 # (e.g. /dev/nvme0n1p1) before giving up and reporting an error.
 PARTITION_POLL_INTERVAL_SECONDS = 0.5  # delay between existence checks
-PARTITION_POLL_TIMEOUT_SECONDS = 5.0   # maximum total wait
+PARTITION_POLL_TIMEOUT_SECONDS = 5.0  # maximum total wait
 
 
 def setup_api_access_required(route_handler):
     """Allow anonymous setup API access only during first-time onboarding."""
+
     @wraps(route_handler)
     def wrapped(*args, **kwargs):
         # Once setup is complete these routes become admin maintenance tools,
@@ -167,6 +171,7 @@ def _unmount_selected_partition_with_managed_retry(partition, force_managed=Fals
             return retry_response
         raise
 
+
 @setup.route('/setup')
 def setup_page():
     """Render the setup wizard page"""
@@ -174,19 +179,19 @@ def setup_page():
         # Get current config
         current_config = config_manager.get_all_config()
         logger.info(f"Current config during setup check: {current_config}")
-        
+
         # Check if setup is complete
         if config_manager.is_setup_complete():
             logger.info("Setup is complete, redirecting to main page")
             return redirect('/')
-        
+
         # Check if we have all required fields
         required_fields = {
             'system': ['username', 'server_name'],
             'backup': ['mount_point', 'uuid', 'email_address'],
-            'schedule': ['backup_cloud_time']
+            'schedule': ['backup_cloud_time'],
         }
-        
+
         missing_fields = []
         for section, fields in required_fields.items():
             if section not in current_config:
@@ -195,17 +200,18 @@ def setup_page():
             for field in fields:
                 if field not in current_config[section] or not current_config[section][field]:
                     missing_fields.append(f"Missing {section}.{field}")
-        
+
         if missing_fields:
             logger.info(f"Setup incomplete, missing fields: {missing_fields}")
             return render_template('setup.html')
-        
+
         # Do NOT mark setup as complete here. Only do so in /api/setup/complete.
         return render_template('setup.html')
-        
+
     except Exception as e:
         logger.error(f"Error checking setup status: {e}")
         return render_template('setup.html')
+
 
 @setup.route('/api/setup/user', methods=['POST'])
 @setup_api_access_required
@@ -215,10 +221,10 @@ def create_user():
         data = request.get_json()
         username = data.get('username')
         password = data.get('password')
-        
+
         if not username or not password:
             return jsonify({'success': False, 'error': 'Username and password are required'})
-        
+
         success, message = user_manager.create_user(username, password)
         if success:
             # Log in the user
@@ -228,6 +234,7 @@ def create_user():
     except Exception as e:
         logger.error(f"Error creating user: {e}")
         return jsonify({'success': False, 'error': str(e)})
+
 
 @setup.route('/api/setup/format-drives', methods=['GET'])
 @setup_api_access_required
@@ -240,7 +247,7 @@ def list_format_drives():
         drives = get_available_backup_drives(runtime=runtime, ntfs_only=False)
         return jsonify({'success': True, 'drives': drives})
     except Exception as e:
-        logger.error(f"Error listing format drives: {str(e)}")
+        logger.error(f"Error listing format drives: {e!s}")
         return jsonify({'success': False, 'error': str(e)})
 
 
@@ -256,8 +263,9 @@ def list_mount_drives():
         drives = get_available_backup_drives(runtime=runtime, ntfs_only=True)
         return jsonify({'success': True, 'drives': drives})
     except Exception as e:
-        logger.error(f"Error listing mount drives: {str(e)}")
+        logger.error(f"Error listing mount drives: {e!s}")
         return jsonify({'success': False, 'error': str(e)})
+
 
 @setup.route('/api/setup/format', methods=['POST'])
 @setup_api_access_required
@@ -265,11 +273,13 @@ def format_drive():
     """Format the selected drive"""
     try:
         if runtime.is_fake:
-            return jsonify({
-                'success': False,
-                'error': 'Formatting is disabled in fake mode',
-                'details': 'Fake mode never formats local disks. Use the mount step to point the backup source at an existing folder instead.'
-            })
+            return jsonify(
+                {
+                    'success': False,
+                    'error': 'Formatting is disabled in fake mode',
+                    'details': 'Fake mode never formats local disks. Use the mount step to point the backup source at an existing folder instead.',
+                }
+            )
 
         # silent=True suppresses the 400 on a missing/wrong Content-Type so we
         # can return our own JSON error. Only a JSON object is valid here.
@@ -305,7 +315,9 @@ def format_drive():
         # caller is targeting an existing whole-disk block device.
         disk = os.path.realpath(disk)
         if not disk.startswith('/dev/'):
-            return jsonify({'success': False, 'error': 'Invalid disk path: must be a /dev/ device node'})
+            return jsonify(
+                {'success': False, 'error': 'Invalid disk path: must be a /dev/ device node'}
+            )
 
         # Use os.stat() directly so the error message reflects the actual
         # failure: a missing node (FileNotFoundError) is different from a
@@ -317,12 +329,21 @@ def format_drive():
         except FileNotFoundError:
             return jsonify({'success': False, 'error': 'Invalid disk path: device does not exist'})
         except PermissionError:
-            return jsonify({'success': False, 'error': 'Invalid disk path: permission denied while inspecting device node'})
+            return jsonify(
+                {
+                    'success': False,
+                    'error': 'Invalid disk path: permission denied while inspecting device node',
+                }
+            )
         except OSError:
-            return jsonify({'success': False, 'error': 'Invalid disk path: unable to inspect device node'})
+            return jsonify(
+                {'success': False, 'error': 'Invalid disk path: unable to inspect device node'}
+            )
 
         if not stat.S_ISBLK(disk_stat.st_mode):
-            return jsonify({'success': False, 'error': 'Invalid disk path: must be a block device node'})
+            return jsonify(
+                {'success': False, 'error': 'Invalid disk path: must be a block device node'}
+            )
 
         # Confirm the node is a whole disk rather than a partition (e.g. /dev/sda
         # has TYPE=disk; /dev/sda1 has TYPE=part).  Passing a partition path here
@@ -338,18 +359,24 @@ def format_drive():
             return jsonify({'success': False, 'error': 'Unable to verify disk type'})
 
         if lsblk_result.stdout.strip() != 'disk':
-            return jsonify({'success': False, 'error': 'Invalid disk path: must be a whole-disk block device'})
+            return jsonify(
+                {'success': False, 'error': 'Invalid disk path: must be a whole-disk block device'}
+            )
 
         mounted_partitions = _get_mounted_partitions_for_disk(disk)
 
         if mounted_partitions:
-            partition_info = '\n'.join([f"- {p['device']} at {p['mount_point']}" for p in mounted_partitions])
-            return jsonify({
-                'success': False, 
-                'error': 'Drive has mounted partitions',
-                'details': f'The following partitions are currently mounted:\n{partition_info}\n\nPlease unmount all partitions before formatting.',
-                'can_unmount': True
-            })
+            partition_info = '\n'.join(
+                [f"- {p['device']} at {p['mount_point']}" for p in mounted_partitions]
+            )
+            return jsonify(
+                {
+                    'success': False,
+                    'error': 'Drive has mounted partitions',
+                    'details': f'The following partitions are currently mounted:\n{partition_info}\n\nPlease unmount all partitions before formatting.',
+                    'can_unmount': True,
+                }
+            )
 
         # Determine the correct first-partition device node.
         # NVMe/MMC paths end in a digit (e.g. /dev/nvme0n1), so their partition
@@ -358,14 +385,18 @@ def format_drive():
         partition = get_partition_node(disk)
         if not os.path.exists(partition):
             # Create partition using fdisk
-            fdisk_input = f"n\np\n1\n\n\nw\n"
-            result = subprocess.run(['fdisk', disk], input=fdisk_input.encode(), capture_output=True)
+            fdisk_input = "n\np\n1\n\n\nw\n"
+            result = subprocess.run(
+                ['fdisk', disk], input=fdisk_input.encode(), capture_output=True
+            )
             if result.returncode != 0:
-                return jsonify({
-                    'success': False,
-                    'error': 'Failed to create partition',
-                    'details': 'Could not create partition on the drive. Please ensure the drive is not in use.'
-                })
+                return jsonify(
+                    {
+                        'success': False,
+                        'error': 'Failed to create partition',
+                        'details': 'Could not create partition on the drive. Please ensure the drive is not in use.',
+                    }
+                )
 
             # Ask the kernel to re-read the partition table so the new partition
             # node (e.g. /dev/nvme0n1p1) appears in /dev before mkfs.ntfs runs.
@@ -377,7 +408,9 @@ def format_drive():
                 if result_probe.returncode != 0:
                     logger.debug(
                         "partprobe %s exited %d: %s",
-                        disk, result_probe.returncode, result_probe.stderr.strip(),
+                        disk,
+                        result_probe.returncode,
+                        result_probe.stderr.strip(),
                     )
             except OSError as e:
                 logger.debug("partprobe failed for %s; continuing without it: %s", disk, e)
@@ -397,16 +430,18 @@ def format_drive():
                 if is_block_device:
                     break
                 if time.monotonic() >= deadline:
-                    return jsonify({
-                        'success': False,
-                        'error': 'Partition node did not appear after partitioning',
-                        'details': (
-                            f'{partition} was not created within '
-                            f'{PARTITION_POLL_TIMEOUT_SECONDS:.0f} seconds of partitioning. '
-                            'The kernel may not have processed the new partition table yet. '
-                            'Please try again.'
-                        ),
-                    })
+                    return jsonify(
+                        {
+                            'success': False,
+                            'error': 'Partition node did not appear after partitioning',
+                            'details': (
+                                f'{partition} was not created within '
+                                f'{PARTITION_POLL_TIMEOUT_SECONDS:.0f} seconds of partitioning. '
+                                'The kernel may not have processed the new partition table yet. '
+                                'Please try again.'
+                            ),
+                        }
+                    )
                 time.sleep(PARTITION_POLL_INTERVAL_SECONDS)
 
         # Verify the partition node immediately before formatting so both the
@@ -422,36 +457,43 @@ def format_drive():
             if is_block_device:
                 break
             if time.monotonic() >= deadline:
-                return jsonify({
-                    'success': False,
-                    'error': 'Invalid partition path: must be a partition block device',
-                    'details': (
-                        f'{partition} was not a valid block device within '
-                        f'{PARTITION_POLL_TIMEOUT_SECONDS:.0f} seconds. '
-                        'Please verify the drive path and try again.'
-                    ),
-                })
+                return jsonify(
+                    {
+                        'success': False,
+                        'error': 'Invalid partition path: must be a partition block device',
+                        'details': (
+                            f'{partition} was not a valid block device within '
+                            f'{PARTITION_POLL_TIMEOUT_SECONDS:.0f} seconds. '
+                            'Please verify the drive path and try again.'
+                        ),
+                    }
+                )
             time.sleep(PARTITION_POLL_INTERVAL_SECONDS)
         # Format the partition as NTFS
         result = subprocess.run(['mkfs.ntfs', '-f', partition], capture_output=True, text=True)
 
         if result.returncode != 0:
             error_msg = result.stderr.strip() if result.stderr else 'Unknown error occurred'
-            return jsonify({
-                'success': False,
-                'error': f'Error formatting partition: {error_msg}',
-                'details': 'Please ensure the drive is not in use and try again.'
-            })
+            return jsonify(
+                {
+                    'success': False,
+                    'error': f'Error formatting partition: {error_msg}',
+                    'details': 'Please ensure the drive is not in use and try again.',
+                }
+            )
 
         return jsonify({'success': True})
 
     except Exception as e:
-        logger.error(f"Error formatting drive: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': f'Error formatting drive: {str(e)}',
-            'details': 'An unexpected error occurred. Please check the system logs for more information.'
-        })
+        logger.error(f"Error formatting drive: {e!s}")
+        return jsonify(
+            {
+                'success': False,
+                'error': f'Error formatting drive: {e!s}',
+                'details': 'An unexpected error occurred. Please check the system logs for more information.',
+            }
+        )
+
 
 @setup.route('/api/setup/unmount', methods=['POST'])
 @setup_api_access_required
@@ -479,12 +521,15 @@ def unmount_drive():
     except BackupDriveSetupError as e:
         return jsonify({'success': False, 'error': str(e), 'details': e.details})
     except Exception as e:
-        logger.error(f"Error unmounting drive: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': f'Error unmounting drive: {str(e)}',
-            'details': 'An unexpected error occurred. Please check the system logs for more information.'
-        })
+        logger.error(f"Error unmounting drive: {e!s}")
+        return jsonify(
+            {
+                'success': False,
+                'error': f'Error unmounting drive: {e!s}',
+                'details': 'An unexpected error occurred. Please check the system logs for more information.',
+            }
+        )
+
 
 @setup.route('/api/setup/mount', methods=['POST'])
 @setup_api_access_required
@@ -514,12 +559,15 @@ def mount_drive():
     except BackupDriveSetupError as e:
         return jsonify({'success': False, 'error': str(e), 'details': e.details})
     except Exception as e:
-        logger.error(f"Error mounting drive: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': f'Error mounting drive: {str(e)}',
-            'details': 'An unexpected error occurred. Please check the system logs for more information.'
-        })
+        logger.error(f"Error mounting drive: {e!s}")
+        return jsonify(
+            {
+                'success': False,
+                'error': f'Error mounting drive: {e!s}',
+                'details': 'An unexpected error occurred. Please check the system logs for more information.',
+            }
+        )
+
 
 @setup.route('/api/setup/rclone', methods=['POST'])
 @setup_api_access_required
@@ -529,21 +577,22 @@ def setup_rclone():
         data = request.get_json()
         config = data.get('config')
         remote_name = data.get('remote_name')
-        
+
         if not config or not remote_name:
             return jsonify({'success': False, 'error': 'Config and remote name are required'})
-        
+
         # Store rclone config
         if not system_utils.setup_rclone(config):
             return jsonify({'success': False, 'error': 'Failed to set up rclone'})
-        
+
         # Save to config
         config_manager.set_value('backup', 'rclone_dir', remote_name)
-        
+
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f"Error setting up rclone: {e}")
         return jsonify({'success': False, 'error': str(e)})
+
 
 @setup.route('/api/setup/email', methods=['POST'])
 @setup_api_access_required
@@ -552,33 +601,36 @@ def setup_email():
     try:
         data = request.get_json()
         logger.info(f"Received email setup data: {data}")
-        
+
         email = data.get('emailAddress')
         from_address = data.get('fromAddress')
         smtp_server = data.get('smtpServer')
         smtp_port = data.get('smtpPort')
         smtp_username = data.get('smtpUsername')
         smtp_password = data.get('smtpPassword')
-        
+
         if not all([email, from_address, smtp_server, smtp_port, smtp_username, smtp_password]):
             logger.error("Missing email fields")
             return jsonify({'success': False, 'error': 'All email fields are required'})
-        
+
         # Save email to config and write /etc/msmtprc
         config_manager.set_value('backup', 'email_address', email)
         config_manager.set_value('backup', 'from_address', from_address)
 
-        if not system_utils.write_msmtp_config(from_address, smtp_server, smtp_port, smtp_username, smtp_password):
+        if not system_utils.write_msmtp_config(
+            from_address, smtp_server, smtp_port, smtp_username, smtp_password
+        ):
             return jsonify({'success': False, 'error': 'Failed to write msmtp configuration'})
 
         # Verify the config was saved
         current_config = config_manager.get_all_config()
         logger.info(f"Current config after email setup: {current_config}")
-        
+
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f"Error setting up email: {e}")
         return jsonify({'success': False, 'error': str(e)})
+
 
 @setup.route('/api/setup/schedule', methods=['POST'])
 @setup_api_access_required
@@ -588,40 +640,44 @@ def save_schedule():
         data = request.get_json()
         time = data.get('time')
         bandwidth_limit = data.get('bandwidth_limit', '')
-        
+
         if not time:
-            return jsonify({
-                'success': False,
-                'error': 'Missing required fields',
-                'details': 'Time is required'
-            })
+            return jsonify(
+                {
+                    'success': False,
+                    'error': 'Missing required fields',
+                    'details': 'Time is required',
+                }
+            )
 
         # Validate time format (HH:MM)
         if not re.match(r'^([01]?[0-9]|2[0-3]):[0-5][0-9]$', time):
-            return jsonify({
-                'success': False,
-                'error': 'Invalid time format',
-                'details': 'Time must be in HH:MM format (24-hour)'
-            })
+            return jsonify(
+                {
+                    'success': False,
+                    'error': 'Invalid time format',
+                    'details': 'Time must be in HH:MM format (24-hour)',
+                }
+            )
 
         # Save schedule to config
         config_manager.set_value('schedule', 'backup_cloud_time', time)
         if bandwidth_limit is not None:
             config_manager.set_value('backup', 'bandwidth_limit', bandwidth_limit)
-        
+
         logger.info(f"Schedule saved: daily at {time}, bandwidth limit: {bandwidth_limit}")
-        return jsonify({
-            'success': True,
-            'message': 'Backup settings saved successfully'
-        })
+        return jsonify({'success': True, 'message': 'Backup settings saved successfully'})
 
     except Exception as e:
-        logger.error(f"Error saving schedule: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': f'Error saving schedule: {str(e)}',
-            'details': 'An unexpected error occurred. Please check the system logs for more information.'
-        })
+        logger.error(f"Error saving schedule: {e!s}")
+        return jsonify(
+            {
+                'success': False,
+                'error': f'Error saving schedule: {e!s}',
+                'details': 'An unexpected error occurred. Please check the system logs for more information.',
+            }
+        )
+
 
 def install_systemd_tasks(config):
     """Generate and install systemd service/timer files for all main tasks."""
@@ -633,21 +689,22 @@ def install_systemd_tasks(config):
         ok, err = system_utils.create_systemd_config_file(config)
         if not ok:
             return False, f"Failed to create systemd config file: {err}"
-        
+
         # Install the scripts to /usr/local/bin/
         ok, err = system_utils.install_systemd_scripts(config)
         if not ok:
             return False, f"Failed to install systemd scripts: {err}"
-        
+
         # Install systemd services and timers
         ok, err = system_utils.install_systemd_services_and_timers(config)
         if not ok:
             return False, f"Failed to install systemd services and timers: {err}"
-        
+
         return True, None
     except Exception as e:
         logger.error(f"Error installing systemd tasks: {e}")
         return False, str(e)
+
 
 def setup_smb_share(config):
     """Set up SMB share configuration"""
@@ -664,10 +721,10 @@ def setup_smb_share(config):
                 fake_mode_comment='Fake-mode backup share',
             )
             return True, None
-         
+
         if admin_username not in user_manager.users:
             return False, f"Admin user {admin_username} not found in user database"
-        
+
         # Ensure admin user exists in Samba
         if not user_manager.user_exists_in_samba(admin_username):
             return False, (
@@ -675,10 +732,10 @@ def setup_smb_share(config):
                 "The setup flow does not store plaintext passwords, so the Samba account cannot be recreated automatically. "
                 "Recreate the admin user through the setup flow or reset the Samba password manually."
             )
-        
+
         smb_manager.ensure_default_backup_share(mount_point, admin_username)
         logger.info("Ensured the SimpleSaferServer-managed backup share points at %s", mount_point)
-        
+
         # Enable SMB services to start on boot
         try:
             subprocess.run(['systemctl', 'enable', 'smbd'], check=True)
@@ -687,13 +744,17 @@ def setup_smb_share(config):
         except subprocess.CalledProcessError as e:
             logger.error(f"Failed to enable SMB services: {e}")
             # Don't fail setup for this, just log it
-        
-        logger.info("SMB share setup completed successfully. Share 'backup' is configured at %s", mount_point)
+
+        logger.info(
+            "SMB share setup completed successfully. Share 'backup' is configured at %s",
+            mount_point,
+        )
         return True, None
-        
+
     except Exception as e:
         logger.error(f"Error setting up SMB share: {e}")
         return False, str(e)
+
 
 @setup.route('/api/setup/complete', methods=['POST'])
 @setup_api_access_required
@@ -708,7 +769,7 @@ def complete_setup():
         required_fields = {
             'system': ['username', 'server_name'],
             'backup': ['mount_point', 'uuid', 'email_address'],
-            'schedule': ['backup_cloud_time']
+            'schedule': ['backup_cloud_time'],
         }
 
         missing_fields = []
@@ -724,11 +785,9 @@ def complete_setup():
 
         if missing_fields:
             logger.error(f"Setup validation failed. Missing fields: {missing_fields}")
-            return jsonify({
-                'success': False,
-                'error': 'Missing required fields',
-                'details': missing_fields
-            })
+            return jsonify(
+                {'success': False, 'error': 'Missing required fields', 'details': missing_fields}
+            )
 
         # Update the user's last login time since they completed the setup
         if 'username' in session:
@@ -752,16 +811,21 @@ def complete_setup():
         config_manager.mark_setup_complete()
         config_manager.load_config()  # Ensure in-memory config is up to date
 
-        logger.info("Setup completed successfully, systemd tasks installed, and SMB share configured.")
+        logger.info(
+            "Setup completed successfully, systemd tasks installed, and SMB share configured."
+        )
         return jsonify({'success': True})
 
     except Exception as e:
-        logger.error(f"Error completing setup: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': f'Error completing setup: {str(e)}',
-            'details': 'An unexpected error occurred. Please check the system logs for more information.'
-        })
+        logger.error(f"Error completing setup: {e!s}")
+        return jsonify(
+            {
+                'success': False,
+                'error': f'Error completing setup: {e!s}',
+                'details': 'An unexpected error occurred. Please check the system logs for more information.',
+            }
+        )
+
 
 @setup.route('/api/setup/system', methods=['POST'])
 @setup_api_access_required
@@ -780,7 +844,8 @@ def setup_system_info():
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f"Error saving system info: {e}")
-        return jsonify({'success': False, 'error': str(e)}) 
+        return jsonify({'success': False, 'error': str(e)})
+
 
 @setup.route('/api/setup/mega/connect', methods=['POST'])
 @setup_api_access_required
@@ -793,7 +858,9 @@ def mega_connect():
         if not email or not password:
             return jsonify({'success': False, 'error': 'Email and password are required.'})
         # Obscure password using rclone
-        result = subprocess.run(["rclone", "obscure", password], stdout=subprocess.PIPE, check=True, text=True)
+        result = subprocess.run(
+            ["rclone", "obscure", password], stdout=subprocess.PIPE, check=True, text=True
+        )
         obscured_pw = result.stdout.strip()
         # Build temp rclone config
         config_text = f"""
@@ -802,24 +869,32 @@ type = mega
 user = {email}
 pass = {obscured_pw}
 """
-        with NamedTemporaryFile(delete=False, mode="w", prefix="rclone-", suffix=".conf") as config_file:
+        with NamedTemporaryFile(
+            delete=False, mode="w", prefix="rclone-", suffix=".conf"
+        ) as config_file:
             config_file.write(config_text)
             config_path = config_file.name
         try:
             # List folders at root
-            lsjson = subprocess.run([
-                "rclone", "lsjson", "mega:/", "--config", config_path
-            ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            lsjson = subprocess.run(
+                ["rclone", "lsjson", "mega:/", "--config", config_path],
+                capture_output=True,
+                text=True,
+            )
             if lsjson.returncode != 0:
-                return jsonify({'success': False, 'error': 'Failed to list MEGA folders. Check credentials.'})
+                return jsonify(
+                    {'success': False, 'error': 'Failed to list MEGA folders. Check credentials.'}
+                )
             import json as pyjson
+
             items = pyjson.loads(lsjson.stdout)
             folders = [item['Name'] for item in items if item['IsDir']]
             return jsonify({'success': True, 'folders': folders})
         finally:
             os.remove(config_path)
     except Exception as e:
-        return jsonify({'success': False, 'error': f'Error connecting to MEGA: {str(e)}'})
+        return jsonify({'success': False, 'error': f'Error connecting to MEGA: {e!s}'})
+
 
 @setup.route('/api/setup/mega/list_folders', methods=['POST'])
 @setup_api_access_required
@@ -832,7 +907,9 @@ def mega_list_folders():
         password = data.get('password')
         if not email or not password:
             return jsonify({'error': 'Email and password are required.'})
-        result = subprocess.run(["rclone", "obscure", password], stdout=subprocess.PIPE, check=True, text=True)
+        result = subprocess.run(
+            ["rclone", "obscure", password], stdout=subprocess.PIPE, check=True, text=True
+        )
         obscured_pw = result.stdout.strip()
         config_text = f"""
 [mega]
@@ -841,16 +918,22 @@ user = {email}
 pass = {obscured_pw}
 """
         from tempfile import NamedTemporaryFile
-        with NamedTemporaryFile(delete=False, mode="w", prefix="rclone-", suffix=".conf") as config_file:
+
+        with NamedTemporaryFile(
+            delete=False, mode="w", prefix="rclone-", suffix=".conf"
+        ) as config_file:
             config_file.write(config_text)
             config_path = config_file.name
         try:
-            lsjson = subprocess.run([
-                "rclone", "lsjson", f"mega:{path}", "--config", config_path
-            ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            lsjson = subprocess.run(
+                ["rclone", "lsjson", f"mega:{path}", "--config", config_path],
+                capture_output=True,
+                text=True,
+            )
             if lsjson.returncode != 0:
                 return jsonify({'error': 'Failed to list MEGA folders. Check credentials or path.'})
             import json as pyjson
+
             items = pyjson.loads(lsjson.stdout)
             folders = [item['Name'] for item in items if item['IsDir']]
             # Compute parent path
@@ -859,7 +942,8 @@ pass = {obscured_pw}
         finally:
             os.remove(config_path)
     except Exception as e:
-        return jsonify({'error': f'Error listing MEGA folders: {str(e)}'})
+        return jsonify({'error': f'Error listing MEGA folders: {e!s}'})
+
 
 @setup.route('/api/setup/mega/create_folder', methods=['POST'])
 @setup_api_access_required
@@ -873,7 +957,9 @@ def mega_create_folder_picker():
         password = data.get('password')
         if not folder_name or not email or not password:
             return jsonify({'error': 'Folder name, email, and password are required.'})
-        result = subprocess.run(["rclone", "obscure", password], stdout=subprocess.PIPE, check=True, text=True)
+        result = subprocess.run(
+            ["rclone", "obscure", password], stdout=subprocess.PIPE, check=True, text=True
+        )
         obscured_pw = result.stdout.strip()
         config_text = f"""
 [mega]
@@ -882,22 +968,28 @@ user = {email}
 pass = {obscured_pw}
 """
         from tempfile import NamedTemporaryFile
-        with NamedTemporaryFile(delete=False, mode="w", prefix="rclone-", suffix=".conf") as config_file:
+
+        with NamedTemporaryFile(
+            delete=False, mode="w", prefix="rclone-", suffix=".conf"
+        ) as config_file:
             config_file.write(config_text)
             config_path = config_file.name
         try:
             # Create folder at mega:{path}/{folder_name}
             full_path = f"{path.rstrip('/')}/{folder_name}" if path != '/' else f"/{folder_name}"
-            mkdir = subprocess.run([
-                "rclone", "mkdir", f"mega:{full_path}", "--config", config_path
-            ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            mkdir = subprocess.run(
+                ["rclone", "mkdir", f"mega:{full_path}", "--config", config_path],
+                capture_output=True,
+                text=True,
+            )
             if mkdir.returncode != 0:
                 return jsonify({'error': 'Failed to create folder on MEGA.'})
             return jsonify({'success': True})
         finally:
             os.remove(config_path)
     except Exception as e:
-        return jsonify({'error': f'Error creating folder: {str(e)}'})
+        return jsonify({'error': f'Error creating folder: {e!s}'})
+
 
 @setup.route('/api/setup/mega/save', methods=['POST'])
 @setup_api_access_required
@@ -910,7 +1002,9 @@ def mega_save():
         folder = data.get('folder')
         if not email or not password or not folder:
             return jsonify({'success': False, 'error': 'Email, password, and folder are required.'})
-        result = subprocess.run(["rclone", "obscure", password], stdout=subprocess.PIPE, check=True, text=True)
+        result = subprocess.run(
+            ["rclone", "obscure", password], stdout=subprocess.PIPE, check=True, text=True
+        )
         obscured_pw = result.stdout.strip()
         # Save to config/secrets (for demo, store in config_manager, but should use encrypted secrets in production)
         config_manager.set_value('backup', 'cloud_mode', 'mega')
@@ -925,4 +1019,4 @@ def mega_save():
             return jsonify({'success': False, 'error': 'Failed to write rclone config for MEGA'})
         return jsonify({'success': True})
     except Exception as e:
-        return jsonify({'success': False, 'error': f'Error saving MEGA config: {str(e)}'}) 
+        return jsonify({'success': False, 'error': f'Error saving MEGA config: {e!s}'})

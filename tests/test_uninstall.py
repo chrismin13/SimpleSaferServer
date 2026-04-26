@@ -5,7 +5,6 @@ import textwrap
 import unittest
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 UNINSTALL_SCRIPT = REPO_ROOT / "uninstall.sh"
 
@@ -33,7 +32,9 @@ class UninstallScriptTests(unittest.TestCase):
     def test_collect_samba_users_reads_current_users_json_shape(self):
         with tempfile.TemporaryDirectory() as tempdir:
             users_path = Path(tempdir) / "users.json"
-            users_path.write_text(json.dumps({"alice": {"is_admin": True}, "bob": {"is_admin": False}}))
+            users_path.write_text(
+                json.dumps({"alice": {"is_admin": True}, "bob": {"is_admin": False}})
+            )
 
             output = self.run_bash(
                 textwrap.dedent(

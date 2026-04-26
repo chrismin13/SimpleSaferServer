@@ -44,14 +44,24 @@ class SystemUtilsTimerActivationTests(unittest.TestCase):
             self.assertIsNone(error)
             self.assertTrue((runtime.systemd_dir / "backup_cloud.timer").exists())
             self.assertIn((["systemctl", "daemon-reload"], True), system_utils.commands)
-            self.assertNotIn((["systemctl", "start", "backup_cloud.timer"], True), system_utils.commands)
+            self.assertNotIn(
+                (["systemctl", "start", "backup_cloud.timer"], True), system_utils.commands
+            )
 
             # Fresh installs write the unit files early, but Persistent=true timers must not
             # replay missed work until the setup wizard has collected the real backup config.
             for service_name in ["check_mount", "check_health", "backup_cloud", "ddns_update"]:
-                self.assertIn((["systemctl", "stop", f"{service_name}.timer"], False), system_utils.commands)
-                self.assertIn((["systemctl", "disable", f"{service_name}.timer"], False), system_utils.commands)
-                self.assertIn((["systemctl", "disable", f"{service_name}.service"], False), system_utils.commands)
+                self.assertIn(
+                    (["systemctl", "stop", f"{service_name}.timer"], False), system_utils.commands
+                )
+                self.assertIn(
+                    (["systemctl", "disable", f"{service_name}.timer"], False),
+                    system_utils.commands,
+                )
+                self.assertIn(
+                    (["systemctl", "disable", f"{service_name}.service"], False),
+                    system_utils.commands,
+                )
 
     def test_install_systemd_services_starts_timers_when_activation_is_enabled(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -68,10 +78,20 @@ class SystemUtilsTimerActivationTests(unittest.TestCase):
             self.assertIsNone(error)
 
             for service_name in ["check_mount", "check_health", "backup_cloud", "ddns_update"]:
-                self.assertIn((["systemctl", "enable", f"{service_name}.service"], True), system_utils.commands)
-                self.assertIn((["systemctl", "enable", f"{service_name}.timer"], True), system_utils.commands)
-                self.assertIn((["systemctl", "start", f"{service_name}.timer"], True), system_utils.commands)
-                self.assertNotIn((["systemctl", "disable", f"{service_name}.timer"], False), system_utils.commands)
+                self.assertIn(
+                    (["systemctl", "enable", f"{service_name}.service"], True),
+                    system_utils.commands,
+                )
+                self.assertIn(
+                    (["systemctl", "enable", f"{service_name}.timer"], True), system_utils.commands
+                )
+                self.assertIn(
+                    (["systemctl", "start", f"{service_name}.timer"], True), system_utils.commands
+                )
+                self.assertNotIn(
+                    (["systemctl", "disable", f"{service_name}.timer"], False),
+                    system_utils.commands,
+                )
 
 
 if __name__ == "__main__":

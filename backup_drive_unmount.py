@@ -1,10 +1,10 @@
+import contextlib
 import logging
 import os
 import subprocess
 
 from backup_drive_setup import BackupDriveSetupError, _get_mount_for_partition
 from runtime import get_fake_state, get_runtime
-
 
 LOGGER = logging.getLogger(__name__)
 MANAGED_BACKUP_UNMOUNT_TASKS = (
@@ -73,6 +73,8 @@ def unmount_managed_backup_drive(
     fake_state = get_fake_state() if runtime.is_fake else None
 
     if runtime.is_fake:
+        if fake_state is None:
+            raise RuntimeError('Fake runtime is missing fake state.')
         fake_state.set_mount(False)
         return
 
@@ -83,10 +85,10 @@ def unmount_managed_backup_drive(
     # The managed backup-drive path is intentionally broader than an exact
     # partition umount because Samba and background jobs can keep busy handles
     # on the share even when the user only asked to unmount one partition.
-    try:
-        subprocess.run(['sudo', 'smbcontrol', 'all', 'close-share', configured_mount_point], check=False)
-    except Exception:
-        pass
+    with contextlib.suppress(Exception):
+        subprocess.run(
+            ['sudo', 'smbcontrol', 'all', 'close-share', configured_mount_point], check=False
+        )
 
     for service in MANAGED_BACKUP_UNMOUNT_TASKS:
         subprocess.run(['sudo', 'systemctl', 'stop', service], check=False)
@@ -109,8 +111,6 @@ def unmount_managed_backup_drive(
         if power_down:
             _power_down_managed_backup_drive(configured_uuid, system_utils)
     finally:
-        try:
+        with contextlib.suppress(Exception):
             subprocess.run(['sudo', 'systemctl', 'start', 'smbd'], check=False)
             subprocess.run(['sudo', 'systemctl', 'start', 'nmbd'], check=False)
-        except Exception:
-            pass

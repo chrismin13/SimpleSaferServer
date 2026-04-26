@@ -17,7 +17,6 @@ from smb_manager import SMBManager
 from system_utils import SystemUtils
 from user_manager import PasswordPolicy, UserManager
 
-
 LOGGER = logging.getLogger(__name__)
 LEGACY_BUNDLE_FORMAT = 1
 WEB_SERVICE_NAME = "simple_safer_server_web.service"
@@ -199,9 +198,7 @@ def _ensure_admin_user(user_manager: UserManager, username: str, password: str) 
         user_manager._save_users()
 
         if not user_manager._sync_user_to_samba(username, password):
-            raise MigrationError(
-                f"Failed to sync the existing admin user '{username}' into Samba."
-            )
+            raise MigrationError(f"Failed to sync the existing admin user '{username}' into Samba.")
         return "updated"
 
     if user_manager.users:
@@ -274,7 +271,9 @@ def _restart_web_service(runtime) -> None:
     subprocess.run(["systemctl", "restart", WEB_SERVICE_NAME], check=True)
 
 
-def import_legacy_bundle(bundle_dir: Union[str, Path], *, admin_username: str, admin_password: str) -> dict:
+def import_legacy_bundle(
+    bundle_dir: Union[str, Path], *, admin_username: str, admin_password: str
+) -> dict:
     runtime = get_runtime()
     if not runtime.is_fake and os.geteuid() != 0:
         raise MigrationError("Legacy import must be run as root.")
@@ -325,6 +324,7 @@ def import_legacy_bundle(bundle_dir: Union[str, Path], *, admin_username: str, a
         "bandwidth_limit": legacy_config.get("BANDWIDTH_LIMIT", ""),
         "cloud_mode": "advanced",
         "mega_email": "",
+        # Legacy imports intentionally leave MEGA password empty.
         "mega_pass": "",
         "mega_folder": "",
     }

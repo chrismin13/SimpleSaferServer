@@ -1,3 +1,4 @@
+import contextlib
 import csv
 import json
 import logging
@@ -13,9 +14,9 @@ from tempfile import NamedTemporaryFile
 from runtime import get_runtime
 
 try:
+    import joblib
     import pandas as pd
     from xgboost import XGBClassifier
-    import joblib
 except (ImportError, OSError):
     pd = None
     XGBClassifier = None
@@ -236,7 +237,9 @@ def get_smart_attributes(config_manager, system_utils, device=None, runtime=None
             return None, None, smartctl_json_error
 
         if device is None:
-            device, _, error = resolve_backup_parent_device(config_manager, system_utils, runtime=runtime)
+            device, _, error = resolve_backup_parent_device(
+                config_manager, system_utils, runtime=runtime
+            )
             if error:
                 LOGGER.warning(error)
                 return None, None, error
@@ -315,8 +318,8 @@ def append_telemetry(data_dict, prediction, runtime=None):
     with open(telemetry_path, "a", newline="") as csvfile:
         writer = csv.writer(csvfile)
         if not file_exists:
-            writer.writerow(list(SMART_FIELDS.keys()) + ["failure"])
-        row = [data_dict.get(field, "") for field in SMART_FIELDS.keys()]
+            writer.writerow([*list(SMART_FIELDS.keys()), "failure"])
+        row = [data_dict.get(field, "") for field in SMART_FIELDS]
         row.append(prediction)
         writer.writerow(row)
 
@@ -456,7 +459,11 @@ def _parse_power_on_hours_from_text(text):
 
 def get_fake_hdsentinel_snapshot(config_manager=None, runtime=None):
     runtime = runtime or get_runtime()
-    settings = get_hdsentinel_settings(config_manager) if config_manager is not None else HDSENTINEL_DEFAULTS
+    settings = (
+        get_hdsentinel_settings(config_manager)
+        if config_manager is not None
+        else HDSENTINEL_DEFAULTS
+    )
     return {
         "installed": True,
         "enabled": settings["enabled"],
@@ -509,9 +516,7 @@ def parse_hdsentinel_solid_output(output, device=None):
 
 
 def parse_hdsentinel_report(report_text):
-    health_pct = _parse_optional_int(
-        _extract_first_match([r"Health\s*:\s*(\d+)%"], report_text)
-    )
+    health_pct = _parse_optional_int(_extract_first_match([r"Health\s*:\s*(\d+)%"], report_text))
     performance_pct = _parse_optional_int(
         _extract_first_match([r"Performance\s*:\s*(\d+)%"], report_text)
     )
@@ -535,9 +540,13 @@ def parse_hdsentinel_report(report_text):
             [r"Serial Number\s*:\s*(.+)$", r"Serial No\.?\s*:\s*(.+)$"],
             report_text,
         ),
-        "size_text": _extract_first_match([r"Size\s*:\s*(.+)$", r"Capacity\s*:\s*(.+)$"], report_text),
+        "size_text": _extract_first_match(
+            [r"Size\s*:\s*(.+)$", r"Capacity\s*:\s*(.+)$"], report_text
+        ),
         "interface": _extract_first_match([r"Interface\s*:\s*(.+)$"], report_text),
-        "firmware": _extract_first_match([r"Revision\s*:\s*(.+)$", r"Firmware Revision\s*:\s*(.+)$"], report_text),
+        "firmware": _extract_first_match(
+            [r"Revision\s*:\s*(.+)$", r"Firmware Revision\s*:\s*(.+)$"], report_text
+        ),
     }
 
 
@@ -586,7 +595,9 @@ def collect_hdsentinel_snapshot(config_manager, system_utils, runtime=None, devi
         return snapshot
 
     if device is None:
-        device, _, error = resolve_backup_parent_device(config_manager, system_utils, runtime=runtime)
+        device, _, error = resolve_backup_parent_device(
+            config_manager, system_utils, runtime=runtime
+        )
         if error:
             snapshot["error"] = error
             return snapshot
@@ -610,15 +621,15 @@ def collect_hdsentinel_snapshot(config_manager, system_utils, runtime=None, devi
         report_path = Path(tmp_file.name)
 
     try:
-        report_result = _run_hdsentinel_command(binary_path, ["-dev", device, "-r", str(report_path)])
+        report_result = _run_hdsentinel_command(
+            binary_path, ["-dev", device, "-r", str(report_path)]
+        )
         if report_result.returncode == 0 and report_path.exists():
             report_text = report_path.read_text(errors="replace")
             report_data = parse_hdsentinel_report(report_text)
     finally:
-        try:
+        with contextlib.suppress(FileNotFoundError):
             report_path.unlink()
-        except FileNotFoundError:
-            pass
 
     snapshot.update(solid_data)
     for key, value in report_data.items():
@@ -626,7 +637,9 @@ def collect_hdsentinel_snapshot(config_manager, system_utils, runtime=None, devi
             snapshot[key] = value
 
     if snapshot["power_on_time_text"] is None and snapshot["power_on_hours"] is not None:
-        snapshot["power_on_time_text"] = _format_power_on_time_from_hours(snapshot["power_on_hours"])
+        snapshot["power_on_time_text"] = _format_power_on_time_from_hours(
+            snapshot["power_on_hours"]
+        )
 
     snapshot["available"] = True
     return snapshot
@@ -687,7 +700,9 @@ def run_hdsentinel_health_monitor(config_manager, system_utils, runtime=None):
         and current_health is not None
         and current_health != previous_health
     ):
-        drive_label = current_snapshot.get("model") or current_snapshot.get("device") or "backup drive"
+        drive_label = (
+            current_snapshot.get("model") or current_snapshot.get("device") or "backup drive"
+        )
         title = "HDSentinel Drive Health Changed"
         message = (
             f"HDSentinel reported a health change for {drive_label}. "
@@ -752,8 +767,12 @@ def run_scheduled_drive_health_check(config_manager, system_utils, runtime=None)
         runtime=runtime,
     )
     if smart is None:
-        hdsentinel_result = run_hdsentinel_health_monitor(config_manager, system_utils, runtime=runtime)
-        if smart_error == SMARTCTL_JSON_UPGRADE_MESSAGE and hdsentinel_result.get("snapshot", {}).get("available"):
+        hdsentinel_result = run_hdsentinel_health_monitor(
+            config_manager, system_utils, runtime=runtime
+        )
+        if smart_error == SMARTCTL_JSON_UPGRADE_MESSAGE and hdsentinel_result.get(
+            "snapshot", {}
+        ).get("available"):
             LOGGER.warning(smart_error)
             return {
                 "device": device,

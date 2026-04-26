@@ -1,8 +1,8 @@
-import unittest
 import tempfile
+import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import backup_drive_setup
 
@@ -33,7 +33,9 @@ class BackupDriveSetupTests(unittest.TestCase):
             }
         ]
 
-        with patch('backup_drive_setup._get_blkid_filesystem_type', return_value='ntfs') as mock_blkid:
+        with patch(
+            'backup_drive_setup._get_blkid_filesystem_type', return_value='ntfs'
+        ) as mock_blkid:
             drives = backup_drive_setup.list_available_drives(
                 runtime=SimpleNamespace(is_fake=False),
                 ntfs_only=True,
@@ -159,7 +161,9 @@ class BackupDriveSetupTests(unittest.TestCase):
             }
         ]
 
-        with patch('backup_drive_setup._get_blkid_filesystem_type', return_value='exfat') as mock_blkid:
+        with patch(
+            'backup_drive_setup._get_blkid_filesystem_type', return_value='exfat'
+        ) as mock_blkid:
             drives = backup_drive_setup.list_available_drives(
                 runtime=SimpleNamespace(is_fake=False),
                 ntfs_only=True,
@@ -247,14 +251,16 @@ class BackupDriveSetupTests(unittest.TestCase):
         self.assertEqual(
             mock_run.call_args_list,
             [
-                unittest.mock.call(['umount', '/dev/sdb1'], capture_output=True, text=True),
-                unittest.mock.call(['umount', '/dev/sdb2'], capture_output=True, text=True),
+                call(['umount', '/dev/sdb1'], capture_output=True, text=True),
+                call(['umount', '/dev/sdb2'], capture_output=True, text=True),
             ],
         )
 
     @patch('backup_drive_setup.subprocess.run')
     @patch('backup_drive_setup._get_mount_for_partition')
-    def test_unmount_selected_partition_only_unmounts_exact_partition(self, mock_get_mount, mock_run):
+    def test_unmount_selected_partition_only_unmounts_exact_partition(
+        self, mock_get_mount, mock_run
+    ):
         runtime = SimpleNamespace(is_fake=False)
         mock_get_mount.return_value = {'device': '/dev/sdb1', 'mount_point': '/media/one'}
         mock_run.return_value = SimpleNamespace(returncode=0, stderr='')
@@ -348,7 +354,9 @@ class BackupDriveSetupTests(unittest.TestCase):
         mock_update_fstab.return_value = '/tmp/fstab.backup'
         mock_run.return_value = SimpleNamespace(returncode=1, stderr='busy', stdout='')
 
-        with self.assertRaisesRegex(backup_drive_setup.BackupDriveSetupError, 'Error mounting drive: busy'):
+        with self.assertRaisesRegex(
+            backup_drive_setup.BackupDriveSetupError, 'Error mounting drive: busy'
+        ):
             backup_drive_setup.apply_backup_drive_configuration(
                 '/dev/sdb1',
                 '/media/backup',
@@ -394,7 +402,9 @@ class BackupDriveSetupTests(unittest.TestCase):
         mock_get_fstype.return_value = 'ntfs'
         mock_update_fstab.return_value = '/tmp/fstab.backup'
         mock_reload_mount_units.side_effect = [
-            backup_drive_setup.BackupDriveSetupError('Failed to reload systemd after updating /etc/fstab: bad reload'),
+            backup_drive_setup.BackupDriveSetupError(
+                'Failed to reload systemd after updating /etc/fstab: bad reload'
+            ),
             None,
         ]
 

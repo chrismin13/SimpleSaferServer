@@ -1,3 +1,4 @@
+# pyright: reportOptionalSubscript=false
 import tempfile
 import unittest
 from pathlib import Path
@@ -230,7 +231,9 @@ class SMBManagerTests(unittest.TestCase):
         share_path = self.root / "share-with-comment"
         share_path.mkdir()
 
-        with self.assertRaisesRegex(ValueError, "Share comment contains unsupported control characters"):
+        with self.assertRaisesRegex(
+            ValueError, "Share comment contains unsupported control characters"
+        ):
             self.manager.create_managed_share(
                 "backup",
                 str(share_path),
@@ -304,7 +307,11 @@ class SMBManagerTests(unittest.TestCase):
 
         # This guards the helper against reloading the config after it has
         # already validated ownership from a consistent snapshot.
-        with patch.object(self.manager, "get_managed_share", side_effect=AssertionError("unexpected second lookup")):
+        with patch.object(
+            self.manager,
+            "get_managed_share",
+            side_effect=AssertionError("unexpected second lookup"),
+        ):
             self.assertEqual(self.manager.get_share_users("backup"), ["admin"])
 
     def test_restart_failure_restores_previous_live_config(self):

@@ -1,5 +1,5 @@
-import logging
 import json
+import logging
 import os
 import re
 import shutil
@@ -9,7 +9,6 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 from runtime import get_fake_state, get_runtime
-
 
 LOGGER = logging.getLogger(__name__)
 FSTAB_MARKER = "# SimpleSaferServer managed backup drive"
@@ -68,7 +67,7 @@ def _backup_file(path, runtime, prefix):
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     backup_dir = runtime.config_dir / 'backups'
     backup_dir.mkdir(parents=True, exist_ok=True)
-    backup_path = backup_dir / '{}.{}'.format(prefix, timestamp)
+    backup_path = backup_dir / f'{prefix}.{timestamp}'
     shutil.copy2(path, backup_path)
     return backup_path
 
@@ -171,7 +170,9 @@ def _load_lsblk_devices():
 
 
 def _get_system_drive_path():
-    root_mount = subprocess.run(['findmnt', '-n', '-o', 'SOURCE', '/'], capture_output=True, text=True)
+    root_mount = subprocess.run(
+        ['findmnt', '-n', '-o', 'SOURCE', '/'], capture_output=True, text=True
+    )
     return root_mount.stdout.strip() if root_mount.returncode == 0 else None
 
 
@@ -252,7 +253,9 @@ def _get_partition_filesystem_type(drive):
     )
     if lsblk_result.returncode != 0:
         error_msg = lsblk_result.stderr.strip() if lsblk_result.stderr else 'Unknown error occurred'
-        raise BackupDriveSetupError('Failed to determine the selected partition filesystem: {}'.format(error_msg))
+        raise BackupDriveSetupError(
+            f'Failed to determine the selected partition filesystem: {error_msg}'
+        )
     return lsblk_result.stdout.strip()
 
 
@@ -269,17 +272,21 @@ def _validate_fstab_file(path):
 
         parts = re.split(r'\s+', content)
         if len(parts) < 6:
-            issues.append('line {} does not have 6 fstab fields: {}'.format(line_number, raw_line.strip()))
+            issues.append(f'line {line_number} does not have 6 fstab fields: {raw_line.strip()}')
             continue
 
         spec, mount_point, fstype = parts[0], parts[1], parts[2]
         if _is_managed_fstab_line(raw_line):
             if not mount_point.startswith('/'):
-                issues.append('line {} has a non-absolute managed mount point: {}'.format(line_number, mount_point))
+                issues.append(
+                    f'line {line_number} has a non-absolute managed mount point: {mount_point}'
+                )
             if not spec.startswith('UUID='):
-                issues.append('line {} has an invalid managed UUID spec: {}'.format(line_number, spec))
+                issues.append(f'line {line_number} has an invalid managed UUID spec: {spec}')
             if fstype != 'ntfs-3g':
-                issues.append('line {} has unexpected managed filesystem type: {}'.format(line_number, fstype))
+                issues.append(
+                    f'line {line_number} has unexpected managed filesystem type: {fstype}'
+                )
 
     if issues:
         details = '\n'.join(issues)
@@ -289,7 +296,7 @@ def _validate_fstab_file(path):
 
 
 def _render_managed_fstab_entry(uuid, mount_point):
-    return 'UUID={}\t\t{}\tntfs-3g\tdefaults,nofail\t0\t0 {}\n'.format(uuid, mount_point, FSTAB_MARKER)
+    return f'UUID={uuid}\t\t{mount_point}\tntfs-3g\tdefaults,nofail\t0\t0 {FSTAB_MARKER}\n'
 
 
 def update_managed_fstab(uuid, mount_point, auto_mount, runtime=None, fstab_path=None):
@@ -308,7 +315,7 @@ def update_managed_fstab(uuid, mount_point, auto_mount, runtime=None, fstab_path
             'Multiple SimpleSaferServer-managed /etc/fstab entries were found. Clean them up manually before rerunning drive setup.'
         )
 
-    desired_spec = 'UUID={}'.format(uuid)
+    desired_spec = f'UUID={uuid}'
     if auto_mount:
         conflicts = []
         for line in existing:
@@ -318,9 +325,9 @@ def update_managed_fstab(uuid, mount_point, auto_mount, runtime=None, fstab_path
             if not entry:
                 continue
             if entry['mount_point'] == mount_point:
-                conflicts.append('mount point {}'.format(mount_point))
+                conflicts.append(f'mount point {mount_point}')
             if entry['spec'] == desired_spec:
-                conflicts.append('UUID {}'.format(uuid))
+                conflicts.append(f'UUID {uuid}')
 
         if conflicts:
             raise BackupDriveSetupError(
@@ -345,7 +352,9 @@ def update_managed_fstab(uuid, mount_point, auto_mount, runtime=None, fstab_path
         new_lines.append(_render_managed_fstab_entry(uuid, mount_point))
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    with NamedTemporaryFile('w', delete=False, dir=str(path.parent), prefix='fstab-', suffix='.tmp') as handle:
+    with NamedTemporaryFile(
+        'w', delete=False, dir=str(path.parent), prefix='fstab-', suffix='.tmp'
+    ) as handle:
         handle.writelines(new_lines)
         temp_path = Path(handle.name)
 
@@ -354,9 +363,11 @@ def update_managed_fstab(uuid, mount_point, auto_mount, runtime=None, fstab_path
         if temp_path.exists():
             temp_path.unlink()
         if validation_details:
-            LOGGER.error('Backup drive fstab validation failed for %s:\n%s', temp_path, validation_details)
+            LOGGER.error(
+                'Backup drive fstab validation failed for %s:\n%s', temp_path, validation_details
+            )
         raise BackupDriveSetupError(
-            '/etc/fstab validation failed: {}'.format(validation_error),
+            f'/etc/fstab validation failed: {validation_error}',
             details=validation_details,
         )
 
@@ -399,15 +410,17 @@ def _reload_systemd_mount_units(runtime=None):
 
 
 def get_drive_uuid(drive):
-    result = subprocess.run(['blkid', '-s', 'UUID', '-o', 'value', drive], capture_output=True, text=True)
+    result = subprocess.run(
+        ['blkid', '-s', 'UUID', '-o', 'value', drive], capture_output=True, text=True
+    )
     if result.returncode != 0 or not result.stdout.strip():
-        raise BackupDriveSetupError('Could not determine the UUID for {}.'.format(drive))
+        raise BackupDriveSetupError(f'Could not determine the UUID for {drive}.')
     return result.stdout.strip()
 
 
 def get_drive_usb_id(drive):
     try:
-        sys_block_path = '/sys/class/block/{}/device'.format(os.path.basename(drive))
+        sys_block_path = f'/sys/class/block/{os.path.basename(drive)}/device'
         parent = os.path.realpath(sys_block_path)
         while parent != '/':
             id_vendor_path = os.path.join(parent, 'idVendor')
@@ -417,7 +430,7 @@ def get_drive_usb_id(drive):
                     vendor = vendor_file.read().strip()
                 with open(id_product_path) as product_file:
                     product = product_file.read().strip()
-                return '{}:{}'.format(vendor, product)
+                return f'{vendor}:{product}'
             parent = os.path.dirname(parent)
     except Exception as exc:
         LOGGER.warning('Failed to determine USB ID for %s: %s', drive, exc)
@@ -429,6 +442,8 @@ def list_available_drives(runtime=None, ntfs_only=False):
     fake_state = get_fake_state() if runtime.is_fake else None
 
     if runtime.is_fake:
+        if fake_state is None:
+            raise RuntimeError('Fake runtime is missing fake state.')
         return fake_state.get_virtual_drives()
 
     blockdevices = _load_lsblk_devices()
@@ -451,13 +466,15 @@ def list_available_drives(runtime=None, ntfs_only=False):
             )
             if partition_type is None:
                 continue
-            partitions.append({
-                'path': child_path,
-                'type': partition_type,
-                'label': child.get('label') or '',
-                'size': child.get('size') or '',
-                'mountpoint': child.get('mountpoint') or '',
-            })
+            partitions.append(
+                {
+                    'path': child_path,
+                    'type': partition_type,
+                    'label': child.get('label') or '',
+                    'size': child.get('size') or '',
+                    'mountpoint': child.get('mountpoint') or '',
+                }
+            )
 
         block_filesystem_type = block.get('fstype') or ''
         should_include_whole_disk_target = ntfs_only or bool(
@@ -472,27 +489,31 @@ def list_available_drives(runtime=None, ntfs_only=False):
                 ntfs_only=ntfs_only,
             )
         if not partitions and block_partition_type is not None:
-            partitions.append({
-                'path': disk_path,
-                'type': block_partition_type,
-                'label': block.get('label') or '',
-                'size': block.get('size') or '',
-                'mountpoint': block.get('mountpoint') or '',
-            })
+            partitions.append(
+                {
+                    'path': disk_path,
+                    'type': block_partition_type,
+                    'label': block.get('label') or '',
+                    'size': block.get('size') or '',
+                    'mountpoint': block.get('mountpoint') or '',
+                }
+            )
 
         if ntfs_only and not partitions:
             continue
 
-        drives.append({
-            'path': disk_path,
-            'model': (block.get('model') or 'Unknown Drive').strip() or 'Unknown Drive',
-            'size': block.get('size') or '',
-            # The setup UI expects a connection hint here so operators can
-            # distinguish likely external backup targets from internal disks.
-            'type': _get_drive_connection_type(block),
-            'device_type': block.get('type') or 'unknown',
-            'partitions': partitions,
-        })
+        drives.append(
+            {
+                'path': disk_path,
+                'model': (block.get('model') or 'Unknown Drive').strip() or 'Unknown Drive',
+                'size': block.get('size') or '',
+                # The setup UI expects a connection hint here so operators can
+                # distinguish likely external backup targets from internal disks.
+                'type': _get_drive_connection_type(block),
+                'device_type': block.get('type') or 'unknown',
+                'partitions': partitions,
+            }
+        )
 
     return drives
 
@@ -502,6 +523,8 @@ def unmount_disk_partitions(disk_path, runtime=None):
     fake_state = get_fake_state() if runtime.is_fake else None
 
     if runtime.is_fake:
+        if fake_state is None:
+            raise RuntimeError('Fake runtime is missing fake state.')
         fake_state.set_mount(False)
         return 'Fake backup source disconnected.'
 
@@ -519,15 +542,17 @@ def unmount_disk_partitions(disk_path, runtime=None):
     for partition in mounted_partitions:
         result = subprocess.run(['umount', partition['device']], capture_output=True, text=True)
         if result.returncode != 0:
-            failures.append('{}: {}'.format(
-                partition['device'],
-                result.stderr.strip() if result.stderr else 'unknown error',
-            ))
+            failures.append(
+                '{}: {}'.format(
+                    partition['device'],
+                    result.stderr.strip() if result.stderr else 'unknown error',
+                )
+            )
 
     if failures:
         raise BackupDriveSetupError('Failed to unmount partitions: {}'.format('; '.join(failures)))
 
-    return 'Successfully unmounted {} partition(s).'.format(len(mounted_partitions))
+    return f'Successfully unmounted {len(mounted_partitions)} partition(s).'
 
 
 def unmount_selected_partition(partition_path, runtime=None):
@@ -535,6 +560,8 @@ def unmount_selected_partition(partition_path, runtime=None):
     fake_state = get_fake_state() if runtime.is_fake else None
 
     if runtime.is_fake:
+        if fake_state is None:
+            raise RuntimeError('Fake runtime is missing fake state.')
         fake_state.set_mount(False)
         return 'Fake backup source disconnected.'
 
@@ -574,7 +601,9 @@ def _sync_backup_share_path(smb_manager, new_path):
     return False
 
 
-def apply_backup_drive_configuration(partition, mount_point, auto_mount, config_manager, smb_manager, runtime=None):
+def apply_backup_drive_configuration(
+    partition, mount_point, auto_mount, config_manager, smb_manager, runtime=None
+):
     runtime = runtime or get_runtime()
     fake_state = get_fake_state() if runtime.is_fake else None
 
@@ -582,20 +611,24 @@ def apply_backup_drive_configuration(partition, mount_point, auto_mount, config_
     if not mount_point or not mount_point.startswith('/'):
         raise BackupDriveSetupError('Mount point must be an absolute path.')
 
-    previous_mount_point = config_manager.get_value('backup', 'mount_point', runtime.default_mount_point)
+    previous_mount_point = config_manager.get_value(
+        'backup', 'mount_point', runtime.default_mount_point
+    )
     previous_uuid = config_manager.get_value('backup', 'uuid', '')
     previous_usb_id = config_manager.get_value('backup', 'usb_id', '')
 
     if runtime.is_fake:
+        if fake_state is None:
+            raise RuntimeError('Fake runtime is missing fake state.')
         selected_path = Path(os.path.abspath(mount_point or runtime.default_mount_point))
         if not selected_path.exists():
             try:
                 selected_path.relative_to(runtime.data_dir)
                 selected_path.mkdir(parents=True, exist_ok=True)
-            except ValueError:
+            except ValueError as exc:
                 raise BackupDriveSetupError(
                     'In fake mode, choose an existing folder on this machine or a path inside .dev-data.'
-                )
+                ) from exc
         if not selected_path.is_dir():
             raise BackupDriveSetupError('Source path must be a directory.')
 
@@ -607,7 +640,9 @@ def apply_backup_drive_configuration(partition, mount_point, auto_mount, config_
         config_updated = False
 
         try:
-            fstab_backup = update_managed_fstab(uuid, selected_path_str, bool(auto_mount), runtime=runtime)
+            fstab_backup = update_managed_fstab(
+                uuid, selected_path_str, bool(auto_mount), runtime=runtime
+            )
             _reload_systemd_mount_units(runtime=runtime)
 
             backup_share = smb_manager.get_managed_share('backup')
@@ -620,9 +655,11 @@ def apply_backup_drive_configuration(partition, mount_point, auto_mount, config_
             config_manager.set_value('backup', 'mount_point', selected_path_str)
             config_manager.set_value('backup', 'uuid', uuid)
             config_manager.set_value('backup', 'usb_id', usb_id)
-            fake_state.set_mount(True, mount_point=selected_path_str, drive=partition or '/dev/fakebackup1')
+            fake_state.set_mount(
+                True, mount_point=selected_path_str, drive=partition or '/dev/fakebackup1'
+            )
             return {
-                'message': 'Successfully selected local backup source at {}'.format(selected_path),
+                'message': f'Successfully selected local backup source at {selected_path}',
                 'uuid': uuid,
                 'usb_id': usb_id,
                 'mount_point': selected_path_str,
@@ -642,14 +679,19 @@ def apply_backup_drive_configuration(partition, mount_point, auto_mount, config_
                         valid_users=share_backup.get('valid_users', []),
                     )
                 except Exception as share_exc:
-                    LOGGER.error('Failed to restore fake backup share after drive setup error: %s', share_exc)
+                    LOGGER.error(
+                        'Failed to restore fake backup share after drive setup error: %s', share_exc
+                    )
             if config_updated:
                 try:
                     config_manager.set_value('backup', 'mount_point', previous_mount_point)
                     config_manager.set_value('backup', 'uuid', previous_uuid)
                     config_manager.set_value('backup', 'usb_id', previous_usb_id)
                 except Exception as config_exc:
-                    LOGGER.error('Failed to restore fake backup config after drive setup error: %s', config_exc)
+                    LOGGER.error(
+                        'Failed to restore fake backup config after drive setup error: %s',
+                        config_exc,
+                    )
             raise
 
     if not partition:
@@ -688,8 +730,10 @@ def apply_backup_drive_configuration(partition, mount_point, auto_mount, config_
             text=True,
         )
         if mount_result.returncode != 0:
-            error_msg = mount_result.stderr.strip() if mount_result.stderr else 'Unknown error occurred'
-            raise BackupDriveSetupError('Error mounting drive: {}'.format(error_msg))
+            error_msg = (
+                mount_result.stderr.strip() if mount_result.stderr else 'Unknown error occurred'
+            )
+            raise BackupDriveSetupError(f'Error mounting drive: {error_msg}')
         mounted = True
 
         backup_share = smb_manager.get_managed_share('backup')
@@ -704,7 +748,7 @@ def apply_backup_drive_configuration(partition, mount_point, auto_mount, config_
         config_manager.set_value('backup', 'usb_id', usb_id)
 
         return {
-            'message': 'Successfully configured {} at {}'.format(partition, mount_point),
+            'message': f'Successfully configured {partition} at {mount_point}',
             'uuid': uuid,
             'usb_id': usb_id,
             'mount_point': mount_point,
@@ -726,12 +770,16 @@ def apply_backup_drive_configuration(partition, mount_point, auto_mount, config_
                     valid_users=share_backup.get('valid_users', []),
                 )
             except Exception as share_exc:
-                LOGGER.error('Failed to restore backup share after drive setup error: %s', share_exc)
+                LOGGER.error(
+                    'Failed to restore backup share after drive setup error: %s', share_exc
+                )
         if config_updated:
             try:
                 config_manager.set_value('backup', 'mount_point', previous_mount_point)
                 config_manager.set_value('backup', 'uuid', previous_uuid)
                 config_manager.set_value('backup', 'usb_id', previous_usb_id)
             except Exception as config_exc:
-                LOGGER.error('Failed to restore backup config after drive setup error: %s', config_exc)
+                LOGGER.error(
+                    'Failed to restore backup config after drive setup error: %s', config_exc
+                )
         raise

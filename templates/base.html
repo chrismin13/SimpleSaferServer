@@ -46,30 +46,30 @@
             </div>
 
             <div class="sidebar-nav">
-                <a href="{{ url_for('dashboard') }}" class="nav-item {% if request.endpoint == 'dashboard' %}active{% endif %}">
+                <a href="{{ url_for('task_routes.dashboard') }}" class="nav-item {% if request.endpoint == 'task_routes.dashboard' %}active{% endif %}">
                     <i class="fas fa-house fa-fw"></i> Overview
                 </a>
                 <a href="{{ url_for('network_file_sharing') }}" class="nav-item {% if request.endpoint == 'network_file_sharing' %}active{% endif %}">
                     <i class="fas fa-share-nodes fa-fw"></i> File Sharing
                 </a>
-                <a href="{{ url_for('users') }}" class="nav-item {% if request.endpoint == 'users' %}active{% endif %}">
+                <a href="{{ url_for('users_routes.users_page') }}" class="nav-item {% if request.endpoint == 'users_routes.users_page' %}active{% endif %}">
                     <i class="fas fa-users fa-fw"></i> Users
                 </a>
                 <a href="{{ url_for('drives') }}" class="nav-item {% if request.endpoint == 'drives' %}active{% endif %}">
                     <i class="fas fa-hard-drive fa-fw"></i> Drive Health
                 </a>
                 {% if is_admin %}
-                <a href="{{ url_for('ddns') }}" class="nav-item {% if request.endpoint == 'ddns' %}active{% endif %}">
+                <a href="{{ url_for('ddns_routes.ddns_page') }}" class="nav-item {% if request.endpoint == 'ddns_routes.ddns_page' %}active{% endif %}">
                     <i class="fas fa-globe fa-fw"></i> DDNS
                 </a>
                 {% endif %}
-                <a href="{{ url_for('cloud_backup') }}" class="nav-item {% if request.endpoint == 'cloud_backup' %}active{% endif %}">
+                <a href="{{ url_for('cloud_backup_routes.cloud_backup_page') }}" class="nav-item {% if request.endpoint == 'cloud_backup_routes.cloud_backup_page' %}active{% endif %}">
                     <i class="fas fa-cloud-arrow-up fa-fw"></i> Cloud Backup
                 </a>
-                <a href="{{ url_for('system_updates') }}" class="nav-item {% if request.endpoint == 'system_updates' %}active{% endif %}">
+                <a href="{{ url_for('system_updates_routes.system_updates_page') }}" class="nav-item {% if request.endpoint == 'system_updates_routes.system_updates_page' %}active{% endif %}">
                     <i class="fas fa-download fa-fw"></i> System Updates
                 </a>
-                <a href="{{ url_for('alerts') }}" class="nav-item {% if request.endpoint == 'alerts' %}active{% endif %}">
+                <a href="{{ url_for('alerts_routes.alerts_page') }}" class="nav-item {% if request.endpoint == 'alerts_routes.alerts_page' %}active{% endif %}">
                     <i class="fas fa-bell fa-fw"></i> Alerts
                 </a>
             </div>

@@ -12,5 +12,7 @@
     "third_party"
   ],
   "typeCheckingMode": "basic",
+  "venvPath": ".",
+  "venv": ".venv",
   "reportMissingImports": "warning"
 }
