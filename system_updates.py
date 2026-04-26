@@ -921,7 +921,8 @@ class SystemUpdatesManager:
                     stderr=attach.stderr,
                 )
         finally:
-            attach_config_path.unlink(missing_ok=True)
+            if attach_config_path.exists():
+                attach_config_path.unlink()
 
         self.command_adapter.pro_enable_livepatch(pro_binary)
         return self.get_livepatch_status()

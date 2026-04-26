@@ -128,12 +128,12 @@ class AppRouteAuthorizationTests(unittest.TestCase):
             guard_names = set()
             for decorator in node.decorator_list:
                 if isinstance(decorator, ast.Call) and isinstance(decorator.func, ast.Attribute):
-                    if (
-                        decorator.func.attr == 'route'
-                        and decorator.args
-                        and isinstance(decorator.args[0], ast.Constant)
-                    ):
-                        route_paths.append(decorator.args[0].value)
+                    if decorator.func.attr == 'route' and decorator.args:
+                        route_arg = decorator.args[0]
+                        if isinstance(route_arg, ast.Constant):
+                            route_paths.append(route_arg.value)
+                        elif isinstance(route_arg, ast.Str):
+                            route_paths.append(route_arg.s)
                 else:
                     name = _decorator_name(decorator)
                     if name:

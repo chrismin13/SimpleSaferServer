@@ -33,7 +33,11 @@ class SetupCommandAdapter:
 
     def obscure_rclone_password(self, password: str) -> str:
         result = self._command_runner.run(
-            ["rclone", "obscure", password], stdout=PIPE, check=True, text=True
+            ["rclone", "obscure", "-"],
+            input=f"{password}\n",
+            stdout=PIPE,
+            check=True,
+            text=True,
         )
         return result.stdout.strip()
 

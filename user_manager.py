@@ -120,7 +120,7 @@ class UserManager:
             logger.error(f"Error removing user {username} from Samba: {e}")
             return False
 
-    def create_user(self, username, password):
+    def create_user(self, username, password, is_admin=True):
         """Create a new user"""
         # Validate username
         if not re.match(r'^[a-zA-Z0-9_-]+$', username):
@@ -138,7 +138,7 @@ class UserManager:
         # Store user with additional security measures
         self.users[username] = {
             'password_hash': generate_password_hash(password),
-            'is_admin': True,  # First user is always admin
+            'is_admin': is_admin,
             'created_at': str(datetime.datetime.utcnow()),
             'last_login': None,
             'failed_attempts': 0,

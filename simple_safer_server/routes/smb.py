@@ -44,7 +44,9 @@ def api_list_smb_shares():
 @api_admin_required
 def api_add_smb_share():
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            return jsonify({"error": "JSON object is required"}), 400
         share_name = data.get("name", "").strip()
         path = data.get("path", "").strip()
         writable = data.get("writable", False)
@@ -71,7 +73,9 @@ def api_add_smb_share():
 @api_admin_required
 def api_edit_smb_share(share_name):
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            return jsonify({"error": "JSON object is required"}), 400
         new_name = data.get("name", "").strip()
         path = data.get("path", "").strip()
         writable = data.get("writable", False)
@@ -153,7 +157,9 @@ def api_get_share_users(share_name):
 @api_admin_required
 def api_update_share_users(share_name):
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            return jsonify({"error": "JSON object is required"}), 400
         users = data.get("users", [])
         services = _get_services()
         for username in users:

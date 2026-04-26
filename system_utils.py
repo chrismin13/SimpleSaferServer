@@ -261,7 +261,12 @@ cloudflare_proxy = {ddns_config.get('cloudflare_proxy', 'false')}
             backup_cloud_time = schedule.get('backup_cloud_time', '3:00:00')
 
             # Parse the backup time and calculate sequential times
-            backup_hour, backup_minute = map(int, backup_cloud_time.split(':'))
+            time_parts = backup_cloud_time.split(':')
+            if len(time_parts) < 2:
+                raise ValueError("schedule.backup_cloud_time must be in HH:MM or HH:MM:SS format")
+            backup_hour, backup_minute = map(int, time_parts[:2])
+            if not (0 <= backup_hour < 24 and 0 <= backup_minute < 60):
+                raise ValueError("schedule.backup_cloud_time contains an invalid time")
 
             # Calculate check_health time (1 minute before backup)
             check_health_minute = backup_minute - 1

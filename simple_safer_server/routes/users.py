@@ -42,18 +42,16 @@ def api_list_users():
 def api_add_user():
     user_manager = _get_services().user_manager
     user_manager.users = user_manager._load_users()
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     username = data.get("username")
     password = data.get("password")
     is_admin = data.get("is_admin", False)
 
     if not username or not password:
-        return jsonify({"success": False, "error": "Username and password are required"})
+        return jsonify({"success": False, "error": "Username and password are required"}), 400
 
-    success, message = user_manager.create_user(username, password)
+    success, message = user_manager.create_user(username, password, is_admin=is_admin)
     if success:
-        user_manager.users[username]["is_admin"] = is_admin
-        user_manager._save_users()
         return jsonify({"success": True, "error": None})
     return jsonify({"success": False, "error": message})
 
@@ -63,7 +61,7 @@ def api_add_user():
 def api_edit_user(username):
     user_manager = _get_services().user_manager
     user_manager.users = user_manager._load_users()
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     new_password = data.get("password")
     is_admin = data.get("is_admin")
 

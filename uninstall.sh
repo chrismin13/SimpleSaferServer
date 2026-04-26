@@ -96,17 +96,21 @@ apt_updates_were_managed() {
         return 1
     fi
 
-    awk '
-        /^[[:space:]]*\[/ {
-            in_apt_updates = ($0 ~ /^[[:space:]]*\[apt_updates\][[:space:]]*$/)
-            next
-        }
-        in_apt_updates && /^[[:space:]]*managed[[:space:]]*=[[:space:]]*true[[:space:]]*$/ {
-            found = 1
-            exit
-        }
-        END { exit found ? 0 : 1 }
-    ' "$CONFIG_FILE"
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo "ERROR: python3 is required to read $CONFIG_FILE during uninstall." >&2
+        return 1
+    fi
+
+    python3 - "$CONFIG_FILE" <<'PY'
+import configparser
+import sys
+
+config = configparser.ConfigParser()
+config.read(sys.argv[1])
+if config.getboolean("apt_updates", "managed", fallback=False):
+    raise SystemExit(0)
+raise SystemExit(1)
+PY
 }
 
 backup_file_if_present() {
@@ -146,26 +150,26 @@ remove_managed_fstab_entries() {
     echo "Removing SimpleSaferServer-managed /etc/fstab entries..."
     backup_file_if_present "$original" "uninstall_backup"
 
-    if ! awk -v marker="$FSTAB_MARKER" -v legacy="$LEGACY_FSTAB_MARKER" '
-    function trim(value) {
-        gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
-        return value
-    }
+    if ! python3 - "$original" "$updated" "$FSTAB_MARKER" "$LEGACY_FSTAB_MARKER" <<'PY'
+import sys
 
-    {
-        if ($0 ~ /^[[:space:]]*#/ || index($0, "#") == 0) {
-            print
-            next
-        }
+original, updated, marker, legacy = sys.argv[1:]
+with open(original, "r", encoding="utf-8") as handle:
+    lines = handle.readlines()
 
-        comment = trim(substr($0, index($0, "#") + 1))
-        if (comment == marker || comment == legacy) {
-            next
-        }
+with open(updated, "w", encoding="utf-8") as handle:
+    for line in lines:
+        stripped = line.lstrip()
+        if stripped.startswith("#") or "#" not in line:
+            handle.write(line)
+            continue
 
-        print
-    }
-    ' "$original" > "$updated"; then
+        comment = line.split("#", 1)[1].strip()
+        if comment in {marker, legacy}:
+            continue
+        handle.write(line)
+PY
+    then
         rm -f "$updated"
         echo "ERROR: Failed to rebuild $original while removing SimpleSaferServer-managed entries."
         return 1
@@ -203,60 +207,44 @@ cleanup_managed_smb_shares() {
     echo "Removing SimpleSaferServer-managed Samba shares..."
     backup_file_if_present "$SMB_CONF" "uninstall_backup"
 
-    if ! awk -v begin_prefix="$MANAGED_SHARE_BEGIN_PREFIX" -v end_prefix="$MANAGED_SHARE_END_PREFIX" '
-    BEGIN {
-        in_managed_share = 0
+    if ! python3 - "$SMB_CONF" "$cleaned" "$MANAGED_SHARE_BEGIN_PREFIX" "$MANAGED_SHARE_END_PREFIX" <<'PY'
+import sys
+
+source, cleaned, begin_prefix, end_prefix = sys.argv[1:]
+with open(source, "r", encoding="utf-8") as handle:
+    lines = handle.readlines()
+
+output = []
+in_managed_share = False
+current_share_name = ""
+
+for line in lines:
+    stripped = line.lstrip()
+    if stripped.startswith(begin_prefix):
+        share_name = stripped[len(begin_prefix):].strip()
+        if in_managed_share or not share_name:
+            raise SystemExit(1)
+        in_managed_share = True
+        current_share_name = share_name
+        continue
+
+    if stripped.startswith(end_prefix):
+        share_name = stripped[len(end_prefix):].strip()
+        if not in_managed_share or not share_name or share_name != current_share_name:
+            raise SystemExit(1)
+        in_managed_share = False
         current_share_name = ""
-        bad = 0
-    }
+        continue
 
-    {
-        line = $0
-        sub(/^[[:space:]]+/, "", line)
+    if not in_managed_share:
+        output.append(line)
 
-        if (index(line, begin_prefix) == 1) {
-            share_name = substr(line, length(begin_prefix) + 1)
-            gsub(/^[[:space:]]+|[[:space:]]+$/, "", share_name)
+if in_managed_share:
+    raise SystemExit(1)
 
-            if (in_managed_share || share_name == "") {
-                bad = 1
-                exit 1
-            }
-
-            in_managed_share = 1
-            current_share_name = share_name
-            next
-        }
-
-        if (index(line, end_prefix) == 1) {
-            share_name = substr(line, length(end_prefix) + 1)
-            gsub(/^[[:space:]]+|[[:space:]]+$/, "", share_name)
-
-            if (!in_managed_share || share_name == "" || share_name != current_share_name) {
-                bad = 1
-                exit 1
-            }
-
-            in_managed_share = 0
-            current_share_name = ""
-            next
-        }
-
-        if (!in_managed_share) {
-            print
-        }
-    }
-
-    END {
-        if (in_managed_share) {
-            bad = 1
-        }
-
-        if (bad) {
-            exit 1
-        }
-    }
-    ' "$SMB_CONF" > "$cleaned"
+with open(cleaned, "w", encoding="utf-8") as handle:
+    handle.writelines(output)
+PY
     then
         rm -f "$cleaned"
         echo "ERROR: Refusing to rewrite $SMB_CONF because the SimpleSaferServer share markers are malformed."

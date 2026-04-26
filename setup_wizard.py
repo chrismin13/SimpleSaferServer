@@ -736,7 +736,7 @@ def setup_smb_share(config):
             setup_command_adapter.enable_smb_unit('smbd')
             setup_command_adapter.enable_smb_unit('nmbd')
             logger.info("SMB services enabled for boot")
-        except CalledProcessError as e:
+        except (CalledProcessError, OSError) as e:
             logger.error(f"Failed to enable SMB services: {e}")
             # Don't fail setup for this, just log it
 

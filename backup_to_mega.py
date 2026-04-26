@@ -20,7 +20,13 @@ def encrypt_password(password):
     Run `rclone obscure` to encrypt the MEGA password.
     This is what rclone expects in the config.
     """
-    result = command_runner.run(["rclone", "obscure", password], stdout=PIPE, check=True, text=True)
+    result = command_runner.run(
+        ["rclone", "obscure", "-"],
+        input=f"{password}\n",
+        stdout=PIPE,
+        check=True,
+        text=True,
+    )
     return result.stdout.strip()
 
 
@@ -29,6 +35,7 @@ def build_temp_config(email, obscured_pw):
     Create a temporary rclone config file with MEGA credentials.
     """
     config_text = RCLONE_CONFIG_TEMPLATE.format(email=email, password=obscured_pw)
+    # rclone receives this path via --config after the file is closed; cleanup happens in main().
     with tempfile.NamedTemporaryFile(
         delete=False, mode="w", prefix="rclone-", suffix=".conf"
     ) as config_file:
@@ -43,10 +50,10 @@ def main():
     local_path = input("Enter path to file or folder to back up: ")
     remote_folder = input("Enter remote folder name on MEGA (e.g., backups): ")
 
-    obscured_pw = encrypt_password(password)
-    config_path = build_temp_config(email, obscured_pw)
-
+    config_path = None
     try:
+        obscured_pw = encrypt_password(password)
+        config_path = build_temp_config(email, obscured_pw)
         print(f"\n🚀 Uploading {local_path} to MEGA:{remote_folder} ...\n")
         command_runner.run(
             [
@@ -68,8 +75,9 @@ def main():
     except CalledProcessError as e:
         print(f"\n❌ rclone failed: {e}")
     finally:
-        os.remove(config_path)
-        print(f"(Temporary config {config_path} removed)")
+        if config_path and os.path.exists(config_path):
+            os.remove(config_path)
+            print(f"(Temporary config {config_path} removed)")
 
 
 if __name__ == "__main__":

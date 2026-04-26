@@ -172,7 +172,8 @@ class CloudBackupServiceTests(unittest.TestCase):
         result = service.validate_mega({"email": "user@example.com", "password": "secret"})
 
         self.assertEqual(result, {"success": True})
-        self.assertEqual(command_runner.calls[0][0], ["rclone", "obscure", "secret"])
+        self.assertEqual(command_runner.calls[0][0], ["rclone", "obscure", "-"])
+        self.assertEqual(command_runner.calls[0][1]["input"], "secret\n")
         self.assertEqual(command_runner.calls[1][0][0:3], ["rclone", "lsjson", "mega:/"])
         self.assertEqual(config.config["backup"]["mega_pass"], "obscured-password")
         rclone_config = system_utils.rclone_config

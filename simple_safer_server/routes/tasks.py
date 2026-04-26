@@ -75,7 +75,11 @@ def task_logs(task_name):
     task = _get_services().task_service.get_task(task_name)
     if not task:
         abort(404)
-    lines = int(request.args.get("lines", 50))
+    try:
+        lines = int(request.args.get("lines", 50))
+    except (TypeError, ValueError):
+        lines = 50
+    lines = max(1, min(lines, 500))
     logs = task.get_logs(lines)
     return logs, 200, {"Content-Type": "text/plain; charset=utf-8"}
 

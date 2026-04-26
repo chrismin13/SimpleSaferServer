@@ -61,6 +61,7 @@ class SystemUpdatesCommandAdapter:
                 proc.kill()
 
     def write_apt_periodic_config(self, temp_file):
+        temp_file.seek(0)
         return self._command_runner.run(
             ["sudo", "tee", "/etc/apt/apt.conf.d/20auto-upgrades"],
             input=temp_file.read(),

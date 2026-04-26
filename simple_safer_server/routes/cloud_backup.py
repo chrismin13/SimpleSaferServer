@@ -26,17 +26,20 @@ def api_cloud_backup_get_config():
         return json_success(config=_get_services().cloud_backup_service.get_config())
     except Exception as exc:
         current_app.logger.error("Error getting cloud backup config: %s", exc)
-        return json_error("Could not load backup settings.")
+        return json_error("Could not load backup settings.", status_code=500)
 
 
 @cloud_backup.route("/api/cloud_backup/config", methods=["POST"])
 @api_admin_required
 def api_cloud_backup_set_config():
     try:
-        return jsonify(_get_services().cloud_backup_service.save_config(request.get_json()))
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            return json_error("JSON object is required.", status_code=400)
+        return jsonify(_get_services().cloud_backup_service.save_config(data))
     except Exception as exc:
         current_app.logger.error("Error saving cloud backup config: %s", exc)
-        return json_error("Could not save backup settings.")
+        return json_error("Could not save backup settings.", status_code=500)
 
 
 @cloud_backup.route("/api/cloud_backup/status", methods=["GET"])
@@ -46,7 +49,7 @@ def api_cloud_backup_status():
         return jsonify(_get_services().cloud_backup_service.get_status())
     except Exception as exc:
         current_app.logger.error("Error getting cloud backup status: %s", exc)
-        return json_error("Could not get backup status.")
+        return json_error("Could not get backup status.", status_code=500)
 
 
 @cloud_backup.route("/api/cloud_backup/run", methods=["POST"])
@@ -56,7 +59,7 @@ def api_cloud_backup_run():
         return jsonify(_get_services().cloud_backup_service.run_backup())
     except Exception as exc:
         current_app.logger.error("Error running cloud backup: %s", exc)
-        return json_error("Could not start backup.")
+        return json_error("Could not start backup.", status_code=500)
 
 
 @cloud_backup.route("/api/cloud_backup/mega/list_folders", methods=["POST"])
@@ -64,11 +67,13 @@ def api_cloud_backup_run():
 def api_cloud_backup_mega_list_folders():
     try:
         return jsonify(
-            _get_services().cloud_backup_service.list_mega_folders(request.get_json() or {})
+            _get_services().cloud_backup_service.list_mega_folders(
+                request.get_json(silent=True) or {}
+            )
         )
     except Exception as exc:
         current_app.logger.error("Error listing MEGA folders: %s", exc)
-        return json_error("Could not list MEGA folders.")
+        return json_error("Could not list MEGA folders.", status_code=500)
 
 
 @cloud_backup.route("/api/cloud_backup/mega/create_folder", methods=["POST"])
@@ -76,11 +81,13 @@ def api_cloud_backup_mega_list_folders():
 def api_cloud_backup_mega_create_folder():
     try:
         return jsonify(
-            _get_services().cloud_backup_service.create_mega_folder(request.get_json() or {})
+            _get_services().cloud_backup_service.create_mega_folder(
+                request.get_json(silent=True) or {}
+            )
         )
     except Exception as exc:
         current_app.logger.error("Error creating MEGA folder: %s", exc)
-        return json_error("Could not create MEGA folder.")
+        return json_error("Could not create MEGA folder.", status_code=500)
 
 
 @cloud_backup.route("/api/cloud_backup/schedule", methods=["GET"])
@@ -90,23 +97,30 @@ def api_cloud_backup_get_schedule():
         return jsonify(_get_services().cloud_backup_service.get_schedule())
     except Exception as exc:
         current_app.logger.error("Error getting backup schedule: %s", exc)
-        return json_error("Could not load backup settings.")
+        return json_error("Could not load backup settings.", status_code=500)
 
 
 @cloud_backup.route("/api/cloud_backup/schedule", methods=["POST"])
 @api_admin_required
 def api_cloud_backup_set_schedule():
     try:
-        return jsonify(_get_services().cloud_backup_service.save_schedule(request.get_json()))
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            return json_error("JSON object is required.", status_code=400)
+        return jsonify(_get_services().cloud_backup_service.save_schedule(data))
     except Exception as exc:
         current_app.logger.error("Error saving backup schedule: %s", exc)
-        return json_error("Could not save backup settings.")
+        return json_error("Could not save backup settings.", status_code=500)
 
 
 @cloud_backup.route("/api/cloud_backup/mega/validate", methods=["POST"])
 @api_admin_required
 def api_cloud_backup_mega_validate():
     try:
-        return jsonify(_get_services().cloud_backup_service.validate_mega(request.get_json()))
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            return json_error("JSON object is required.", status_code=400)
+        return jsonify(_get_services().cloud_backup_service.validate_mega(data))
     except Exception as exc:
-        return json_error(f"Error connecting to MEGA: {exc!s}")
+        current_app.logger.error("Error validating MEGA credentials: %s", exc)
+        return json_error("Could not validate MEGA credentials.", status_code=500)

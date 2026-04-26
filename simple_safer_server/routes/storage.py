@@ -192,7 +192,7 @@ def api_backup_drive_drives():
         )
     except Exception as exc:
         current_app.logger.error("Error listing backup drives: %s", exc)
-        return jsonify({"success": False, "error": str(exc)})
+        return jsonify({"success": False, "error": str(exc)}), 500
 
 
 @storage.route("/api/backup_drive/unmount", methods=["POST"])
@@ -234,7 +234,7 @@ def api_backup_drive_unmount():
         return jsonify({"success": False, "error": str(exc), "details": exc.details})
     except Exception as exc:
         current_app.logger.error("Error unmounting backup drive: %s", exc)
-        return jsonify({"success": False, "error": "Could not unmount the selected drive."})
+        return jsonify({"success": False, "error": "Could not unmount the selected drive."}), 500
 
 
 @storage.route("/api/backup_drive/configure", methods=["POST"])
@@ -256,4 +256,4 @@ def api_backup_drive_configure():
         return jsonify({"success": False, "error": str(exc), "details": exc.details})
     except Exception as exc:
         current_app.logger.error("Error configuring backup drive: %s", exc)
-        return jsonify({"success": False, "error": "Could not configure the backup drive."})
+        return jsonify({"success": False, "error": "Could not configure the backup drive."}), 500

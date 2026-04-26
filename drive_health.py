@@ -671,7 +671,7 @@ def _log_and_email_alert(config_manager, runtime, title, message, *, alert_type,
     email_body = f"Subject: {title}\nFrom: {from_address}\n\n{message}"
     try:
         drive_health_command_adapter.send_email(from_address, email_address, email_body)
-    except CalledProcessError as exc:
+    except (CalledProcessError, OSError) as exc:
         LOGGER.warning("Failed to send alert email '%s': %s", title, exc)
 
 
