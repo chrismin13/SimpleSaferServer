@@ -3,7 +3,7 @@ from typing import Any
 from flask import Blueprint, current_app, jsonify, render_template, request, session
 
 from simple_safer_server.web.api import json_error, json_success
-from user_manager import admin_required, api_admin_required
+from simple_safer_server.services.user_manager import admin_required, api_admin_required
 
 cloud_backup = Blueprint("cloud_backup_routes", __name__)
 

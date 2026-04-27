@@ -14,7 +14,7 @@ from backup_drive_unmount import (
     unmount_managed_backup_drive,
 )
 from dashboard_messages import build_dashboard_unmount_success_message
-from user_manager import admin_required, api_admin_required
+from simple_safer_server.services.user_manager import admin_required, api_admin_required
 
 storage = Blueprint("storage_routes", __name__)
 

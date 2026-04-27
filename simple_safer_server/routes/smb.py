@@ -3,8 +3,8 @@ from typing import Any
 
 from flask import Blueprint, current_app, jsonify, request
 
-from smb_manager import SMB_DOCS_URL
-from user_manager import api_admin_required
+from simple_safer_server.services.smb_manager import SMB_DOCS_URL
+from simple_safer_server.services.user_manager import api_admin_required
 
 smb = Blueprint("smb_routes", __name__)
 

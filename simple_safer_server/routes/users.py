@@ -3,7 +3,7 @@ from typing import Any
 from flask import Blueprint, current_app, jsonify, render_template, request, session
 from werkzeug.security import generate_password_hash
 
-from user_manager import admin_required, api_admin_required
+from simple_safer_server.services.user_manager import admin_required, api_admin_required
 
 users = Blueprint("users_routes", __name__)
 

@@ -2,7 +2,7 @@ from typing import Any
 
 from flask import Blueprint, abort, jsonify, render_template, request, send_file
 
-from drive_health import (
+from simple_safer_server.services.drive_health import (
     SMART_FIELDS,
     SMARTCTL_JSON_UPGRADE_MESSAGE,
     append_telemetry,
@@ -15,7 +15,7 @@ from drive_health import (
     predict_failure_probability,
     save_hdsentinel_settings,
 )
-from user_manager import admin_required, api_admin_required
+from simple_safer_server.services.user_manager import admin_required, api_admin_required
 
 drive_health = Blueprint("drive_health_routes", __name__)
 

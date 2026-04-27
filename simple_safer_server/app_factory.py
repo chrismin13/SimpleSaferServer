@@ -39,10 +39,10 @@ from simple_safer_server.services.container import AppServices
 from simple_safer_server.services.ddns_service import DdnsService
 from simple_safer_server.services.storage_service import StorageService
 from simple_safer_server.services.task_service import TaskService
-from smb_manager import SMB_DOCS_URL, SMBManager
-from system_updates import SystemUpdatesManager
-from system_utils import SystemUtils
-from user_manager import UserManager, admin_required
+from simple_safer_server.services.smb_manager import SMB_DOCS_URL, SMBManager
+from simple_safer_server.services.system_updates import SystemUpdatesManager
+from simple_safer_server.services.system_utils import SystemUtils
+from simple_safer_server.services.user_manager import UserManager, admin_required
 
 
 def create_app() -> Tuple[Flask, SocketIO]:

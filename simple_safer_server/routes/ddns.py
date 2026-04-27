@@ -3,7 +3,7 @@ from typing import Any
 from flask import Blueprint, current_app, jsonify, render_template, session
 
 from simple_safer_server.web.api import json_error, json_payload_or_error, json_success
-from user_manager import admin_required, api_admin_required
+from simple_safer_server.services.user_manager import admin_required, api_admin_required
 
 ddns = Blueprint("ddns_routes", __name__)
 

@@ -12,7 +12,7 @@ from flask import (
     url_for,
 )
 
-from user_manager import admin_required, api_admin_required
+from simple_safer_server.services.user_manager import admin_required, api_admin_required
 
 tasks = Blueprint("task_routes", __name__)
 
