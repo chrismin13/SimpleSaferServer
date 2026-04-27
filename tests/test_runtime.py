@@ -8,6 +8,23 @@ from simple_safer_server.services import runtime
 
 
 class RuntimeHelpersTests(unittest.TestCase):
+    def test_get_runtime_fake_mode_uses_repo_root_data_dir(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            module_path = Path(temp_dir) / "simple_safer_server" / "services" / "runtime.py"
+
+            with patch.dict(os.environ, {"SSS_MODE": "fake"}, clear=True):
+                with patch.object(runtime, "__file__", str(module_path)):
+                    runtime._runtime = None
+                    runtime._fake_state = None
+                    try:
+                        resolved_runtime = runtime.get_runtime()
+                    finally:
+                        runtime._runtime = None
+                        runtime._fake_state = None
+
+        self.assertEqual(resolved_runtime.data_dir, Path(temp_dir) / ".dev-data")
+        self.assertEqual(resolved_runtime.config_dir, Path(temp_dir) / ".dev-data" / "config")
+
     def test_resolve_fake_data_dir_prefers_railway_volume_over_default_data_path(self):
         repo_root = Path("/srv/simple-safer-server")
 
@@ -29,18 +46,21 @@ class RuntimeHelpersTests(unittest.TestCase):
     def test_resolve_fake_data_dir_keeps_explicit_custom_path(self):
         repo_root = Path("/srv/simple-safer-server")
 
-        with patch.dict(
-            os.environ,
-            {
-                "SSS_DATA_DIR": "/srv/simple-safer-server",
-                "RAILWAY_VOLUME_MOUNT_PATH": "/var/lib/railway/volumes/app-data",
-            },
-            clear=True,
-        ):
-            self.assertEqual(
-                runtime.resolve_fake_data_dir(repo_root),
-                Path("/srv/simple-safer-server"),
-            )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            custom_data_dir = Path(temp_dir) / "custom-fake-data"
+
+            with patch.dict(
+                os.environ,
+                {
+                    "SSS_DATA_DIR": str(custom_data_dir),
+                    "RAILWAY_VOLUME_MOUNT_PATH": "/var/lib/railway/volumes/app-data",
+                },
+                clear=True,
+            ):
+                self.assertEqual(
+                    runtime.resolve_fake_data_dir(repo_root),
+                    custom_data_dir.resolve(),
+                )
 
     def test_load_or_create_text_secret_reuses_existing_file_contents(self):
         with tempfile.TemporaryDirectory() as temp_dir:

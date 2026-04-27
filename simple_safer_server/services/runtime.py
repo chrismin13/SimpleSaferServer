@@ -239,7 +239,10 @@ _fake_state: Optional[FakeState] = None
 
 
 def _repo_root() -> Path:
-    return Path(__file__).resolve().parent
+    # runtime.py lives under simple_safer_server/services, so walk back to the
+    # repository root before attaching .dev-data. That keeps fake-mode state in
+    # the same location even if this module moves within the package tree.
+    return Path(__file__).resolve().parents[2]
 
 
 def resolve_fake_data_dir(repo_root: Optional[Path] = None) -> Path:
