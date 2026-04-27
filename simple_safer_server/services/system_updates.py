@@ -17,7 +17,7 @@ try:
 except ImportError:
     psutil = None
 
-from runtime import get_runtime
+from simple_safer_server.services.runtime import get_runtime
 
 APT_LOCK_PATHS = [
     Path("/var/lib/dpkg/lock-frontend"),

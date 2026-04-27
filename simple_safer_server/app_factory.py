@@ -17,9 +17,6 @@ from flask import (
 )
 from flask_socketio import SocketIO
 
-from config_manager import ConfigManager
-from runtime import get_fake_state, get_flask_secret_key, get_runtime
-from setup_wizard import setup
 from simple_safer_server.adapters.command_runner import CommandRunner
 from simple_safer_server.adapters.rclone import RcloneAdapter
 from simple_safer_server.adapters.storage_commands import StorageCommandAdapter
@@ -28,6 +25,7 @@ from simple_safer_server.routes.alerts import alerts as alerts_routes
 from simple_safer_server.routes.cloud_backup import cloud_backup as cloud_backup_routes
 from simple_safer_server.routes.ddns import ddns as ddns_routes
 from simple_safer_server.routes.drive_health import drive_health as drive_health_routes
+from simple_safer_server.routes.setup_wizard import setup
 from simple_safer_server.routes.smb import smb as smb_routes
 from simple_safer_server.routes.storage import storage as storage_routes
 from simple_safer_server.routes.system_updates import system_updates as system_updates_routes
@@ -35,13 +33,15 @@ from simple_safer_server.routes.tasks import tasks as task_routes
 from simple_safer_server.routes.users import users as users_routes
 from simple_safer_server.services.alerts_service import AlertsService
 from simple_safer_server.services.cloud_backup_service import CloudBackupService
+from simple_safer_server.services.config_manager import ConfigManager
 from simple_safer_server.services.container import AppServices
 from simple_safer_server.services.ddns_service import DdnsService
-from simple_safer_server.services.storage_service import StorageService
-from simple_safer_server.services.task_service import TaskService
+from simple_safer_server.services.runtime import get_fake_state, get_flask_secret_key, get_runtime
 from simple_safer_server.services.smb_manager import SMB_DOCS_URL, SMBManager
+from simple_safer_server.services.storage_service import StorageService
 from simple_safer_server.services.system_updates import SystemUpdatesManager
 from simple_safer_server.services.system_utils import SystemUtils
+from simple_safer_server.services.task_service import TaskService
 from simple_safer_server.services.user_manager import UserManager, admin_required
 
 

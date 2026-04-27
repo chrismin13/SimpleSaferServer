@@ -5,7 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-import smb_manager
+from simple_safer_server.services import smb_manager
 
 
 class SMBManagerTests(unittest.TestCase):

@@ -228,9 +228,9 @@ echo -e "${YELLOW}Step 10: Refreshing procedural background services...${NC}"
 if "$VENV_DIR/bin/python3" -c "
 import sys
 sys.path.insert(0, '$APP_DIR')
-from config_manager import ConfigManager
-from runtime import get_runtime
-from system_utils import SystemUtils
+from simple_safer_server.services.config_manager import ConfigManager
+from simple_safer_server.services.runtime import get_runtime
+from simple_safer_server.services.system_utils import SystemUtils
 
 rt = get_runtime()
 config = ConfigManager(runtime=rt).get_all_config()

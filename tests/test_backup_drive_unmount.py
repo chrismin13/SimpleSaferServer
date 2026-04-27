@@ -2,8 +2,8 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-import backup_drive_unmount
-from backup_drive_setup import BackupDriveSetupError
+from simple_safer_server.services import backup_drive_unmount
+from simple_safer_server.services.backup_drive_setup import BackupDriveSetupError
 
 
 class FakeBackupDriveCommandAdapter:
@@ -34,7 +34,7 @@ class FakeBackupDriveCommandAdapter:
 
 
 class BackupDriveUnmountTests(unittest.TestCase):
-    @patch('backup_drive_unmount._get_mount_for_partition')
+    @patch('simple_safer_server.services.backup_drive_unmount._get_mount_for_partition')
     def test_is_selected_partition_managed_backup_drive_matches_live_mount_point(
         self,
         mock_get_mount,
@@ -54,7 +54,10 @@ class BackupDriveUnmountTests(unittest.TestCase):
         self.assertTrue(result)
         system_utils.is_mounted.assert_not_called()
 
-    @patch('backup_drive_unmount._get_mount_for_partition', return_value=None)
+    @patch(
+        'simple_safer_server.services.backup_drive_unmount._get_mount_for_partition',
+        return_value=None,
+    )
     def test_is_selected_partition_managed_backup_drive_does_not_match_by_uuid_only(
         self,
         _mock_get_mount,
@@ -74,7 +77,10 @@ class BackupDriveUnmountTests(unittest.TestCase):
         self.assertFalse(result)
         system_utils.is_mounted.assert_not_called()
 
-    @patch('backup_drive_unmount._get_mount_for_partition', return_value=None)
+    @patch(
+        'simple_safer_server.services.backup_drive_unmount._get_mount_for_partition',
+        return_value=None,
+    )
     def test_is_selected_partition_managed_backup_drive_does_not_match_unmounted_old_backup_partition(
         self,
         _mock_get_mount,

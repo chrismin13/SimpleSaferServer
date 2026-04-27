@@ -6,7 +6,6 @@ import time
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
-from simple_safer_server.services.drive_health import run_scheduled_drive_health_check
 from simple_safer_server.adapters.command_runner import (
     PIPE,
     CommandRunner,
@@ -15,6 +14,7 @@ from simple_safer_server.adapters.command_runner import (
 )
 from simple_safer_server.adapters.rclone import RcloneAdapter
 from simple_safer_server.adapters.systemd import CalledProcessError, SystemdAdapter
+from simple_safer_server.services.drive_health import run_scheduled_drive_health_check
 
 
 class Status:

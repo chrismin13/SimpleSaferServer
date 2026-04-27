@@ -7,8 +7,8 @@ from datetime import datetime
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
-from runtime import get_fake_state, get_runtime
 from simple_safer_server.adapters.backup_drive_commands import BackupDriveCommandAdapter
+from simple_safer_server.services.runtime import get_fake_state, get_runtime
 
 LOGGER = logging.getLogger(__name__)
 FSTAB_MARKER = "# SimpleSaferServer managed backup drive"

@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import runtime
+from simple_safer_server.services import runtime
 
 
 class RuntimeHelpersTests(unittest.TestCase):
@@ -74,7 +74,7 @@ class RuntimeHelpersTests(unittest.TestCase):
                 secret_path.chmod(0o644)
                 raise FileExistsError
 
-            with patch("runtime.os.open", side_effect=fake_os_open):
+            with patch("simple_safer_server.services.runtime.os.open", side_effect=fake_os_open):
                 self.assertEqual(runtime.load_or_create_text_secret(secret_path), "winner-secret")
 
             self.assertEqual(secret_path.stat().st_mode & 0o777, 0o600)
@@ -83,12 +83,12 @@ class RuntimeHelpersTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             secret_path = Path(temp_dir) / ".flask-secret-key"
 
-            with patch("runtime.os.open", side_effect=FileExistsError):
+            with patch("simple_safer_server.services.runtime.os.open", side_effect=FileExistsError):
                 with patch(
-                    "runtime._read_persisted_text_secret",
+                    "simple_safer_server.services.runtime._read_persisted_text_secret",
                     side_effect=[None, None, "winner-secret"],
                 ) as mock_read_secret:
-                    with patch("runtime.time.sleep") as mock_sleep:
+                    with patch("simple_safer_server.services.runtime.time.sleep") as mock_sleep:
                         self.assertEqual(
                             runtime.load_or_create_text_secret(secret_path), "winner-secret"
                         )

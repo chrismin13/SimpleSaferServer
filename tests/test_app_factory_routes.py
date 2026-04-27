@@ -2,7 +2,7 @@ import os
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-import runtime
+from simple_safer_server.services import runtime
 
 
 def test_fake_dashboard_renders_storage_action_urls():

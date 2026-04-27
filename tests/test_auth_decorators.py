@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 from flask import Flask
 
-from user_manager import admin_required, api_admin_required
+from simple_safer_server.services.user_manager import admin_required, api_admin_required
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SYSTEM_UPDATES_SOURCE = REPO_ROOT / 'simple_safer_server' / 'routes' / 'system_updates.py'
@@ -47,7 +47,9 @@ def test_admin_required_clears_stale_non_admin_web_session():
     user_manager = MagicMock()
     user_manager.is_admin.return_value = False
 
-    with patch('user_manager.UserManager', return_value=user_manager), app.test_client() as client:
+    with patch(
+        'simple_safer_server.services.user_manager.UserManager', return_value=user_manager
+    ), app.test_client() as client:
         with client.session_transaction() as session:
             session['username'] = 'operator'
 
@@ -78,7 +80,9 @@ def test_api_admin_required_clears_stale_non_admin_api_session():
     user_manager = MagicMock()
     user_manager.is_admin.return_value = False
 
-    with patch('user_manager.UserManager', return_value=user_manager), app.test_client() as client:
+    with patch(
+        'simple_safer_server.services.user_manager.UserManager', return_value=user_manager
+    ), app.test_client() as client:
         with client.session_transaction() as session:
             session['username'] = 'operator'
 
@@ -97,7 +101,9 @@ def test_api_admin_required_allows_admin_sessions():
     user_manager = MagicMock()
     user_manager.is_admin.return_value = True
 
-    with patch('user_manager.UserManager', return_value=user_manager), app.test_client() as client:
+    with patch(
+        'simple_safer_server.services.user_manager.UserManager', return_value=user_manager
+    ), app.test_client() as client:
         with client.session_transaction() as session:
             session['username'] = 'admin'
 

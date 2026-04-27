@@ -40,7 +40,7 @@ class ConfigManagerDefaultsTests(unittest.TestCase):
                     "cryptography.fernet": fernet_module,
                 },
             ):
-                from config_manager import ConfigManager
+                from simple_safer_server.services.config_manager import ConfigManager
 
                 manager = ConfigManager(runtime=runtime)
 
@@ -66,7 +66,7 @@ class ConfigManagerDefaultsTests(unittest.TestCase):
                     "cryptography.fernet": fernet_module,
                 },
             ):
-                from config_manager import ConfigManager
+                from simple_safer_server.services.config_manager import ConfigManager
 
                 manager = ConfigManager(runtime=runtime)
 

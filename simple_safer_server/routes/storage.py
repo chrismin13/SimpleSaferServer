@@ -3,18 +3,18 @@ from typing import Any
 import psutil
 from flask import Blueprint, current_app, jsonify, request
 
-from backup_drive_setup import (
+from simple_safer_server.services.backup_drive_setup import (
     BackupDriveSetupError,
     apply_backup_drive_configuration,
     list_available_drives,
     unmount_selected_partition,
 )
-from backup_drive_unmount import (
+from simple_safer_server.services.backup_drive_unmount import (
     is_selected_partition_managed_backup_drive,
     unmount_managed_backup_drive,
 )
-from dashboard_messages import build_dashboard_unmount_success_message
 from simple_safer_server.services.user_manager import admin_required, api_admin_required
+from simple_safer_server.web.dashboard_messages import build_dashboard_unmount_success_message
 
 storage = Blueprint("storage_routes", __name__)
 

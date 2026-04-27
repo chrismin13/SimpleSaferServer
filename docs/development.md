@@ -54,6 +54,9 @@ Shared response and validation helpers should be preferred over per-route ad hoc
 
 Keep `__init__.py` files minimal. Put meaningful behavior in clearly named modules such as `services/task_service.py` or `routes/ddns.py`.
 
+Do not add top-level Python modules for application runtime code. Put new route, service, adapter,
+web helper, or legacy migration behavior inside the `simple_safer_server/` package.
+
 ## Python Style
 
 - Prefer explicit names and small functions.

@@ -2,12 +2,12 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-import drive_health
+from simple_safer_server.services import drive_health
 
 
 class DriveHealthSupportTests(unittest.TestCase):
-    @patch("drive_health.drive_health_command_adapter.smartctl_help")
-    @patch("drive_health.shutil.which")
+    @patch("simple_safer_server.services.drive_health.drive_health_command_adapter.smartctl_help")
+    @patch("simple_safer_server.services.drive_health.shutil.which")
     def test_get_smartctl_json_support_rechecks_after_runtime_upgrade(self, mock_which, mock_run):
         # This guards the easy-to-forget case where operators install or
         # upgrade smartmontools without restarting the web process.

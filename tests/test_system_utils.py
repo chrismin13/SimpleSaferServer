@@ -3,7 +3,7 @@ import types
 import unittest
 from pathlib import Path
 
-from system_utils import SystemUtils
+from simple_safer_server.services.system_utils import SystemUtils
 
 
 class RecordingSystemUtils(SystemUtils):

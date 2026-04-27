@@ -11,17 +11,17 @@ def _add_app_to_path():
         Path('/opt/SimpleSaferServer'),
     ]
     for candidate in candidates:
-        if (candidate / 'drive_health.py').exists():
+        if (candidate / 'simple_safer_server').exists():
             sys.path.insert(0, str(candidate))
             return
 
 
 _add_app_to_path()
 
-from config_manager import ConfigManager  # noqa: E402
-from drive_health import run_scheduled_drive_health_check  # noqa: E402
-from runtime import get_runtime  # noqa: E402
-from system_utils import SystemUtils  # noqa: E402
+from simple_safer_server.services.config_manager import ConfigManager  # noqa: E402
+from simple_safer_server.services.drive_health import run_scheduled_drive_health_check  # noqa: E402
+from simple_safer_server.services.runtime import get_runtime  # noqa: E402
+from simple_safer_server.services.system_utils import SystemUtils  # noqa: E402
 
 
 def main():

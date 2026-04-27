@@ -3,8 +3,8 @@ from typing import Any
 from flask import Blueprint, current_app, render_template, request, session
 
 from simple_safer_server.adapters.command_runner import CalledProcessError
-from simple_safer_server.web.api import json_error, json_success
 from simple_safer_server.services.user_manager import admin_required, api_admin_required
+from simple_safer_server.web.api import json_error, json_success
 
 system_updates = Blueprint("system_updates_routes", __name__)
 

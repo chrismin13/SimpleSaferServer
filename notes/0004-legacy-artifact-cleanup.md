@@ -3,7 +3,8 @@
 ## Summary
 
 - Remove standalone artifacts that are not part of supported SimpleSaferServer runtime behavior.
-- Migrate app startup to package entrypoints so top-level `app.py` can be removed.
+- Migrate app startup and runtime modules to package entrypoints so root-level application modules
+  can be removed.
 
 ## Rules / Constraints
 
@@ -15,6 +16,8 @@
 
 - Runtime startup uses `python -m simple_safer_server`.
 - Hosted WSGI startup uses `simple_safer_server.wsgi:app`.
+- Active route, service, adapter, web helper, and legacy migration behavior lives inside the
+  `simple_safer_server/` package.
 - Dead proof-of-concept/helper files are gone from install and uninstall paths.
 
 ## Phase Checklist
@@ -24,6 +27,8 @@
 - [x] Phase 3: Replace top-level app startup with package entrypoints.
 - [x] Phase 4: Update docs and uninstall/install references.
 - [x] Phase 5: Run quality gates and entrypoint smoke checks.
+- [x] Phase 6: Move active top-level runtime modules into package modules and remove compatibility
+      shims.
 
 ## Work Log
 
@@ -52,12 +57,45 @@ Verification:
 - Fake-mode package startup smoke check reached the Flask dev server before the timeout stopped it.
 - Fake-mode Gunicorn config check for `simple_safer_server.wsgi:app` passed.
 
+### Phase 6
+
+- Moved deprecated legacy migration behavior to `simple_safer_server/legacy/migration.py`.
+- Removed root-level compatibility modules for backup-drive setup/unmount, configuration,
+  dashboard messages, drive health, runtime, setup wizard, SMB, system updates, system utilities,
+  and user management.
+- Updated app startup, routes, services, scripts, installer checks, and tests to import canonical
+  package modules.
+- Removed local generated clutter from the working tree: Python cache directories, pytest cache,
+  Ruff cache, and the empty root `routes/` directory.
+
+Docs and uninstall impact:
+
+- `docs/architecture.md` now records that active runtime behavior belongs under
+  `simple_safer_server/` and that root Python runtime modules should not be reintroduced.
+- `docs/development.md` now makes package placement explicit for new runtime code.
+- `index.html` links did not need changes because the public documentation filenames are unchanged.
+- `uninstall.sh` did not need changes because no installed system file, unit, timer, config path,
+  or state path was added by this package-layout migration.
+
+Verification:
+
+- Python 3.7 syntax compatibility check passed.
+- `ruff format --check .` passed.
+- `ruff check .` passed.
+- `pytest` passed locally on Python 3.14 with 163 tests and one existing
+  `datetime.utcnow()` deprecation warning.
+- `pyright` passed with 0 errors and 0 warnings.
+- Bandit passed with no issues.
+- `pip-audit` passed with no known vulnerabilities.
+- Fake-mode package startup smoke check reached the Flask dev server before the timeout stopped it.
+- Fake-mode Gunicorn WSGI smoke check booted a threaded worker before the timeout stopped it.
+
 ## Decisions
 
 - Remove `app.py` now and make package entrypoints canonical.
 - Keep legacy import, but treat it as deprecated and avoid new feature investment.
+- Treat `simple_safer_server/` as the only home for application runtime Python modules.
 
 ## Follow-Up Backlog
 
-- Migrate active top-level runtime modules into package modules in separate behavior-preserving slices.
 - Decide whether the deprecated legacy import path needs a formal removal version or support window.

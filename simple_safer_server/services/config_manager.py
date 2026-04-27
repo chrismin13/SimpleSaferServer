@@ -5,7 +5,7 @@ from datetime import datetime
 
 from cryptography.fernet import Fernet
 
-from runtime import get_runtime
+from simple_safer_server.services.runtime import get_runtime
 
 
 class ConfigManager:

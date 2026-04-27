@@ -2,8 +2,8 @@ import logging
 import shutil
 from pathlib import Path
 
-from runtime import get_fake_state, get_runtime
 from simple_safer_server.adapters.command_runner import CalledProcessError, CommandRunner
+from simple_safer_server.services.runtime import get_fake_state, get_runtime
 
 
 class SystemUtils:

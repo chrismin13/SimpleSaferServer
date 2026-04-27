@@ -2,9 +2,12 @@ import contextlib
 import logging
 import os
 
-from backup_drive_setup import BackupDriveSetupError, _get_mount_for_partition
-from runtime import get_fake_state, get_runtime
 from simple_safer_server.adapters.backup_drive_commands import BackupDriveCommandAdapter
+from simple_safer_server.services.backup_drive_setup import (
+    BackupDriveSetupError,
+    _get_mount_for_partition,
+)
+from simple_safer_server.services.runtime import get_fake_state, get_runtime
 
 LOGGER = logging.getLogger(__name__)
 MANAGED_BACKUP_UNMOUNT_TASKS = (

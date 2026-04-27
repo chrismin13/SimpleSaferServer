@@ -10,12 +10,12 @@ from typing import Dict, Union
 
 from werkzeug.security import generate_password_hash
 
-from config_manager import ConfigManager
-from runtime import get_runtime
 from simple_safer_server.adapters.command_runner import CalledProcessError, CommandRunner
-from smb_manager import SMBManager
-from system_utils import SystemUtils
-from user_manager import PasswordPolicy, UserManager
+from simple_safer_server.services.config_manager import ConfigManager
+from simple_safer_server.services.runtime import get_runtime
+from simple_safer_server.services.smb_manager import SMBManager
+from simple_safer_server.services.system_utils import SystemUtils
+from simple_safer_server.services.user_manager import PasswordPolicy, UserManager
 
 LOGGER = logging.getLogger(__name__)
 LEGACY_BUNDLE_FORMAT = 1

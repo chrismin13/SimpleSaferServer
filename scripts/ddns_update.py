@@ -18,15 +18,15 @@ def _add_app_to_path():
         Path('/opt/SimpleSaferServer'),
     ]
     for candidate in candidates:
-        if (candidate / 'drive_health.py').exists():
+        if (candidate / 'simple_safer_server').exists():
             sys.path.insert(0, str(candidate))
             return
 
 
 _add_app_to_path()
 
-from config_manager import ConfigManager  # noqa: E402
-from runtime import get_runtime  # noqa: E402
+from simple_safer_server.services.config_manager import ConfigManager  # noqa: E402
+from simple_safer_server.services.runtime import get_runtime  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger('DDNSUpdater')

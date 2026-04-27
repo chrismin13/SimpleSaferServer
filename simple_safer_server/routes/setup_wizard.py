@@ -9,27 +9,27 @@ from tempfile import NamedTemporaryFile
 
 from flask import Blueprint, jsonify, redirect, render_template, request, session
 
-from backup_drive_setup import (
+from simple_safer_server.adapters.command_runner import CalledProcessError, SubprocessError
+from simple_safer_server.adapters.setup_commands import SetupCommandAdapter
+from simple_safer_server.services.backup_drive_setup import (
     BackupDriveSetupError,
     _get_mounted_partitions_for_disk,
     apply_backup_drive_configuration,
     unmount_disk_partitions,
     unmount_selected_partition,
 )
-from backup_drive_setup import (
+from simple_safer_server.services.backup_drive_setup import (
     list_available_drives as get_available_backup_drives,
 )
-from backup_drive_unmount import (
+from simple_safer_server.services.backup_drive_unmount import (
     is_selected_partition_managed_backup_drive,
     unmount_managed_backup_drive,
 )
-from config_manager import ConfigManager
-from runtime import get_fake_state, get_runtime
-from simple_safer_server.adapters.command_runner import CalledProcessError, SubprocessError
-from simple_safer_server.adapters.setup_commands import SetupCommandAdapter
-from smb_manager import SMBManager
-from system_utils import SystemUtils
-from user_manager import UserManager
+from simple_safer_server.services.config_manager import ConfigManager
+from simple_safer_server.services.runtime import get_fake_state, get_runtime
+from simple_safer_server.services.smb_manager import SMBManager
+from simple_safer_server.services.system_utils import SystemUtils
+from simple_safer_server.services.user_manager import UserManager
 
 setup = Blueprint('setup', __name__)
 runtime = get_runtime()

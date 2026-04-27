@@ -7,9 +7,9 @@ from functools import wraps
 from flask import flash, jsonify, redirect, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from runtime import get_runtime
 from simple_safer_server.adapters.command_runner import CalledProcessError
 from simple_safer_server.adapters.user_commands import UserCommandAdapter
+from simple_safer_server.services.runtime import get_runtime
 
 logger = logging.getLogger(__name__)
 

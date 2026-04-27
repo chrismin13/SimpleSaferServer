@@ -5,7 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from system_updates import (
+from simple_safer_server.services.system_updates import (
     DEFAULT_AUTOCLEAN_INTERVAL_DAYS,
     SystemUpdatesManager,
     _is_apt_process,
@@ -435,7 +435,10 @@ class SystemUpdatesTests(unittest.TestCase):
                 with patch.object(
                     manager, "get_livepatch_status", return_value={"enabled": True}
                 ) as status:
-                    with patch("system_updates.shutil.which", return_value="/usr/bin/pro"):
+                    with patch(
+                        "simple_safer_server.services.system_updates.shutil.which",
+                        return_value="/usr/bin/pro",
+                    ):
                         result = manager.setup_livepatch("secret-token")
 
             self.assertEqual(result, {"enabled": True})
@@ -457,7 +460,10 @@ class SystemUpdatesTests(unittest.TestCase):
 
             with patch.object(manager, "get_distribution_info", return_value={"id": "ubuntu"}):
                 with patch.object(manager, "get_livepatch_status", return_value={"enabled": True}):
-                    with patch("system_updates.shutil.which", return_value="/usr/bin/pro"):
+                    with patch(
+                        "simple_safer_server.services.system_updates.shutil.which",
+                        return_value="/usr/bin/pro",
+                    ):
                         manager.setup_livepatch("secret-token")
 
             self.assertEqual(command_adapter.calls[-1], ("pro_enable_livepatch", "/usr/bin/pro"))
@@ -469,7 +475,9 @@ class SystemUpdatesTests(unittest.TestCase):
             )
 
             with patch.object(manager, "get_distribution_info", return_value={"id": "ubuntu"}):
-                with patch("system_updates.shutil.which", return_value=None):
+                with patch(
+                    "simple_safer_server.services.system_updates.shutil.which", return_value=None
+                ):
                     with self.assertRaisesRegex(RuntimeError, "Ubuntu Pro Client is required"):
                         manager.setup_livepatch("secret-token")
 

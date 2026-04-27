@@ -8,9 +8,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-from runtime import get_fake_state, get_runtime
 from simple_safer_server.adapters.command_runner import CalledProcessError
 from simple_safer_server.adapters.smb_commands import SmbCommandAdapter
+from simple_safer_server.services.runtime import get_fake_state, get_runtime
 
 logger = logging.getLogger(__name__)
 

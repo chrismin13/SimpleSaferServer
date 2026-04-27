@@ -10,11 +10,11 @@ from functools import lru_cache
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
-from runtime import get_runtime
 from simple_safer_server.adapters.drive_health_commands import (
     CalledProcessError,
     DriveHealthCommandAdapter,
 )
+from simple_safer_server.services.runtime import get_runtime
 
 try:
     import joblib

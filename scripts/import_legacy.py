@@ -13,14 +13,14 @@ def _add_app_to_path():
         Path("/opt/SimpleSaferServer"),
     ]
     for candidate in candidates:
-        if (candidate / "legacy_migration.py").exists():
+        if (candidate / "simple_safer_server").exists():
             sys.path.insert(0, str(candidate))
             return
 
 
 _add_app_to_path()
 
-from legacy_migration import MigrationError, import_legacy_bundle  # noqa: E402
+from simple_safer_server.legacy.migration import MigrationError, import_legacy_bundle  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:

@@ -50,8 +50,8 @@ managed backup-drive setup and detach commands. `SystemUpdatesCommandAdapter` wr
 package-manager, lock, config-write, Livepatch, and long-running apt worker commands.
 `SetupCommandAdapter` wraps setup wizard disk-format, SMB enable, and MEGA picker commands.
 `DriveHealthCommandAdapter` wraps SMART, HDSentinel, backup-drive lookup, and alert email commands.
-Future work should continue moving deprecated legacy migration and top-level runtime modules behind
-package modules where those modules remain part of the supported runtime.
+New runtime behavior should live under `simple_safer_server/`; do not add top-level Python modules
+for app services or route helpers.
 
 Bandit skips generic subprocess rules because SimpleSaferServer is a local admin tool that
 intentionally calls Debian system utilities. Subprocess use should still validate user-controlled
@@ -60,7 +60,6 @@ arguments before execution and document operational assumptions near the code.
 ## Legacy And Compatibility Code
 
 Standalone proof-of-concept scripts should be removed when their behavior is available through the
-app. The legacy import tool remains as a deprecated operator escape hatch, but it should not receive
-new feature work. Top-level modules such as `backup_drive_setup.py`, `drive_health.py`, and
-`system_updates.py` still contain active runtime behavior and should be migrated deliberately rather
-than deleted as dead code.
+app. The legacy import tool remains as a deprecated operator escape hatch in
+`simple_safer_server/legacy/`, but it should not receive new feature work. Root-level files are
+reserved for repository metadata, install/deploy entrypoints, public docs, and operator scripts.

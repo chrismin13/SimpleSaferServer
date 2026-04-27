@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 from flask import Flask
 
-from smb_manager import SMB_DOCS_URL
+from simple_safer_server.services.smb_manager import SMB_DOCS_URL
 
 
 class SetupWizardTests(unittest.TestCase):
@@ -34,24 +34,27 @@ class SetupWizardTests(unittest.TestCase):
             patch.dict(
                 sys.modules,
                 {
-                    "config_manager": config_manager_module,
-                    "system_utils": system_utils_module,
-                    "user_manager": user_manager_module,
-                    "smb_manager": smb_manager_module,
-                    "runtime": runtime_module,
+                    "simple_safer_server.services.config_manager": config_manager_module,
+                    "simple_safer_server.services.system_utils": system_utils_module,
+                    "simple_safer_server.services.user_manager": user_manager_module,
+                    "simple_safer_server.services.smb_manager": smb_manager_module,
+                    "simple_safer_server.services.runtime": runtime_module,
                 },
             )
         ]
         for module_patch in self._module_patches:
             module_patch.start()
-        self.addCleanup(lambda: sys.modules.pop("setup_wizard", None))
         self.addCleanup(
             lambda: [module_patch.stop() for module_patch in reversed(self._module_patches)]
         )
 
-        import setup_wizard
+        sys.modules.pop("simple_safer_server.routes.setup_wizard", None)
+        routes_package = importlib.import_module("simple_safer_server.routes")
+        if hasattr(routes_package, "setup_wizard"):
+            delattr(routes_package, "setup_wizard")
+        self.addCleanup(lambda: sys.modules.pop("simple_safer_server.routes.setup_wizard", None))
 
-        self.setup_wizard = importlib.reload(setup_wizard)
+        self.setup_wizard = importlib.import_module("simple_safer_server.routes.setup_wizard")
         self.app = Flask(__name__)
         self.app.secret_key = 'test-secret'
         self.app.register_blueprint(self.setup_wizard.setup)
