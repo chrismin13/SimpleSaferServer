@@ -400,6 +400,10 @@ class SMBManager:
             logger.error("Failed to restart SMB services: %s", exc)
             return False
 
+    def restart_services(self):
+        """Restart SMB services through the public service boundary."""
+        return self._restart_services()
+
     def _parse_share_block(self, block_lines, *, managed, marker_name=None):
         share_name = None
         share_data = {

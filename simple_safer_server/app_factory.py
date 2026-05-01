@@ -169,7 +169,7 @@ def create_app() -> Tuple[Flask, SocketIO]:
             return redirect(url_for("task_routes.dashboard"))
 
         if request.method == "POST":
-            user_manager.users = user_manager._load_users()
+            user_manager.reload_users()
 
             username = request.form["username"]
             password = request.form["password"]
@@ -202,7 +202,7 @@ def create_app() -> Tuple[Flask, SocketIO]:
 
     def get_auto_login_username():
         configured_username = config_manager.get_value("system", "username", "")
-        user_manager.users = user_manager._load_users()
+        user_manager.reload_users()
         return user_manager.get_preferred_admin_username(configured_username)
 
     @app.before_request

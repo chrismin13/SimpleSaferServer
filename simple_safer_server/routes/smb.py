@@ -144,7 +144,7 @@ def api_smb_status():
 @api_admin_required
 def api_restart_smb():
     try:
-        if _get_services().smb_manager._restart_services():
+        if _get_services().smb_manager.restart_services():
             return jsonify({"message": "SMB services restarted successfully"})
         return jsonify({"error": "Failed to restart SMB services"}), 500
     except Exception as exc:

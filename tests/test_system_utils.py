@@ -145,14 +145,14 @@ class SystemUtilsTimerActivationTests(unittest.TestCase):
 
     def test_install_systemd_services_rejects_invalid_backup_time_seconds(self):
         invalid_values = [
-            "03:00:99",
-            "03:00:00:00",
-            "03",
-            "24:00",
-            "03:60",
-            "+03:00",
-            "03: 00",
-            "bad:00",
+            "03:00:99",  # too many seconds
+            "03:00:00:00",  # too many components
+            "03",  # missing minutes
+            "24:00",  # hour out of range
+            "03:60",  # minute out of range
+            "+03:00",  # leading sign
+            "03: 00",  # whitespace in component
+            "bad:00",  # non-numeric hour
         ]
         for value in invalid_values:
             with tempfile.TemporaryDirectory() as temp_dir:

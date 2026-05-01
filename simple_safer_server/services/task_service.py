@@ -185,6 +185,10 @@ class TaskService:
     def get_next_run(self, task: Task) -> str:
         if self.runtime.is_fake:
             if task.name == "DDNS Update":
+                # Fake-mode DDNS reports the next 5-minute boundary: start with
+                # datetime.now(), round the minute via (now.minute // 5 + 1) * 5,
+                # and let timedelta handle hour rollover when that reaches 60.
+                # The UI expects a minute-precision "%Y-%m-%d %H:%M:00" string.
                 now = datetime.now()
                 minutes = (now.minute // 5 + 1) * 5
                 next_run = now.replace(minute=0, second=0, microsecond=0) + timedelta(

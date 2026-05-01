@@ -79,6 +79,9 @@ class DdnsService:
         enabled = duckdns.get("enabled", False)
 
         if enabled:
+            # A stored duckdns_token from get_secret lets admins update DuckDNS
+            # settings without re-entering the token; store_secret only runs
+            # when this request includes a replacement token.
             existing_token = self._config_manager.get_secret("duckdns_token")
             if not domain:
                 raise ValueError("DuckDNS domain is required when enabled")

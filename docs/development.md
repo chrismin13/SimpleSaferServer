@@ -123,7 +123,15 @@ Run the standard checks with:
 .venv/bin/python -m bandit -c pyproject.toml -r .
 .venv/bin/python -m pip_audit -r requirements.txt -r requirements-dev.txt --ignore-vuln GHSA-6w46-j5rx-g56g
 .venv/bin/pre-commit run --all-files
+.venv/bin/pre-commit run --hook-stage manual pytest
+.venv/bin/pre-commit run --hook-stage manual pyright
+.venv/bin/pre-commit run --hook-stage manual bandit
+.venv/bin/pre-commit run --hook-stage manual pip-audit
 ```
+
+`pre-commit run --all-files` runs only default-stage hooks. The pytest, pyright, bandit,
+and pip-audit hooks are marked `manual` in `.pre-commit-config.yaml`, so run those hooks
+with `--hook-stage manual` when validating the full suite through pre-commit.
 
 Check Python 3.7 syntax compatibility with:
 

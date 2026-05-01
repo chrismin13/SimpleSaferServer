@@ -373,6 +373,30 @@ class SetupWizardTests(unittest.TestCase):
             {'success': False, 'error': 'Username and password are required'},
         )
 
+    def test_setup_email_rejects_out_of_range_smtp_port(self):
+        system_utils = MagicMock()
+
+        with patch.object(self.setup_wizard, 'system_utils', system_utils):
+            with self.app.test_client() as client:
+                response = client.post(
+                    '/api/setup/email',
+                    json={
+                        'emailAddress': 'admin@example.com',
+                        'fromAddress': 'server@example.com',
+                        'smtpServer': 'smtp.example.com',
+                        'smtpPort': '65536',
+                        'smtpUsername': 'server',
+                        'smtpPassword': 'secret',
+                    },
+                )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.get_json(),
+            {'success': False, 'error': 'SMTP port must be between 1 and 65535'},
+        )
+        system_utils.write_msmtp_config.assert_not_called()
+
     def test_format_drive_rejects_non_string_disk(self):
         # JSON clients can send numeric or other non-string values; reject cleanly.
         with self.app.test_client() as client:

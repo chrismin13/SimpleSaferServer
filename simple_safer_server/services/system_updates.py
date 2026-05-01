@@ -617,7 +617,7 @@ class SystemUpdatesManager:
                 ),
             }
         else:
-            updates: Dict[str, Any] = {
+            updates = {
                 "status": "failure",
                 "phase": "Interrupted",
                 "finished_at": datetime.now().isoformat(timespec="seconds"),

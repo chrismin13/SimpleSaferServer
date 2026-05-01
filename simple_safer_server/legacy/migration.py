@@ -10,7 +10,11 @@ from typing import Dict, Union
 
 from werkzeug.security import generate_password_hash
 
-from simple_safer_server.adapters.command_runner import CalledProcessError, CommandRunner
+from simple_safer_server.adapters.command_runner import (
+    CalledProcessError,
+    CommandRunner,
+    TimeoutExpired,
+)
 from simple_safer_server.services.config_manager import ConfigManager
 from simple_safer_server.services.runtime import get_runtime
 from simple_safer_server.services.smb_manager import SMBManager
@@ -170,7 +174,7 @@ def _write_preserved_file(source: Path, target: Path, *, mode: int) -> None:
 
 
 def _ensure_admin_user(user_manager: UserManager, username: str, password: str) -> str:
-    user_manager.users = user_manager._load_users()
+    user_manager.reload_users()
 
     if not re.match(r"^[a-zA-Z0-9_-]+$", username):
         raise MigrationError(
@@ -244,7 +248,7 @@ def _configure_backup_share(
         )
         return
 
-    user_manager.users = user_manager._load_users()
+    user_manager.reload_users()
     if admin_username not in user_manager.users:
         raise MigrationError(f"Admin user '{admin_username}' was not found in the user database.")
 
@@ -260,9 +264,13 @@ def _configure_backup_share(
     )
 
     try:
-        command_runner.run(["systemctl", "enable", "smbd"], check=True)
-        command_runner.run(["systemctl", "enable", "nmbd"], check=True)
-    except CalledProcessError as exc:
+        command_runner.run(["systemctl", "enable", "smbd"], check=True, timeout=30)
+        command_runner.run(["systemctl", "enable", "nmbd"], check=True, timeout=30)
+    # SMB boot enablement is intentionally non-fatal: systems without systemd,
+    # non-root migrations, or externally managed Samba should still import data.
+    # CalledProcessError/TimeoutExpired are logged with LOGGER.warning and the
+    # migration continues by design.
+    except (CalledProcessError, TimeoutExpired) as exc:
         LOGGER.warning("Failed to enable SMB services for boot: %s", exc)
 
 

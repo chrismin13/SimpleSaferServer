@@ -59,6 +59,14 @@ def _missing_required_field_response(message):
     return jsonify({'success': False, 'error': message}), 400
 
 
+def _valid_tcp_port(value):
+    text = str(value or '').strip()
+    if not text.isdigit():
+        return False
+    port = int(text)
+    return 1 <= port <= 65535
+
+
 def setup_api_access_required(route_handler):
     """Allow anonymous setup API access only during first-time onboarding."""
 
@@ -72,8 +80,8 @@ def setup_api_access_required(route_handler):
         if 'username' not in session:
             return jsonify({'success': False, 'error': 'Please log in again.'}), 401
 
-        # Reload user data to ensure we have the latest
-        user_manager.users = user_manager._load_users()
+        # Reload user data to ensure admin checks use the latest persisted roles.
+        user_manager.reload_users()
         if not user_manager.is_admin(session['username']):
             return jsonify({'success': False, 'error': 'Admin privileges required.'}), 403
 
@@ -626,6 +634,8 @@ def setup_email():
         if not all([email, from_address, smtp_server, smtp_port, smtp_username, smtp_password]):
             logger.error("Missing email fields")
             return _missing_required_field_response('All email fields are required')
+        if not _valid_tcp_port(smtp_port):
+            return _missing_required_field_response('SMTP port must be between 1 and 65535')
 
         # Save email to config and write /etc/msmtprc
         config_manager.set_value('backup', 'email_address', email)

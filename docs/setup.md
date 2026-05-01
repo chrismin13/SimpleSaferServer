@@ -95,7 +95,7 @@ Advanced mode:
 
 - Enter the destination alert email address.
 - Enter the From address used by the SMTP provider.
-- Enter SMTP host, port, username, and password.
+- Enter SMTP host, TCP port (1-65535), username, and password.
 
 ## Step 6: Schedule
 

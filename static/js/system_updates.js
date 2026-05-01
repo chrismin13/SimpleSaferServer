@@ -169,6 +169,8 @@
     }
   }
 
+  // fetchJson enforces both response.ok and data.success because these APIs mix
+  // HTTP errors with 200 {success:false}; data.error/data.message preserve server details.
   async function fetchJson(url, options) {
     const response = await fetch(url, options);
     const data = await response.json();

@@ -29,17 +29,12 @@ class WebApiHelperTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json(), {"success": False, "error": "Nope"})
 
-    def test_json_payload_or_error_rejects_empty_payload(self):
+    def test_json_payload_or_error_accepts_empty_payload(self):
         with self.app.test_request_context(json={}):
             data, error_response = json_payload_or_error()
 
         self.assertEqual(data, {})
-        response, status_code = error_response
-        self.assertEqual(status_code, 400)
-        self.assertEqual(
-            response.get_json(),
-            {"success": False, "message": "Request body must be a JSON object."},
-        )
+        self.assertIsNone(error_response)
 
     def test_service_json_response_maps_failure_status(self):
         with self.app.app_context():

@@ -39,7 +39,7 @@
       <div class="form-group">
         <label class="form-label">Port</label>
         <input type="text" id="smtpPort" class="form-control" placeholder="587" inputmode="numeric" pattern="[0-9]*">
-        <div class="invalid-feedback">SMTP port is required.</div>
+        <div class="invalid-feedback">SMTP port must be a number between 1 and 65535.</div>
       </div>
     </div>
     <div class="form-row mb-4">
@@ -256,7 +256,8 @@ function saveEmailConfig() {
   }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailAddress)) { showEmailError('Please enter a valid email address'); return; }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fromAddress)) { showEmailError('Please enter a valid from address'); return; }
-  const portNum = parseInt(smtpPort);
+  if (!/^\d+$/.test(smtpPort)) { showEmailError('SMTP port must contain only digits'); return; }
+  const portNum = parseInt(smtpPort, 10);
   if (isNaN(portNum) || portNum < 1 || portNum > 65535) { showEmailError('SMTP port must be between 1 and 65535'); return; }
 
   const saveBtn = document.getElementById('saveEmailBtn');

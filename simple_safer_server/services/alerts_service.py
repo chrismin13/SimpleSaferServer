@@ -91,6 +91,9 @@ class AlertsService:
                 "success": False,
                 "error": "Email, from address, SMTP server, port, and username are required",
             }
+        smtp_port_text = str(smtp_port).strip()
+        if not smtp_port_text.isdigit() or not 1 <= int(smtp_port_text) <= 65535:
+            return {"success": False, "error": "SMTP port must be between 1 and 65535"}
 
         if not smtp_password:
             smtp_password = self._read_msmtp_config().get("smtp_password", "")
@@ -100,7 +103,7 @@ class AlertsService:
         self._config_manager.set_value("backup", "email_address", email)
         self._config_manager.set_value("backup", "from_address", from_address)
         if not self._system_utils.write_msmtp_config(
-            from_address, smtp_server, smtp_port, smtp_username, smtp_password
+            from_address, smtp_server, smtp_port_text, smtp_username, smtp_password
         ):
             return {"success": False, "error": "Failed to write msmtp configuration"}
         return {"success": True}

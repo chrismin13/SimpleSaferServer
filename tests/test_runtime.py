@@ -14,13 +14,15 @@ class RuntimeHelpersTests(unittest.TestCase):
 
             with patch.dict(os.environ, {"SSS_MODE": "fake"}, clear=True):
                 with patch.object(runtime, "__file__", str(module_path)):
+                    prev_runtime = runtime._runtime
+                    prev_fake = runtime._fake_state
                     runtime._runtime = None
                     runtime._fake_state = None
                     try:
                         resolved_runtime = runtime.get_runtime()
                     finally:
-                        runtime._runtime = None
-                        runtime._fake_state = None
+                        runtime._runtime = prev_runtime
+                        runtime._fake_state = prev_fake
 
         self.assertEqual(resolved_runtime.data_dir, Path(temp_dir) / ".dev-data")
         self.assertEqual(resolved_runtime.volatile_dir, Path(temp_dir) / ".dev-data" / "run")

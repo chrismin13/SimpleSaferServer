@@ -26,10 +26,16 @@ class BackupDriveCommandAdapter:
             ["sudo", "umount", mount_point],
             capture_output=True,
             text=True,
+            check=True,
         )
 
     def unmount_partition(self, device: str):
-        return self._command_runner.run(["umount", device], capture_output=True, text=True)
+        return self._command_runner.run(
+            ["sudo", "umount", device],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
 
     def mount_ntfs(self, partition: str, mount_point: str):
         uid = os.getuid()

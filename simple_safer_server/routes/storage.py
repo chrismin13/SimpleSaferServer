@@ -267,11 +267,11 @@ def api_backup_drive_configure():
         if not isinstance(data, dict):
             return jsonify({"success": False, "error": "Request body must be a JSON object."}), 400
         result = apply_backup_drive_configuration(
-            data.get("partition"),
-            data.get("mount_point"),
-            True,
-            services.config_manager,
-            services.smb_manager,
+            partition=data.get("partition"),
+            mount_point=data.get("mount_point"),
+            auto_mount=True,
+            config_manager=services.config_manager,
+            smb_manager=services.smb_manager,
             runtime=services.runtime,
         )
         return jsonify({"success": True, "result": result})

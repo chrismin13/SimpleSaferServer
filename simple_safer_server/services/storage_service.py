@@ -68,6 +68,8 @@ class StorageService:
                 }, 400
             os.makedirs(mount_point, exist_ok=True)
             self._command_adapter.mount(partition_device, mount_point)
+            # Start mount-dependent checks/backups only after the volume exists;
+            # smbd/nmbd expose Samba shares after the mounted paths are available.
             for unit_name in [
                 "check_mount.service",
                 "check_health.service",

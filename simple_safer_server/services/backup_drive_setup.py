@@ -225,11 +225,7 @@ def _get_mounted_partitions_for_disk(
         if blockdevices is not None
         else _load_lsblk_devices(command_adapter=command_adapter)
     )
-    mounts = (
-        mounts
-        if mounts is not None
-        else _get_current_mounts(command_adapter=command_adapter)
-    )
+    mounts = mounts if mounts is not None else _get_current_mounts(command_adapter=command_adapter)
     member_devices = _get_disk_member_devices(disk_path, blockdevices)
     if not member_devices:
         return []
@@ -244,11 +240,7 @@ def _get_mounted_partitions_for_disk(
 def _get_mount_for_partition(partition_path, mounts=None, command_adapter=None):
     # Rerun/setup-mount flows select an exact partition path, so this lookup
     # must never treat /dev/sdb1 and /dev/sdb11 as interchangeable.
-    mounts = (
-        mounts
-        if mounts is not None
-        else _get_current_mounts(command_adapter=command_adapter)
-    )
+    mounts = mounts if mounts is not None else _get_current_mounts(command_adapter=command_adapter)
     normalized_partition = _normalize_device_path(partition_path)
     for mount in mounts:
         if _normalize_device_path(mount['device']) == normalized_partition:

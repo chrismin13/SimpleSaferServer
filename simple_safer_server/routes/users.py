@@ -22,7 +22,7 @@ def users_page():
 @api_admin_required
 def api_list_users():
     user_manager = _get_services().user_manager
-    user_manager.users = user_manager._load_users()
+    user_manager.reload_users()
     response_users = []
     for username, data in user_manager.users.items():
         response_users.append(
@@ -40,7 +40,7 @@ def api_list_users():
 @api_admin_required
 def api_add_user():
     user_manager = _get_services().user_manager
-    user_manager.users = user_manager._load_users()
+    user_manager.reload_users()
     data = request.get_json(silent=True) or {}
     username = data.get("username")
     password = data.get("password")
@@ -59,7 +59,7 @@ def api_add_user():
 @api_admin_required
 def api_edit_user(username):
     user_manager = _get_services().user_manager
-    user_manager.users = user_manager._load_users()
+    user_manager.reload_users()
     data = request.get_json(silent=True) or {}
     new_password = data.get("password")
     is_admin = data.get("is_admin")
@@ -96,7 +96,7 @@ def api_edit_user(username):
 @api_admin_required
 def api_delete_user(username):
     user_manager = _get_services().user_manager
-    user_manager.users = user_manager._load_users()
+    user_manager.reload_users()
 
     if username == session.get("username"):
         return jsonify(

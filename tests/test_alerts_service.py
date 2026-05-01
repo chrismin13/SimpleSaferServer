@@ -102,6 +102,25 @@ class AlertsServiceTests(unittest.TestCase):
         assert msmtp_args is not None
         self.assertEqual(msmtp_args[-1], "existing-secret")
 
+    def test_save_email_config_rejects_non_numeric_smtp_port(self):
+        service, _config, system_utils, runtime = self.make_service()
+        runtime.msmtp_config_path.write_text("password existing-secret\n")
+
+        payload = service.save_email_config(
+            {
+                "email_address": "admin@example.com",
+                "from_address": "server@example.com",
+                "smtp_server": "smtp.example.com",
+                "smtp_port": "587abc",
+                "smtp_username": "server",
+            }
+        )
+
+        self.assertEqual(
+            payload, {"success": False, "error": "SMTP port must be between 1 and 65535"}
+        )
+        self.assertIsNone(system_utils.msmtp_args)
+
 
 if __name__ == "__main__":
     unittest.main()

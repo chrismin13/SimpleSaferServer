@@ -58,7 +58,16 @@ Run the configured checks with:
 
 ```bash
 .venv/bin/pre-commit run --all-files
+.venv/bin/pre-commit run --hook-stage manual pytest
+.venv/bin/pre-commit run --hook-stage manual pyright
+.venv/bin/pre-commit run --hook-stage manual bandit
+.venv/bin/pre-commit run --hook-stage manual pip-audit
 ```
+
+`pre-commit run --all-files` runs the default-stage hooks, which currently cover ruff
+formatting and linting. The heavier pytest, pyright, bandit, and pip-audit hooks are
+manual-stage hooks in `.pre-commit-config.yaml`, so run them with `--hook-stage manual`
+when you want the full local check suite.
 
 ---
 

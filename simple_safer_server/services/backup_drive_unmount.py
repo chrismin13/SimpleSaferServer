@@ -83,9 +83,10 @@ def unmount_managed_backup_drive(
     if not configured_mount_point:
         raise BackupDriveSetupError('Configured backup mount point is missing.')
 
-    # The managed backup-drive path is intentionally broader than an exact
-    # partition umount because Samba and background jobs can keep busy handles
-    # on the share even when the user only asked to unmount one partition.
+    # command_adapter.close_smb_share must run before MANAGED_BACKUP_UNMOUNT_TASKS
+    # and command_adapter.stop_unit('smbd'/'nmbd'): Samba file handles are released
+    # first, dependent jobs stop next to avoid "device busy", then SMB restarts
+    # after the unmount cleanup finishes.
     with contextlib.suppress(Exception):
         command_adapter.close_smb_share(configured_mount_point)
 

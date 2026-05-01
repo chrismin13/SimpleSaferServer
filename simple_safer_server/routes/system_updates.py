@@ -89,12 +89,6 @@ def api_system_updates_save_settings():
             return error_response
         settings = _manager().save_settings(data)
         return json_success(settings=settings)
-    except CalledProcessError:
-        current_app.logger.exception("Could not save apt update settings")
-        return json_error(
-            "Could not save automatic update settings.",
-            status_code=500,
-        )
     except Exception:
         current_app.logger.exception("Could not save apt update settings")
         return json_error(

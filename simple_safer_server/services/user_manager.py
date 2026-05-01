@@ -56,6 +56,10 @@ class UserManager:
                 return {}
         return {}
 
+    def reload_users(self):
+        """Reload persisted user records into this manager."""
+        self.users = self._load_users()
+
     def _save_users(self):
         """Save users to the JSON file"""
         try:
