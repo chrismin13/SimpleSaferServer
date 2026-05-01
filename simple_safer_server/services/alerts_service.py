@@ -12,6 +12,46 @@ class AlertsService:
     def generate_test_alerts(self) -> Tuple[Dict[str, Any], int]:
         if not self._runtime.is_fake:
             return {"success": False, "error": "Not available in production mode"}, 403
+
+        long_scroll_test_message = "\n\n".join(
+            [
+                "This is an intentionally long fake-mode alert message for checking "
+                "that the alert detail modal scrolls without hiding important controls.",
+                "Section 1: The backup service reported a simulated sequence of "
+                "status updates, retry notices, retention decisions, and final cleanup "
+                "messages. Nothing here indicates a real failure; this text exists to "
+                "exercise the UI with realistic operator-facing paragraphs.",
+                "Section 2: Long alerts should remain readable on desktop and mobile. "
+                "The title, metadata, message body, and modal actions should keep their "
+                "spacing, and the close or mark-as-read controls should still be easy to "
+                "reach after scrolling through the content.",
+                "Section 3: This paragraph repeats enough detail to force vertical "
+                "overflow in normal browser windows. It mentions mounted drives, Samba "
+                "shares, scheduled tasks, email notification delivery, log collection, "
+                "and stale lock cleanup so the message looks like a plausible combined "
+                "system report rather than placeholder filler.",
+                "Section 4: If the UI clips this message, fails to scroll, overlaps the "
+                "footer, or loses focus handling, the generated test alert should make "
+                "that problem obvious during manual fake-mode testing.",
+                "Section 5: The simulated report continues with additional operational "
+                "detail about rotating logs, pruning old backup snapshots, confirming "
+                "configured notification recipients, checking available disk space, and "
+                "recording the final task status for later review in the dashboard.",
+                "Section 6: The message should also test wrapping for moderately long "
+                "sentences that do not contain unusual punctuation or manual line breaks. "
+                "Operators often paste complete command output or provider responses into "
+                "diagnostic notes, so the modal should remain usable with dense prose.",
+                "Section 7: Mobile browsers need the same coverage. A narrow viewport "
+                "should allow the details panel to scroll smoothly while preserving readable "
+                "line lengths, avoiding horizontal overflow, and keeping the surrounding "
+                "metadata visually connected to the message body.",
+                "Section 8: This final block is deliberately mundane because test content "
+                "works best when it resembles real maintenance noise. It references cron "
+                "timing, SMB availability checks, cloud sync retries, package update state, "
+                "and alert delivery history to create enough height for scroll testing.",
+            ]
+        )
+
         self._config_manager.log_alert(
             "Test Error",
             "This is a simulated error message to verify UI styling.",
@@ -32,7 +72,7 @@ class AlertsService:
         )
         self._config_manager.log_alert(
             "Test Info",
-            "This is a simulated info message just letting you know something happened.",
+            long_scroll_test_message,
             alert_type="info",
             source="System Test",
         )

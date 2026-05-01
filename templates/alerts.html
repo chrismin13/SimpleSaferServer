@@ -333,6 +333,19 @@ function displayAlerts(alerts) {
   tbody.innerHTML = '';
   alerts.slice().reverse().forEach(alert => {
     const row = document.createElement('tr');
+    row.className = 'clickable-row';
+    row.tabIndex = 0;
+    row.setAttribute('role', 'button');
+    row.setAttribute('aria-label', `Open ${alert.title} alert details`);
+    row.addEventListener('click', function () {
+      showAlertDetail(alert.id);
+    });
+    row.addEventListener('keydown', function (event) {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        showAlertDetail(alert.id);
+      }
+    });
     if (!alert.read) row.style.background = 'var(--accent-subtle)';
     const time = new Date(alert.timestamp).toLocaleString();
     const statusBadge = alert.read
@@ -349,17 +362,10 @@ function displayAlerts(alerts) {
     const tdType = document.createElement('td');
     tdType.innerHTML = getTypeBadge(alert.type);
 
-    // Title cell with clickable link (text only)
+    // The row owns the detail action so every alert cell behaves like the task list rows.
     const tdTitle = document.createElement('td');
-    const titleLink = document.createElement('a');
-    titleLink.href = '#';
-    titleLink.className = 'fw-medium';
-    titleLink.textContent = alert.title;
-    titleLink.addEventListener('click', function (event) {
-      event.preventDefault();
-      showAlertDetail(alert.id);
-    });
-    tdTitle.appendChild(titleLink);
+    tdTitle.className = 'fw-medium';
+    tdTitle.textContent = alert.title;
 
     // Message cell (text only, truncated)
     const tdMessage = document.createElement('td');

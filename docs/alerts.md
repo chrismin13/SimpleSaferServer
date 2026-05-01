@@ -16,7 +16,7 @@ The Alerts page displays system alerts and allows configuration of email notific
   - **Refresh**: Reload the alerts list.
   - **Mark All as Read**: Mark all alerts as read.
   - **Clear All**: Delete all past alerts (confirmation required).
-- **Alert Detail Modal**: View full details of an alert and mark as read.
+- **Alert Detail Modal**: Open an alert from any cell in its table row to view full details and mark it as read.
 
 ## UI Details
 - Loading spinners and empty state messages.

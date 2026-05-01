@@ -63,6 +63,7 @@ class AlertsServiceTests(unittest.TestCase):
         self.assertEqual(payload, {"success": True})
         self.assertEqual(status_code, 200)
         self.assertEqual(len(config.alerts), 4)
+        self.assertGreater(len(config.alerts[-1][1]), 2000)
 
     def test_generate_test_alerts_rejects_real_mode(self):
         service, _config, _system_utils, _runtime = self.make_service(is_fake=False)
