@@ -1,5 +1,5 @@
 import subprocess
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 DEVNULL = subprocess.DEVNULL
 PIPE = subprocess.PIPE
@@ -26,16 +26,22 @@ class CommandRunner:
     ) -> subprocess.CompletedProcess:
         # Keep subprocess use centralized so future allowlisting, logging, and
         # fake adapters can be added without changing feature services again.
-        return subprocess.run(
-            command,
-            capture_output=capture_output,
-            check=check,
-            input=input,
-            stdout=stdout,
-            stderr=stderr,
-            text=text,
-            timeout=timeout,
-        )
+        kwargs: Dict[str, Any] = {
+            "capture_output": capture_output,
+            "check": check,
+            "text": text,
+        }
+        # Python 3.7 rejects capture_output=True when stdout/stderr are present,
+        # even if they are None. Only forward stream overrides that callers set.
+        if input is not None:
+            kwargs["input"] = input
+        if stdout is not None:
+            kwargs["stdout"] = stdout
+        if stderr is not None:
+            kwargs["stderr"] = stderr
+        if timeout is not None:
+            kwargs["timeout"] = timeout
+        return subprocess.run(command, **kwargs)
 
     def popen(
         self,
