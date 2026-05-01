@@ -47,6 +47,8 @@ Verification:
 - `.venv/bin/python -m pytest tests/test_backup_drive_setup.py`
 - `.venv/bin/python - <<'PY' ... PY` Python 3.7 syntax compatibility check from `docs/development.md`
 - `bash check_ci.sh`; required checks passed with `193 passed`, and the advisory pyright gate reported existing baseline typing issues.
+- CI on Python 3.7 failed because `unittest.mock` call objects do not expose keyword arguments the same way as the newer local Python runtime; updated the new assertions to use `call_args[1]` and `call_args_list[-1][1]`.
+- Re-ran `.venv/bin/python -m pytest tests/test_backup_drive_setup.py`, `.venv/bin/python -m ruff check tests/test_backup_drive_setup.py`, and the Python 3.7 syntax compatibility check after the assertion compatibility fix.
 
 ## Decisions
 

@@ -58,7 +58,7 @@ class BackupDriveSetupTests(unittest.TestCase):
         snapshot.apply(smb_manager)
 
         self.assertEqual(
-            smb_manager.update_managed_share.call_args.kwargs,
+            smb_manager.update_managed_share.call_args[1],
             {
                 'old_name': 'backup',
                 'new_name': 'backup',
@@ -573,7 +573,7 @@ class BackupDriveSetupTests(unittest.TestCase):
 
         self.assertGreaterEqual(smb_manager.update_managed_share.call_count, 2)
         self.assertEqual(
-            smb_manager.update_managed_share.call_args_list[-1].kwargs,
+            smb_manager.update_managed_share.call_args_list[-1][1],
             {
                 'old_name': 'backup',
                 'new_name': 'backup',
@@ -646,7 +646,7 @@ class BackupDriveSetupTests(unittest.TestCase):
                 )
 
         self.assertEqual(
-            smb_manager.update_managed_share.call_args_list[-1].kwargs,
+            smb_manager.update_managed_share.call_args_list[-1][1],
             {
                 'old_name': 'backup',
                 'new_name': 'backup',
