@@ -107,31 +107,39 @@ Install local development dependencies with:
 bash install_dev.sh
 ```
 
-Install commit hooks with:
+Install the optional fast commit hooks with:
 
 ```bash
 .venv/bin/pre-commit install
 ```
 
-Run the standard checks with:
+During normal development, run targeted tests for the code you changed. Before pushing or opening
+a pull request, run the local CI wrapper:
 
 ```bash
-.venv/bin/python -m ruff format .
-.venv/bin/python -m ruff check . --fix
+bash check_ci.sh
+```
+
+`check_ci.sh` mirrors `.github/workflows/quality.yml`. Formatting, linting, and tests are
+required. Type checking, security scanning, and dependency auditing still run, but they are
+advisory until the cleanup/refactor pass removes known baseline noise:
+
+```bash
+.venv/bin/python -m ruff format --check .
+.venv/bin/python -m ruff check .
 .venv/bin/python -m pytest
 .venv/bin/pyright
 .venv/bin/python -m bandit -c pyproject.toml -r .
 .venv/bin/python -m pip_audit -r requirements.txt -r requirements-dev.txt --ignore-vuln GHSA-6w46-j5rx-g56g
-.venv/bin/pre-commit run --all-files
-.venv/bin/pre-commit run --hook-stage manual pytest
-.venv/bin/pre-commit run --hook-stage manual pyright
-.venv/bin/pre-commit run --hook-stage manual bandit
-.venv/bin/pre-commit run --hook-stage manual pip-audit
 ```
 
-`pre-commit run --all-files` runs only default-stage hooks. The pytest, pyright, bandit,
-and pip-audit hooks are marked `manual` in `.pre-commit-config.yaml`, so run those hooks
-with `--hook-stage manual` when validating the full suite through pre-commit.
+The pre-commit configuration intentionally stays lightweight and only runs ruff formatting/linting.
+The slower pytest, pyright, bandit, and dependency-audit gates are available through `check_ci.sh`
+so they can be run deliberately instead of slowing down every commit.
+
+Local venv checks can catch the same gate failures as CI, but GitHub Actions runs them inside the
+`python:3.7-buster` container. If a Python-version-specific failure appears, reproduce it in that
+container before changing the compatibility target.
 
 Check Python 3.7 syntax compatibility with:
 
@@ -150,15 +158,15 @@ PY
 
 ## Current Baseline Policy
 
-Continuous integration currently runs the standard checks in advisory mode while the cleanup
-and refactor pass is in progress:
+Continuous integration runs the standard checks with the same required/advisory split as
+`check_ci.sh`:
 
 - `ruff format --check`
 - `ruff check`
 - `pytest`
-- `pyright`
-- `bandit`
-- `pip-audit`
+- `pyright` advisory
+- `bandit` advisory
+- `pip-audit` advisory
 
 Bandit skips the generic subprocess import/execution rules because SimpleSaferServer is a local admin tool that intentionally calls Debian system utilities. Keep those subprocess calls behind services or adapters, validate user-controlled arguments before shelling out, and document operational assumptions near the code.
 

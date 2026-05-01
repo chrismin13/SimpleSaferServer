@@ -3,9 +3,11 @@ import logging
 import os
 import re
 import shutil
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from tempfile import NamedTemporaryFile
+from typing import Tuple
 
 from simple_safer_server.adapters.backup_drive_commands import BackupDriveCommandAdapter
 from simple_safer_server.services.runtime import get_fake_state, get_runtime
@@ -14,6 +16,36 @@ LOGGER = logging.getLogger(__name__)
 FSTAB_MARKER = "# SimpleSaferServer managed backup drive"
 LEGACY_FSTAB_MARKER = "SimpleSaferServer"
 NTFS_FILESYSTEM_TYPES = {'ntfs', 'ntfs3', 'ntfs-3g'}
+
+
+@dataclass(frozen=True)
+class _BackupShareUpdate:
+    path: str
+    writable: bool
+    comment: str
+    valid_users: Tuple[str, ...]
+
+    @classmethod
+    def from_share(cls, share, path):
+        valid_users = share.get('valid_users') or []
+        return cls(
+            path=path,
+            writable=share.get('writable', True),
+            comment=share.get('comment', ''),
+            # Keep rollback independent from mutable share records returned by
+            # SMB internals or tests that model those internals closely.
+            valid_users=tuple(valid_users),
+        )
+
+    def apply(self, smb_manager):
+        smb_manager.update_managed_share(
+            old_name='backup',
+            new_name='backup',
+            path=self.path,
+            writable=self.writable,
+            comment=self.comment,
+            valid_users=list(self.valid_users),
+        )
 
 
 def _command_adapter(command_adapter=None):
@@ -582,21 +614,29 @@ def unmount_selected_partition(partition_path, runtime=None, command_adapter=Non
     return 'Successfully unmounted {}.'.format(mount['device'])
 
 
-def _sync_backup_share_path(smb_manager, new_path):
+def _replace_backup_share_path(smb_manager, new_path, fallback_path):
     share = smb_manager.get_managed_share('backup')
-    if share:
-        # Only rewrite the owned backup share. Older untagged shares are
-        # deliberately left alone until the user converts them manually.
-        smb_manager.update_managed_share(
-            old_name='backup',
-            new_name='backup',
-            path=new_path,
-            writable=share.get('writable', True),
-            comment=share.get('comment', ''),
-            valid_users=share.get('valid_users', []),
-        )
-        return True
-    return False
+    if not share or share.get('path') == new_path:
+        return None
+
+    rollback = _BackupShareUpdate.from_share(share, share.get('path', fallback_path))
+    _BackupShareUpdate.from_share(share, new_path).apply(smb_manager)
+    return rollback
+
+
+def _restore_backup_share(smb_manager, share_rollback, fake_mode=False):
+    if not share_rollback:
+        return
+
+    try:
+        share_rollback.apply(smb_manager)
+    except Exception as share_exc:
+        if fake_mode:
+            LOGGER.error(
+                'Failed to restore fake backup share after drive setup error: %s', share_exc
+            )
+        else:
+            LOGGER.error('Failed to restore backup share after drive setup error: %s', share_exc)
 
 
 def apply_backup_drive_configuration(
@@ -650,11 +690,9 @@ def apply_backup_drive_configuration(
             )
             _reload_systemd_mount_units(runtime=runtime)
 
-            backup_share = smb_manager.get_managed_share('backup')
-
-            if backup_share and backup_share.get('path') != selected_path_str:
-                share_backup = backup_share
-                _sync_backup_share_path(smb_manager, selected_path_str)
+            share_backup = _replace_backup_share_path(
+                smb_manager, selected_path_str, previous_mount_point
+            )
 
             config_updated = True
             config_manager.set_value('backup', 'mount_point', selected_path_str)
@@ -673,20 +711,7 @@ def apply_backup_drive_configuration(
             if fstab_backup:
                 restore_fstab_backup(fstab_backup, runtime=runtime)
                 _reload_systemd_mount_units(runtime=runtime)
-            if share_backup:
-                try:
-                    smb_manager.update_managed_share(
-                        old_name='backup',
-                        new_name='backup',
-                        path=share_backup.get('path', previous_mount_point),
-                        writable=share_backup.get('writable', True),
-                        comment=share_backup.get('comment', ''),
-                        valid_users=share_backup.get('valid_users', []),
-                    )
-                except Exception as share_exc:
-                    LOGGER.error(
-                        'Failed to restore fake backup share after drive setup error: %s', share_exc
-                    )
+            _restore_backup_share(smb_manager, share_backup, fake_mode=True)
             if config_updated:
                 try:
                     config_manager.set_value('backup', 'mount_point', previous_mount_point)
@@ -737,11 +762,7 @@ def apply_backup_drive_configuration(
             raise BackupDriveSetupError(f'Error mounting drive: {error_msg}')
         mounted = True
 
-        backup_share = smb_manager.get_managed_share('backup')
-
-        if backup_share and backup_share.get('path') != mount_point:
-            share_backup = backup_share
-            _sync_backup_share_path(smb_manager, mount_point)
+        share_backup = _replace_backup_share_path(smb_manager, mount_point, previous_mount_point)
 
         config_updated = True
         config_manager.set_value('backup', 'mount_point', mount_point)
@@ -760,20 +781,7 @@ def apply_backup_drive_configuration(
         if fstab_backup:
             restore_fstab_backup(fstab_backup, runtime=runtime)
             _reload_systemd_mount_units(runtime=runtime)
-        if share_backup:
-            try:
-                smb_manager.update_managed_share(
-                    old_name='backup',
-                    new_name='backup',
-                    path=share_backup.get('path', previous_mount_point),
-                    writable=share_backup.get('writable', True),
-                    comment=share_backup.get('comment', ''),
-                    valid_users=share_backup.get('valid_users', []),
-                )
-            except Exception as share_exc:
-                LOGGER.error(
-                    'Failed to restore backup share after drive setup error: %s', share_exc
-                )
+        _restore_backup_share(smb_manager, share_backup)
         if config_updated:
             try:
                 config_manager.set_value('backup', 'mount_point', previous_mount_point)

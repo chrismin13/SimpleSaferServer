@@ -42,6 +42,33 @@ class FakeBackupDriveCommandAdapter:
 
 
 class BackupDriveSetupTests(unittest.TestCase):
+    def test_backup_share_update_snapshot_ignores_later_share_mutation(self):
+        share = {
+            'path': '/media/backup',
+            'writable': True,
+            'comment': 'Managed backup share',
+            'valid_users': ['admin'],
+        }
+
+        snapshot = backup_drive_setup._BackupShareUpdate.from_share(share, share['path'])
+        share['path'] = '/tmp/changed'
+        share['valid_users'].append('backup-admin')
+
+        smb_manager = MagicMock()
+        snapshot.apply(smb_manager)
+
+        self.assertEqual(
+            smb_manager.update_managed_share.call_args.kwargs,
+            {
+                'old_name': 'backup',
+                'new_name': 'backup',
+                'path': '/media/backup',
+                'writable': True,
+                'comment': 'Managed backup share',
+                'valid_users': ['admin'],
+            },
+        )
+
     @patch(
         'simple_safer_server.services.backup_drive_setup._get_system_drive_path',
         return_value='/dev/sda',
@@ -545,6 +572,79 @@ class BackupDriveSetupTests(unittest.TestCase):
                 )
 
         self.assertGreaterEqual(smb_manager.update_managed_share.call_count, 2)
+        self.assertEqual(
+            smb_manager.update_managed_share.call_args_list[-1].kwargs,
+            {
+                'old_name': 'backup',
+                'new_name': 'backup',
+                'path': '/media/backup',
+                'writable': True,
+                'comment': 'Managed backup share',
+                'valid_users': ['admin'],
+            },
+        )
+
+    @patch('simple_safer_server.services.backup_drive_setup.get_fake_state')
+    @patch('simple_safer_server.services.backup_drive_setup.restore_fstab_backup')
+    @patch('simple_safer_server.services.backup_drive_setup._reload_systemd_mount_units')
+    @patch('simple_safer_server.services.backup_drive_setup.update_managed_fstab')
+    def test_fake_mode_rollback_uses_share_snapshot_when_share_record_mutates(
+        self,
+        mock_update_fstab,
+        mock_reload_mount_units,
+        mock_restore_fstab_backup,
+        mock_get_fake_state,
+    ):
+        del mock_reload_mount_units
+        del mock_restore_fstab_backup
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            data_dir = Path(tempdir)
+            selected_path = data_dir / 'selected-backup'
+            selected_path.mkdir()
+
+            runtime = SimpleNamespace(
+                is_fake=True,
+                data_dir=data_dir,
+                default_mount_point='/media/backup',
+            )
+            fake_state = MagicMock()
+            mock_get_fake_state.return_value = fake_state
+            mock_update_fstab.return_value = '/tmp/fstab.backup'
+
+            config_manager = MagicMock()
+            config_manager.get_value.side_effect = ['/media/backup', 'OLD-UUID', 'OLD-USB']
+            config_manager.set_value.side_effect = [None, None, RuntimeError('boom')]
+
+            managed_share = {
+                'name': 'backup',
+                'path': '/media/backup',
+                'writable': True,
+                'comment': 'Managed backup share',
+                'valid_users': ['admin'],
+            }
+            smb_manager = MagicMock()
+            smb_manager.get_managed_share.return_value = managed_share
+
+            def mutate_share_record(**kwargs):
+                # Simulate an SMB manager implementation that rewrites the live
+                # share record in place after the new path is applied.
+                if kwargs['path'] == str(selected_path):
+                    managed_share['path'] = kwargs['path']
+                    managed_share['valid_users'].append('backup-admin')
+
+            smb_manager.update_managed_share.side_effect = mutate_share_record
+
+            with self.assertRaisesRegex(RuntimeError, 'boom'):
+                backup_drive_setup.apply_backup_drive_configuration(
+                    '/dev/fakebackup1',
+                    str(selected_path),
+                    True,
+                    config_manager,
+                    smb_manager,
+                    runtime=runtime,
+                )
+
         self.assertEqual(
             smb_manager.update_managed_share.call_args_list[-1].kwargs,
             {
