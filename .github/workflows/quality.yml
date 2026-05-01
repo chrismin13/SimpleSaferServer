@@ -29,13 +29,10 @@ jobs:
         run: python -m pytest
 
       - name: Type check
-        continue-on-error: true
         run: pyright
 
       - name: Security scan
-        continue-on-error: true
         run: python -m bandit -c pyproject.toml -r .
 
       - name: Dependency audit
-        continue-on-error: true
         run: python -m pip_audit -r requirements.txt -r requirements-dev.txt --ignore-vuln GHSA-6w46-j5rx-g56g

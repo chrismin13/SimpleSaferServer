@@ -54,11 +54,17 @@ bash install_dev.sh
 .venv/bin/pre-commit install
 ```
 
-The pre-commit hooks are intentionally fast and only cover ruff formatting/linting. Run the full
-local CI suite when you want a pre-push check:
+The pre-commit hooks are intentionally fast and only cover ruff formatting/linting. Run the strict
+local check suite when you want a pre-push check:
 
 ```bash
 bash check_ci.sh
+```
+
+To reproduce the required GitHub Actions checks in the same Python 3.7 container used by CI, run:
+
+```bash
+bash check_ci_docker.sh
 ```
 
 ---

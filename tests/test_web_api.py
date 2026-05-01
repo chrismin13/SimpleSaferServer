@@ -38,11 +38,14 @@ class WebApiHelperTests(unittest.TestCase):
 
     def test_service_json_response_maps_failure_status(self):
         with self.app.app_context():
-            response, status_code = service_json_response(
+            result = service_json_response(
                 {"success": False, "error": "Nope"},
                 failure_status=400,
             )
 
+        if not isinstance(result, tuple):
+            self.fail("Expected failure response to include an HTTP status code")
+        response, status_code = result
         self.assertEqual(status_code, 400)
         self.assertEqual(response.get_json(), {"success": False, "error": "Nope"})
 

@@ -607,7 +607,7 @@ class SystemUpdatesManager:
             return state
 
         if lock_status["processes"] or lock_status["held_locks"]:
-            updates = {
+            updates: Dict[str, Any] = {
                 "status": "external",
                 "phase": "Package manager busy",
                 "finished_at": datetime.now().isoformat(timespec="seconds"),

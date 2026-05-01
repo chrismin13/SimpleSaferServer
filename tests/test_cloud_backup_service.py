@@ -167,7 +167,10 @@ class CloudBackupServiceTests(unittest.TestCase):
         )
 
         self.assertEqual(result, {"success": True})
-        self.assertIn("stored-obscured", system_utils.rclone_config)
+        rclone_config = system_utils.rclone_config
+        if rclone_config is None:
+            self.fail("Expected rclone config to be written")
+        self.assertIn("stored-obscured", rclone_config)
 
     def test_list_mega_folders_uses_command_runner(self):
         command_runner = FakeCommandRunner()

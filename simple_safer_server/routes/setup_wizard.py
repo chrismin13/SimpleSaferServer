@@ -52,7 +52,9 @@ def _json_object_payload():
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
         return {}, jsonify({'success': False, 'error': 'Request body must be a JSON object'}), 400
-    return data, None, None
+    # Callers only use the status when an error response is present. Returning
+    # an int in both branches keeps route return types stable for Python 3.7 CI.
+    return data, None, 400
 
 
 def _missing_required_field_response(message):

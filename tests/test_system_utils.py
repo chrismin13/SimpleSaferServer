@@ -168,6 +168,8 @@ class SystemUtilsTimerActivationTests(unittest.TestCase):
                 )
 
                 self.assertFalse(ok, value)
+                if error is None:
+                    self.fail("Expected validation error")
                 self.assertIn("schedule.backup_cloud_time", error)
 
 

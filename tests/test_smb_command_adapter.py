@@ -1,9 +1,10 @@
 import unittest
 
+from simple_safer_server.adapters.command_runner import CommandRunner
 from simple_safer_server.adapters.smb_commands import SmbCommandAdapter
 
 
-class RecordingRunner:
+class RecordingRunner(CommandRunner):
     def __init__(self):
         self.calls = []
 

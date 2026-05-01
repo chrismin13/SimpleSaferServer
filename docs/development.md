@@ -114,15 +114,13 @@ Install the optional fast commit hooks with:
 ```
 
 During normal development, run targeted tests for the code you changed. Before pushing or opening
-a pull request, run the local CI wrapper:
+a pull request, run the fast local check wrapper:
 
 ```bash
 bash check_ci.sh
 ```
 
-`check_ci.sh` mirrors `.github/workflows/quality.yml`. Formatting, linting, and tests are
-required. Type checking, security scanning, and dependency auditing still run, but they are
-advisory until the cleanup/refactor pass removes known baseline noise:
+`check_ci.sh` runs the strict CI gates in your active `.venv`:
 
 ```bash
 .venv/bin/python -m ruff format --check .
@@ -133,13 +131,24 @@ advisory until the cleanup/refactor pass removes known baseline noise:
 .venv/bin/python -m pip_audit -r requirements.txt -r requirements-dev.txt --ignore-vuln GHSA-6w46-j5rx-g56g
 ```
 
-The pre-commit configuration intentionally stays lightweight and only runs ruff formatting/linting.
-The slower pytest, pyright, bandit, and dependency-audit gates are available through `check_ci.sh`
-so they can be run deliberately instead of slowing down every commit.
+When a change could depend on Python 3.7 behavior, or before pushing CI-sensitive changes, run the
+exact GitHub Actions reproduction in Docker:
 
-Local venv checks can catch the same gate failures as CI, but GitHub Actions runs them inside the
-`python:3.7-buster` container. If a Python-version-specific failure appears, reproduce it in that
-container before changing the compatibility target.
+```bash
+bash check_ci_docker.sh
+```
+
+`check_ci_docker.sh` uses `python:3.7-buster` and runs the same gates as
+`.github/workflows/quality.yml`: formatting, linting, tests, pyright, bandit, and pip-audit. A
+green Docker run should mean the CI workflow is green.
+
+The pre-commit configuration intentionally stays lightweight and only runs ruff formatting/linting.
+The full gate set is available through both check scripts. Use the Docker script when Python 3.7
+runtime behavior matters.
+
+Local venv checks catch most gate failures, but GitHub Actions runs required checks inside the
+`python:3.7-buster` container. The syntax compatibility check below is useful, but it does not
+catch Python 3.7 runtime behavior differences; use `check_ci_docker.sh` for that.
 
 Check Python 3.7 syntax compatibility with:
 
@@ -158,15 +167,15 @@ PY
 
 ## Current Baseline Policy
 
-Continuous integration runs the standard checks with the same required/advisory split as
-`check_ci.sh`:
+Continuous integration runs strict gates. A green `Quality` workflow should not hide tool failures
+behind advisory or continue-on-error steps:
 
 - `ruff format --check`
 - `ruff check`
 - `pytest`
-- `pyright` advisory
-- `bandit` advisory
-- `pip-audit` advisory
+- `pyright`
+- `bandit`
+- `pip-audit`
 
 Bandit skips the generic subprocess import/execution rules because SimpleSaferServer is a local admin tool that intentionally calls Debian system utilities. Keep those subprocess calls behind services or adapters, validate user-controlled arguments before shelling out, and document operational assumptions near the code.
 
