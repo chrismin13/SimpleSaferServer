@@ -58,10 +58,12 @@ class CloudBackupService:
 
         backup_time = data.get("backup_cloud_time")
         bandwidth_limit = data.get("bandwidth_limit")
-        if backup_time:
-            self._config_manager.set_value("schedule", "backup_cloud_time", backup_time)
-        if bandwidth_limit is not None:
-            self._config_manager.set_value("backup", "bandwidth_limit", bandwidth_limit)
+        if backup_time or bandwidth_limit is not None:
+            # Schedule-related values affect generated systemd units, so they
+            # must flow through save_schedule before becoming durable config.
+            return self.save_schedule(
+                {"backup_cloud_time": backup_time, "bandwidth_limit": bandwidth_limit}
+            )
         return {"success": True}
 
     def get_status(self) -> Dict[str, Any]:

@@ -15,30 +15,28 @@ class BackupDriveCommandAdapter:
     # permissions changed mid-flow, or a remote mount disappeared. Failures are
     # surfaced by the surrounding backup/restore checks instead of raising here.
     def close_smb_share(self, mount_point: str) -> None:
-        self._command_runner.run(
-            ["sudo", "smbcontrol", "all", "close-share", mount_point], check=False
-        )
+        self._command_runner.run(["smbcontrol", "all", "close-share", mount_point], check=False)
 
     def stop_unit(self, unit_name: str) -> None:
-        self._command_runner.run(["sudo", "systemctl", "stop", unit_name], check=False)
+        self._command_runner.run(["systemctl", "stop", unit_name], check=False)
 
     def start_unit(self, unit_name: str) -> None:
-        self._command_runner.run(["sudo", "systemctl", "start", unit_name], check=False)
+        self._command_runner.run(["systemctl", "start", unit_name], check=False)
 
     def unmount(self, mount_point: str):
         return self._command_runner.run(
-            ["sudo", "umount", mount_point],
+            ["umount", mount_point],
             capture_output=True,
             text=True,
-            check=True,
+            check=False,
         )
 
     def unmount_partition(self, device: str):
         return self._command_runner.run(
-            ["sudo", "umount", device],
+            ["umount", device],
             capture_output=True,
             text=True,
-            check=True,
+            check=False,
         )
 
     def mount_ntfs(self, partition: str, mount_point: str):
@@ -62,7 +60,7 @@ class BackupDriveCommandAdapter:
         return result.stdout.strip()
 
     def power_down_device(self, device: str) -> None:
-        self._command_runner.run(["sudo", "hdparm", "-y", device], check=False)
+        self._command_runner.run(["hdparm", "-y", device], check=False)
 
     def blkid_filesystem_type(self, device: str):
         return self._command_runner.run(

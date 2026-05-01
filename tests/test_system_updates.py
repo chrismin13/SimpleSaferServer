@@ -223,6 +223,21 @@ class SystemUpdatesTests(unittest.TestCase):
             self.assertEqual(status["phase"], "Starting")
             self.assertEqual(status["lock"], lock_status)
 
+    def test_write_state_replaces_complete_json_atomically(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime = make_real_runtime(Path(temp_dir))
+            manager = SystemUpdatesManager(FakeConfigManager(), runtime=runtime)
+
+            manager._write_state({"status": "running", "phase": "Downloading"})
+
+            state = manager._read_state()
+            self.assertEqual(state["status"], "running")
+            self.assertEqual(state["phase"], "Downloading")
+            self.assertFalse(
+                list(manager.state_path.parent.glob(f".{manager.state_path.name}.tmp.*"))
+            )
+            self.assertEqual(manager.state_path.stat().st_mode & 0o777, 0o644)
+
     def test_settings_are_saved_to_config_in_fake_mode(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             runtime = make_runtime(Path(temp_dir))

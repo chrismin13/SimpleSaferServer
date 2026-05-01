@@ -700,7 +700,7 @@ def save_schedule():
                 'error': f'Error saving schedule: {e!s}',
                 'details': 'An unexpected error occurred. Please check the system logs for more information.',
             }
-        )
+        ), 500
 
 
 def install_systemd_tasks(config):

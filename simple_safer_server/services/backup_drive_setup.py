@@ -469,7 +469,7 @@ def get_drive_usb_id(drive):
 
 def list_available_drives(runtime=None, ntfs_only=False):
     runtime = runtime or get_runtime()
-    fake_state = get_fake_state() if runtime.is_fake else None
+    fake_state = get_fake_state(runtime) if runtime.is_fake else None
 
     if runtime.is_fake:
         if fake_state is None:
@@ -551,7 +551,7 @@ def list_available_drives(runtime=None, ntfs_only=False):
 def unmount_disk_partitions(disk_path, runtime=None, command_adapter=None):
     runtime = runtime or get_runtime()
     command_adapter = _command_adapter(command_adapter)
-    fake_state = get_fake_state() if runtime.is_fake else None
+    fake_state = get_fake_state(runtime) if runtime.is_fake else None
 
     if runtime.is_fake:
         if fake_state is None:
@@ -592,7 +592,7 @@ def unmount_disk_partitions(disk_path, runtime=None, command_adapter=None):
 def unmount_selected_partition(partition_path, runtime=None, command_adapter=None):
     runtime = runtime or get_runtime()
     command_adapter = _command_adapter(command_adapter)
-    fake_state = get_fake_state() if runtime.is_fake else None
+    fake_state = get_fake_state(runtime) if runtime.is_fake else None
 
     if runtime.is_fake:
         if fake_state is None:
@@ -655,7 +655,7 @@ def apply_backup_drive_configuration(
 ):
     runtime = runtime or get_runtime()
     command_adapter = _command_adapter(command_adapter)
-    fake_state = get_fake_state() if runtime.is_fake else None
+    fake_state = get_fake_state(runtime) if runtime.is_fake else None
 
     mount_point = (mount_point or '').strip()
     if not mount_point or not mount_point.startswith('/'):

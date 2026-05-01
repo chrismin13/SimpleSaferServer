@@ -283,8 +283,16 @@ class SystemUpdatesManager:
         return {**self._default_state(), **state}
 
     def _write_state(self, state: Dict[str, Any]) -> None:
-        self.state_path.write_text(json.dumps(state, indent=2))
-        self.state_path.chmod(0o644)
+        state_json = json.dumps(state, indent=2)
+        temp_path = self.state_path.with_name(f".{self.state_path.name}.tmp.{os.getpid()}")
+        # Readers poll this file from the UI, so replace it atomically after
+        # fsync instead of exposing half-written JSON during an update.
+        with temp_path.open("w") as temp_file:
+            temp_file.write(state_json)
+            temp_file.flush()
+            os.fsync(temp_file.fileno())
+        temp_path.chmod(0o644)
+        temp_path.replace(self.state_path)
 
     def _update_state(self, **updates) -> Dict[str, Any]:
         with self._lock:
@@ -599,8 +607,10 @@ class SystemUpdatesManager:
             self.command_adapter.terminate_process(proc)
         with self._lock:
             current_phase = self._read_state().get("phase")
-        if current_phase not in {"Stopped", "Failed", "Completed", "Complete"}:
-            self._update_state(phase="Stopping")
+            if current_phase not in {"Stopped", "Failed", "Completed", "Complete"}:
+                state = self._read_state()
+                state["phase"] = "Stopping"
+                self._write_state(state)
         return self.get_status()
 
     def _reconcile_running_state(

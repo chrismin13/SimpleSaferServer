@@ -50,7 +50,8 @@ Shared response and validation helpers should be preferred over per-route ad hoc
 
 Security work should follow the app's admin trust model. SimpleSaferServer is a root-run,
 admin-only local management tool, so do not hide useful managed credentials or configuration from
-administrators just for appearance. Avoid accidental spread instead: keep secrets out of logs,
+administrators just for appearance. Credential editor endpoints may return the stored secret when
+that is the behavior the editor needs. Avoid accidental spread instead: keep secrets out of logs,
 broad status responses, process argv, unrelated UI, and overly broad filesystem permissions.
 
 Avoid persistent writes unless the data must survive restart or is durable operator history/config.

@@ -200,7 +200,6 @@ def api_drive_health_refresh():
         from flask import current_app
 
         current_app.logger.exception("Drive health refresh failed")
-        services = _get_services()
         services.drive_health_summary_service.publish(
             {
                 "status": "unknown",

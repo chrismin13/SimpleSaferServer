@@ -1,0 +1,50 @@
+import unittest
+from types import SimpleNamespace
+from typing import Any, cast
+
+from simple_safer_server.adapters.backup_drive_commands import BackupDriveCommandAdapter
+
+
+class FakeCommandRunner:
+    def __init__(self):
+        self.calls = []
+
+    def run(self, command, **kwargs):
+        self.calls.append((command, kwargs))
+        return SimpleNamespace(returncode=7, stdout="", stderr="busy")
+
+
+class BackupDriveCommandAdapterTests(unittest.TestCase):
+    def test_privileged_commands_run_without_sudo(self):
+        runner = FakeCommandRunner()
+        adapter = BackupDriveCommandAdapter(command_runner=cast(Any, runner))
+
+        adapter.close_smb_share("/media/backup")
+        adapter.stop_unit("smbd")
+        adapter.start_unit("smbd")
+        adapter.power_down_device("/dev/sdb")
+
+        self.assertEqual(
+            [call[0] for call in runner.calls],
+            [
+                ["smbcontrol", "all", "close-share", "/media/backup"],
+                ["systemctl", "stop", "smbd"],
+                ["systemctl", "start", "smbd"],
+                ["hdparm", "-y", "/dev/sdb"],
+            ],
+        )
+
+    def test_unmount_returns_nonzero_result_for_callers_to_handle(self):
+        runner = FakeCommandRunner()
+        adapter = BackupDriveCommandAdapter(command_runner=cast(Any, runner))
+
+        result = adapter.unmount_partition("/dev/sdb1")
+
+        self.assertEqual(result.returncode, 7)
+        self.assertEqual(runner.calls[0][0], ["umount", "/dev/sdb1"])
+        self.assertFalse(runner.calls[0][1]["check"])
+        self.assertTrue(runner.calls[0][1]["capture_output"])
+
+
+if __name__ == "__main__":
+    unittest.main()

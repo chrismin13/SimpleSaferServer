@@ -406,6 +406,6 @@ def get_runtime() -> Runtime:
 def get_fake_state(runtime: Optional[Runtime] = None) -> FakeState:
     global _fake_state
     runtime = runtime or get_runtime()
-    if _fake_state is None:
+    if _fake_state is None or _fake_state.runtime != runtime:
         _fake_state = FakeState(runtime)
     return _fake_state

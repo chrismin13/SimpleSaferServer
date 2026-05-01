@@ -57,6 +57,11 @@ Bandit skips generic subprocess rules because SimpleSaferServer is a local admin
 intentionally calls Debian system utilities. Subprocess use should still validate user-controlled
 arguments before execution and document operational assumptions near the code.
 
+The installed service normally runs as root, so runtime adapters should invoke privileged binaries
+directly instead of prepending `sudo`. Keep `sudo` explicit and opt-in for tests or developer
+workflows that intentionally exercise non-root command paths. Operator documentation can still show
+`sudo` commands because humans often start from a non-root shell.
+
 ## Legacy And Compatibility Code
 
 Standalone proof-of-concept scripts should be removed when their behavior is available through the

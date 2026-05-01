@@ -143,6 +143,23 @@ class CloudBackupServiceTests(unittest.TestCase):
         self.assertFalse(system_utils.created_systemd_config)
         self.assertFalse(system_utils.installed_timers)
 
+    def test_real_config_save_routes_schedule_values_through_timer_update(self):
+        service, config, system_utils, _runtime = self.make_service(is_fake=False)
+
+        result = service.save_config(
+            {
+                "cloud_mode": "",
+                "backup_cloud_time": "05:15",
+                "bandwidth_limit": "8M",
+            }
+        )
+
+        self.assertEqual(result, {"success": True})
+        self.assertTrue(system_utils.created_systemd_config)
+        self.assertTrue(system_utils.installed_timers)
+        self.assertEqual(config.config["schedule"]["backup_cloud_time"], "05:15")
+        self.assertEqual(config.config["backup"]["bandwidth_limit"], "8M")
+
     def test_advanced_config_requires_remote_and_rclone_config(self):
         service, _config, _system_utils, _runtime = self.make_service()
 

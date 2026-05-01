@@ -279,6 +279,9 @@ def _restart_web_service(runtime) -> None:
         return
     try:
         command_runner.run(["systemctl", "restart", WEB_SERVICE_NAME], check=True, timeout=120)
+    except CalledProcessError as exc:
+        LOGGER.error("Failed to restart %s during migration: %s", WEB_SERVICE_NAME, exc)
+        raise MigrationError(f"Failed to restart {WEB_SERVICE_NAME}.") from exc
     except TimeoutExpired as exc:
         LOGGER.error("Timed out restarting %s during migration.", WEB_SERVICE_NAME)
         raise MigrationError(f"Timed out restarting {WEB_SERVICE_NAME}.") from exc

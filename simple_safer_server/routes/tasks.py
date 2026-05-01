@@ -134,13 +134,21 @@ def stop_task(task_name):
 def run_task(task_name):
     task = _get_services().task_service.get_task(task_name)
     if not task:
-        return jsonify({"success": False, "message": "Task not found"}), 404
+        if request.accept_mimetypes.best == "application/json":
+            return jsonify({"success": False, "message": "Task not found"}), 404
+        abort(404)
     try:
         task.start()
+        if request.accept_mimetypes.best == "application/json":
+            return jsonify({"success": True, "message": f"Started {task_name}."})
         return redirect(url_for("task_routes.task_detail", task_name=task_name))
     except Exception:
         current_app.logger.exception("Failed to run task %s", task_name)
-        return jsonify({"success": False, "message": "Could not run task. Check task logs."}), 500
+        if request.accept_mimetypes.best == "application/json":
+            return jsonify(
+                {"success": False, "message": "Could not run task. Check task logs."}
+            ), 500
+        abort(500)
 
 
 @tasks.route("/api/tasks/schedule")
