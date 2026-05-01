@@ -155,11 +155,11 @@ The full gate set is available through both check scripts.
 Run a single lane when you need a faster focused check:
 
 ```bash
-bash check_ci_docker.sh modern
-bash check_ci_docker.sh legacy-python37
+bash check_ci_docker.sh python313-security
+bash check_ci_docker.sh python37-legacy-compat
 ```
 
-Legacy mode uses `python:3.7-buster`, installs `requirements-legacy-py37.txt`, and runs
+`python37-legacy-compat` uses `python:3.7-buster`, installs `requirements-legacy-py37.txt`, and runs
 formatting, linting, tests, pyright, bandit, and the Python 3.7 syntax parser. It skips pip-audit
 because the fixed releases for Flask, Werkzeug, cryptography, NumPy, scikit-learn, python-socketio,
 and related transitive packages require newer Python runtimes.
@@ -167,7 +167,7 @@ and related transitive packages require newer Python runtimes.
 Local venv checks catch most gate failures, but GitHub Actions runs the strict security lane inside
 `python:3.13-trixie` and the legacy compatibility lane inside `python:3.7-buster`. The syntax
 compatibility check below is useful, but it does not catch Python 3.7 runtime behavior differences;
-use `check_ci_docker.sh legacy-python37` for that.
+use `check_ci_docker.sh python37-legacy-compat` for that.
 
 Check Python 3.7 syntax compatibility with:
 
@@ -186,7 +186,7 @@ PY
 
 ## Current Baseline Policy
 
-Continuous integration runs strict gates. A green `Quality` workflow should not hide tool failures
+Continuous integration runs strict gates. A green `Python CI` workflow should not hide tool failures
 behind advisory or continue-on-error steps:
 
 - `ruff format --check`
@@ -196,7 +196,12 @@ behind advisory or continue-on-error steps:
 - `bandit`
 - `pip-audit`
 
-The `legacy-python37` workflow job is compatibility-only. Keep it useful for Debian 10 operators,
-but do not add dependency-audit ignores to make old Python 3.7 packages appear security-supported.
+The `python37-legacy-compat` workflow job is compatibility-only. Keep it useful for Debian 10
+operators, but do not add dependency-audit ignores to make old Python 3.7 packages appear
+security-supported.
+
+If repository branch protection uses required status checks, update those required check names
+after workflow or job renames. The current workflow file is `.github/workflows/python-ci.yml`, with
+jobs `python313-security` and `python37-legacy-compat`.
 
 Bandit skips the generic subprocess import/execution rules because SimpleSaferServer is a local admin tool that intentionally calls Debian system utilities. Keep those subprocess calls behind services or adapters, validate user-controlled arguments before shelling out, and document operational assumptions near the code.

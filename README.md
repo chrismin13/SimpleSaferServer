@@ -70,8 +70,8 @@ bash check_ci_docker.sh
 To run only one lane, pass the lane name:
 
 ```bash
-bash check_ci_docker.sh modern
-bash check_ci_docker.sh legacy-python37
+bash check_ci_docker.sh python313-security
+bash check_ci_docker.sh python37-legacy-compat
 ```
 
 ---

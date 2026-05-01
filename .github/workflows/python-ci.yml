@@ -1,4 +1,4 @@
-name: Quality
+name: Python CI
 
 on:
   pull_request:
@@ -6,7 +6,8 @@ on:
     branches: [main]
 
 jobs:
-  quality:
+  python313-security:
+    name: Python 3.13 security audit (Debian 13 trixie)
     runs-on: ubuntu-latest
     container: python:3.13-trixie
 
@@ -14,7 +15,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
-      - name: Install dependencies
+      - name: Install Python 3.13 security dependencies
         run: |
           python -m pip install --upgrade pip wheel
           python -m pip install -r requirements.txt -r requirements-dev.txt
@@ -25,19 +26,20 @@ jobs:
       - name: Lint
         run: python -m ruff check .
 
-      - name: Test
+      - name: Run tests
         run: python -m pytest
 
       - name: Type check
         run: pyright
 
-      - name: Security scan
+      - name: Run source security scan
         run: python -m bandit -c pyproject.toml -r .
 
-      - name: Dependency audit
+      - name: Audit Python 3.13 dependencies
         run: python -m pip_audit -r requirements.txt -r requirements-dev.txt
 
-  legacy-python37:
+  python37-legacy-compat:
+    name: Python 3.7 legacy compatibility (Debian 10 buster)
     runs-on: ubuntu-latest
     container: python:3.7-buster
 
@@ -45,7 +47,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
-      - name: Install dependencies
+      - name: Install Python 3.7 legacy dependencies
         run: |
           python -m pip install --upgrade "pip<24.1" wheel
           python -m pip install -r requirements-legacy-py37.txt -r requirements-dev.txt
@@ -56,16 +58,16 @@ jobs:
       - name: Lint
         run: python -m ruff check .
 
-      - name: Test
+      - name: Run tests
         run: python -m pytest
 
       - name: Type check
         run: pyright
 
-      - name: Security scan
+      - name: Run source security scan
         run: python -m bandit -c pyproject.toml -r .
 
-      - name: Syntax compatibility
+      - name: Parse source with Python 3.7
         run: |
           python - <<'PY'
           import ast

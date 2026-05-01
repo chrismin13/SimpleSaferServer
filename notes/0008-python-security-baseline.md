@@ -8,7 +8,7 @@
 ## Rules / Constraints
 
 - Preserve Python 3.7 compatibility for Debian 10 application code.
-- Keep strict dependency auditing on the modern supported runtime.
+- Keep strict dependency auditing on the Python 3.13 supported runtime.
 - Avoid vulnerability ignores that imply unsupported Python 3.7 package versions are fixed.
 - Check related docs, `index.html`, and `uninstall.sh`.
 
@@ -16,7 +16,7 @@
 
 - `requirements.txt` represents the supported secure runtime dependency set.
 - `requirements-legacy-py37.txt` represents the best-effort Python 3.7 dependency set.
-- CI has a strict security lane on Python 3.13 and a compatibility-only lane on Python 3.7.
+- Python CI has a strict `python313-security` lane and a compatibility-only `python37-legacy-compat` lane.
 
 ## Phase Checklist
 
@@ -28,15 +28,16 @@
 ### Phase 1
 
 - Moved the main CI container to `python:3.13-trixie`.
-- Added a `legacy-python37` CI job using `python:3.7-buster`.
+- Added a `python37-legacy-compat` CI job using `python:3.7-buster`.
 - Removed `pip-audit` from the legacy lane because several fixed dependency versions require Python newer than 3.7.
 
 ### Phase 2
 
 - Updated `install.sh` to select the legacy requirements file on Debian 10.
 - Updated development and manual install docs to explain which dependency set each lane uses.
-- Updated `check_ci_docker.sh` so its default run covers both the modern security lane and the Python 3.7 compatibility lane.
+- Updated `check_ci_docker.sh` so its default run covers both the Python 3.13 security lane and the Python 3.7 compatibility lane.
 - Fixed the legacy syntax check to use Python 3.7's native parser without the newer `feature_version` argument.
+- Renamed the workflow to `Python CI` in `.github/workflows/python-ci.yml`, with explicit lane names `python313-security` and `python37-legacy-compat`.
 
 Docs/index/uninstall checks:
 

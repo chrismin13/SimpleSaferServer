@@ -15,13 +15,23 @@ elif command -v docker >/dev/null 2>&1; then
     exit 1
   fi
 else
-  printf 'Docker or Podman is required for exact Python 3.7 CI reproduction.\n' >&2
+  printf 'Docker or Podman is required for exact Python CI reproduction.\n' >&2
   exit 1
 fi
 
 MODE="${1:-all}"
-if [[ "$MODE" != "all" && "$MODE" != "modern" && "$MODE" != "legacy-python37" ]]; then
-  printf 'Usage: bash check_ci_docker.sh [all|modern|legacy-python37]\n' >&2
+case "$MODE" in
+  modern)
+    MODE="python313-security"
+    ;;
+  legacy-python37)
+    MODE="python37-legacy-compat"
+    ;;
+esac
+
+if [[ "$MODE" != "all" && "$MODE" != "python313-security" && "$MODE" != "python37-legacy-compat" ]]; then
+  printf 'Usage: bash check_ci_docker.sh [all|python313-security|python37-legacy-compat]\n' >&2
+  printf 'Legacy aliases still accepted: modern, legacy-python37\n' >&2
   exit 1
 fi
 
@@ -32,7 +42,7 @@ run_lane() {
   local pip_upgrade=""
   local final_gate=""
 
-  if [[ "$mode" == "legacy-python37" ]]; then
+  if [[ "$mode" == "python37-legacy-compat" ]]; then
     image="python:3.7-buster"
     requirements="requirements-legacy-py37.txt"
     pip_upgrade='"pip<24.1" wheel'
@@ -61,12 +71,12 @@ PY"
     bash -lc "set -euo pipefail; python -m pip install --upgrade $pip_upgrade; python -m pip install -r $requirements -r requirements-dev.txt; python -m ruff format --check .; python -m ruff check .; python -m pytest; pyright; python -m bandit -c pyproject.toml -r .; $final_gate"
 }
 
-# This reproduces the GitHub Actions Quality gates in the same Python images
-# used by CI. Keep this strict so a green default run covers the modern
-# security lane and the Python 3.7 compatibility lane.
+# This reproduces the GitHub Actions Python CI lanes in the same Python images
+# used by CI. Keep this strict so a green default run covers both supported
+# runtime policies.
 if [[ "$MODE" == "all" ]]; then
-  run_lane "modern"
-  run_lane "legacy-python37"
+  run_lane "python313-security"
+  run_lane "python37-legacy-compat"
 else
   run_lane "$MODE"
 fi

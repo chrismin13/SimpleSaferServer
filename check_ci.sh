@@ -12,7 +12,7 @@ run_check() {
   "$@"
 }
 
-# Mirrors the modern .github/workflows/quality.yml security gate for local,
+# Mirrors the Python 3.13 security lane in .github/workflows/python-ci.yml for local,
 # intentional pre-push checks. Python 3.7 compatibility has a separate Docker
 # path because several fixed dependency releases no longer install on 3.7.
 run_check "Check formatting" .venv/bin/python -m ruff format --check .
