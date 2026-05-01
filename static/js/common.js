@@ -78,6 +78,19 @@ document.addEventListener('click', (e) => {
   }
 });
 
+/* ── Numeric Inputs ─────────────────────────────────────────── */
+document.addEventListener('input', (e) => {
+  const input = e.target.closest('input[inputmode="numeric"][pattern="[0-9]*"]');
+  if (!input) return;
+
+  const numericValue = input.value.replace(/\D/g, '');
+  if (input.value === numericValue) return;
+
+  // Numeric text inputs give us consistent integer-only display behavior across
+  // browsers; native number inputs can keep invalid text visible in Firefox.
+  input.value = numericValue;
+});
+
 
 /* ── Collapse System ────────────────────────────────────────── */
 document.addEventListener('click', (e) => {

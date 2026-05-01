@@ -307,7 +307,7 @@ unmount the share, then restart SMB automatically."
                                 </div>
                                 <div class="form-group">
                                     <label class="form-label">SMTP Port</label>
-                                    <input type="number" id="smtpPort" class="form-control" placeholder="587">
+                                    <input type="text" id="smtpPort" class="form-control" placeholder="587" inputmode="numeric" pattern="[0-9]*">
                                     <div class="invalid-feedback">SMTP port is required.</div>
                                 </div>
                             </div>
@@ -870,7 +870,7 @@ unmount the share, then restart SMB automatically."
         function validateEmail() { const input = document.getElementById('emailAddress'); if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(input.value.trim())) { input.classList.add('is-invalid'); return false; } else { input.classList.remove('is-invalid'); return true; } }
         function validateFromAddress() { const input = document.getElementById('fromAddress'); if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(input.value.trim())) { input.classList.add('is-invalid'); return false; } else { input.classList.remove('is-invalid'); return true; } }
         function validateSmtpServer() { const input = document.getElementById('smtpServer'); if (!input.value.trim()) { input.classList.add('is-invalid'); return false; } else { input.classList.remove('is-invalid'); return true; } }
-        function validateSmtpPort() { const input = document.getElementById('smtpPort'); if (!input.value.trim() || isNaN(input.value)) { input.classList.add('is-invalid'); return false; } else { input.classList.remove('is-invalid'); return true; } }
+        function validateSmtpPort() { const input = document.getElementById('smtpPort'); if (!/^\d+$/.test(input.value.trim())) { input.classList.add('is-invalid'); return false; } else { input.classList.remove('is-invalid'); return true; } }
         function validateSmtpUsername() { const input = document.getElementById('smtpUsername'); if (!input.value.trim()) { input.classList.add('is-invalid'); return false; } else { input.classList.remove('is-invalid'); return true; } }
         function validateSmtpPassword() { const input = document.getElementById('smtpPassword'); if (!input.value.trim()) { input.classList.add('is-invalid'); return false; } else { input.classList.remove('is-invalid'); return true; } }
         function validateBackupTime() { const input = document.getElementById('backupTime'); if (!input.value) { input.classList.add('is-invalid'); return false; } else { input.classList.remove('is-invalid'); return true; } }
