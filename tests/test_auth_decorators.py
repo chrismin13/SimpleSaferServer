@@ -144,13 +144,13 @@ class AppRouteAuthorizationTests(unittest.TestCase):
                     name = _decorator_name(decorator)
                     if name:
                         guard_names.add(name)
-            for path in route_paths:
-                routes[path] = guard_names
+            if route_paths:
+                routes[node.name] = guard_names
 
         system_update_api_routes = {
-            path: guards
-            for path, guards in routes.items()
-            if path.startswith('/api/system_updates')
+            function_name: guards
+            for function_name, guards in routes.items()
+            if function_name.startswith('api_')
         }
 
         self.assertTrue(system_update_api_routes)
