@@ -1,6 +1,6 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
-from flask import Blueprint, current_app, jsonify, render_template, request, session
+from flask import Blueprint, Response, current_app, jsonify, render_template, request, session
 
 from simple_safer_server.services.user_manager import admin_required, api_admin_required
 
@@ -12,7 +12,10 @@ def _get_services() -> Any:
     return current_app.extensions["simple_safer_server"]
 
 
-def _json_object_payload():
+JsonResponse = Tuple[Response, int]
+
+
+def _json_object_payload() -> Tuple[Optional[Dict[str, Any]], Optional[JsonResponse]]:
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
         return None, (
@@ -62,7 +65,10 @@ def api_add_user():
     data, error_response = _json_object_payload()
     if error_response:
         return error_response
-    assert data is not None
+    if data is None:
+        # _json_object_payload returns an error with None; keep a defensive branch
+        # so optimized Python cannot remove the route's type narrowing.
+        return jsonify({"success": False, "error": "Request body must be a JSON object"}), 400
     username = data.get("username")
     password = data.get("password")
     is_admin = _optional_admin_flag(data, default=False)
@@ -86,7 +92,10 @@ def api_edit_user(username):
     data, error_response = _json_object_payload()
     if error_response:
         return error_response
-    assert data is not None
+    if data is None:
+        # _json_object_payload returns an error with None; keep a defensive branch
+        # so optimized Python cannot remove the route's type narrowing.
+        return jsonify({"success": False, "error": "Request body must be a JSON object"}), 400
     new_password = data.get("password")
     is_admin = _optional_admin_flag(data, default=None)
     if "is_admin" in data and is_admin is None:
