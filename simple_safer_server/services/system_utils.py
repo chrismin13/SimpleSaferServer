@@ -16,12 +16,12 @@ def _parse_backup_cloud_time(backup_cloud_time):
     time_parts = backup_cloud_time.split(':')
     if len(time_parts) not in (2, 3):
         raise ValueError("schedule.backup_cloud_time must be in HH:MM or HH:MM:SS format")
-    try:
-        backup_hour = int(time_parts[0])
-        backup_minute = int(time_parts[1])
-        backup_second = int(time_parts[2]) if len(time_parts) == 3 else 0
-    except ValueError:
-        raise ValueError("schedule.backup_cloud_time must be in HH:MM or HH:MM:SS format") from None
+    # int() accepts signs and surrounding whitespace; systemd timer config should only use digits.
+    if not all(time_part.isdigit() for time_part in time_parts):
+        raise ValueError("schedule.backup_cloud_time must be in HH:MM or HH:MM:SS format")
+    backup_hour = int(time_parts[0])
+    backup_minute = int(time_parts[1])
+    backup_second = int(time_parts[2]) if len(time_parts) == 3 else 0
     if not (0 <= backup_hour < 24 and 0 <= backup_minute < 60 and 0 <= backup_second < 60):
         raise ValueError("schedule.backup_cloud_time contains an invalid time")
     return backup_hour, backup_minute, f"{backup_hour:02d}:{backup_minute:02d}:{backup_second:02d}"
