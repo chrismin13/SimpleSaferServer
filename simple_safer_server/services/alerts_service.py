@@ -72,9 +72,11 @@ class AlertsService:
         if from_address and "from_address" not in msmtp_config:
             msmtp_config["from_address"] = from_address
 
-        has_smtp_password = bool(msmtp_config.get("smtp_password"))
-        msmtp_config.pop("smtp_password", None)
-        return {"success": True, "config": msmtp_config, "has_smtp_password": has_smtp_password}
+        return {
+            "success": True,
+            "config": msmtp_config,
+            "has_smtp_password": bool(msmtp_config.get("smtp_password")),
+        }
 
     def save_email_config(self, data: Dict[str, Any]) -> Dict[str, Any]:
         email = data.get("email_address")

@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import sys
+import tempfile
 import urllib.error
 import urllib.request
 from datetime import datetime
@@ -157,7 +158,7 @@ def main():
         logger.info("No DDNS services enabled.")
         return 0
 
-    status_file = runtime.data_dir / 'ddns_status.json'
+    status_file = runtime.volatile_dir / 'ddns_status.json'
     try:
         status_data = json.loads(status_file.read_text()) if status_file.exists() else {}
     except Exception:
@@ -242,10 +243,17 @@ def main():
     status_file.parent.mkdir(parents=True, exist_ok=True)
     # Write atomically: write to a temp file in the same directory then rename, so
     # concurrent reads by the web API never see a partial/empty file.
-    tmp_file = status_file.with_suffix('.tmp')
-    tmp_file.write_text(json.dumps(status_data, indent=2))
-    tmp_file.chmod(0o644)
-    os.replace(tmp_file, status_file)
+    with tempfile.NamedTemporaryFile(
+        "w",
+        dir=status_file.parent,
+        prefix=f"{status_file.stem}.",
+        suffix=".tmp",
+        delete=False,
+    ) as tmp_file:
+        json.dump(status_data, tmp_file, indent=2)
+        tmp_path = Path(tmp_file.name)
+    tmp_path.chmod(0o644)
+    os.replace(tmp_path, status_file)
 
     if provider_failures:
         # The status file is still the source of provider details; the exit code

@@ -45,6 +45,14 @@ Fake mode should be an alternate implementation behind those boundaries. Avoid s
 
 Shared response and validation helpers should be preferred over per-route ad hoc response shapes. Until a formal API schema pass happens, keep API responses predictable and use clear status codes.
 
+Security work should follow the app's admin trust model. SimpleSaferServer is a root-run,
+admin-only local management tool, so do not hide useful managed credentials or configuration from
+administrators just for appearance. Avoid accidental spread instead: keep secrets out of logs,
+broad status responses, process argv, unrelated UI, and overly broad filesystem permissions.
+
+Avoid persistent writes unless the data must survive restart or is durable operator history/config.
+Use volatile runtime state for status/cache data that can be rebuilt.
+
 `docs/architecture.md` describes the current package architecture. New refactored code should move toward:
 
 - `simple_safer_server/routes/` for Flask blueprints.

@@ -25,3 +25,10 @@ def json_payload_or_error(
     if not isinstance(data, dict) or not data:
         return {}, json_error(message, status_code=400, key="message")
     return data, None
+
+
+def service_json_response(payload: Dict[str, Any], failure_status: int = 500):
+    """Return a service result with a predictable status based on its success flag."""
+    if payload.get("success"):
+        return jsonify(payload)
+    return jsonify(payload), failure_status

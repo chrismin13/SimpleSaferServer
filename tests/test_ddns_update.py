@@ -77,11 +77,15 @@ class CloudflareDdnsTests(unittest.TestCase):
                 self.alerts.append((args, kwargs))
 
         with TemporaryDirectory() as temp_dir:
-            runtime = types.SimpleNamespace(data_dir=Path(temp_dir))
+            runtime = types.SimpleNamespace(
+                data_dir=Path(temp_dir),
+                volatile_dir=Path(temp_dir) / "run",
+            )
             if initial_status is not None:
                 # Seed the status file exactly like a prior scheduled run would
                 # leave it, because alert de-dupe depends on persisted messages.
-                (runtime.data_dir / "ddns_status.json").write_text(json.dumps(initial_status))
+                runtime.volatile_dir.mkdir(parents=True, exist_ok=True)
+                (runtime.volatile_dir / "ddns_status.json").write_text(json.dumps(initial_status))
             with patch("scripts.ddns_update.get_runtime", return_value=runtime), patch(
                 "scripts.ddns_update.ConfigManager", FakeConfigManager
             ), patch("scripts.ddns_update.get_public_ip", return_value=public_ip), patch(
@@ -89,7 +93,7 @@ class CloudflareDdnsTests(unittest.TestCase):
             ), patch("scripts.ddns_update.update_cloudflare", return_value=cloudflare_result):
                 exit_code = ddns_update.main()
 
-            status_file = runtime.data_dir / "ddns_status.json"
+            status_file = runtime.volatile_dir / "ddns_status.json"
             status_data = json.loads(status_file.read_text()) if status_file.exists() else None
 
         return exit_code, status_data, config_instances[0]

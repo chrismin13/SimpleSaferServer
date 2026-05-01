@@ -9,6 +9,21 @@ document.addEventListener('DOMContentLoaded', () => {
     return;
   }
 
+  function setupSecretToggles() {
+    document.querySelectorAll('[data-secret-toggle]').forEach((button) => {
+      const input = document.getElementById(button.dataset.secretToggle);
+      if (!input) return;
+      button.addEventListener('click', () => {
+        const visible = input.type === 'text';
+        input.type = visible ? 'password' : 'text';
+        button.setAttribute('aria-label', visible ? 'Show token' : 'Hide token');
+        button.title = visible ? 'Show token' : 'Hide token';
+        const icon = button.querySelector('i');
+        if (icon) icon.className = visible ? 'fas fa-eye' : 'fas fa-eye-slash';
+      });
+    });
+  }
+
   // Load config and status
   async function loadData() {
     try {
@@ -33,14 +48,14 @@ document.addEventListener('DOMContentLoaded', () => {
     if (config.duckdns) {
       document.getElementById('duckdnsEnabled').checked = config.duckdns.enabled;
       document.getElementById('duckdnsDomain').value = config.duckdns.domain || '';
-      document.getElementById('duckdnsToken').value = config.duckdns.token_present ? '********' : '';
+      document.getElementById('duckdnsToken').value = config.duckdns.token || '';
     }
 
     if (config.cloudflare) {
       document.getElementById('cloudflareEnabled').checked = config.cloudflare.enabled;
       document.getElementById('cfZoneId').value = config.cloudflare.zone || '';
       document.getElementById('cfRecordName').value = config.cloudflare.record || '';
-      document.getElementById('cfToken').value = config.cloudflare.token_present ? '********' : '';
+      document.getElementById('cfToken').value = config.cloudflare.token || '';
       document.getElementById('cfProxyStatus').checked = config.cloudflare.proxy;
     }
   }
@@ -148,10 +163,10 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     };
 
-    if (duckdnsToken && duckdnsToken !== '********') {
+    if (duckdnsToken) {
       payload.duckdns.token = duckdnsToken;
     }
-    if (cfToken && cfToken !== '********') {
+    if (cfToken) {
       payload.cloudflare.token = cfToken;
     }
 
@@ -230,5 +245,6 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Init
+  setupSecretToggles();
   loadData();
 });

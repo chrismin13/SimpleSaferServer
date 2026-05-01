@@ -26,9 +26,16 @@ The Cloud Backup page manages cloud backup settings, schedules, and status.
 - **Warning**: All files in the selected MEGA folder will be overwritten during backup.
 
 ### Advanced rclone Config
-- **Rclone Configuration**: Paste rclone config.
+- **Rclone Configuration**: Paste or edit the stored rclone config. Administrators can inspect this
+  value because this page is the editor for cloud-backup credentials and destinations.
 - **Remote Name and Path**: Enter in the format `remotename:/path`.
 - **Warning**: rclone will synchronize the remote path to match the local backup directory.
+
+## Fake Mode
+
+Fake mode avoids local system changes, but cloud-backup provider calls can still run when real
+credentials and destinations are configured. Use a test destination when developing against a real
+provider from fake mode.
 
 - **Save**: Button to save backup configuration by disabling during the request.
 - **Error/Success Feedback**: Inline messages for save actions.

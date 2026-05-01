@@ -73,6 +73,43 @@ class ConfigManagerDefaultsTests(unittest.TestCase):
             self.assertEqual(manager.get_value("apt_updates", "managed"), "false")
             self.assertEqual(manager.get_value("apt_updates", "autoclean_interval"), "7")
 
+    def test_alert_ids_stay_monotonic_after_retention_trim(self):
+        cryptography_module = types.ModuleType("cryptography")
+        fernet_module = types.ModuleType("cryptography.fernet")
+        fernet_module.Fernet = FakeFernet
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime = types.SimpleNamespace(
+                config_dir=Path(temp_dir) / "config",
+                default_mount_point="/media/backup",
+            )
+
+            with patch.dict(
+                "sys.modules",
+                {
+                    "cryptography": cryptography_module,
+                    "cryptography.fernet": fernet_module,
+                },
+            ):
+                from simple_safer_server.services.config_manager import ConfigManager
+
+                manager = ConfigManager(runtime=runtime)
+
+            manager.alerts_path.write_text(
+                "[{}]".format(
+                    ",".join(
+                        f'{{"id": {alert_id}, "title": "old", "read": false}}'
+                        for alert_id in range(500, 1500)
+                    )
+                )
+            )
+
+            self.assertTrue(manager.log_alert("Newest", "message"))
+            alerts = manager.get_alerts()
+
+            self.assertEqual(alerts[-1]["id"], 1500)
+            self.assertEqual(len(alerts), 1000)
+
 
 if __name__ == "__main__":
     unittest.main()

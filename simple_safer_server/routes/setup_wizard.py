@@ -613,7 +613,8 @@ def setup_email():
         data, error_response, status_code = _json_object_payload()
         if error_response:
             return error_response, status_code
-        logger.info(f"Received email setup data: {data}")
+        # SMTP credentials can be entered during setup, so keep raw payloads out of logs.
+        logger.info("Received email setup request")
 
         email = data.get('emailAddress')
         from_address = data.get('fromAddress')

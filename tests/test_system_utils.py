@@ -115,7 +115,7 @@ class SystemUtilsTimerActivationTests(unittest.TestCase):
                 (runtime.systemd_dir / "check_health.timer").read_text(),
             )
             self.assertIn(
-                "OnCalendar=*-*-* 03:00",
+                "OnCalendar=*-*-* 03:00:00",
                 (runtime.systemd_dir / "backup_cloud.timer").read_text(),
             )
 
@@ -142,6 +142,23 @@ class SystemUtilsTimerActivationTests(unittest.TestCase):
                 "OnCalendar=*-*-* 23:59:00",
                 (runtime.systemd_dir / "check_health.timer").read_text(),
             )
+
+    def test_install_systemd_services_rejects_invalid_backup_time_seconds(self):
+        for value in ["03:00:99", "03:00:00:00", "bad:00"]:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                runtime = self._runtime(temp_dir)
+                runtime.systemd_dir.mkdir()
+                system_utils = RecordingSystemUtils(runtime)
+                config = self._config()
+                config["schedule"]["backup_cloud_time"] = value
+
+                ok, error = system_utils.install_systemd_services_and_timers(
+                    config,
+                    activate_timers=False,
+                )
+
+                self.assertFalse(ok, value)
+                self.assertIn("schedule.backup_cloud_time", error)
 
 
 if __name__ == "__main__":

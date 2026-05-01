@@ -2,7 +2,12 @@ import unittest
 
 from flask import Flask
 
-from simple_safer_server.web.api import json_error, json_payload_or_error, json_success
+from simple_safer_server.web.api import (
+    json_error,
+    json_payload_or_error,
+    json_success,
+    service_json_response,
+)
 
 
 class WebApiHelperTests(unittest.TestCase):
@@ -35,6 +40,16 @@ class WebApiHelperTests(unittest.TestCase):
             response.get_json(),
             {"success": False, "message": "Request body must be a JSON object."},
         )
+
+    def test_service_json_response_maps_failure_status(self):
+        with self.app.app_context():
+            response, status_code = service_json_response(
+                {"success": False, "error": "Nope"},
+                failure_status=400,
+            )
+
+        self.assertEqual(status_code, 400)
+        self.assertEqual(response.get_json(), {"success": False, "error": "Nope"})
 
 
 if __name__ == "__main__":

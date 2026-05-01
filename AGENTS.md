@@ -24,4 +24,4 @@ When designing any UI elements, always use the frontend-design and uncodixfy ski
 
 Consider if anything that you add needs to be removed during the uninstallation by the uninstall.sh script.
 
-Do not play security theatre. The application runs as root, and the admin users are assumed to have full access to the server and its contents. It's ok if they can see some password or get some private data, but within reason.
+Security model: SimpleSaferServer is a root-run, admin-only local management tool. Admin users are trusted operators with server-level access, so do not hide useful managed secrets or config from them just for appearance; still avoid accidental leaks into logs, broad status responses, process argv, or unrelated UI.

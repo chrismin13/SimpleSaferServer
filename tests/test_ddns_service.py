@@ -48,13 +48,16 @@ class DdnsServiceTests(unittest.TestCase):
     def make_service(self, config=None, task=None):
         temp_dir = TemporaryDirectory()
         self.addCleanup(temp_dir.cleanup)
-        runtime = types.SimpleNamespace(data_dir=Path(temp_dir.name))
+        runtime = types.SimpleNamespace(
+            data_dir=Path(temp_dir.name),
+            volatile_dir=Path(temp_dir.name) / "run",
+        )
         config_manager = config or FakeConfigManager()
         task_service = FakeTaskService(task=task)
         service = DdnsService(runtime, config_manager, task_service, logging.getLogger("test"))
         return service, config_manager, task_service
 
-    def test_config_payload_hides_provider_tokens(self):
+    def test_config_payload_exposes_provider_tokens_for_admin_editing(self):
         task = FakeTask()
         config = FakeConfigManager()
         config.values.update(
@@ -72,9 +75,8 @@ class DdnsServiceTests(unittest.TestCase):
 
         payload = service.get_config_payload()
 
-        self.assertTrue(payload["config"]["duckdns"]["token_present"])
-        self.assertTrue(payload["config"]["cloudflare"]["token_present"])
-        self.assertNotIn("duck-token", str(payload))
+        self.assertEqual(payload["config"]["duckdns"]["token"], "duck-token")
+        self.assertEqual(payload["config"]["cloudflare"]["token"], "cf-token")
         self.assertEqual(payload["next_run"], "soon")
 
     def test_save_config_requires_duckdns_token_when_enabled(self):

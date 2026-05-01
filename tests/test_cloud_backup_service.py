@@ -106,7 +106,7 @@ class CloudBackupServiceTests(unittest.TestCase):
         )
         return service, config, system_utils, runtime
 
-    def test_get_config_exposes_existing_rclone_text_for_advanced_editing(self):
+    def test_get_config_exposes_existing_rclone_text_for_admin_editing(self):
         service, config, _system_utils, runtime = self.make_service()
         config.config["backup"] = {
             "cloud_mode": "advanced",

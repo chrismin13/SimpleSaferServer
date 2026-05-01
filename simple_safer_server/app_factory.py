@@ -63,6 +63,7 @@ def create_app() -> Tuple[Flask, SocketIO]:
 
     log_dir = str(runtime.logs_dir)
     os.makedirs(log_dir, exist_ok=True)
+    runtime.volatile_dir.mkdir(parents=True, exist_ok=True)
     log_file = os.path.join(log_dir, "app.log")
 
     handler = RotatingFileHandler(log_file, maxBytes=10000000, backupCount=5)

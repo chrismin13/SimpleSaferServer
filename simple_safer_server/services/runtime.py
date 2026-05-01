@@ -16,6 +16,7 @@ class Runtime:
     skip_login: bool
     repo_root: Path
     data_dir: Path
+    volatile_dir: Path
     config_dir: Path
     logs_dir: Path
     tasks_log_dir: Path
@@ -264,6 +265,16 @@ def resolve_fake_data_dir(repo_root: Optional[Path] = None) -> Path:
     return (repo_root / ".dev-data").resolve()
 
 
+def resolve_volatile_dir(data_dir: Path, *, is_fake: bool) -> Path:
+    """Resolve state that can disappear on restart without losing configuration."""
+    configured_volatile_dir = os.environ.get("SSS_VOLATILE_DIR", "").strip()
+    if configured_volatile_dir:
+        return Path(configured_volatile_dir).resolve()
+    if is_fake:
+        return data_dir / "run"
+    return Path("/run/SimpleSaferServer")
+
+
 def _read_persisted_text_secret(secret_path: Path) -> Optional[str]:
     """Read a secret file after forcing the expected restrictive mode."""
     try:
@@ -330,6 +341,7 @@ def get_runtime() -> Runtime:
 
     if mode == "fake":
         data_dir = resolve_fake_data_dir(repo_root)
+        volatile_dir = resolve_volatile_dir(data_dir, is_fake=True)
         skip_login = os.environ.get("SSS_SKIP_LOGIN", "false").strip().lower() in {
             "1",
             "true",
@@ -341,6 +353,7 @@ def get_runtime() -> Runtime:
             skip_login=skip_login,
             repo_root=repo_root,
             data_dir=data_dir,
+            volatile_dir=volatile_dir,
             config_dir=data_dir / "config",
             logs_dir=data_dir / "logs",
             tasks_log_dir=data_dir / "logs" / "tasks",
@@ -357,11 +370,13 @@ def get_runtime() -> Runtime:
             state_path=data_dir / "state.json",
         )
     else:
+        data_dir = Path("/opt/SimpleSaferServer")
         _runtime = Runtime(
             mode="real",
             skip_login=False,
             repo_root=repo_root,
-            data_dir=Path("/opt/SimpleSaferServer"),
+            data_dir=data_dir,
+            volatile_dir=resolve_volatile_dir(data_dir, is_fake=False),
             config_dir=Path("/etc/SimpleSaferServer"),
             logs_dir=Path("/var/log/SimpleSaferServer"),
             tasks_log_dir=Path("/var/log/SimpleSaferServer"),

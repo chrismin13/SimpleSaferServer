@@ -37,6 +37,8 @@ Four cards display real-time status:
   `No check yet` until a manual dashboard refresh or an in-process health check publishes a new
   summary. This avoids extra SD-card writes and avoids waking a sleeping backup drive on every
   dashboard load.
+- Other operational status that can be rebuilt, such as DDNS provider status and System Updates
+  operation state, uses volatile runtime storage rather than durable config storage.
 - Task schedule and statuses are refreshed dynamically.
 
 ---

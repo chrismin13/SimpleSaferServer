@@ -72,14 +72,14 @@ class AlertsServiceTests(unittest.TestCase):
             ({"success": False, "error": "Not available in production mode"}, 403),
         )
 
-    def test_email_config_hides_existing_password_but_reports_presence(self):
+    def test_email_config_exposes_existing_password_for_admin_editing(self):
         service, _config, _system_utils, runtime = self.make_service()
         runtime.msmtp_config_path.write_text("host smtp.example\npassword secret\n")
 
         payload = service.get_email_config()
 
         self.assertTrue(payload["has_smtp_password"])
-        self.assertNotIn("smtp_password", payload["config"])
+        self.assertEqual(payload["config"]["smtp_password"], "secret")
 
     def test_save_email_config_reuses_existing_password(self):
         service, config, system_utils, runtime = self.make_service()

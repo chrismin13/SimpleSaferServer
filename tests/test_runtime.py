@@ -23,6 +23,7 @@ class RuntimeHelpersTests(unittest.TestCase):
                         runtime._fake_state = None
 
         self.assertEqual(resolved_runtime.data_dir, Path(temp_dir) / ".dev-data")
+        self.assertEqual(resolved_runtime.volatile_dir, Path(temp_dir) / ".dev-data" / "run")
         self.assertEqual(resolved_runtime.config_dir, Path(temp_dir) / ".dev-data" / "config")
 
     def test_resolve_fake_data_dir_prefers_railway_volume_over_default_data_path(self):
@@ -60,6 +61,22 @@ class RuntimeHelpersTests(unittest.TestCase):
                 self.assertEqual(
                     runtime.resolve_fake_data_dir(repo_root),
                     custom_data_dir.resolve(),
+                )
+
+    def test_resolve_volatile_dir_uses_run_for_real_mode_by_default(self):
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(
+                runtime.resolve_volatile_dir(Path("/opt/SimpleSaferServer"), is_fake=False),
+                Path("/run/SimpleSaferServer"),
+            )
+
+    def test_resolve_volatile_dir_accepts_explicit_override(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            configured = Path(temp_dir) / "volatile"
+            with patch.dict(os.environ, {"SSS_VOLATILE_DIR": str(configured)}, clear=True):
+                self.assertEqual(
+                    runtime.resolve_volatile_dir(Path("/data"), is_fake=True),
+                    configured.resolve(),
                 )
 
     def test_load_or_create_text_secret_reuses_existing_file_contents(self):

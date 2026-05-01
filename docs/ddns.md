@@ -8,6 +8,8 @@ Fake mode simulates local system services, disks, Samba, and destructive machine
 
 Use a disposable test domain, test subdomain, or scoped Cloudflare token when testing DDNS provider behavior from fake mode.
 
+See [Fake Mode](fake_mode.md) for the general fake-mode model.
+
 ## Providers
 
 - **DuckDNS** updates the configured DuckDNS domain. When SimpleSaferServer cannot detect a public IPv4 address, DuckDNS can still use its own automatic IP detection.
@@ -15,7 +17,7 @@ Use a disposable test domain, test subdomain, or scoped Cloudflare token when te
 
 ## Task Status
 
-The updater writes provider details to `ddns_status.json` before it exits. If any enabled provider reports `Error` or `Configuration Missing`, the task exits with a failure code so systemd and the Dashboard show the `DDNS Update` run as failed while the DDNS page still has the specific provider message.
+The updater writes provider details to volatile runtime state before it exits. If any enabled provider reports `Error` or `Configuration Missing`, the task exits with a failure code so systemd and the Dashboard show the `DDNS Update` run as failed while the DDNS page still has the specific provider message. This provider status does not need to survive reboot.
 
 ## Alerts
 

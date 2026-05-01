@@ -26,6 +26,16 @@ sync with system services.
   to overlap mount and health work.
 - Shared timestamp formatting now supports compact relative labels so dashboard tiles do not grow
   page-local copies of the same elapsed-time logic.
+- Follow-up PR feedback tightened remaining API error shapes and JSON parsing, stopped config reads
+  from returning raw `rclone.conf`, made fake task runs avoid outbound rclone/DDNS side effects,
+  rejected invalid seconds in backup timer input, and rendered dashboard health details without
+  assigning API text through `innerHTML`.
+- A later review pass also made alert IDs monotonic across retention trimming, propagated alert
+  service failures with non-2xx responses, and stopped setup email payloads from logging SMTP
+  credentials.
+- The follow-up design pass clarified the admin trust model: credential editors should remain useful
+  to trusted admins, fake mode should stay close to real provider behavior, and transient status
+  should prefer volatile runtime storage to reduce unnecessary persistent writes.
 
 ## Follow-up
 

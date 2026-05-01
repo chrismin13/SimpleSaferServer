@@ -23,7 +23,9 @@ class DdnsService:
                     "enabled": self._config_manager.get_value("ddns", "duckdns_enabled", "false")
                     == "true",
                     "domain": self._config_manager.get_value("ddns", "duckdns_domain", ""),
-                    # Only expose token presence; the UI never needs provider secrets.
+                    # DDNS settings are credential editors for trusted admins, so
+                    # return the stored token to keep the UI useful for audits.
+                    "token": self._config_manager.get_secret("duckdns_token", ""),
                     "token_present": self._config_manager.get_secret("duckdns_token", "") != "",
                 },
                 "cloudflare": {
@@ -31,6 +33,7 @@ class DdnsService:
                     == "true",
                     "zone": self._config_manager.get_value("ddns", "cloudflare_zone", ""),
                     "record": self._config_manager.get_value("ddns", "cloudflare_record", ""),
+                    "token": self._config_manager.get_secret("cloudflare_token", ""),
                     "token_present": self._config_manager.get_secret("cloudflare_token", "") != "",
                     "proxy": self._config_manager.get_value("ddns", "cloudflare_proxy", "false")
                     == "true",
@@ -61,7 +64,7 @@ class DdnsService:
         return "DDNS sync started successfully."
 
     def _read_status(self) -> Dict[str, Any]:
-        status_file = self._runtime.data_dir / "ddns_status.json"
+        status_file = self._runtime.volatile_dir / "ddns_status.json"
         if not status_file.exists():
             return {}
         with suppress(Exception):

@@ -20,6 +20,8 @@ The System Updates page manages Debian and Ubuntu package maintenance from the a
 - Progress is estimated from apt output phases because apt does not provide one stable machine-readable progress stream for both update and upgrade.
 - Operating system, support, automatic update, and Livepatch status stay visible above the log; only stale lock removal stays collapsed under Advanced.
 - If SimpleSaferServer restarts during an apt operation, the next status read reconciles the saved running state with the current process and lock state. The page will report active external apt work as busy, or mark the saved operation interrupted once apt is idle.
+- Operation status and the live apt log are volatile runtime state. They are useful while managing
+  updates but do not need to survive reboot.
 
 ## Shutdown and reboot lockout
 

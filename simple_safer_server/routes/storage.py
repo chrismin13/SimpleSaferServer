@@ -219,7 +219,9 @@ def api_backup_drive_drives():
 def api_backup_drive_unmount():
     services = _get_services()
     try:
-        data = request.get_json() or {}
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            return jsonify({"success": False, "error": "Request body must be a JSON object."}), 400
         partition = data.get("partition")
         configured_mount_point = services.config_manager.get_value(
             "backup",
@@ -261,7 +263,9 @@ def api_backup_drive_unmount():
 def api_backup_drive_configure():
     services = _get_services()
     try:
-        data = request.get_json() or {}
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            return jsonify({"success": False, "error": "Request body must be a JSON object."}), 400
         result = apply_backup_drive_configuration(
             data.get("partition"),
             data.get("mount_point"),
@@ -272,7 +276,7 @@ def api_backup_drive_configure():
         )
         return jsonify({"success": True, "result": result})
     except BackupDriveSetupError as exc:
-        return jsonify({"success": False, "error": str(exc), "details": exc.details})
+        return jsonify({"success": False, "error": str(exc), "details": exc.details}), 400
     except Exception as exc:
         current_app.logger.error("Error configuring backup drive: %s", exc)
         return jsonify({"success": False, "error": "Could not configure the backup drive."}), 500

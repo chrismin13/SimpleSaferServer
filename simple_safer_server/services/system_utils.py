@@ -11,6 +11,22 @@ def _time_before(hour, minute, *, minutes_before):
     return divmod(total_minutes, 60)
 
 
+def _parse_backup_cloud_time(backup_cloud_time):
+    """Return normalized backup time fields for systemd OnCalendar entries."""
+    time_parts = backup_cloud_time.split(':')
+    if len(time_parts) not in (2, 3):
+        raise ValueError("schedule.backup_cloud_time must be in HH:MM or HH:MM:SS format")
+    try:
+        backup_hour = int(time_parts[0])
+        backup_minute = int(time_parts[1])
+        backup_second = int(time_parts[2]) if len(time_parts) == 3 else 0
+    except ValueError:
+        raise ValueError("schedule.backup_cloud_time must be in HH:MM or HH:MM:SS format") from None
+    if not (0 <= backup_hour < 24 and 0 <= backup_minute < 60 and 0 <= backup_second < 60):
+        raise ValueError("schedule.backup_cloud_time contains an invalid time")
+    return backup_hour, backup_minute, f"{backup_hour:02d}:{backup_minute:02d}:{backup_second:02d}"
+
+
 class SystemUtils:
     def __init__(self, runtime=None, command_runner=None):
         self.runtime = runtime or get_runtime()
@@ -251,7 +267,8 @@ cloudflare_proxy = {ddns_config.get('cloudflare_proxy', 'false')}
             # Write the config file
             config_path = config_dir / 'config.conf'
             config_path.write_text(config_content)
-            config_path.chmod(0o644)
+            # This file contains backup/DDNS credentials and is read by root-owned services.
+            config_path.chmod(0o600)
             self.logger.info(f"Created systemd config file: {config_path}")
             return True, None
         except Exception as e:
@@ -264,13 +281,10 @@ cloudflare_proxy = {ddns_config.get('cloudflare_proxy', 'false')}
             schedule = config.get('schedule', {})
             backup_cloud_time = schedule.get('backup_cloud_time', '3:00:00')
 
-            # Parse the backup time and calculate sequential times
-            time_parts = backup_cloud_time.split(':')
-            if len(time_parts) < 2:
-                raise ValueError("schedule.backup_cloud_time must be in HH:MM or HH:MM:SS format")
-            backup_hour, backup_minute = map(int, time_parts[:2])
-            if not (0 <= backup_hour < 24 and 0 <= backup_minute < 60):
-                raise ValueError("schedule.backup_cloud_time contains an invalid time")
+            # Parse the backup time and calculate sequential times.
+            backup_hour, backup_minute, backup_cloud_time = _parse_backup_cloud_time(
+                backup_cloud_time
+            )
 
             # Keep the pre-backup jobs spaced out so randomized timer delay or
             # slow USB spin-up is less likely to make health start before mount.

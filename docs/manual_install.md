@@ -73,7 +73,7 @@ Install the extracted binary:
 - Because the virtualenv lives under `/opt`, open a root shell with `sudo -s` before activating it so `pip` can write into that environment.
 - In that root shell, run `source /opt/SimpleSaferServer/venv/bin/activate`.
 - Run `pip install --upgrade pip wheel`.
-- Run `pip install Flask-SocketIO==5.4.1 simple-websocket cryptography psutil joblib pandas scikit-learn xgboost`.
+- Run `pip install Flask-SocketIO==5.4.1 simple-websocket==1.1.0 cryptography psutil joblib pandas scikit-learn xgboost`.
 - If you want the rest of the Python packages from the repository list, run `pip install -r /opt/SimpleSaferServer/requirements.txt`.
 - Run `deactivate`, then run `exit` to leave the root shell when you are done installing Python packages.
 

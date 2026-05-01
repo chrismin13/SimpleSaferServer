@@ -14,6 +14,7 @@ CONFIG_DIR="/etc/SimpleSaferServer"
 CONFIG_FILE="$CONFIG_DIR/config.conf"
 USERS_FILE="$CONFIG_DIR/users.json"
 DATA_DIR="/var/lib/SimpleSaferServer"
+VOLATILE_DIR="/run/SimpleSaferServer"
 LOG_DIR="/var/log/SimpleSaferServer"
 SYSTEMD_DIR="/etc/systemd/system"
 SMB_CONF="/etc/samba/smb.conf"
@@ -55,15 +56,20 @@ make_atomic_temp_file() {
     mktemp "${target_dir}/.${target_name}.XXXXXX"
 }
 
+require_python3() {
+    local reason="$1"
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo "ERROR: python3 is required to $reason during uninstall." >&2
+        return 1
+    fi
+}
+
 collect_samba_users() {
     if [ ! -f "$USERS_FILE" ]; then
         return 0
     fi
 
-    if ! command -v python3 >/dev/null 2>&1; then
-        echo "ERROR: python3 is required to read $USERS_FILE during uninstall." >&2
-        return 1
-    fi
+    require_python3 "read $USERS_FILE" || return 1
 
     python3 - "$USERS_FILE" <<'PY'
 import json
@@ -95,10 +101,7 @@ apt_updates_were_managed() {
         return 1
     fi
 
-    if ! command -v python3 >/dev/null 2>&1; then
-        echo "ERROR: python3 is required to read $CONFIG_FILE during uninstall." >&2
-        return 1
-    fi
+    require_python3 "read $CONFIG_FILE" || return 1
 
     python3 - "$CONFIG_FILE" <<'PY'
 import configparser
@@ -148,6 +151,7 @@ remove_managed_fstab_entries() {
 
     echo "Removing SimpleSaferServer-managed /etc/fstab entries..."
     backup_file_if_present "$original" "uninstall_backup"
+    require_python3 "remove managed fstab entries" || return 1
 
     if ! python3 - "$original" "$updated" "$FSTAB_MARKER" "$LEGACY_FSTAB_MARKER" <<'PY'
 import sys
@@ -205,6 +209,7 @@ cleanup_managed_smb_shares() {
 
     echo "Removing SimpleSaferServer-managed Samba shares..."
     backup_file_if_present "$SMB_CONF" "uninstall_backup"
+    require_python3 "remove managed Samba shares" || return 1
 
     if ! python3 - "$SMB_CONF" "$cleaned" "$MANAGED_SHARE_BEGIN_PREFIX" "$MANAGED_SHARE_END_PREFIX" <<'PY'
 import sys
@@ -341,6 +346,7 @@ main() {
     rm -rf "$APP_DIR"
     rm -rf "$CONFIG_DIR"
     rm -rf "$DATA_DIR"
+    rm -rf "$VOLATILE_DIR"
     rm -rf "$LOG_DIR"
 
     echo "Removing SimpleSaferServer rclone configuration if present..."

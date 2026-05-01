@@ -253,7 +253,7 @@ class SystemUpdatesManager:
         self.config_manager = config_manager
         self.runtime = runtime or get_runtime()
         self.command_adapter = command_adapter or SystemUpdatesCommandAdapter()
-        self.state_path = self.runtime.data_dir / "system_updates_state.json"
+        self.state_path = self.runtime.volatile_dir / "system_updates_state.json"
         self._lock = threading.RLock()
         self._thread: Optional[threading.Thread] = None
         self._process: Optional[Any] = None

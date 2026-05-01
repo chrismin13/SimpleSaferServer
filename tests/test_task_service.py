@@ -9,13 +9,14 @@ from simple_safer_server.services.task_service import Status, TaskService
 
 
 class FakeConfigManager:
-    def __init__(self, mount_point):
+    def __init__(self, mount_point, rclone_dir=""):
         self.mount_point = mount_point
+        self.rclone_dir = rclone_dir
 
     def get_value(self, section, key, default=None):
         values = {
             ("backup", "mount_point"): self.mount_point,
-            ("backup", "rclone_dir"): "",
+            ("backup", "rclone_dir"): self.rclone_dir,
             ("backup", "bandwidth_limit"): "",
             ("schedule", "backup_cloud_time"): "03:00",
         }
@@ -96,6 +97,33 @@ class FakeSystemdAdapter:
         return self.active
 
 
+class FakeProcess:
+    def __init__(self, returncode=0, stdout="", stderr=""):
+        from io import StringIO
+
+        self.returncode = returncode
+        self.stdout = StringIO(stdout)
+        self.stderr = StringIO(stderr)
+        self._polled = False
+        self.terminated = False
+        self.killed = False
+
+    def poll(self):
+        if self._polled:
+            return self.returncode
+        self._polled = True
+        return self.returncode
+
+    def wait(self, timeout=None):
+        return self.returncode
+
+    def terminate(self):
+        self.terminated = True
+
+    def kill(self):
+        self.killed = True
+
+
 class TaskServiceTests(unittest.TestCase):
     def build_service(
         self,
@@ -103,6 +131,7 @@ class TaskServiceTests(unittest.TestCase):
         *,
         is_fake=True,
         systemd_adapter=None,
+        rclone_dir="",
     ):
         runtime = SimpleNamespace(
             is_fake=is_fake,
@@ -113,7 +142,7 @@ class TaskServiceTests(unittest.TestCase):
         fake_state = FakeState()
         service = TaskService(
             runtime=runtime,
-            config_manager=FakeConfigManager(mount_point),
+            config_manager=FakeConfigManager(mount_point, rclone_dir=rclone_dir),
             system_utils=MagicMock(),
             fake_state=fake_state,
             logger=MagicMock(),
@@ -172,6 +201,42 @@ class TaskServiceTests(unittest.TestCase):
         self.assertEqual(fake_state.get_task_state("Cloud Backup")["status"], Status.STOPPED)
         self.assertIn(
             ("Cloud Backup", "Stop requested for Cloud Backup, but it was not running."),
+            fake_state.logs,
+        )
+
+    def test_fake_stop_does_not_clobber_completed_task(self):
+        service, fake_state = self.build_service()
+        task = service.get_task("Cloud Backup")
+        assert task is not None
+        fake_state.set_task_state("Cloud Backup", status=Status.SUCCESS)
+
+        task.stop()
+
+        self.assertEqual(fake_state.get_task_state("Cloud Backup")["status"], Status.SUCCESS)
+
+    def test_fake_cloud_backup_runs_rclone_for_provider_parity(self):
+        service, fake_state = self.build_service(mount_point=".", rclone_dir="/tmp/fake-backup")
+        service.rclone_adapter = MagicMock()
+        service.rclone_adapter.sync.return_value = FakeProcess(stdout="copied\n")
+
+        service._run_fake_cloud_backup(threading.Event())
+
+        service.rclone_adapter.sync.assert_called_once()
+        self.assertIn(
+            ("Cloud Backup", "copied"),
+            fake_state.logs,
+        )
+
+    def test_fake_ddns_update_runs_provider_script_for_parity(self):
+        service, fake_state = self.build_service()
+        service.command_runner = MagicMock()
+        service.command_runner.popen.return_value = FakeProcess(stdout="updated\n")
+
+        service._run_fake_ddns_update("DDNS Update", threading.Event())
+
+        service.command_runner.popen.assert_called_once()
+        self.assertIn(
+            ("DDNS Update", "updated"),
             fake_state.logs,
         )
 

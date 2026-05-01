@@ -137,4 +137,4 @@ def api_system_updates_livepatch_setup():
         return json_error("Could not set up Livepatch. Check the token and retry.", status_code=500)
     except Exception:
         current_app.logger.exception("Could not set up Livepatch")
-        return json_error("Could not set up Livepatch. Check the token and retry.", status_code=400)
+        return json_error("Could not set up Livepatch. Check the token and retry.", status_code=500)

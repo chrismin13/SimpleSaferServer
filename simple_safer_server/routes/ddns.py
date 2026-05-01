@@ -53,6 +53,6 @@ def run_ddns_manual():
         return json_success(message=message)
     except LookupError as exc:
         return json_error(str(exc), status_code=404, key="message")
-    except Exception as exc:
+    except Exception:
         current_app.logger.exception("Error starting DDNS sync")
-        return json_error(f"Failed to start DDNS sync: {exc!s}", status_code=500, key="message")
+        return json_error("Failed to start DDNS sync.", status_code=500, key="message")

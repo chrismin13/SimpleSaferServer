@@ -33,11 +33,15 @@ bash reset_fake_mode.sh
 ```
 
 - Fake mode stores its state under `.dev-data/`.
-- Fake mode simulates local system services, disks, Samba, and destructive machine actions. It does not sandbox external provider APIs; DDNS can update real DuckDNS or Cloudflare records when enabled with valid credentials.
+- Fake mode simulates local system services, disks, Samba, and destructive machine actions. It does not sandbox external provider APIs; DDNS and cloud backup can contact real providers when enabled with valid credentials.
+
+The goal of Fake mode is to assist in the development of SimpleSaferServer. As such, the features exposed in Fake mode are done so in an effort to maintain the same or similar functionality as a "real" install of SimpleSaferServer. This will help in noticing and debugging any potential issues in a local environment.
+
 - `reset_fake_mode.sh` deletes `.dev-data/` so you can rerun setup from a clean fake-mode state.
 - Use the setup wizard's mount step to point the backup source at a local folder on your machine.
 - Cloud backup can still use real `rclone` destinations such as MEGA when `rclone` is installed.
 - `run_fake.sh` enables fake-mode auto-login by default. Set `SSS_SKIP_LOGIN=false` if you want the normal login screen.
+- See [Fake Mode](docs/fake_mode.md) for the full development and provider-integration behavior.
 
 ## Development
 

@@ -99,9 +99,11 @@ def api_delete_user(username):
     user_manager.users = user_manager._load_users()
 
     if username == session.get("username"):
-        return jsonify({"error": "Cannot delete the currently logged-in user"}), 400
+        return jsonify(
+            {"success": False, "error": "Cannot delete the currently logged-in user"}
+        ), 400
 
     success, message = user_manager.delete_user(username)
     if success:
         return jsonify({"success": True, "message": f"User {username} deleted successfully"})
-    return jsonify({"error": f"Failed to delete user {username}: {message}"}), 400
+    return jsonify({"success": False, "error": f"Failed to delete user {username}: {message}"}), 400

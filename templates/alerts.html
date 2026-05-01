@@ -50,7 +50,12 @@
       </div>
       <div class="form-group">
         <label class="form-label">Password</label>
-        <input type="password" id="smtpPassword" class="form-control" placeholder="Leave blank to keep current password" autocomplete="new-password">
+        <div class="input-group">
+          <input type="password" id="smtpPassword" class="form-control" autocomplete="new-password">
+          <button type="button" class="btn btn-secondary secret-toggle" data-secret-toggle="smtpPassword" aria-label="Show SMTP password" title="Show password">
+            <i class="fas fa-eye"></i>
+          </button>
+        </div>
         <div class="invalid-feedback">SMTP password is required when no password is currently stored.</div>
       </div>
     </div>
@@ -148,6 +153,7 @@
 let currentAlertId = null;
 
 document.addEventListener('DOMContentLoaded', function() {
+  setupSecretToggles();
   loadEmailConfig();
   loadAlerts();
 
@@ -201,6 +207,21 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 });
 
+function setupSecretToggles() {
+  document.querySelectorAll('[data-secret-toggle]').forEach((button) => {
+    const input = document.getElementById(button.dataset.secretToggle);
+    if (!input) return;
+    button.addEventListener('click', () => {
+      const visible = input.type === 'text';
+      input.type = visible ? 'password' : 'text';
+      button.setAttribute('aria-label', visible ? 'Show password' : 'Hide password');
+      button.title = visible ? 'Show password' : 'Hide password';
+      const icon = button.querySelector('i');
+      if (icon) icon.className = visible ? 'fas fa-eye' : 'fas fa-eye-slash';
+    });
+  });
+}
+
 function loadEmailConfig() {
   fetch('/api/alerts/email-config')
     .then(r => r.json())
@@ -211,7 +232,7 @@ function loadEmailConfig() {
         document.getElementById('smtpServer').value = data.config.smtp_server || '';
         document.getElementById('smtpPort').value = data.config.smtp_port || '';
         document.getElementById('smtpUsername').value = data.config.smtp_username || '';
-        document.getElementById('smtpPassword').value = '';
+        document.getElementById('smtpPassword').value = data.config.smtp_password || '';
       }
     })
     .catch(e => console.error('Error loading email config:', e));
@@ -251,7 +272,6 @@ function saveEmailConfig() {
       if (data.success) {
         window.AsyncButtonState.success(saveBtn);
         showAlert('Email configuration saved successfully', 'success');
-        document.getElementById('smtpPassword').value = '';
       } else {
         window.AsyncButtonState.error(saveBtn);
         showEmailError(data.error || 'Failed to save email configuration');

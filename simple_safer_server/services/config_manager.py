@@ -140,8 +140,20 @@ class ConfigManager:
         """Log an alert to the alerts file"""
         try:
             alerts = self.get_alerts()
+            next_id = (
+                max(
+                    (
+                        existing_alert.get('id', 0)
+                        for existing_alert in alerts
+                        if isinstance(existing_alert.get('id'), int)
+                    ),
+                    default=0,
+                )
+                + 1
+            )
             alert = {
-                'id': len(alerts) + 1,
+                # IDs stay monotonic even after retention trims old alerts.
+                'id': next_id,
                 'title': title,
                 'message': message,
                 'type': alert_type,

@@ -534,6 +534,18 @@ Remove the drive now if you do not want it mounted again.`;
     checkedAt.textContent = formatHealthCheckedAt(data.checked_at);
     checkedAt.title = data.checked_at || 'No check yet';
 
+    const renderDetailLines = (lines, fallback) => {
+      detail.textContent = '';
+      if (!lines.length) {
+        detail.textContent = fallback;
+        return;
+      }
+      lines.forEach((line, index) => {
+        if (index) detail.appendChild(document.createElement('br'));
+        detail.appendChild(document.createTextNode(line));
+      });
+    };
+
     if (!data.checked_at) {
       badge.className = 'badge badge-neutral';
       badge.textContent = 'Not Checked';
@@ -546,7 +558,7 @@ Remove the drive now if you do not want it mounted again.`;
       badge.className = 'badge badge-success';
       badge.textContent = 'Healthy';
       val.textContent = 'No Issues';
-      detail.innerHTML = metrics.length ? metrics.join('<br>') : data.detail || 'Checked';
+      renderDetailLines(metrics, data.detail || 'Checked');
       return;
     }
 
@@ -554,7 +566,7 @@ Remove the drive now if you do not want it mounted again.`;
       badge.className = 'badge badge-danger';
       badge.textContent = 'Warning';
       val.textContent = 'Needs Attention';
-      detail.innerHTML = metrics.length ? metrics.join('<br>') : data.detail || 'Warning';
+      renderDetailLines(metrics, data.detail || 'Warning');
       return;
     }
 

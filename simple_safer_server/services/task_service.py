@@ -27,6 +27,9 @@ class Status:
     STOPPED = "Stopped"
 
 
+TERMINAL_FAKE_STATUSES = {Status.SUCCESS, Status.FAILURE, Status.ERROR, Status.STOPPED}
+
+
 class Task:
     def __init__(self, service: "TaskService", name: str, service_name: str, timer_name: str):
         self._service = service
@@ -170,7 +173,9 @@ class TaskService:
                     f"Stop requested for {task.name}, but it was not running.",
                 )
             # Stop is idempotent because the UI may retry after a timeout or page refresh.
-            fake_state.set_task_state(task.name, status=Status.STOPPED)
+            current_status = fake_state.get_task_state(task.name).get("status")
+            if is_running or current_status not in TERMINAL_FAKE_STATUSES:
+                fake_state.set_task_state(task.name, status=Status.STOPPED)
             return
         try:
             self.systemd_adapter.stop_unit(task.service_name)
@@ -298,7 +303,8 @@ class TaskService:
             raise RuntimeError(f"Rclone config not found at {rclone_config_path}")
 
         fake_state.append_task_log(
-            "Cloud Backup", f"Starting backup from {source} to {destination}"
+            "Cloud Backup",
+            f"Starting backup from {source} to {destination}",
         )
         bandwidth_limit = self.config_manager.get_value("backup", "bandwidth_limit", "").strip()
         proc = self.rclone_adapter.sync(
@@ -448,8 +454,8 @@ class TaskService:
             raise RuntimeError("Task was cancelled.")
         ddns_script = self.runtime.repo_root / "scripts" / "ddns_update.py"
 
-        # Fake mode simulates systemd, not provider APIs; this can still touch
-        # live DuckDNS or Cloudflare records when real credentials are configured.
+        # Fake mode avoids local systemd, but DDNS itself is still a provider
+        # integration that developers need to exercise against real test records.
         try:
             proc = self.command_runner.popen(
                 [sys.executable, str(ddns_script)],
@@ -458,8 +464,9 @@ class TaskService:
                 text=True,
                 bufsize=1,
             )
-            output = self._collect_process_output(proc, cancel_event, "ddns-update")
-            stdout_output, stderr_output = output
+            stdout_output, stderr_output = self._collect_process_output(
+                proc, cancel_event, "ddns-update"
+            )
             if stdout_output:
                 fake_state.append_task_log(task_name, stdout_output)
             if stderr_output:

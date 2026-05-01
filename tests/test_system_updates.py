@@ -19,6 +19,7 @@ def make_runtime(root: Path):
         mode="fake",
         is_fake=True,
         data_dir=root,
+        volatile_dir=root / "run",
         config_dir=root / "config",
         default_mount_point=str(root / "backup"),
     )
@@ -29,6 +30,7 @@ def make_real_runtime(root: Path):
         mode="real",
         is_fake=False,
         data_dir=root,
+        volatile_dir=root / "run",
         config_dir=root / "config",
         default_mount_point=str(root / "backup"),
     )
