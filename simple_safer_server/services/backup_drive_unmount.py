@@ -23,6 +23,7 @@ def is_selected_partition_managed_backup_drive(
     configured_uuid,
     system_utils,
     runtime=None,
+    command_adapter=None,
 ):
     runtime = runtime or get_runtime()
     configured_mount_point = (configured_mount_point or '').strip()
@@ -32,7 +33,7 @@ def is_selected_partition_managed_backup_drive(
     if runtime.is_fake:
         return system_utils.is_mounted(configured_mount_point)
 
-    mount = _get_mount_for_partition(partition_path)
+    mount = _get_mount_for_partition(partition_path, command_adapter=command_adapter)
     if not mount:
         return False
 

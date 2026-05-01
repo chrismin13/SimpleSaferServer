@@ -53,6 +53,7 @@ class BackupDriveUnmountTests(unittest.TestCase):
 
         self.assertTrue(result)
         system_utils.is_mounted.assert_not_called()
+        mock_get_mount.assert_called_once_with('/dev/sdb1', command_adapter=None)
 
     @patch(
         'simple_safer_server.services.backup_drive_unmount._get_mount_for_partition',

@@ -212,11 +212,24 @@ def _get_disk_member_devices(disk_path, blockdevices):
     return device_paths
 
 
-def _get_mounted_partitions_for_disk(disk_path, blockdevices=None, mounts=None):
+def _get_mounted_partitions_for_disk(
+    disk_path,
+    blockdevices=None,
+    mounts=None,
+    command_adapter=None,
+):
     # Disk operations intentionally match child partitions; partition-oriented
     # flows use _get_mount_for_partition() instead.
-    blockdevices = blockdevices if blockdevices is not None else _load_lsblk_devices()
-    mounts = mounts if mounts is not None else _get_current_mounts()
+    blockdevices = (
+        blockdevices
+        if blockdevices is not None
+        else _load_lsblk_devices(command_adapter=command_adapter)
+    )
+    mounts = (
+        mounts
+        if mounts is not None
+        else _get_current_mounts(command_adapter=command_adapter)
+    )
     member_devices = _get_disk_member_devices(disk_path, blockdevices)
     if not member_devices:
         return []
@@ -228,10 +241,14 @@ def _get_mounted_partitions_for_disk(disk_path, blockdevices=None, mounts=None):
     return mounted_partitions
 
 
-def _get_mount_for_partition(partition_path, mounts=None):
+def _get_mount_for_partition(partition_path, mounts=None, command_adapter=None):
     # Rerun/setup-mount flows select an exact partition path, so this lookup
     # must never treat /dev/sdb1 and /dev/sdb11 as interchangeable.
-    mounts = mounts if mounts is not None else _get_current_mounts()
+    mounts = (
+        mounts
+        if mounts is not None
+        else _get_current_mounts(command_adapter=command_adapter)
+    )
     normalized_partition = _normalize_device_path(partition_path)
     for mount in mounts:
         if _normalize_device_path(mount['device']) == normalized_partition:
@@ -518,7 +535,10 @@ def unmount_disk_partitions(disk_path, runtime=None, command_adapter=None):
 
     # The format flow needs to clear every mounted child partition on the
     # selected disk, not just one exact device path.
-    mounted_partitions = _get_mounted_partitions_for_disk(disk_path)
+    mounted_partitions = _get_mounted_partitions_for_disk(
+        disk_path,
+        command_adapter=command_adapter,
+    )
 
     if not mounted_partitions:
         raise BackupDriveSetupError('The selected disk has no mounted partitions.')
@@ -555,7 +575,7 @@ def unmount_selected_partition(partition_path, runtime=None, command_adapter=Non
         raise BackupDriveSetupError('No partition selected.')
 
     # The rerun flow should only unmount the exact partition the user chose.
-    mount = _get_mount_for_partition(partition_path)
+    mount = _get_mount_for_partition(partition_path, command_adapter=command_adapter)
     if not mount:
         raise BackupDriveSetupError('The selected partition is not currently mounted.')
 
@@ -692,7 +712,7 @@ def apply_backup_drive_configuration(
 
     # This flow is partition-oriented by design. If the user selected /dev/sdb1,
     # we should not block on or touch unrelated devices on the same disk.
-    mounted_partition = _get_mount_for_partition(partition)
+    mounted_partition = _get_mount_for_partition(partition, command_adapter=command_adapter)
     if mounted_partition:
         raise BackupDriveSetupError(
             'The selected partition is already mounted at {}. Unmount it first before rerunning drive setup.'.format(

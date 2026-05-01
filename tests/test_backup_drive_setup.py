@@ -14,6 +14,18 @@ class FakeBackupDriveCommandAdapter:
         self.unmounted_partitions = []
         self.mounted_ntfs = []
         self.cleanup_unmounted = []
+        self.lsblk_devices_json_result = SimpleNamespace(
+            returncode=0,
+            stderr='',
+            stdout='{"blockdevices":[]}',
+        )
+        self.current_mounts_result = SimpleNamespace(returncode=0, stderr='', stdout='')
+
+    def lsblk_devices_json(self):
+        return self.lsblk_devices_json_result
+
+    def current_mounts(self):
+        return self.current_mounts_result
 
     def unmount_partition(self, device):
         self.unmounted_partitions.append(device)
@@ -238,6 +250,32 @@ class BackupDriveSetupTests(unittest.TestCase):
             [{'device': '/dev/sdb1', 'mount_point': '/media/one'}],
         )
 
+    def test_get_mounted_partitions_for_disk_uses_injected_command_adapter_for_discovery(self):
+        command_adapter = FakeBackupDriveCommandAdapter()
+        command_adapter.lsblk_devices_json_result = SimpleNamespace(
+            returncode=0,
+            stderr='',
+            stdout=(
+                '{"blockdevices":[{"type":"disk","path":"/dev/sdb",'
+                '"children":[{"path":"/dev/sdb1"}]}]}'
+            ),
+        )
+        command_adapter.current_mounts_result = SimpleNamespace(
+            returncode=0,
+            stderr='',
+            stdout='/dev/sdb1 on /media/backup type ntfs3 (rw)\n',
+        )
+
+        mounted = backup_drive_setup._get_mounted_partitions_for_disk(
+            '/dev/sdb',
+            command_adapter=command_adapter,
+        )
+
+        self.assertEqual(
+            mounted,
+            [{'device': '/dev/sdb1', 'mount_point': '/media/backup'}],
+        )
+
     @patch(
         'simple_safer_server.services.backup_drive_setup._get_system_drive_path',
         return_value='/dev/sda',
@@ -292,6 +330,7 @@ class BackupDriveSetupTests(unittest.TestCase):
 
         self.assertEqual(message, 'Successfully unmounted 2 partition(s).')
         self.assertEqual(command_adapter.unmounted_partitions, ['/dev/sdb1', '/dev/sdb2'])
+        mock_get_mounted.assert_called_once_with('/dev/sdb', command_adapter=command_adapter)
 
     @patch('simple_safer_server.services.backup_drive_setup._get_mount_for_partition')
     def test_unmount_selected_partition_only_unmounts_exact_partition(self, mock_get_mount):
@@ -305,6 +344,7 @@ class BackupDriveSetupTests(unittest.TestCase):
 
         self.assertEqual(message, 'Successfully unmounted /dev/sdb1.')
         self.assertEqual(command_adapter.unmounted_partitions, ['/dev/sdb1'])
+        mock_get_mount.assert_called_once_with('/dev/sdb1', command_adapter=command_adapter)
 
     @patch('simple_safer_server.services.backup_drive_setup.os.makedirs')
     @patch('simple_safer_server.services.backup_drive_setup._reload_systemd_mount_units')
@@ -347,7 +387,7 @@ class BackupDriveSetupTests(unittest.TestCase):
         )
 
         self.assertEqual(result['uuid'], 'UUID-1')
-        mock_get_mount.assert_called_once_with('/dev/sdb1')
+        mock_get_mount.assert_called_once_with('/dev/sdb1', command_adapter=command_adapter)
         mock_reload_mount_units.assert_called_once_with(runtime=runtime)
         self.assertEqual(command_adapter.mounted_ntfs, [('/dev/sdb1', '/media/backup')])
 
