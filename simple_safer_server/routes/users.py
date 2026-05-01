@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Dict, Optional
 
 from flask import Blueprint, current_app, jsonify, render_template, request, session
 
@@ -10,6 +10,24 @@ users = Blueprint("users_routes", __name__)
 def _get_services() -> Any:
     """Return app-level services registered during Flask startup."""
     return current_app.extensions["simple_safer_server"]
+
+
+def _json_object_payload():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return None, (
+            jsonify({"success": False, "error": "Request body must be a JSON object"}),
+            400,
+        )
+    return data, None
+
+
+def _optional_admin_flag(data: Dict[str, Any], default: Optional[bool] = False) -> Optional[bool]:
+    if "is_admin" not in data:
+        return default
+    if not isinstance(data["is_admin"], bool):
+        return None
+    return data["is_admin"]
 
 
 @users.route("/users")
@@ -41,10 +59,15 @@ def api_list_users():
 def api_add_user():
     user_manager = _get_services().user_manager
     user_manager.reload_users()
-    data = request.get_json(silent=True) or {}
+    data, error_response = _json_object_payload()
+    if error_response:
+        return error_response
+    assert data is not None
     username = data.get("username")
     password = data.get("password")
-    is_admin = data.get("is_admin", False)
+    is_admin = _optional_admin_flag(data, default=False)
+    if is_admin is None:
+        return jsonify({"success": False, "error": "is_admin must be a JSON boolean"}), 400
 
     if not username or not password:
         return jsonify({"success": False, "error": "Username and password are required"}), 400
@@ -60,9 +83,14 @@ def api_add_user():
 def api_edit_user(username):
     user_manager = _get_services().user_manager
     user_manager.reload_users()
-    data = request.get_json(silent=True) or {}
+    data, error_response = _json_object_payload()
+    if error_response:
+        return error_response
+    assert data is not None
     new_password = data.get("password")
-    is_admin = data.get("is_admin")
+    is_admin = _optional_admin_flag(data, default=None)
+    if "is_admin" in data and is_admin is None:
+        return jsonify({"success": False, "error": "is_admin must be a JSON boolean"}), 400
 
     if username not in user_manager.users:
         return jsonify({"success": False, "error": "User not found"}), 404
@@ -70,7 +98,7 @@ def api_edit_user(username):
     if (
         username == session.get("username")
         and is_admin is not None
-        and not bool(is_admin)
+        and not is_admin
         and user_manager.users[username].get("is_admin", False)
     ):
         return jsonify(
@@ -86,7 +114,7 @@ def api_edit_user(username):
             return jsonify({"success": False, "error": message}), 400
 
     if is_admin is not None:
-        user_manager.users[username]["is_admin"] = bool(is_admin)
+        user_manager.users[username]["is_admin"] = is_admin
 
     user_manager._save_users()
     return jsonify({"success": True})

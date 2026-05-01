@@ -140,12 +140,12 @@ class AlertsService:
         if not smtp_password:
             return {"success": False, "error": "SMTP password is required"}
 
-        self._config_manager.set_value("backup", "email_address", email)
-        self._config_manager.set_value("backup", "from_address", from_address)
         if not self._system_utils.write_msmtp_config(
             from_address, smtp_server, smtp_port_text, smtp_username, smtp_password
         ):
             return {"success": False, "error": "Failed to write msmtp configuration"}
+        self._config_manager.set_value("backup", "email_address", email)
+        self._config_manager.set_value("backup", "from_address", from_address)
         return {"success": True}
 
     def _read_msmtp_config(self) -> Dict[str, str]:

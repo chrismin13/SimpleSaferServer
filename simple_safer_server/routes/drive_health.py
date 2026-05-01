@@ -206,6 +206,10 @@ def api_drive_health_refresh():
                 "status": "unknown",
                 "source": "live",
                 "checked_at": None,
+                "probability": None,
+                "temperature": None,
+                "hdsentinel_health": None,
+                "hdsentinel_performance": None,
                 "detail": "Drive health refresh failed. Check the application logs.",
                 "error": "Drive health refresh failed.",
             }

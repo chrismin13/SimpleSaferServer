@@ -2,19 +2,22 @@
 set -euo pipefail
 
 # Detect atomic/Fedora Silverblue-style systems and prefer podman when available.
+RUNTIME=""
 if command -v podman >/dev/null 2>&1; then
-  RUNTIME="podman"
-  if ! podman info >/dev/null 2>&1; then
-    printf 'Podman is installed, but the daemon is not reachable. Start Podman and rerun this script.\n' >&2
-    exit 1
+  if podman info >/dev/null 2>&1; then
+    RUNTIME="podman"
+  else
+    printf 'Podman is installed, but it is not usable. Trying Docker instead.\n' >&2
   fi
-elif command -v docker >/dev/null 2>&1; then
-  RUNTIME="docker"
+fi
+if [[ -z "$RUNTIME" ]] && command -v docker >/dev/null 2>&1; then
   if ! docker info >/dev/null 2>&1; then
     printf 'Docker is installed, but the daemon is not reachable. Start Docker and rerun this script.\n' >&2
     exit 1
   fi
-else
+  RUNTIME="docker"
+fi
+if [[ -z "$RUNTIME" ]]; then
   printf 'Docker or Podman is required for exact Python CI reproduction.\n' >&2
   exit 1
 fi

@@ -415,7 +415,9 @@ class BackupDriveSetupTests(unittest.TestCase):
 
         self.assertEqual(result['uuid'], 'UUID-1')
         mock_get_mount.assert_called_once_with('/dev/sdb1', command_adapter=command_adapter)
-        mock_reload_mount_units.assert_called_once_with(runtime=runtime)
+        mock_reload_mount_units.assert_called_once_with(
+            runtime=runtime, command_adapter=command_adapter
+        )
         self.assertEqual(command_adapter.mounted_ntfs, [('/dev/sdb1', '/media/backup')])
 
     @patch('simple_safer_server.services.backup_drive_setup.restore_fstab_backup')

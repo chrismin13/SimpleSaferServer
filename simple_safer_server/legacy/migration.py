@@ -277,7 +277,11 @@ def _configure_backup_share(
 def _restart_web_service(runtime) -> None:
     if runtime.is_fake:
         return
-    command_runner.run(["systemctl", "restart", WEB_SERVICE_NAME], check=True)
+    try:
+        command_runner.run(["systemctl", "restart", WEB_SERVICE_NAME], check=True, timeout=120)
+    except TimeoutExpired as exc:
+        LOGGER.error("Timed out restarting %s during migration.", WEB_SERVICE_NAME)
+        raise MigrationError(f"Timed out restarting {WEB_SERVICE_NAME}.") from exc
 
 
 def import_legacy_bundle(

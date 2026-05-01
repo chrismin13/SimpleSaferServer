@@ -40,21 +40,22 @@ def dashboard():
     try:
         disk = psutil.disk_usage(mount_point)
     except Exception:
-        disk = psutil.disk_usage(services.runtime.repo_root)
+        current_app.logger.exception("Could not read backup drive usage for %s", mount_point)
+        disk = None
 
     cpu_percent = psutil.cpu_percent()
     ram_percent = psutil.virtual_memory().percent
     return render_template(
         "dashboard.html",
-        used_storage=f"{disk.used / (1024**3):.1f}",
-        total_storage=f"{disk.total / (1024**3):.1f}",
-        storage_usage=f"{disk.percent}%",
+        used_storage=f"{disk.used / (1024**3):.1f}" if disk else "Unavailable",
+        total_storage=f"{disk.total / (1024**3):.1f}" if disk else "Unavailable",
+        storage_usage=f"{disk.percent}%" if disk else "Unavailable",
         cloud_backup_status="Active" if config.get("backup", {}).get("rclone_dir") else "Inactive",
         health_status="Not checked",
         hdd_temp="Not checked",
         cpu_usage=f"{cpu_percent}%",
         ram_usage=f"{ram_percent}%",
-        mount_info={"is_mounted": mounted, "mount_point": mount_point},
+        mount_info={"is_mounted": mounted and disk is not None, "mount_point": mount_point},
         tasks=task_summaries,
     )
 

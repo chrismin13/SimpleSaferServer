@@ -66,12 +66,23 @@ def create_app() -> Tuple[Flask, SocketIO]:
     runtime.volatile_dir.mkdir(parents=True, exist_ok=True)
     log_file = os.path.join(log_dir, "app.log")
 
-    handler = RotatingFileHandler(log_file, maxBytes=10000000, backupCount=5)
-    handler.setFormatter(
-        logging.Formatter("%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]")
+    formatter = logging.Formatter(
+        "%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]"
     )
+    handler = next(
+        (
+            existing_handler
+            for existing_handler in app.logger.handlers
+            if isinstance(existing_handler, RotatingFileHandler)
+            and existing_handler.baseFilename == os.path.abspath(log_file)
+        ),
+        None,
+    )
+    if handler is None:
+        handler = RotatingFileHandler(log_file, maxBytes=10000000, backupCount=5)
+        app.logger.addHandler(handler)
+    handler.setFormatter(formatter)
     handler.setLevel(logging.INFO)
-    app.logger.addHandler(handler)
     app.logger.setLevel(logging.INFO)
     app.logger.info("SimpleSaferServer startup")
 

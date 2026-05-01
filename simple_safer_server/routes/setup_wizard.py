@@ -256,7 +256,7 @@ def create_user():
             # Log in the user
             session['username'] = username
             return jsonify({'success': True})
-        return jsonify({'success': False, 'error': message})
+        return jsonify({'success': False, 'error': message}), 400
     except Exception as e:
         logger.error(f"Error creating user: {e}")
         return jsonify({'success': False, 'error': 'Could not create user'}), 500
@@ -274,7 +274,7 @@ def list_format_drives():
         return jsonify({'success': True, 'drives': drives})
     except Exception as e:
         logger.error(f"Error listing format drives: {e!s}")
-        return jsonify({'success': False, 'error': str(e)})
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @setup.route('/api/setup/mount-drives', methods=['GET'])
@@ -290,7 +290,7 @@ def list_mount_drives():
         return jsonify({'success': True, 'drives': drives})
     except Exception as e:
         logger.error(f"Error listing mount drives: {e!s}")
-        return jsonify({'success': False, 'error': str(e)})
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @setup.route('/api/setup/format', methods=['POST'])
@@ -305,7 +305,7 @@ def format_drive():
                     'error': 'Formatting is disabled in fake mode',
                     'details': 'Fake mode never formats local disks. Use the mount step to point the backup source at an existing folder instead.',
                 }
-            )
+            ), 400
 
         data, error_response, status_code = _json_object_payload()
         if error_response:
@@ -395,7 +395,7 @@ def format_drive():
                     'details': f'The following partitions are currently mounted:\n{partition_info}\n\nPlease unmount all partitions before formatting.',
                     'can_unmount': True,
                 }
-            )
+            ), 400
 
         # Determine the correct first-partition device node.
         # NVMe/MMC paths end in a digit (e.g. /dev/nvme0n1), so their partition
@@ -413,7 +413,7 @@ def format_drive():
                         'error': 'Failed to create partition',
                         'details': 'Could not create partition on the drive. Please ensure the drive is not in use.',
                     }
-                )
+                ), 500
 
             # Ask the kernel to re-read the partition table so the new partition
             # node (e.g. /dev/nvme0n1p1) appears in /dev before mkfs.ntfs runs.
@@ -458,7 +458,7 @@ def format_drive():
                                 'Please try again.'
                             ),
                         }
-                    )
+                    ), 500
                 time.sleep(PARTITION_POLL_INTERVAL_SECONDS)
 
         # Verify the partition node immediately before formatting so both the
@@ -484,7 +484,7 @@ def format_drive():
                             'Please verify the drive path and try again.'
                         ),
                     }
-                )
+                ), 400
             time.sleep(PARTITION_POLL_INTERVAL_SECONDS)
         # Format the partition as NTFS
         result = setup_command_adapter.format_ntfs(partition)
@@ -497,7 +497,7 @@ def format_drive():
                     'error': f'Error formatting partition: {error_msg}',
                     'details': 'Please ensure the drive is not in use and try again.',
                 }
-            )
+            ), 500
 
         return jsonify({'success': True})
 
@@ -538,7 +538,7 @@ def unmount_drive():
             return jsonify(message)
         return jsonify({'success': True, 'message': message})
     except BackupDriveSetupError as e:
-        return jsonify({'success': False, 'error': str(e), 'details': e.details})
+        return jsonify({'success': False, 'error': str(e), 'details': e.details}), 400
     except Exception as e:
         logger.error(f"Error unmounting drive: {e!s}")
         return jsonify(
@@ -547,7 +547,7 @@ def unmount_drive():
                 'error': f'Error unmounting drive: {e!s}',
                 'details': 'An unexpected error occurred. Please check the system logs for more information.',
             }
-        )
+        ), 500
 
 
 @setup.route('/api/setup/mount', methods=['POST'])
@@ -576,7 +576,7 @@ def mount_drive():
         logger.info(f"Current config after mounting: {config_manager.get_all_config()}")
         return jsonify({'success': True, 'message': result['message']})
     except BackupDriveSetupError as e:
-        return jsonify({'success': False, 'error': str(e), 'details': e.details})
+        return jsonify({'success': False, 'error': str(e), 'details': e.details}), 400
     except Exception as e:
         logger.error(f"Error mounting drive: {e!s}")
         return jsonify(
@@ -585,7 +585,7 @@ def mount_drive():
                 'error': f'Error mounting drive: {e!s}',
                 'details': 'An unexpected error occurred. Please check the system logs for more information.',
             }
-        )
+        ), 500
 
 
 @setup.route('/api/setup/rclone', methods=['POST'])
@@ -604,7 +604,7 @@ def setup_rclone():
 
         # Store rclone config
         if not system_utils.setup_rclone(config):
-            return jsonify({'success': False, 'error': 'Failed to set up rclone'})
+            return jsonify({'success': False, 'error': 'Failed to set up rclone'}), 500
 
         # Save to config
         config_manager.set_value('backup', 'rclone_dir', remote_name)
@@ -639,18 +639,14 @@ def setup_email():
         if not _valid_tcp_port(smtp_port):
             return _missing_required_field_response('SMTP port must be between 1 and 65535')
 
-        # Save email to config and write /etc/msmtprc
-        config_manager.set_value('backup', 'email_address', email)
-        config_manager.set_value('backup', 'from_address', from_address)
-
         if not system_utils.write_msmtp_config(
             from_address, smtp_server, smtp_port, smtp_username, smtp_password
         ):
-            return jsonify({'success': False, 'error': 'Failed to write msmtp configuration'})
+            return jsonify({'success': False, 'error': 'Failed to write msmtp configuration'}), 500
 
-        # Verify the config was saved
-        current_config = config_manager.get_all_config()
-        logger.info(f"Current config after email setup: {current_config}")
+        # Persist the UI-facing addresses only after msmtp is safely written.
+        config_manager.set_value('backup', 'email_address', email)
+        config_manager.set_value('backup', 'from_address', from_address)
 
         return jsonify({'success': True})
     except Exception as e:
@@ -1032,17 +1028,19 @@ def mega_save():
         if not email or not password or not folder:
             return _missing_required_field_response('Email, password, and folder are required.')
         obscured_pw = setup_command_adapter.obscure_rclone_password(password)
-        # Save to config/secrets (for demo, store in config_manager, but should use encrypted secrets in production)
+        # Write rclone config for MEGA
+        mega_rclone_config = f"""[mega]\ntype = mega\nuser = {email}\npass = {obscured_pw}\n"""
+        if not system_utils.setup_rclone(mega_rclone_config):
+            return jsonify(
+                {'success': False, 'error': 'Failed to write rclone config for MEGA'}
+            ), 500
+        # Persist after rclone is written so the UI does not advertise a cloud
+        # target that the backup scripts cannot actually use.
         config_manager.set_value('backup', 'cloud_mode', 'mega')
         config_manager.set_value('backup', 'mega_email', email)
         config_manager.set_value('backup', 'mega_pass', obscured_pw)
         config_manager.set_value('backup', 'mega_folder', folder)
-        # Set rclone_dir for backup script compatibility
         config_manager.set_value('backup', 'rclone_dir', f"mega:{folder}")
-        # Write rclone config for MEGA
-        mega_rclone_config = f"""[mega]\ntype = mega\nuser = {email}\npass = {obscured_pw}\n"""
-        if not system_utils.setup_rclone(mega_rclone_config):
-            return jsonify({'success': False, 'error': 'Failed to write rclone config for MEGA'})
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f"Error saving MEGA config: {e!s}")

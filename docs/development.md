@@ -186,8 +186,9 @@ PY
 
 ## Current Baseline Policy
 
-Continuous integration runs strict gates. A green `Python CI` workflow should not hide tool failures
-behind advisory or continue-on-error steps:
+Continuous integration currently runs advisory quality gates. A green `Python CI` workflow does
+not imply full enforcement and may include advisory or continue-on-error behavior until the planned
+cleanup/refactor pass removes advisory mode:
 
 - `ruff format --check`
 - `ruff check`

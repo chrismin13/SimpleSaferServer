@@ -70,7 +70,7 @@ class SMBManager:
         self.command_adapter = command_adapter or SmbCommandAdapter()
         self.smb_conf_path = str(self.runtime.samba_dir / "smb.conf")
         self.backup_dir = str(self.runtime.samba_backup_dir)
-        self.fake_state = get_fake_state() if self.runtime.is_fake else None
+        self.fake_state = get_fake_state(self.runtime) if self.runtime.is_fake else None
 
         # The backup directory is intentionally outside smb.conf itself so a
         # parse failure never prevents us from preserving the last good file.

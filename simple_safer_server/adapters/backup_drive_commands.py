@@ -10,6 +10,10 @@ class BackupDriveCommandAdapter:
     def __init__(self, command_runner: Optional[CommandRunner] = None) -> None:
         self._command_runner = command_runner or CommandRunner()
 
+    # These service-control calls are intentionally best-effort: the caller
+    # must not fail backup-drive rollback because a service is already stopped,
+    # permissions changed mid-flow, or a remote mount disappeared. Failures are
+    # surfaced by the surrounding backup/restore checks instead of raising here.
     def close_smb_share(self, mount_point: str) -> None:
         self._command_runner.run(
             ["sudo", "smbcontrol", "all", "close-share", mount_point], check=False

@@ -68,6 +68,7 @@ class FakeState:
         self.runtime.bin_dir.mkdir(parents=True, exist_ok=True)
         self.runtime.backup_drive_dir.mkdir(parents=True, exist_ok=True)
         self.runtime.cloud_target_dir.mkdir(parents=True, exist_ok=True)
+        self.runtime.volatile_dir.mkdir(parents=True, exist_ok=True)
         if not self.runtime.state_path.exists():
             self.save(self.default_state())
 
@@ -369,6 +370,9 @@ def get_runtime() -> Runtime:
             msmtp_config_path=data_dir / "msmtprc",
             state_path=data_dir / "state.json",
         )
+        # Fake-mode status files live under volatile_dir; create it with the
+        # runtime so service code can write status before FakeState is loaded.
+        _runtime.volatile_dir.mkdir(parents=True, exist_ok=True)
     else:
         data_dir = Path("/opt/SimpleSaferServer")
         _runtime = Runtime(
@@ -399,8 +403,9 @@ def get_runtime() -> Runtime:
     return _runtime
 
 
-def get_fake_state() -> FakeState:
+def get_fake_state(runtime: Optional[Runtime] = None) -> FakeState:
     global _fake_state
+    runtime = runtime or get_runtime()
     if _fake_state is None:
-        _fake_state = FakeState(get_runtime())
+        _fake_state = FakeState(runtime)
     return _fake_state

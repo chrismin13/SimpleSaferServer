@@ -45,8 +45,12 @@ class DdnsService:
 
     def save_config(self, data: Dict[str, Any]) -> str:
         if "duckdns" in data:
+            if not isinstance(data["duckdns"], dict):
+                raise ValueError("duckdns settings must be a JSON object")
             self._save_duckdns(data["duckdns"])
         if "cloudflare" in data:
+            if not isinstance(data["cloudflare"], dict):
+                raise ValueError("cloudflare settings must be a JSON object")
             self._save_cloudflare(data["cloudflare"])
 
         if self._trigger_sync():
@@ -76,7 +80,7 @@ class DdnsService:
     def _save_duckdns(self, duckdns: Dict[str, Any]) -> None:
         domain = duckdns.get("domain", "").strip()
         token = duckdns.get("token", "").strip()
-        enabled = duckdns.get("enabled", False)
+        enabled = _coerce_bool(duckdns.get("enabled", False))
 
         if enabled:
             # A stored duckdns_token from get_secret lets admins update DuckDNS
@@ -97,8 +101,8 @@ class DdnsService:
         zone = cloudflare.get("zone", "").strip()
         record = cloudflare.get("record", "").strip()
         token = cloudflare.get("token", "").strip()
-        proxy = cloudflare.get("proxy", False)
-        enabled = cloudflare.get("enabled", False)
+        proxy = _coerce_bool(cloudflare.get("proxy", False))
+        enabled = _coerce_bool(cloudflare.get("enabled", False))
 
         if enabled:
             existing_token = self._config_manager.get_secret("cloudflare_token")
@@ -129,3 +133,11 @@ class DdnsService:
                 exc_info=True,
             )
             return False
+
+
+def _coerce_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    return str(value).strip().lower() in {"1", "true", "yes", "y", "on"}

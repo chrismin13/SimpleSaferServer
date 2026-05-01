@@ -5,6 +5,7 @@ from simple_safer_server.adapters.command_runner import DEVNULL, CommandRunner
 
 
 class CommandRunnerTests(unittest.TestCase):
+    # CommandRunner.run must omit stdout/stderr so subprocess.run honors capture_output=True.
     def test_run_omits_unset_stdout_and_stderr_with_capture_output(self):
         runner = CommandRunner()
 
@@ -18,6 +19,7 @@ class CommandRunnerTests(unittest.TestCase):
             text=True,
         )
 
+    # Explicit stdout/stderr and check/text overrides must reach the subprocess.run call unchanged.
     def test_run_keeps_explicit_stdout_and_stderr_overrides(self):
         runner = CommandRunner()
 

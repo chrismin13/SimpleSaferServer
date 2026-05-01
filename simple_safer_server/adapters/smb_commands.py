@@ -26,9 +26,9 @@ class SmbCommandAdapter:
 
     def validate_config(self, validator: str, candidate_path: Path):
         if Path(validator).name == "testparm":
-            command = [validator, "-s", str(candidate_path)]
+            command = self._command(validator, "-s", str(candidate_path))
         else:
-            command = [validator, "-t", "-s", str(candidate_path)]
+            command = self._command(validator, "-t", "-s", str(candidate_path))
         return self._command_runner.run(command, capture_output=True, text=True)
 
     def restart_unit(self, unit_name: str) -> None:
@@ -36,7 +36,7 @@ class SmbCommandAdapter:
 
     def unit_status(self, unit_name: str) -> str:
         result = self._command_runner.run(
-            ["systemctl", "is-active", unit_name],
+            self._command("systemctl", "is-active", unit_name),
             capture_output=True,
             text=True,
         )

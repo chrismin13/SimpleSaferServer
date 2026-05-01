@@ -1,6 +1,5 @@
 import logging
 import shutil
-from pathlib import Path
 
 from simple_safer_server.adapters.command_runner import CalledProcessError, CommandRunner
 from simple_safer_server.services.runtime import get_fake_state, get_runtime
@@ -176,9 +175,7 @@ account default : simplesaferserver
     def install_systemd_scripts(self, config):
         """Install systemd scripts from the local scripts directory to /usr/local/bin/"""
         try:
-            # Get the current script directory (relative to the project root)
-            current_dir = Path(__file__).parent
-            scripts_source_dir = current_dir / 'scripts'
+            scripts_source_dir = self.runtime.repo_root / 'scripts'
             scripts_dest_dir = self.runtime.bin_dir
 
             if not scripts_source_dir.exists():

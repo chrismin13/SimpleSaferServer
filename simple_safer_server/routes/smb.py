@@ -39,6 +39,13 @@ def _validated_user_list(data):
     return users
 
 
+def _validated_writable(data):
+    writable = data.get("writable", False)
+    if not isinstance(writable, bool):
+        raise ValueError("writable must be a JSON boolean")
+    return writable
+
+
 @smb.route("/api/smb/shares", methods=["GET"])
 @api_admin_required
 def api_list_smb_shares():
@@ -68,7 +75,7 @@ def api_add_smb_share():
             return jsonify({"error": "Request body must be a JSON object"}), 400
         share_name = _trimmed_string(data, "name", required=True)
         path = _trimmed_string(data, "path", required=True)
-        writable = data.get("writable", False)
+        writable = _validated_writable(data)
         comment = _trimmed_string(data, "comment")
         valid_users = _validated_user_list(data)
 
@@ -97,7 +104,7 @@ def api_edit_smb_share(share_name):
             return jsonify({"error": "Request body must be a JSON object"}), 400
         new_name = _trimmed_string(data, "name", required=True)
         path = _trimmed_string(data, "path", required=True)
-        writable = data.get("writable", False)
+        writable = _validated_writable(data)
         comment = _trimmed_string(data, "comment")
         valid_users = _validated_user_list(data)
 

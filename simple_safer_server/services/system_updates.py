@@ -597,7 +597,10 @@ class SystemUpdatesManager:
             proc = self._process
         if proc and proc.poll() is None:
             self.command_adapter.terminate_process(proc)
-        self._update_state(phase="Stopping")
+        with self._lock:
+            current_phase = self._read_state().get("phase")
+        if current_phase not in {"Stopped", "Failed", "Completed", "Complete"}:
+            self._update_state(phase="Stopping")
         return self.get_status()
 
     def _reconcile_running_state(

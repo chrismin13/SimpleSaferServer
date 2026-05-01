@@ -174,6 +174,11 @@ def _get_current_mounts(command_adapter=None):
     # Use the live mount table for operation safety checks instead of lsblk's
     # mountpoint field so we always act on what the kernel currently reports.
     mount_check = _command_adapter(command_adapter).current_mounts()
+    if mount_check.returncode != 0:
+        output = (
+            mount_check.stderr or mount_check.stdout or "unknown mount command failure"
+        ).strip()
+        raise RuntimeError(f"Failed to read current mounts: {output}")
     mounts = []
     for line in mount_check.stdout.splitlines():
         parts = line.split()
@@ -688,7 +693,7 @@ def apply_backup_drive_configuration(
             fstab_backup = update_managed_fstab(
                 uuid, selected_path_str, bool(auto_mount), runtime=runtime
             )
-            _reload_systemd_mount_units(runtime=runtime)
+            _reload_systemd_mount_units(runtime=runtime, command_adapter=command_adapter)
 
             share_backup = _replace_backup_share_path(
                 smb_manager, selected_path_str, previous_mount_point
@@ -710,7 +715,7 @@ def apply_backup_drive_configuration(
         except Exception:
             if fstab_backup:
                 restore_fstab_backup(fstab_backup, runtime=runtime)
-                _reload_systemd_mount_units(runtime=runtime)
+                _reload_systemd_mount_units(runtime=runtime, command_adapter=command_adapter)
             _restore_backup_share(smb_manager, share_backup, fake_mode=True)
             if config_updated:
                 try:
@@ -752,7 +757,7 @@ def apply_backup_drive_configuration(
 
     try:
         fstab_backup = update_managed_fstab(uuid, mount_point, bool(auto_mount), runtime=runtime)
-        _reload_systemd_mount_units(runtime=runtime)
+        _reload_systemd_mount_units(runtime=runtime, command_adapter=command_adapter)
 
         mount_result = command_adapter.mount_ntfs(partition, mount_point)
         if mount_result.returncode != 0:
@@ -780,7 +785,7 @@ def apply_backup_drive_configuration(
             command_adapter.cleanup_unmount(partition)
         if fstab_backup:
             restore_fstab_backup(fstab_backup, runtime=runtime)
-            _reload_systemd_mount_units(runtime=runtime)
+            _reload_systemd_mount_units(runtime=runtime, command_adapter=command_adapter)
         _restore_backup_share(smb_manager, share_backup)
         if config_updated:
             try:

@@ -148,15 +148,19 @@ class CloudBackupService:
     def save_schedule(self, data: Dict[str, Any]) -> Dict[str, Any]:
         backup_time = data.get("backup_cloud_time")
         bandwidth_limit = data.get("bandwidth_limit")
-        if backup_time:
-            self._config_manager.set_value("schedule", "backup_cloud_time", backup_time)
-        if bandwidth_limit is not None:
-            self._config_manager.set_value("backup", "bandwidth_limit", bandwidth_limit)
 
         if self._runtime.is_fake:
+            if backup_time:
+                self._config_manager.set_value("schedule", "backup_cloud_time", backup_time)
+            if bandwidth_limit is not None:
+                self._config_manager.set_value("backup", "bandwidth_limit", bandwidth_limit)
             return {"success": True}
 
         config = self._config_manager.get_all_config()
+        if backup_time:
+            config.setdefault("schedule", {})["backup_cloud_time"] = backup_time
+        if bandwidth_limit is not None:
+            config.setdefault("backup", {})["bandwidth_limit"] = bandwidth_limit
         ok, err = self._system_utils.create_systemd_config_file(config)
         if not ok:
             return {"success": False, "error": f"Failed to update systemd config: {err}"}
@@ -165,6 +169,10 @@ class CloudBackupService:
         if not ok:
             return {"success": False, "error": f"Failed to update systemd timers: {err}"}
 
+        if backup_time:
+            self._config_manager.set_value("schedule", "backup_cloud_time", backup_time)
+        if bandwidth_limit is not None:
+            self._config_manager.set_value("backup", "bandwidth_limit", bandwidth_limit)
         return {"success": True}
 
     def validate_mega(self, data: Dict[str, Any]) -> Dict[str, Any]:
@@ -183,11 +191,11 @@ class CloudBackupService:
             if lsjson.returncode != 0:
                 return {"success": False, "error": "Failed to connect to MEGA. Check credentials."}
 
+            if not self._system_utils.setup_rclone(self._mega_rclone_config(email, obscured_pw)):
+                return {"success": False, "error": "Failed to write rclone config for MEGA."}
             self._config_manager.set_value("backup", "cloud_mode", "mega")
             self._config_manager.set_value("backup", "mega_email", email)
             self._config_manager.set_value("backup", "mega_pass", obscured_pw)
-            if not self._system_utils.setup_rclone(self._mega_rclone_config(email, obscured_pw)):
-                return {"success": False, "error": "Failed to write rclone config for MEGA."}
 
             return {"success": True}
         finally:

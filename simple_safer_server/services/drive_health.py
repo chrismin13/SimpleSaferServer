@@ -146,8 +146,26 @@ class DriveHealthSummaryService:
             if key in summary:
                 latest[key] = summary[key]
         with self._lock:
+            existing_checked_at = _summary_timestamp(self._summary)
+            incoming_checked_at = _summary_timestamp(latest)
+            if (
+                existing_checked_at is not None
+                and incoming_checked_at is not None
+                and incoming_checked_at <= existing_checked_at
+            ):
+                return dict(self._summary)
             self._summary = latest
         return dict(latest)
+
+
+def _summary_timestamp(summary):
+    checked_at = summary.get("checked_at")
+    if not checked_at:
+        return None
+    try:
+        return datetime.fromisoformat(checked_at)
+    except (TypeError, ValueError):
+        return None
 
 
 def build_drive_health_summary(
