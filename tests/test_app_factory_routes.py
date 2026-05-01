@@ -43,6 +43,7 @@ def test_fake_dashboard_renders_storage_action_urls():
                 page = response.get_data(as_text=True)
                 assert 'action="/unmount"' in page
                 assert 'action="/mount"' in page
+                assert 'id="health-refresh-button"' in page
     finally:
         runtime._runtime = previous_runtime
         runtime._fake_state = previous_fake_state

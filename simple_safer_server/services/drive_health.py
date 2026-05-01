@@ -5,6 +5,7 @@ import logging
 import os
 import re
 import shutil
+import threading
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
@@ -112,6 +113,101 @@ HDSENTINEL_DEFAULTS = {
     "enabled": True,
     "health_change_alert": True,
 }
+
+
+class DriveHealthSummaryService:
+    """Keep the dashboard health summary in process memory only."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._summary = self._empty_summary()
+
+    def _empty_summary(self):
+        return {
+            "status": "unknown",
+            "source": "memory",
+            "checked_at": None,
+            "probability": None,
+            "temperature": None,
+            "hdsentinel_health": None,
+            "hdsentinel_performance": None,
+            "detail": "No check yet",
+            "error": None,
+        }
+
+    def get_summary(self):
+        # Return a copy so callers cannot mutate the last-known state in place.
+        with self._lock:
+            return dict(self._summary)
+
+    def publish(self, summary):
+        latest = self._empty_summary()
+        for key in latest:
+            if key in summary:
+                latest[key] = summary[key]
+        with self._lock:
+            self._summary = latest
+        return dict(latest)
+
+
+def build_drive_health_summary(
+    config_manager,
+    system_utils,
+    runtime=None,
+    *,
+    collect_hdsentinel=True,
+):
+    """Run a live probe and convert it into the compact dashboard contract."""
+    runtime = runtime or get_runtime()
+    checked_at = datetime.now().isoformat(timespec="seconds")
+    summary = {
+        "status": "unknown",
+        "source": "live",
+        "checked_at": checked_at,
+        "probability": None,
+        "temperature": None,
+        "hdsentinel_health": None,
+        "hdsentinel_performance": None,
+        "detail": "Drive health data is not available.",
+        "error": None,
+    }
+
+    smart, _missing_attrs, smart_error = get_smart_attributes(
+        config_manager,
+        system_utils,
+        runtime=runtime,
+    )
+    if smart is not None:
+        probability = predict_failure_probability(smart, runtime=runtime)
+        if probability is not None:
+            summary["probability"] = probability
+            summary["temperature"] = smart.get("smart_194_raw")
+            summary["status"] = (
+                "good" if probability < get_optimal_threshold(runtime) else "warning"
+            )
+            summary["detail"] = "SMART prediction completed."
+        else:
+            summary["detail"] = "Drive health model is unavailable."
+            summary["error"] = summary["detail"]
+    else:
+        # Timeouts and missing data are operationally common with sleeping USB
+        # drives, so the dashboard keeps them neutral instead of alarming users.
+        summary["detail"] = smart_error or "Could not retrieve SMART data."
+        summary["error"] = smart_error
+
+    if collect_hdsentinel and get_hdsentinel_settings(config_manager)["enabled"]:
+        hdsentinel_snapshot = collect_hdsentinel_snapshot(
+            config_manager,
+            system_utils,
+            runtime=runtime,
+        )
+        if hdsentinel_snapshot and hdsentinel_snapshot.get("available"):
+            summary["hdsentinel_health"] = hdsentinel_snapshot.get("health_pct")
+            summary["hdsentinel_performance"] = hdsentinel_snapshot.get("performance_pct")
+            if summary["temperature"] is None:
+                summary["temperature"] = hdsentinel_snapshot.get("temperature_c")
+
+    return summary
 
 
 def get_fake_smart_attributes():

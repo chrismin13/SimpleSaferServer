@@ -55,6 +55,10 @@ def _json_object_payload():
     return data, None, None
 
 
+def _missing_required_field_response(message):
+    return jsonify({'success': False, 'error': message}), 400
+
+
 def setup_api_access_required(route_handler):
     """Allow anonymous setup API access only during first-time onboarding."""
 
@@ -235,7 +239,7 @@ def create_user():
         password = data.get('password')
 
         if not username or not password:
-            return jsonify({'success': False, 'error': 'Username and password are required'})
+            return _missing_required_field_response('Username and password are required')
 
         success, message = user_manager.create_user(username, password, is_admin=True)
         if success:
@@ -245,7 +249,7 @@ def create_user():
         return jsonify({'success': False, 'error': message})
     except Exception as e:
         logger.error(f"Error creating user: {e}")
-        return jsonify({'success': False, 'error': str(e)})
+        return jsonify({'success': False, 'error': 'Could not create user'}), 500
 
 
 @setup.route('/api/setup/format-drives', methods=['GET'])
@@ -293,13 +297,9 @@ def format_drive():
                 }
             )
 
-        # silent=True suppresses the 400 on a missing/wrong Content-Type so we
-        # can return our own JSON error. Only a JSON object is valid here.
-        data = request.get_json(silent=True)
-        if data is None:
-            data = {}
-        elif not isinstance(data, dict):
-            return jsonify({'success': False, 'error': 'Request body must be a JSON object'})
+        data, error_response, status_code = _json_object_payload()
+        if error_response:
+            return error_response, status_code
         # Step 2 is intentionally disk-oriented because formatting and partition
         # creation are destructive whole-disk operations.
         disk = data.get('disk')
@@ -309,18 +309,18 @@ def format_drive():
         # isinstance check below so they get the clearer "must be a string"
         # error instead of the generic "No disk selected" message.
         if disk is None:
-            return jsonify({'success': False, 'error': 'No disk selected'})
+            return _missing_required_field_response('No disk selected')
 
         # A JSON client could send a non-string value (e.g. 123 or False);
         # os.path.realpath would raise TypeError, so we catch it here.
         if not isinstance(disk, str):
-            return jsonify({'success': False, 'error': 'Invalid disk path: must be a string'})
+            return jsonify({'success': False, 'error': 'Invalid disk path: must be a string'}), 400
 
         # Reject an empty string after the type check — the `disk is None` guard
         # above only catches a missing key; an explicit empty string must be
         # rejected here.
         if not disk:
-            return jsonify({'success': False, 'error': 'No disk selected'})
+            return _missing_required_field_response('No disk selected')
 
         # Resolve symlinks first so a symlink inside /dev/ pointing elsewhere
         # cannot be used to bypass the /dev/ prefix check, then verify the
@@ -329,7 +329,7 @@ def format_drive():
         if not disk.startswith('/dev/'):
             return jsonify(
                 {'success': False, 'error': 'Invalid disk path: must be a /dev/ device node'}
-            )
+            ), 400
 
         # Use os.stat() directly so the error message reflects the actual
         # failure: a missing node (FileNotFoundError) is different from a
@@ -339,23 +339,25 @@ def format_drive():
         try:
             disk_stat = os.stat(disk)
         except FileNotFoundError:
-            return jsonify({'success': False, 'error': 'Invalid disk path: device does not exist'})
+            return jsonify(
+                {'success': False, 'error': 'Invalid disk path: device does not exist'}
+            ), 400
         except PermissionError:
             return jsonify(
                 {
                     'success': False,
                     'error': 'Invalid disk path: permission denied while inspecting device node',
                 }
-            )
+            ), 400
         except OSError:
             return jsonify(
                 {'success': False, 'error': 'Invalid disk path: unable to inspect device node'}
-            )
+            ), 400
 
         if not stat.S_ISBLK(disk_stat.st_mode):
             return jsonify(
                 {'success': False, 'error': 'Invalid disk path: must be a block device node'}
-            )
+            ), 400
 
         # Confirm the node is a whole disk rather than a partition (e.g. /dev/sda
         # has TYPE=disk; /dev/sda1 has TYPE=part).  Passing a partition path here
@@ -363,12 +365,12 @@ def format_drive():
         try:
             lsblk_result = setup_command_adapter.whole_disk_type(disk)
         except (SubprocessError, OSError):
-            return jsonify({'success': False, 'error': 'Unable to verify disk type'})
+            return jsonify({'success': False, 'error': 'Unable to verify disk type'}), 400
 
         if lsblk_result.stdout.strip() != 'disk':
             return jsonify(
                 {'success': False, 'error': 'Invalid disk path: must be a whole-disk block device'}
-            )
+            ), 400
 
         mounted_partitions = _get_mounted_partitions_for_disk(disk)
 
@@ -494,10 +496,10 @@ def format_drive():
         return jsonify(
             {
                 'success': False,
-                'error': f'Error formatting drive: {e!s}',
+                'error': 'Error formatting drive',
                 'details': 'An unexpected error occurred. Please check the system logs for more information.',
             }
-        )
+        ), 500
 
 
 @setup.route('/api/setup/unmount', methods=['POST'])
@@ -588,7 +590,7 @@ def setup_rclone():
         remote_name = data.get('remote_name')
 
         if not config or not remote_name:
-            return jsonify({'success': False, 'error': 'Config and remote name are required'})
+            return _missing_required_field_response('Config and remote name are required')
 
         # Store rclone config
         if not system_utils.setup_rclone(config):
@@ -600,7 +602,7 @@ def setup_rclone():
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f"Error setting up rclone: {e}")
-        return jsonify({'success': False, 'error': str(e)})
+        return jsonify({'success': False, 'error': 'Could not set up rclone'}), 500
 
 
 @setup.route('/api/setup/email', methods=['POST'])
@@ -622,7 +624,7 @@ def setup_email():
 
         if not all([email, from_address, smtp_server, smtp_port, smtp_username, smtp_password]):
             logger.error("Missing email fields")
-            return jsonify({'success': False, 'error': 'All email fields are required'})
+            return _missing_required_field_response('All email fields are required')
 
         # Save email to config and write /etc/msmtprc
         config_manager.set_value('backup', 'email_address', email)
@@ -640,7 +642,7 @@ def setup_email():
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f"Error setting up email: {e}")
-        return jsonify({'success': False, 'error': str(e)})
+        return jsonify({'success': False, 'error': 'Could not save email settings'}), 500
 
 
 @setup.route('/api/setup/schedule', methods=['POST'])
@@ -661,7 +663,7 @@ def save_schedule():
                     'error': 'Missing required fields',
                     'details': 'Time is required',
                 }
-            )
+            ), 400
 
         # Validate time format (HH:MM)
         if not re.match(r'^([01]?[0-9]|2[0-3]):[0-5][0-9]$', time):
@@ -671,7 +673,7 @@ def save_schedule():
                     'error': 'Invalid time format',
                     'details': 'Time must be in HH:MM format (24-hour)',
                 }
-            )
+            ), 400
 
         # Save schedule to config
         config_manager.set_value('schedule', 'backup_cloud_time', time)
@@ -800,7 +802,7 @@ def complete_setup():
             logger.error(f"Setup validation failed. Missing fields: {missing_fields}")
             return jsonify(
                 {'success': False, 'error': 'Missing required fields', 'details': missing_fields}
-            )
+            ), 400
 
         # Update the user's last login time since they completed the setup
         if 'username' in session:
@@ -813,12 +815,14 @@ def complete_setup():
         # Install systemd services and timers
         ok, err = install_systemd_tasks(current_config)
         if not ok:
-            return jsonify({'success': False, 'error': f'Failed to install systemd tasks: {err}'})
+            return jsonify(
+                {'success': False, 'error': f'Failed to install systemd tasks: {err}'}
+            ), 500
 
         # Set up SMB share
         ok, err = setup_smb_share(current_config)
         if not ok:
-            return jsonify({'success': False, 'error': f'Failed to set up SMB share: {err}'})
+            return jsonify({'success': False, 'error': f'Failed to set up SMB share: {err}'}), 500
 
         # Mark setup as complete AFTER all systemd tasks are installed
         config_manager.mark_setup_complete()
@@ -834,10 +838,10 @@ def complete_setup():
         return jsonify(
             {
                 'success': False,
-                'error': f'Error completing setup: {e!s}',
+                'error': 'Error completing setup',
                 'details': 'An unexpected error occurred. Please check the system logs for more information.',
             }
-        )
+        ), 500
 
 
 @setup.route('/api/setup/system', methods=['POST'])
@@ -852,14 +856,14 @@ def setup_system_info():
         server_name = data.get('server_name')
 
         if not username or not server_name:
-            return jsonify({'success': False, 'error': 'Username and server name are required'})
+            return _missing_required_field_response('Username and server name are required')
 
         config_manager.set_value('system', 'username', username)
         config_manager.set_value('system', 'server_name', server_name)
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f"Error saving system info: {e}")
-        return jsonify({'success': False, 'error': str(e)})
+        return jsonify({'success': False, 'error': 'Could not save system information'}), 500
 
 
 @setup.route('/api/setup/mega/connect', methods=['POST'])
@@ -873,7 +877,7 @@ def mega_connect():
         email = data.get('email')
         password = data.get('password')
         if not email or not password:
-            return jsonify({'success': False, 'error': 'Email and password are required.'})
+            return _missing_required_field_response('Email and password are required.')
         # Obscure password using rclone
         obscured_pw = setup_command_adapter.obscure_rclone_password(password)
         # Build temp rclone config
@@ -894,7 +898,7 @@ pass = {obscured_pw}
             if lsjson.returncode != 0:
                 return jsonify(
                     {'success': False, 'error': 'Failed to list MEGA folders. Check credentials.'}
-                )
+                ), 400
             import json as pyjson
 
             items = pyjson.loads(lsjson.stdout)
@@ -903,7 +907,8 @@ pass = {obscured_pw}
         finally:
             os.remove(config_path)
     except Exception as e:
-        return jsonify({'success': False, 'error': f'Error connecting to MEGA: {e!s}'})
+        logger.error(f"Error connecting to MEGA: {e!s}")
+        return jsonify({'success': False, 'error': 'Error connecting to MEGA'}), 500
 
 
 @setup.route('/api/setup/mega/list_folders', methods=['POST'])
@@ -918,7 +923,7 @@ def mega_list_folders():
         email = data.get('email')
         password = data.get('password')
         if not email or not password:
-            return jsonify({'error': 'Email and password are required.'})
+            return _missing_required_field_response('Email and password are required.')
         obscured_pw = setup_command_adapter.obscure_rclone_password(password)
         config_text = f"""
 [mega]
@@ -936,18 +941,24 @@ pass = {obscured_pw}
         try:
             lsjson = setup_command_adapter.rclone_lsjson(f"mega:{path}", config_path)
             if lsjson.returncode != 0:
-                return jsonify({'error': 'Failed to list MEGA folders. Check credentials or path.'})
+                return jsonify(
+                    {
+                        'success': False,
+                        'error': 'Failed to list MEGA folders. Check credentials or path.',
+                    }
+                ), 400
             import json as pyjson
 
             items = pyjson.loads(lsjson.stdout)
             folders = [item['Name'] for item in items if item['IsDir']]
             # Compute parent path
             parent = '/'.join(path.rstrip('/').split('/')[:-1]) or '/'
-            return jsonify({'folders': folders, 'path': path, 'parent': parent})
+            return jsonify({'success': True, 'folders': folders, 'path': path, 'parent': parent})
         finally:
             os.remove(config_path)
     except Exception as e:
-        return jsonify({'error': f'Error listing MEGA folders: {e!s}'})
+        logger.error(f"Error listing MEGA folders: {e!s}")
+        return jsonify({'success': False, 'error': 'Error listing MEGA folders'}), 500
 
 
 @setup.route('/api/setup/mega/create_folder', methods=['POST'])
@@ -963,7 +974,9 @@ def mega_create_folder_picker():
         email = data.get('email')
         password = data.get('password')
         if not folder_name or not email or not password:
-            return jsonify({'error': 'Folder name, email, and password are required.'})
+            return _missing_required_field_response(
+                'Folder name, email, and password are required.'
+            )
         obscured_pw = setup_command_adapter.obscure_rclone_password(password)
         config_text = f"""
 [mega]
@@ -983,12 +996,13 @@ pass = {obscured_pw}
             full_path = f"{path.rstrip('/')}/{folder_name}" if path != '/' else f"/{folder_name}"
             mkdir = setup_command_adapter.rclone_mkdir(f"mega:{full_path}", config_path)
             if mkdir.returncode != 0:
-                return jsonify({'error': 'Failed to create folder on MEGA.'})
+                return jsonify({'success': False, 'error': 'Failed to create folder on MEGA.'}), 400
             return jsonify({'success': True})
         finally:
             os.remove(config_path)
     except Exception as e:
-        return jsonify({'error': f'Error creating folder: {e!s}'})
+        logger.error(f"Error creating MEGA folder: {e!s}")
+        return jsonify({'success': False, 'error': 'Error creating folder'}), 500
 
 
 @setup.route('/api/setup/mega/save', methods=['POST'])
@@ -1003,7 +1017,7 @@ def mega_save():
         password = data.get('password')
         folder = data.get('folder')
         if not email or not password or not folder:
-            return jsonify({'success': False, 'error': 'Email, password, and folder are required.'})
+            return _missing_required_field_response('Email, password, and folder are required.')
         obscured_pw = setup_command_adapter.obscure_rclone_password(password)
         # Save to config/secrets (for demo, store in config_manager, but should use encrypted secrets in production)
         config_manager.set_value('backup', 'cloud_mode', 'mega')
@@ -1018,4 +1032,5 @@ def mega_save():
             return jsonify({'success': False, 'error': 'Failed to write rclone config for MEGA'})
         return jsonify({'success': True})
     except Exception as e:
-        return jsonify({'success': False, 'error': f'Error saving MEGA config: {e!s}'})
+        logger.error(f"Error saving MEGA config: {e!s}")
+        return jsonify({'success': False, 'error': 'Error saving MEGA config'}), 500

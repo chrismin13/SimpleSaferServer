@@ -6,6 +6,11 @@ from simple_safer_server.adapters.command_runner import CalledProcessError, Comm
 from simple_safer_server.services.runtime import get_fake_state, get_runtime
 
 
+def _time_before(hour, minute, *, minutes_before):
+    total_minutes = ((hour * 60) + minute - minutes_before) % (24 * 60)
+    return divmod(total_minutes, 60)
+
+
 class SystemUtils:
     def __init__(self, runtime=None, command_runner=None):
         self.runtime = runtime or get_runtime()
@@ -267,20 +272,20 @@ cloudflare_proxy = {ddns_config.get('cloudflare_proxy', 'false')}
             if not (0 <= backup_hour < 24 and 0 <= backup_minute < 60):
                 raise ValueError("schedule.backup_cloud_time contains an invalid time")
 
-            # Calculate check_health time (1 minute before backup)
-            check_health_minute = backup_minute - 1
-            check_health_hour = backup_hour
-            if check_health_minute < 0:
-                check_health_minute += 60
-                check_health_hour = (check_health_hour - 1) % 24
+            # Keep the pre-backup jobs spaced out so randomized timer delay or
+            # slow USB spin-up is less likely to make health start before mount.
+            check_health_hour, check_health_minute = _time_before(
+                backup_hour,
+                backup_minute,
+                minutes_before=2,
+            )
             check_health_time = f"{check_health_hour:02d}:{check_health_minute:02d}:00"
 
-            # Calculate check_mount time (2 minutes before backup)
-            check_mount_minute = backup_minute - 2
-            check_mount_hour = backup_hour
-            if check_mount_minute < 0:
-                check_mount_minute += 60
-                check_mount_hour = (check_mount_hour - 1) % 24
+            check_mount_hour, check_mount_minute = _time_before(
+                backup_hour,
+                backup_minute,
+                minutes_before=4,
+            )
             check_mount_time = f"{check_mount_hour:02d}:{check_mount_minute:02d}:00"
 
             # Define services and timers with proper formatting

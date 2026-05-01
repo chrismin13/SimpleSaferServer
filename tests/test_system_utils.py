@@ -93,6 +93,56 @@ class SystemUtilsTimerActivationTests(unittest.TestCase):
                     system_utils.commands,
                 )
 
+    def test_pre_backup_timers_keep_two_minute_spacing(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime = self._runtime(temp_dir)
+            runtime.systemd_dir.mkdir()
+            system_utils = RecordingSystemUtils(runtime)
+
+            ok, error = system_utils.install_systemd_services_and_timers(
+                self._config(),
+                activate_timers=False,
+            )
+
+            self.assertTrue(ok, error)
+            self.assertIsNone(error)
+            self.assertIn(
+                "OnCalendar=*-*-* 02:56:00",
+                (runtime.systemd_dir / "check_mount.timer").read_text(),
+            )
+            self.assertIn(
+                "OnCalendar=*-*-* 02:58:00",
+                (runtime.systemd_dir / "check_health.timer").read_text(),
+            )
+            self.assertIn(
+                "OnCalendar=*-*-* 03:00",
+                (runtime.systemd_dir / "backup_cloud.timer").read_text(),
+            )
+
+    def test_pre_backup_timers_wrap_before_midnight(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime = self._runtime(temp_dir)
+            runtime.systemd_dir.mkdir()
+            system_utils = RecordingSystemUtils(runtime)
+            config = self._config()
+            config["schedule"]["backup_cloud_time"] = "00:01"
+
+            ok, error = system_utils.install_systemd_services_and_timers(
+                config,
+                activate_timers=False,
+            )
+
+            self.assertTrue(ok, error)
+            self.assertIsNone(error)
+            self.assertIn(
+                "OnCalendar=*-*-* 23:57:00",
+                (runtime.systemd_dir / "check_mount.timer").read_text(),
+            )
+            self.assertIn(
+                "OnCalendar=*-*-* 23:59:00",
+                (runtime.systemd_dir / "check_health.timer").read_text(),
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -6,7 +6,9 @@ The Dashboard is the main interface for monitoring and managing the system. It p
 Four cards display real-time status:
 - **Storage**: Shows drive connection status, used/total storage, and usage percentage.
 - **Network File Sharing**: Shows if network file sharing is enabled (SMB status).
-- **Hard Drive Health**: Shows drive health status, failure risk, and temperature.
+- **Hard Drive Health**: Shows the last drive-health summary remembered by the running web process.
+  Dashboard load does not probe SMART or HDSentinel. Use the tile refresh button when you want a
+  live drive-health probe.
 - **System Resources**: Displays CPU and RAM usage, and live network traffic (up/down rates).
 
 ## Task Schedule
@@ -31,6 +33,10 @@ Four cards display real-time status:
 
 ## Live Updates
 - Status cards and system resources update live using background API calls.
+- Drive Health uses RAM-only last-known state. After the web app restarts, the tile shows
+  `No check yet` until a manual dashboard refresh or an in-process health check publishes a new
+  summary. This avoids extra SD-card writes and avoids waking a sleeping backup drive on every
+  dashboard load.
 - Task schedule and statuses are refreshed dynamically.
 
 ---

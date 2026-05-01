@@ -30,6 +30,12 @@
     </div>
     <div class="status-tile-value" id="health-status">—</div>
     <div class="status-tile-detail" id="health-detail">—</div>
+    <div class="d-flex justify-between items-center gap-3 mt-3">
+      <span class="status-tile-detail" id="health-checked-at">No check yet</span>
+      <button type="button" class="btn btn-secondary btn-sm" id="health-refresh-button">
+        <i class="fas fa-rotate-right me-1"></i> Refresh
+      </button>
+    </div>
   </div>
 
   <!-- Cloud Backup -->
@@ -183,6 +189,7 @@ document.addEventListener('DOMContentLoaded', function() {
   const tasksBody = document.getElementById('tasks-body');
   const taskContextMenu = document.getElementById('taskContextMenu');
   const driveActionSlot = document.getElementById('drive-action-slot');
+  const healthRefreshButton = document.getElementById('health-refresh-button');
   const taskScheduleByName = new Map();
   let activeContextTaskName = null;
 
@@ -506,39 +513,92 @@ Remove the drive now if you do not want it mounted again.`;
   }
 
   // --- Drive health status ---
+  function formatHealthCheckedAt(value) {
+    if (!value) {
+      return 'No check yet';
+    }
+    return 'Last checked ' + window.formatRelativeTimestamp(value, { fallback: value });
+  }
+
+  function renderHealthSummary(data) {
+    const badge = document.getElementById('health-status-badge');
+    const val = document.getElementById('health-status');
+    const detail = document.getElementById('health-detail');
+    const checkedAt = document.getElementById('health-checked-at');
+    const probability = typeof data.probability === 'number'
+      ? 'Failure probability: ' + (data.probability * 100).toFixed(1) + '%'
+      : '';
+    const temperature = data.temperature != null ? 'Temp: ' + data.temperature + '°C' : '';
+    const metrics = [probability, temperature].filter(Boolean).join(' · ');
+
+    checkedAt.textContent = formatHealthCheckedAt(data.checked_at);
+    checkedAt.title = data.checked_at || 'No check yet';
+
+    if (!data.checked_at) {
+      badge.className = 'badge badge-neutral';
+      badge.textContent = 'Not Checked';
+      val.textContent = 'No check yet';
+      detail.textContent = 'Use refresh to run a live probe';
+      return;
+    }
+
+    if (data.status === 'good') {
+      badge.className = 'badge badge-success';
+      badge.textContent = 'Healthy';
+      val.textContent = 'No Issues';
+      detail.textContent = metrics || data.detail || 'Last health check completed';
+      return;
+    }
+
+    if (data.status === 'warning') {
+      badge.className = 'badge badge-danger';
+      badge.textContent = 'Warning';
+      val.textContent = 'Needs Attention';
+      detail.textContent = metrics || data.detail || 'Drive health check reported a warning';
+      return;
+    }
+
+    badge.className = 'badge badge-neutral';
+    badge.textContent = 'Unknown';
+    val.textContent = 'No Data';
+    detail.textContent = data.detail || 'Health data is not available';
+  }
+
   function updateHealth() {
     fetch('/api/drive_health/summary')
       .then(r => r.json())
-      .then(data => {
-        const badge = document.getElementById('health-status-badge');
-        const val = document.getElementById('health-status');
-        const detail = document.getElementById('health-detail');
-
-        if (data.status === 'unknown') {
-          badge.className = 'badge badge-neutral';
-          badge.textContent = 'Unknown';
-          val.textContent = 'No Data';
-          detail.textContent = 'Health data is not available yet';
-          return;
-        }
-
-        if (data.status === 'good') {
-          badge.className = 'badge badge-success';
-          badge.textContent = 'Healthy';
-          val.textContent = 'No Issues';
-          detail.textContent = 'Failure probability: ' + (data.probability * 100).toFixed(1) + '%';
-        } else {
-          badge.className = 'badge badge-danger';
-          badge.textContent = 'Warning';
-          val.textContent = 'Failure Predicted';
-          detail.textContent = 'Failure probability: ' + (data.probability * 100).toFixed(1) + '%';
-        }
-      })
+      .then(renderHealthSummary)
       .catch(() => {
         document.getElementById('health-status-badge').className = 'badge badge-neutral';
         document.getElementById('health-status-badge').textContent = 'Unavailable';
         document.getElementById('health-status').textContent = '—';
       });
+  }
+
+  async function refreshHealth() {
+    if (healthRefreshButton) {
+      window.AsyncButtonState.start(healthRefreshButton);
+    }
+    try {
+      const response = await fetch('/api/drive_health/refresh', {
+        method: 'POST',
+        headers: { 'Accept': 'application/json' }
+      });
+      const data = await response.json();
+      renderHealthSummary(data);
+      if (!response.ok) {
+        throw new Error(data.error || data.detail || 'Drive health refresh failed.');
+      }
+      if (healthRefreshButton) {
+        window.AsyncButtonState.success(healthRefreshButton);
+      }
+      showAlert('Drive health refreshed.', 'success');
+    } catch (error) {
+      if (healthRefreshButton) {
+        window.AsyncButtonState.error(healthRefreshButton);
+      }
+      showAlert(error.message || 'Drive health refresh failed.', 'danger');
+    }
   }
 
   // --- Cloud backup status ---
@@ -653,6 +713,9 @@ Remove the drive now if you do not want it mounted again.`;
   bindInteractiveRows();
   applyRelativeTaskTimes();
   bindDashboardActionForms();
+  if (healthRefreshButton) {
+    healthRefreshButton.addEventListener('click', refreshHealth);
+  }
 
   taskContextMenu.querySelectorAll('[data-task-action]').forEach((button) => {
     button.addEventListener('click', async () => {

@@ -17,10 +17,15 @@ sync with system services.
   accurate non-2xx statuses for expected failures.
 - Command execution gained timeout plumbing for drive-health probes, and backup-drive NTFS mounts
   use the current process UID/GID instead of hard-coded `1000`.
+- Setup wizard JSON POST routes now use a setup-specific JSON object parser and return `400` for
+  missing, invalid, or non-object JSON bodies.
+- Dashboard drive health now reads a RAM-only last-known summary. The Dashboard refresh button is
+  the explicit path that runs live SMART/HDSentinel probes and updates that in-process summary.
+- Generated timers now keep the cloud backup at the configured time, run the mount check 4 minutes
+  before backup, and run drive health 2 minutes before backup so randomized delay has less chance
+  to overlap mount and health work.
 
 ## Follow-up
 
-- The setup wizard still has several older JSON parsing paths that would benefit from a dedicated
-  pass using the shared API helpers.
-- Dashboard drive health remains a degraded status unless a future pass wires real SMART summary
-  data into the dashboard render context.
+- Dashboard health intentionally resets to `No check yet` when the web process restarts so the app
+  does not add extra persisted health state or SD-card writes.

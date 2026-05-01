@@ -221,6 +221,30 @@ class SetupWizardTests(unittest.TestCase):
             {'success': False, 'error': 'Request body must be a JSON object'},
         )
 
+    def test_mount_drive_returns_400_when_body_is_invalid_json(self):
+        with self.app.test_client() as client:
+            response = client.post(
+                '/api/setup/mount',
+                data='{',
+                content_type='application/json',
+            )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.get_json(),
+            {'success': False, 'error': 'Request body must be a JSON object'},
+        )
+
+    def test_mount_drive_returns_400_when_body_is_not_object(self):
+        with self.app.test_client() as client:
+            response = client.post('/api/setup/mount', json=[1, 2, 3])
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.get_json(),
+            {'success': False, 'error': 'Request body must be a JSON object'},
+        )
+
     def test_mount_drive_returns_400_when_partition_is_absent(self):
         # Valid JSON body but the required 'partition' key is missing.
         with self.app.test_client() as client:
@@ -322,9 +346,11 @@ class SetupWizardTests(unittest.TestCase):
         with self.app.test_client() as client:
             response = client.post('/api/setup/format')
 
-        data = response.get_json()
-        self.assertEqual(data['success'], False)
-        self.assertIn('disk', data['error'].lower())
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.get_json(),
+            {'success': False, 'error': 'Request body must be a JSON object'},
+        )
 
     def test_format_drive_rejects_non_dict_body(self):
         # A JSON body that is not an object (e.g. an array) must be rejected
@@ -333,8 +359,19 @@ class SetupWizardTests(unittest.TestCase):
             response = client.post('/api/setup/format', json=[1, 2, 3])
 
         data = response.get_json()
+        self.assertEqual(response.status_code, 400)
         self.assertEqual(data['success'], False)
         self.assertIn('JSON object', data['error'])
+
+    def test_create_user_returns_400_when_required_fields_are_missing(self):
+        with self.app.test_client() as client:
+            response = client.post('/api/setup/user', json={'username': 'admin'})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.get_json(),
+            {'success': False, 'error': 'Username and password are required'},
+        )
 
     def test_format_drive_rejects_non_string_disk(self):
         # JSON clients can send numeric or other non-string values; reject cleanly.

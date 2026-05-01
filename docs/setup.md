@@ -103,6 +103,10 @@ Advanced mode:
 - Optionally set a bandwidth limit.
 - Save to complete setup.
 - Completing setup installs and activates the recurring systemd timers for mount checks, drive-health checks, cloud backups, and DDNS updates.
+- The cloud backup timer stays on the configured time. The generated mount check runs 4 minutes
+  before backup, and the generated drive-health check runs 2 minutes before backup. This spacing
+  gives the mount check time to finish before health probes the drive, even with systemd's small
+  randomized delay.
 - The installer may generate those unit files earlier, but it keeps the timers inactive while `system.setup_complete` is false so persistent timers cannot run with placeholder setup values.
 
 ## Later Changes

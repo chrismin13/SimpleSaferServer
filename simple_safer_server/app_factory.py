@@ -36,6 +36,7 @@ from simple_safer_server.services.cloud_backup_service import CloudBackupService
 from simple_safer_server.services.config_manager import ConfigManager
 from simple_safer_server.services.container import AppServices
 from simple_safer_server.services.ddns_service import DdnsService
+from simple_safer_server.services.drive_health import DriveHealthSummaryService
 from simple_safer_server.services.runtime import get_fake_state, get_flask_secret_key, get_runtime
 from simple_safer_server.services.smb_manager import SMB_DOCS_URL, SMBManager
 from simple_safer_server.services.storage_service import StorageService
@@ -124,6 +125,7 @@ def create_app() -> Tuple[Flask, SocketIO]:
         config_manager=config_manager,
         command_adapter=storage_command_adapter,
     )
+    drive_health_summary_service = DriveHealthSummaryService()
     app.extensions["simple_safer_server"] = AppServices(
         runtime=runtime,
         fake_state=fake_state,
@@ -138,6 +140,7 @@ def create_app() -> Tuple[Flask, SocketIO]:
         cloud_backup_service=cloud_backup_service,
         alerts_service=alerts_service,
         storage_service=storage_service,
+        drive_health_summary_service=drive_health_summary_service,
     )
 
     app.register_blueprint(setup)

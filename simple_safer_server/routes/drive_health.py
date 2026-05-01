@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Any
 
 from flask import Blueprint, abort, jsonify, render_template, request, send_file
@@ -6,6 +7,7 @@ from simple_safer_server.services.drive_health import (
     SMART_FIELDS,
     SMARTCTL_JSON_UPGRADE_MESSAGE,
     append_telemetry,
+    build_drive_health_summary,
     collect_hdsentinel_snapshot,
     get_hdsentinel_display_snapshot,
     get_hdsentinel_settings,
@@ -103,6 +105,30 @@ def drives():
                     services.system_utils,
                     runtime=services.runtime,
                 )
+            # The Drive Health page already did the live probe above, so reuse
+            # that result instead of waking or querying the drive a second time.
+            summary = {
+                "status": "unknown",
+                "source": "live",
+                "checked_at": datetime.now().isoformat(timespec="seconds"),
+                "probability": probability,
+                "temperature": smart.get("smart_194_raw") if smart else None,
+                "hdsentinel_health": None,
+                "hdsentinel_performance": None,
+                "detail": error or "Drive health data is not available.",
+                "error": error,
+            }
+            if probability is not None:
+                summary["status"] = (
+                    "good" if probability < get_optimal_threshold(services.runtime) else "warning"
+                )
+                summary["detail"] = "SMART prediction completed."
+            if hdsentinel_snapshot and hdsentinel_snapshot.get("available"):
+                summary["hdsentinel_health"] = hdsentinel_snapshot.get("health_pct")
+                summary["hdsentinel_performance"] = hdsentinel_snapshot.get("performance_pct")
+                if summary["temperature"] is None:
+                    summary["temperature"] = hdsentinel_snapshot.get("temperature_c")
+            services.drive_health_summary_service.publish(summary)
 
     return render_template(
         "drive_health.html",
@@ -142,43 +168,46 @@ def download_telemetry():
 def api_drive_health_summary():
     services = _get_services()
     try:
-        smart, _missing_attrs, smart_error = get_smart_attributes(
+        return jsonify(services.drive_health_summary_service.get_summary())
+    except Exception:
+        return jsonify(
+            {
+                "status": "unknown",
+                "source": "memory",
+                "checked_at": None,
+                "probability": None,
+                "temperature": None,
+                "hdsentinel_health": None,
+                "hdsentinel_performance": None,
+                "detail": "Drive health summary is unavailable.",
+                "error": None,
+            }
+        )
+
+
+@drive_health.route("/api/drive_health/refresh", methods=["POST"])
+@api_admin_required
+def api_drive_health_refresh():
+    services = _get_services()
+    try:
+        summary = build_drive_health_summary(
             services.config_manager,
             services.system_utils,
             runtime=services.runtime,
         )
-        if smart is None:
-            return jsonify(
-                {
-                    "status": "unknown",
-                    "probability": None,
-                    "temperature": None,
-                    "error": smart_error,
-                }
-            )
-        prob = predict_failure_probability(smart, runtime=services.runtime)
-        if prob is not None:
-            temperature = smart.get("smart_194_raw", None)
-            status = "good" if prob < get_optimal_threshold(services.runtime) else "warning"
-            response = {
-                "status": status,
-                "probability": prob,
-                "temperature": temperature,
-            }
-            hdsentinel_snapshot = get_hdsentinel_display_snapshot(
-                services.config_manager,
-                services.system_utils,
-                runtime=services.runtime,
-            )
-            hdsentinel_settings = get_hdsentinel_settings(services.config_manager)
-            if isinstance(hdsentinel_settings, dict):
-                hdsentinel_enabled = bool(hdsentinel_settings.get("enabled"))
-            else:
-                hdsentinel_enabled = bool(getattr(hdsentinel_settings, "enabled", False))
-            if hdsentinel_enabled and hdsentinel_snapshot and hdsentinel_snapshot.get("available"):
-                response["hdsentinel_health"] = hdsentinel_snapshot.get("health_pct")
-                response["hdsentinel_performance"] = hdsentinel_snapshot.get("performance_pct")
-            return jsonify(response)
-        return jsonify({"status": "unknown", "probability": None, "temperature": None})
+        return jsonify(services.drive_health_summary_service.publish(summary))
     except Exception:
-        return jsonify({"status": "unknown", "probability": None, "temperature": None})
+        from flask import current_app
+
+        current_app.logger.exception("Drive health refresh failed")
+        services = _get_services()
+        services.drive_health_summary_service.publish(
+            {
+                "status": "unknown",
+                "source": "live",
+                "checked_at": None,
+                "detail": "Drive health refresh failed. Check the application logs.",
+                "error": "Drive health refresh failed.",
+            }
+        )
+        return jsonify(services.drive_health_summary_service.get_summary()), 500
