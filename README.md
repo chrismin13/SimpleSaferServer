@@ -45,7 +45,7 @@ The goal of Fake mode is to assist in the development of SimpleSaferServer. As s
 
 ## Development
 
-SimpleSaferServer keeps Python 3.7 application compatibility for Debian 10 legacy installs, but the strict security-supported development baseline is Debian 13 / Python 3.13. Development conventions, architecture rules, and quality commands live in [docs/development.md](docs/development.md).
+SimpleSaferServer keeps application compatibility for older Python runtimes, including Debian 10 / Python 3.7 and Ubuntu 20.04 / Python 3.8, but the strict security-supported development baseline is Debian 13 / Python 3.13. Development conventions, architecture rules, and quality commands live in [docs/development.md](docs/development.md).
 
 Set up local development tooling with:
 

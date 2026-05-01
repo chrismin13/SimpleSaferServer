@@ -15,7 +15,7 @@
 ## Target State
 
 - `requirements.txt` represents the supported secure runtime dependency set.
-- `requirements-legacy-py37.txt` represents the best-effort Python 3.7 dependency set.
+- `requirements-legacy-py37.txt` represents the best-effort dependency set for Python runtimes older than 3.9.
 - Python CI has a strict `python313-security` lane and a compatibility-only `python37-legacy-compat` lane.
 
 ## Phase Checklist
@@ -33,7 +33,7 @@
 
 ### Phase 2
 
-- Updated `install.sh` to select the legacy requirements file on Debian 10.
+- Updated `install.sh` to select the legacy requirements file by Python runtime version so Python 3.8 platforms use compatible packages.
 - Updated development and manual install docs to explain which dependency set each lane uses.
 - Updated `check_ci_docker.sh` so its default run covers both the Python 3.13 security lane and the Python 3.7 compatibility lane.
 - Fixed the legacy syntax check to use Python 3.7's native parser without the newer `feature_version` argument.
@@ -41,7 +41,7 @@
 
 Docs/index/uninstall checks:
 
-- `docs/development.md`, `docs/manual_install.md`, and `README.md` were updated.
+- `docs/development.md`, `docs/manual_install.md`, and `README.md` were checked or updated.
 - `index.html` already links to the updated documentation files.
 - `uninstall.sh` does not need changes because no installed files, services, timers, state directories, or system config were added.
 
@@ -59,7 +59,7 @@ Verification:
 ## Decisions
 
 - Debian 13 / Python 3.13 is the strict security-supported baseline.
-- Debian 10 / Python 3.7 remains a legacy compatibility target, but dependency vulnerabilities that require newer Python are not ignored in audit output.
+- Python runtimes older than 3.9 use the legacy dependency set, but dependency vulnerabilities that require newer Python are not ignored in audit output.
 
 ## Follow-Up Backlog
 

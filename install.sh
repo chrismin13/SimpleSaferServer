@@ -52,14 +52,23 @@ HDSENTINEL_ASSET_DIR="$SRC_DIR/third_party/hdsentinel"
 REQUIREMENTS_FILE="requirements.txt"
 PIP_UPGRADE_SPEC=(pip wheel)
 
-detect_debian_major_version() {
-    if [ -r /etc/os-release ]; then
-        . /etc/os-release
-        printf '%s\n' "${VERSION_ID%%.*}"
-        return 0
-    fi
+python_runtime_version() {
+    python3 - <<'PY'
+import sys
 
-    printf '\n'
+print("{}.{}".format(sys.version_info.major, sys.version_info.minor))
+PY
+}
+
+python_requires_legacy_requirements() {
+    python3 - <<'PY'
+import sys
+
+# Flask 3.1 and several audited dependency fixes require Python 3.9+.
+# Choose by interpreter version so Ubuntu 20.04/Python 3.8 and similar
+# platforms do not attempt to install the modern security baseline.
+raise SystemExit(0 if sys.version_info < (3, 9) else 1)
+PY
 }
 
 detect_hdsentinel_arch() {
@@ -174,12 +183,12 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-pip python3-ve
 
 echo -e "${GREEN}✔ System and Python dependencies installed.${NC}\n"
 
-DEBIAN_MAJOR="$(detect_debian_major_version)"
-if [ "$DEBIAN_MAJOR" = "10" ]; then
+PYTHON_RUNTIME_VERSION="$(python_runtime_version)"
+if python_requires_legacy_requirements; then
     REQUIREMENTS_FILE="requirements-legacy-py37.txt"
     PIP_UPGRADE_SPEC=("pip<24.1" wheel)
-    echo -e "${YELLOW}Debian 10 detected. Installing the Python 3.7 legacy dependency set.${NC}"
-    echo -e "${YELLOW}Security fixes for some Python packages require newer Python releases; use Debian 13+ for the strict security-supported baseline.${NC}\n"
+    echo -e "${YELLOW}Python ${PYTHON_RUNTIME_VERSION} detected. Installing the legacy Python dependency set for runtimes older than 3.9.${NC}"
+    echo -e "${YELLOW}Security fixes for some Python packages require newer Python releases; use Debian 13+ or another Python 3.9+ platform for the strict security-supported baseline.${NC}\n"
 fi
 
 # 2. Install rclone using the official install script

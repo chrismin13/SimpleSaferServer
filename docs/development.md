@@ -103,10 +103,12 @@ Reuse existing Bunker interface patterns and check `docs/internal_ui_patterns.md
 ## Quality Commands
 
 `requirements.txt` is the security-supported runtime dependency set and is validated on Debian 13
-/ Python 3.13. `requirements-legacy-py37.txt` is a best-effort Debian 10 / Python 3.7 set for
-compatibility testing only; it intentionally does not run strict dependency auditing because some
-fixed package releases require newer Python versions. `requirements-dev.txt` uses environment
-markers so each lane installs compatible development tools.
+/ Python 3.13. `requirements-legacy-py37.txt` is a best-effort compatibility set for Python
+runtimes older than 3.9; Debian 10 / Python 3.7 is the oldest lane, and Ubuntu 20.04 / Python 3.8
+also needs it because Flask 3.1 requires Python 3.9 or newer. The legacy requirements intentionally
+do not run strict dependency auditing because some fixed package releases require newer Python
+versions. `requirements-dev.txt` uses environment markers so each lane installs compatible
+development tools.
 
 Install local development dependencies with:
 

@@ -72,9 +72,9 @@ Install the extracted binary:
 - Run `sudo python3 -m venv --system-site-packages /opt/SimpleSaferServer/venv`.
 - Because the virtualenv lives under `/opt`, open a root shell with `sudo -s` before activating it so `pip` can write into that environment.
 - In that root shell, run `source /opt/SimpleSaferServer/venv/bin/activate`.
-- On Debian 13 or another supported modern Python release, run `pip install --upgrade pip wheel`, then run `pip install -r /opt/SimpleSaferServer/requirements.txt`.
-- On Debian 10 / Python 3.7, run `pip install --upgrade "pip<24.1" wheel`, then run `pip install -r /opt/SimpleSaferServer/requirements-legacy-py37.txt`.
-- Debian 10 uses a legacy dependency set because upstream security fixes for several packages require newer Python releases. Use Debian 13 or newer for the strict security-supported baseline.
+- On Python 3.9 or newer, run `pip install --upgrade pip wheel`, then run `pip install -r /opt/SimpleSaferServer/requirements.txt`.
+- On Python runtimes older than 3.9, including Debian 10 / Python 3.7 and Ubuntu 20.04 / Python 3.8, run `pip install --upgrade "pip<24.1" wheel`, then run `pip install -r /opt/SimpleSaferServer/requirements-legacy-py37.txt`.
+- Older Python runtimes use a legacy dependency set because upstream security fixes for several packages require newer Python releases. Use Debian 13 or another Python 3.9+ platform for the strict security-supported baseline.
 - Run `deactivate`, then run `exit` to leave the root shell when you are done installing Python packages.
 
 ## 7. Install Scripts and Model Files
