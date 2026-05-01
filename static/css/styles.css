@@ -668,6 +668,20 @@ body.fake-mode-active .toast-stack {
 }
 
 .form-control::placeholder { color: var(--text-muted); }
+
+/* Browser number steppers are oversized in the Bunker input treatment. Keep
+   number semantics for validation and mobile keyboards while hiding the chrome. */
+.form-control[type="number"] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.form-control[type="number"]::-webkit-outer-spin-button,
+.form-control[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
 .form-control:focus {
   outline: none;
   border-color: var(--accent);
