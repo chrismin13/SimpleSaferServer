@@ -6,7 +6,10 @@ New code should follow these conventions immediately. Existing code should move 
 
 ## Compatibility Target
 
-SimpleSaferServer supports Python 3.7+ because Debian 10 ships Python 3.7.
+SimpleSaferServer keeps Python 3.7 application compatibility for Debian 10 legacy installs, but
+the strict security-supported baseline is Debian 13 / Python 3.13. Several upstream dependency
+fixes no longer publish Python 3.7-compatible releases, so Python 3.7 is a compatibility lane, not
+the dependency-audit lane.
 
 Python 3.7 compatibility is a hard requirement for application code:
 
@@ -99,7 +102,11 @@ Reuse existing Bunker interface patterns and check `docs/internal_ui_patterns.md
 
 ## Quality Commands
 
-`requirements-dev.txt` uses environment markers so Debian 10/Python 3.7 installs compatible older tool versions, while newer development machines receive newer tool versions where old releases no longer run cleanly.
+`requirements.txt` is the security-supported runtime dependency set and is validated on Debian 13
+/ Python 3.13. `requirements-legacy-py37.txt` is a best-effort Debian 10 / Python 3.7 set for
+compatibility testing only; it intentionally does not run strict dependency auditing because some
+fixed package releases require newer Python versions. `requirements-dev.txt` uses environment
+markers so each lane installs compatible development tools.
 
 Install local development dependencies with:
 
@@ -128,27 +135,39 @@ bash check_ci.sh
 .venv/bin/python -m pytest
 .venv/bin/pyright
 .venv/bin/python -m bandit -c pyproject.toml -r .
-.venv/bin/python -m pip_audit -r requirements.txt -r requirements-dev.txt --ignore-vuln GHSA-6w46-j5rx-g56g
+.venv/bin/python -m pip_audit -r requirements.txt -r requirements-dev.txt
 ```
 
-When a change could depend on Python 3.7 behavior, or before pushing CI-sensitive changes, run the
-exact GitHub Actions reproduction in Docker:
+When a change could depend on container behavior, or before pushing CI-sensitive changes, run both
+GitHub Actions reproductions in Docker:
 
 ```bash
 bash check_ci_docker.sh
 ```
 
-`check_ci_docker.sh` uses `python:3.7-buster` and runs the same gates as
-`.github/workflows/quality.yml`: formatting, linting, tests, pyright, bandit, and pip-audit. A
-green Docker run should mean the CI workflow is green.
+`check_ci_docker.sh` runs the `python:3.13-trixie` security lane first, then the
+`python:3.7-buster` compatibility lane. A green default Docker run should mean both CI workflow
+lanes are green.
 
 The pre-commit configuration intentionally stays lightweight and only runs ruff formatting/linting.
-The full gate set is available through both check scripts. Use the Docker script when Python 3.7
-runtime behavior matters.
+The full gate set is available through both check scripts.
 
-Local venv checks catch most gate failures, but GitHub Actions runs required checks inside the
-`python:3.7-buster` container. The syntax compatibility check below is useful, but it does not
-catch Python 3.7 runtime behavior differences; use `check_ci_docker.sh` for that.
+Run a single lane when you need a faster focused check:
+
+```bash
+bash check_ci_docker.sh modern
+bash check_ci_docker.sh legacy-python37
+```
+
+Legacy mode uses `python:3.7-buster`, installs `requirements-legacy-py37.txt`, and runs
+formatting, linting, tests, pyright, bandit, and the Python 3.7 syntax parser. It skips pip-audit
+because the fixed releases for Flask, Werkzeug, cryptography, NumPy, scikit-learn, python-socketio,
+and related transitive packages require newer Python runtimes.
+
+Local venv checks catch most gate failures, but GitHub Actions runs the strict security lane inside
+`python:3.13-trixie` and the legacy compatibility lane inside `python:3.7-buster`. The syntax
+compatibility check below is useful, but it does not catch Python 3.7 runtime behavior differences;
+use `check_ci_docker.sh legacy-python37` for that.
 
 Check Python 3.7 syntax compatibility with:
 
@@ -177,6 +196,7 @@ behind advisory or continue-on-error steps:
 - `bandit`
 - `pip-audit`
 
-Bandit skips the generic subprocess import/execution rules because SimpleSaferServer is a local admin tool that intentionally calls Debian system utilities. Keep those subprocess calls behind services or adapters, validate user-controlled arguments before shelling out, and document operational assumptions near the code.
+The `legacy-python37` workflow job is compatibility-only. Keep it useful for Debian 10 operators,
+but do not add dependency-audit ignores to make old Python 3.7 packages appear security-supported.
 
-The dependency audit currently ignores `GHSA-6w46-j5rx-g56g` for `pytest==7.4.4`. The fixed pytest release requires a newer Python than Debian 10 provides, and this dependency is development-only. Remove that ignore when the project raises its minimum Python version.
+Bandit skips the generic subprocess import/execution rules because SimpleSaferServer is a local admin tool that intentionally calls Debian system utilities. Keep those subprocess calls behind services or adapters, validate user-controlled arguments before shelling out, and document operational assumptions near the code.

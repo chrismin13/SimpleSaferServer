@@ -12,13 +12,14 @@ run_check() {
   "$@"
 }
 
-# Mirrors .github/workflows/quality.yml for local, intentional pre-push checks.
-# GitHub CI runs in Python 3.7; this script uses the active project venv.
+# Mirrors the modern .github/workflows/quality.yml security gate for local,
+# intentional pre-push checks. Python 3.7 compatibility has a separate Docker
+# path because several fixed dependency releases no longer install on 3.7.
 run_check "Check formatting" .venv/bin/python -m ruff format --check .
 run_check "Lint" .venv/bin/python -m ruff check .
 run_check "Test" .venv/bin/python -m pytest
 run_check "Type check" .venv/bin/pyright
 run_check "Security scan" .venv/bin/python -m bandit -c pyproject.toml -r .
-run_check "Dependency audit" .venv/bin/python -m pip_audit -r requirements.txt -r requirements-dev.txt --ignore-vuln GHSA-6w46-j5rx-g56g
+run_check "Dependency audit" .venv/bin/python -m pip_audit -r requirements.txt -r requirements-dev.txt
 
 printf '\nLocal CI checks passed.\n'

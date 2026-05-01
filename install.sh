@@ -49,6 +49,18 @@ VENV_DIR="$APP_DIR/venv"
 SERVICE_FILE="/etc/systemd/system/simple_safer_server_web.service"
 HDSENTINEL_BIN="/usr/local/bin/hdsentinel"
 HDSENTINEL_ASSET_DIR="$SRC_DIR/third_party/hdsentinel"
+REQUIREMENTS_FILE="requirements.txt"
+PIP_UPGRADE_SPEC="pip wheel"
+
+detect_debian_major_version() {
+    if [ -r /etc/os-release ]; then
+        . /etc/os-release
+        printf '%s\n' "${VERSION_ID%%.*}"
+        return 0
+    fi
+
+    printf '\n'
+}
 
 detect_hdsentinel_arch() {
     local arch=""
@@ -162,6 +174,14 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-pip python3-ve
 
 echo -e "${GREEN}✔ System and Python dependencies installed.${NC}\n"
 
+DEBIAN_MAJOR="$(detect_debian_major_version)"
+if [ "$DEBIAN_MAJOR" = "10" ]; then
+    REQUIREMENTS_FILE="requirements-legacy-py37.txt"
+    PIP_UPGRADE_SPEC="pip<24.1 wheel"
+    echo -e "${YELLOW}Debian 10 detected. Installing the Python 3.7 legacy dependency set.${NC}"
+    echo -e "${YELLOW}Security fixes for some Python packages require newer Python releases; use Debian 13+ for the strict security-supported baseline.${NC}\n"
+fi
+
 # 2. Install rclone using the official install script
 #    The apt version of rclone is missing support for many cloud services (e.g., MEGA, Google Drive, etc).
 #    The official script always installs the latest version with all backends.
@@ -193,8 +213,8 @@ echo -e "${GREEN}✔ Static assets and templates copied.${NC}\n"
 # 6. Create the dedicated app virtualenv and install Python packages.
 echo -e "${YELLOW}Step 6: Setting up Python virtualenv...${NC}"
 python3 -m venv --system-site-packages "$VENV_DIR"
-"$VENV_DIR/bin/pip" install --upgrade pip wheel
-"$VENV_DIR/bin/pip" install "Flask-SocketIO==5.4.1" "simple-websocket==1.1.0"
+"$VENV_DIR/bin/pip" install --upgrade $PIP_UPGRADE_SPEC
+"$VENV_DIR/bin/pip" install -r "$REQUIREMENTS_FILE"
 echo -e "${GREEN}✔ Python virtualenv ready at $VENV_DIR.${NC}\n"
 
 # 7. Copy scripts to /opt/SimpleSaferServer/scripts and /usr/local/bin

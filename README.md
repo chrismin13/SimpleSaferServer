@@ -45,7 +45,7 @@ The goal of Fake mode is to assist in the development of SimpleSaferServer. As s
 
 ## Development
 
-SimpleSaferServer targets Python 3.7+ for Debian 10 compatibility. Development conventions, architecture rules, and quality commands live in [docs/development.md](docs/development.md).
+SimpleSaferServer keeps Python 3.7 application compatibility for Debian 10 legacy installs, but the strict security-supported development baseline is Debian 13 / Python 3.13. Development conventions, architecture rules, and quality commands live in [docs/development.md](docs/development.md).
 
 Set up local development tooling with:
 
@@ -61,10 +61,17 @@ local check suite when you want a pre-push check:
 bash check_ci.sh
 ```
 
-To reproduce the required GitHub Actions checks in the same Python 3.7 container used by CI, run:
+To reproduce both GitHub Actions lanes in Docker, run:
 
 ```bash
 bash check_ci_docker.sh
+```
+
+To run only one lane, pass the lane name:
+
+```bash
+bash check_ci_docker.sh modern
+bash check_ci_docker.sh legacy-python37
 ```
 
 ---
