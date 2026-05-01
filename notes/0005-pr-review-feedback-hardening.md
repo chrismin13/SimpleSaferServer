@@ -24,6 +24,8 @@ sync with system services.
 - Generated timers now keep the cloud backup at the configured time, run the mount check 4 minutes
   before backup, and run drive health 2 minutes before backup so randomized delay has less chance
   to overlap mount and health work.
+- Shared timestamp formatting now supports compact relative labels so dashboard tiles do not grow
+  page-local copies of the same elapsed-time logic.
 
 ## Follow-up
 

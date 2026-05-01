@@ -515,9 +515,9 @@ Remove the drive now if you do not want it mounted again.`;
   // --- Drive health status ---
   function formatHealthCheckedAt(value) {
     if (!value) {
-      return 'No check yet';
+      return '';
     }
-    return 'Last checked ' + window.formatRelativeTimestamp(value, { fallback: value });
+    return window.formatRelativeTimestamp(value, { fallback: value, compact: true });
   }
 
   function renderHealthSummary(data) {
@@ -526,10 +526,10 @@ Remove the drive now if you do not want it mounted again.`;
     const detail = document.getElementById('health-detail');
     const checkedAt = document.getElementById('health-checked-at');
     const probability = typeof data.probability === 'number'
-      ? 'Failure probability: ' + (data.probability * 100).toFixed(1) + '%'
+      ? 'Risk ' + (data.probability * 100).toFixed(1) + '%'
       : '';
-    const temperature = data.temperature != null ? 'Temp: ' + data.temperature + '°C' : '';
-    const metrics = [probability, temperature].filter(Boolean).join(' · ');
+    const temperature = data.temperature != null ? 'Temp ' + data.temperature + '°C' : '';
+    const metrics = [probability, temperature].filter(Boolean);
 
     checkedAt.textContent = formatHealthCheckedAt(data.checked_at);
     checkedAt.title = data.checked_at || 'No check yet';
@@ -538,7 +538,7 @@ Remove the drive now if you do not want it mounted again.`;
       badge.className = 'badge badge-neutral';
       badge.textContent = 'Not Checked';
       val.textContent = 'No check yet';
-      detail.textContent = 'Use refresh to run a live probe';
+      detail.textContent = 'Refresh to check';
       return;
     }
 
@@ -546,7 +546,7 @@ Remove the drive now if you do not want it mounted again.`;
       badge.className = 'badge badge-success';
       badge.textContent = 'Healthy';
       val.textContent = 'No Issues';
-      detail.textContent = metrics || data.detail || 'Last health check completed';
+      detail.innerHTML = metrics.length ? metrics.join('<br>') : data.detail || 'Checked';
       return;
     }
 
@@ -554,7 +554,7 @@ Remove the drive now if you do not want it mounted again.`;
       badge.className = 'badge badge-danger';
       badge.textContent = 'Warning';
       val.textContent = 'Needs Attention';
-      detail.textContent = metrics || data.detail || 'Drive health check reported a warning';
+      detail.innerHTML = metrics.length ? metrics.join('<br>') : data.detail || 'Warning';
       return;
     }
 

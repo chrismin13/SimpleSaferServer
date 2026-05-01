@@ -525,7 +525,7 @@ window.parseServerDateTime = function parseServerDateTime(value) {
 };
 
 window.formatRelativeTimestamp = function formatRelativeTimestamp(value, options = {}) {
-  const { fallback = '—', futurePrefix = true } = options;
+  const { fallback = '—', futurePrefix = true, compact = false } = options;
   const parsed = window.parseServerDateTime(value);
   if (!parsed) return value || fallback;
 
@@ -534,6 +534,9 @@ window.formatRelativeTimestamp = function formatRelativeTimestamp(value, options
   const totalMinutes = Math.max(0, Math.floor(Math.abs(diffMs) / 60000));
 
   if (Math.abs(diffMs) < 60000) {
+    if (compact) {
+      return isFuture ? '<1m' : 'Just now';
+    }
     if (isFuture) {
       return futurePrefix ? 'in a few seconds' : 'a few seconds';
     }
@@ -560,6 +563,11 @@ window.formatRelativeTimestamp = function formatRelativeTimestamp(value, options
 
   if (parts.length === 0) {
     parts.push('0m');
+  }
+
+  if (compact) {
+    const compactPart = parts[0] || '0m';
+    return isFuture ? (futurePrefix ? `in ${compactPart}` : compactPart) : `${compactPart} ago`;
   }
 
   return isFuture
