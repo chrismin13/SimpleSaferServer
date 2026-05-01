@@ -49,9 +49,9 @@ def dashboard():
         used_storage=f"{disk.used / (1024**3):.1f}",
         total_storage=f"{disk.total / (1024**3):.1f}",
         storage_usage=f"{disk.percent}%",
-        cloud_backup_status="Active" if config.get("cloud_backup_enabled") else "Inactive",
-        health_status="Good",
-        hdd_temp="35",
+        cloud_backup_status="Active" if config.get("backup", {}).get("rclone_dir") else "Inactive",
+        health_status="Not checked",
+        hdd_temp="Not checked",
         cpu_usage=f"{cpu_percent}%",
         ram_usage=f"{ram_percent}%",
         mount_info={"is_mounted": mounted, "mount_point": mount_point},
@@ -97,9 +97,12 @@ def start_task(task_name):
         if request.accept_mimetypes.best == "application/json":
             return jsonify({"success": True, "message": f"Started {task_name}."})
         return redirect(url_for("task_routes.task_detail", task_name=task_name))
-    except Exception as exc:
+    except Exception:
+        current_app.logger.exception("Failed to start task %s", task_name)
         if request.accept_mimetypes.best == "application/json":
-            return jsonify({"success": False, "message": str(exc)}), 500
+            return jsonify(
+                {"success": False, "message": "Could not start task. Check task logs."}
+            ), 500
         abort(500)
 
 
@@ -116,11 +119,13 @@ def stop_task(task_name):
         if request.accept_mimetypes.best == "application/json":
             return jsonify({"success": True, "message": f"Stopped {task_name}."})
         return redirect(url_for("task_routes.task_detail", task_name=task_name))
-    except Exception as exc:
+    except Exception:
         current_app.logger.exception("Failed to stop task %s", task_name)
         if request.accept_mimetypes.best == "application/json":
-            return jsonify({"success": False, "message": str(exc)}), 500
-        return redirect(url_for("task_routes.task_detail", task_name=task_name))
+            return jsonify(
+                {"success": False, "message": "Could not stop task. Check task logs."}
+            ), 500
+        abort(500)
 
 
 @tasks.route("/run_task/<task_name>", methods=["POST"])
@@ -132,8 +137,9 @@ def run_task(task_name):
     try:
         task.start()
         return redirect(url_for("task_routes.task_detail", task_name=task_name))
-    except Exception as exc:
-        return jsonify({"success": False, "message": str(exc)}), 500
+    except Exception:
+        current_app.logger.exception("Failed to run task %s", task_name)
+        return jsonify({"success": False, "message": "Could not run task. Check task logs."}), 500
 
 
 @tasks.route("/api/tasks/schedule")
@@ -141,5 +147,6 @@ def run_task(task_name):
 def api_tasks_schedule():
     try:
         return jsonify({"tasks": _get_services().task_service.task_summaries()})
-    except Exception as exc:
-        return jsonify({"error": str(exc)}), 500
+    except Exception:
+        current_app.logger.exception("Failed to load task schedule")
+        return jsonify({"error": "Failed to load task schedule"}), 500

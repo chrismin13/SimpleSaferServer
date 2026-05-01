@@ -91,9 +91,11 @@
     els['apt-progress-bar'].className = `progress-bar-fill ${
       status === 'failure' ? 'danger' : status === 'stopped' ? 'warning' : status === 'success' ? 'success' : ''
     }`;
-    els['apt-phase'].textContent = operation.phase || 'Idle';
+    const phase = operation && operation.phase ? operation.phase : 'Idle';
+    const logText = operation && operation.log ? operation.log : 'No apt output yet.';
+    els['apt-phase'].textContent = phase;
     els['apt-progress-text'].textContent = `${progress}%`;
-    els['apt-log'].textContent = operation.log || 'No apt output yet.';
+    els['apt-log'].textContent = logText;
     els['apt-log'].scrollTop = els['apt-log'].scrollHeight;
 
     if (running) {
@@ -122,7 +124,7 @@
       setBadge(els['auto-updates-badge'], 'Manual', 'neutral');
       els['auto-updates-summary'].textContent = 'Manual';
     }
-    els['auto-updates-badge'].classList.add('d-none');
+    els['auto-updates-badge'].classList.remove('d-none');
     if (!settings.unattended_upgrades_installed) {
       els['auto-updates-hint'].textContent = 'unattended-upgrades is not installed; automatic upgrades will need that package.';
     } else if (settings.apt_updates_managed) {

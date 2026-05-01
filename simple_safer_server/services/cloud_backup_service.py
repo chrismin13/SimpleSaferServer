@@ -216,10 +216,8 @@ class CloudBackupService:
                 }
             if stored_email != email:
                 self._config_manager.set_value("backup", "mega_email", email)
-                if not self._system_utils.setup_rclone(
-                    self._mega_rclone_config(email, stored_pass)
-                ):
-                    return {"success": False, "error": "Failed to write rclone config for MEGA."}
+            if not self._system_utils.setup_rclone(self._mega_rclone_config(email, stored_pass)):
+                return {"success": False, "error": "Failed to write rclone config for MEGA."}
 
         self._config_manager.set_value("backup", "cloud_mode", "mega")
         self._config_manager.set_value("backup", "mega_folder", folder)
@@ -245,11 +243,7 @@ class CloudBackupService:
 
         email = self._config_manager.get_value("backup", "mega_email", "")
         obscured_pw = self._config_manager.get_value("backup", "mega_pass", "")
-        self._logger.info(
-            "Using stored credentials - email: %s..., obscured_pw: %s...",
-            email[:10],
-            obscured_pw[:10] if obscured_pw else "None",
-        )
+        self._logger.info("Using stored credentials for cloud backup")
         if not email or not obscured_pw:
             return None
         return email, obscured_pw

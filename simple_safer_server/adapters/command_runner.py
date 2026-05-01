@@ -22,6 +22,7 @@ class CommandRunner:
         stdout: Optional[Any] = None,
         stderr: Optional[Any] = None,
         text: bool = False,
+        timeout: Optional[float] = None,
     ) -> subprocess.CompletedProcess:
         # Keep subprocess use centralized so future allowlisting, logging, and
         # fake adapters can be added without changing feature services again.
@@ -33,6 +34,7 @@ class CommandRunner:
             stdout=stdout,
             stderr=stderr,
             text=text,
+            timeout=timeout,
         )
 
     def popen(

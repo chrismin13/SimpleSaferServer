@@ -17,7 +17,9 @@ def json_error(message: str, status_code: int = 200, key: str = "error"):
     return response, status_code
 
 
-def json_payload_or_error(message: str = "Invalid payload") -> Tuple[Dict[str, Any], Any]:
+def json_payload_or_error(
+    message: str = "Request body must be a JSON object.",
+) -> Tuple[Dict[str, Any], Any]:
     """Return a JSON object or a ready Flask error response for malformed bodies."""
     data = request.get_json(silent=True)
     if not isinstance(data, dict) or not data:

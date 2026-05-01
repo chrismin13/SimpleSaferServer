@@ -47,6 +47,14 @@ PARTITION_POLL_INTERVAL_SECONDS = 0.5  # delay between existence checks
 PARTITION_POLL_TIMEOUT_SECONDS = 5.0  # maximum total wait
 
 
+def _json_object_payload():
+    """Return a setup API JSON object or a ready 400 response."""
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return {}, jsonify({'success': False, 'error': 'Request body must be a JSON object'}), 400
+    return data, None, None
+
+
 def setup_api_access_required(route_handler):
     """Allow anonymous setup API access only during first-time onboarding."""
 
@@ -220,14 +228,16 @@ def setup_page():
 def create_user():
     """Create the initial admin user"""
     try:
-        data = request.get_json()
+        data, error_response, status_code = _json_object_payload()
+        if error_response:
+            return error_response, status_code
         username = data.get('username')
         password = data.get('password')
 
         if not username or not password:
             return jsonify({'success': False, 'error': 'Username and password are required'})
 
-        success, message = user_manager.create_user(username, password)
+        success, message = user_manager.create_user(username, password, is_admin=True)
         if success:
             # Log in the user
             session['username'] = username
@@ -495,7 +505,9 @@ def format_drive():
 def unmount_drive():
     """Unmount the selected drive"""
     try:
-        data = request.get_json() or {}
+        data, error_response, status_code = _json_object_payload()
+        if error_response:
+            return error_response, status_code
         # The setup wizard uses this route for two different UI controls:
         # whole-disk unmount before formatting, and exact-partition unmount
         # before mounting an NTFS partition in step 3.
@@ -531,9 +543,9 @@ def unmount_drive():
 def mount_drive():
     """Mount the selected drive"""
     try:
-        # silent=True prevents a 415 exception when Content-Type is absent or
-        # wrong, returning None instead so the `or {}` guard can take over.
-        data = request.get_json(silent=True) or {}
+        data, error_response, status_code = _json_object_payload()
+        if error_response:
+            return error_response, status_code
         # Step 3 always selects a filesystem-bearing partition, never a whole
         # disk. That aligns it with the rerun flow on Drive Health.
         partition = data.get('partition')
@@ -569,7 +581,9 @@ def mount_drive():
 def setup_rclone():
     """Set up rclone configuration"""
     try:
-        data = request.get_json()
+        data, error_response, status_code = _json_object_payload()
+        if error_response:
+            return error_response, status_code
         config = data.get('config')
         remote_name = data.get('remote_name')
 
@@ -594,7 +608,9 @@ def setup_rclone():
 def setup_email():
     """Set up email configuration"""
     try:
-        data = request.get_json()
+        data, error_response, status_code = _json_object_payload()
+        if error_response:
+            return error_response, status_code
         logger.info(f"Received email setup data: {data}")
 
         email = data.get('emailAddress')
@@ -632,7 +648,9 @@ def setup_email():
 def save_schedule():
     """Save the backup schedule configuration"""
     try:
-        data = request.get_json()
+        data, error_response, status_code = _json_object_payload()
+        if error_response:
+            return error_response, status_code
         time = data.get('time')
         bandwidth_limit = data.get('bandwidth_limit', '')
 
@@ -827,7 +845,9 @@ def complete_setup():
 def setup_system_info():
     """Save system-level info such as username and server name"""
     try:
-        data = request.get_json()
+        data, error_response, status_code = _json_object_payload()
+        if error_response:
+            return error_response, status_code
         username = data.get('username')
         server_name = data.get('server_name')
 
@@ -847,7 +867,9 @@ def setup_system_info():
 def mega_connect():
     """Authenticate with MEGA and list folders using rclone."""
     try:
-        data = request.get_json()
+        data, error_response, status_code = _json_object_payload()
+        if error_response:
+            return error_response, status_code
         email = data.get('email')
         password = data.get('password')
         if not email or not password:
@@ -889,7 +911,9 @@ pass = {obscured_pw}
 def mega_list_folders():
     """List folders at a given MEGA path using rclone."""
     try:
-        data = request.get_json()
+        data, error_response, status_code = _json_object_payload()
+        if error_response:
+            return error_response, status_code
         path = data.get('path', '/')
         email = data.get('email')
         password = data.get('password')
@@ -931,7 +955,9 @@ pass = {obscured_pw}
 def mega_create_folder_picker():
     """Create a new folder at a given MEGA path using rclone."""
     try:
-        data = request.get_json()
+        data, error_response, status_code = _json_object_payload()
+        if error_response:
+            return error_response, status_code
         folder_name = data.get('folder_name')
         path = data.get('path', '/')
         email = data.get('email')
@@ -970,7 +996,9 @@ pass = {obscured_pw}
 def mega_save():
     """Save MEGA config (obscured password, selected folder) securely and write rclone config."""
     try:
-        data = request.get_json()
+        data, error_response, status_code = _json_object_payload()
+        if error_response:
+            return error_response, status_code
         email = data.get('email')
         password = data.get('password')
         folder = data.get('folder')

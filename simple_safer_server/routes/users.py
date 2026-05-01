@@ -1,7 +1,6 @@
 from typing import Any
 
 from flask import Blueprint, current_app, jsonify, render_template, request, session
-from werkzeug.security import generate_password_hash
 
 from simple_safer_server.services.user_manager import admin_required, api_admin_required
 
@@ -53,7 +52,7 @@ def api_add_user():
     success, message = user_manager.create_user(username, password, is_admin=is_admin)
     if success:
         return jsonify({"success": True, "error": None})
-    return jsonify({"success": False, "error": message})
+    return jsonify({"success": False, "error": message}), 400
 
 
 @users.route("/api/users/<username>", methods=["PUT"])
@@ -66,7 +65,7 @@ def api_edit_user(username):
     is_admin = data.get("is_admin")
 
     if username not in user_manager.users:
-        return jsonify({"success": False, "error": "User not found"})
+        return jsonify({"success": False, "error": "User not found"}), 404
 
     if (
         username == session.get("username")
@@ -82,7 +81,9 @@ def api_edit_user(username):
         ), 400
 
     if new_password:
-        user_manager.users[username]["password_hash"] = generate_password_hash(new_password)
+        success, message = user_manager.set_password(username, new_password)
+        if not success:
+            return jsonify({"success": False, "error": message}), 400
 
     if is_admin is not None:
         user_manager.users[username]["is_admin"] = bool(is_admin)

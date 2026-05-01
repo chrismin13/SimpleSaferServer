@@ -194,7 +194,7 @@ echo -e "${GREEN}✔ Static assets and templates copied.${NC}\n"
 echo -e "${YELLOW}Step 6: Setting up Python virtualenv...${NC}"
 python3 -m venv --system-site-packages "$VENV_DIR"
 "$VENV_DIR/bin/pip" install --upgrade pip wheel
-"$VENV_DIR/bin/pip" install "Flask-SocketIO==5.4.1" simple-websocket
+"$VENV_DIR/bin/pip" install "Flask-SocketIO==5.4.1" "simple-websocket==1.1.0"
 echo -e "${GREEN}✔ Python virtualenv ready at $VENV_DIR.${NC}\n"
 
 # 7. Copy scripts to /opt/SimpleSaferServer/scripts and /usr/local/bin

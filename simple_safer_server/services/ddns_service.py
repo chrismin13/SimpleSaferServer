@@ -113,8 +113,9 @@ class DdnsService:
     def _trigger_sync(self) -> bool:
         try:
             task = self._task_service.get_task("DDNS Update")
-            if task:
-                task.start()
+            if not task:
+                return False
+            task.start()
             return True
         except Exception:
             self._logger.warning(

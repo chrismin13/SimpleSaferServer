@@ -30,7 +30,9 @@ def test_fake_dashboard_renders_storage_action_urls():
                     services = app.extensions["simple_safer_server"]
                     services.config_manager.set_value("system", "setup_complete", "true")
                     services.config_manager.set_value("system", "username", "admin")
-                    ok, message = services.user_manager.create_user("admin", "password")
+                    ok, message = services.user_manager.create_user(
+                        "admin", "password", is_admin=True
+                    )
                     assert ok, message
                     services.fake_state.set_mount(True)
 

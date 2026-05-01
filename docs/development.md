@@ -134,7 +134,8 @@ PY
 
 ## Current Baseline Policy
 
-Continuous integration runs the standard checks as strict gates:
+Continuous integration currently runs the standard checks in advisory mode while the cleanup
+and refactor pass is in progress:
 
 - `ruff format --check`
 - `ruff check`

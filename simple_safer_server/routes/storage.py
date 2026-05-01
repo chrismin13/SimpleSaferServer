@@ -87,9 +87,12 @@ def unmount():
             }
         )
     except BackupDriveSetupError as exc:
-        return jsonify({"success": False, "message": str(exc)}), 500
-    except Exception as exc:
-        return jsonify({"success": False, "message": f"Unexpected error: {exc}"}), 500
+        return jsonify({"success": False, "message": str(exc)}), 400
+    except Exception:
+        current_app.logger.exception("Unexpected error while unmounting dashboard drive")
+        return jsonify(
+            {"success": False, "message": "Could not unmount the drive. Check the app logs."}
+        ), 500
 
 
 @storage.route("/restart", methods=["POST"])
@@ -102,8 +105,14 @@ def restart():
             return blocked
         payload, status_code = services.storage_service.restart_system()
         return jsonify(payload), status_code
-    except Exception as exc:
-        return jsonify({"success": False, "message": f"Unexpected error: {exc}"}), 500
+    except Exception:
+        current_app.logger.exception("Unexpected error while restarting system")
+        return jsonify(
+            {
+                "success": False,
+                "message": "Could not restart the system. Check the app logs or systemd journal.",
+            }
+        ), 500
 
 
 @storage.route("/shutdown", methods=["POST"])
@@ -116,8 +125,14 @@ def shutdown():
             return blocked
         payload, status_code = services.storage_service.shutdown_system()
         return jsonify(payload), status_code
-    except Exception as exc:
-        return jsonify({"success": False, "message": f"Unexpected error: {exc}"}), 500
+    except Exception:
+        current_app.logger.exception("Unexpected error while shutting down system")
+        return jsonify(
+            {
+                "success": False,
+                "message": "Could not shut down the system. Check the app logs or systemd journal.",
+            }
+        ), 500
 
 
 @storage.route("/api/storage/status")
@@ -156,8 +171,11 @@ def dashboard_mount_drive():
     try:
         payload, status_code = services.storage_service.mount_dashboard_drive()
         return jsonify(payload), status_code
-    except Exception as exc:
-        return jsonify({"success": False, "message": f"Unexpected error: {exc}"}), 500
+    except Exception:
+        current_app.logger.exception("Unexpected error while mounting dashboard drive")
+        return jsonify(
+            {"success": False, "message": "Could not mount the drive. Check the app logs."}
+        ), 500
 
 
 @storage.route("/api/system/resources")
@@ -175,8 +193,9 @@ def api_system_resources():
                 "bytes_recv": net.bytes_recv,
             }
         )
-    except Exception as exc:
-        return jsonify({"error": str(exc)}), 500
+    except Exception:
+        current_app.logger.exception("Error reading system resources")
+        return jsonify({"error": "Failed to read system resources"}), 500
 
 
 @storage.route("/api/backup_drive/drives", methods=["GET"])
@@ -231,7 +250,7 @@ def api_backup_drive_unmount():
             message = unmount_selected_partition(partition, runtime=services.runtime)
         return jsonify({"success": True, "message": message})
     except BackupDriveSetupError as exc:
-        return jsonify({"success": False, "error": str(exc), "details": exc.details})
+        return jsonify({"success": False, "error": str(exc), "details": exc.details}), 400
     except Exception as exc:
         current_app.logger.error("Error unmounting backup drive: %s", exc)
         return jsonify({"success": False, "error": "Could not unmount the selected drive."}), 500

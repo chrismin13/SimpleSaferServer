@@ -207,7 +207,7 @@ def _ensure_admin_user(user_manager: UserManager, username: str, password: str) 
             "SimpleSaferServer users already exist on this system. Refusing to overwrite them during legacy migration."
         )
 
-    success, message = user_manager.create_user(username, password)
+    success, message = user_manager.create_user(username, password, is_admin=True)
     if not success:
         raise MigrationError(message)
     return "created"

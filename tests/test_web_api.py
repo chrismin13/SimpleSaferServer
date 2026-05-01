@@ -31,7 +31,10 @@ class WebApiHelperTests(unittest.TestCase):
         self.assertEqual(data, {})
         response, status_code = error_response
         self.assertEqual(status_code, 400)
-        self.assertEqual(response.get_json(), {"success": False, "message": "Invalid payload"})
+        self.assertEqual(
+            response.get_json(),
+            {"success": False, "message": "Request body must be a JSON object."},
+        )
 
 
 if __name__ == "__main__":

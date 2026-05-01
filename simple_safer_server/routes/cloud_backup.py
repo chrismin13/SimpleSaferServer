@@ -35,7 +35,7 @@ def api_cloud_backup_set_config():
     try:
         data = request.get_json(silent=True)
         if not isinstance(data, dict):
-            return json_error("JSON object is required.", status_code=400)
+            return json_error("Request body must be a JSON object.", status_code=400)
         return jsonify(_get_services().cloud_backup_service.save_config(data))
     except Exception as exc:
         current_app.logger.error("Error saving cloud backup config: %s", exc)
@@ -66,11 +66,10 @@ def api_cloud_backup_run():
 @api_admin_required
 def api_cloud_backup_mega_list_folders():
     try:
-        return jsonify(
-            _get_services().cloud_backup_service.list_mega_folders(
-                request.get_json(silent=True) or {}
-            )
-        )
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            return json_error("Request body must be a JSON object.", status_code=400)
+        return jsonify(_get_services().cloud_backup_service.list_mega_folders(data))
     except Exception as exc:
         current_app.logger.error("Error listing MEGA folders: %s", exc)
         return json_error("Could not list MEGA folders.", status_code=500)
@@ -80,11 +79,10 @@ def api_cloud_backup_mega_list_folders():
 @api_admin_required
 def api_cloud_backup_mega_create_folder():
     try:
-        return jsonify(
-            _get_services().cloud_backup_service.create_mega_folder(
-                request.get_json(silent=True) or {}
-            )
-        )
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            return json_error("Request body must be a JSON object.", status_code=400)
+        return jsonify(_get_services().cloud_backup_service.create_mega_folder(data))
     except Exception as exc:
         current_app.logger.error("Error creating MEGA folder: %s", exc)
         return json_error("Could not create MEGA folder.", status_code=500)
@@ -106,7 +104,7 @@ def api_cloud_backup_set_schedule():
     try:
         data = request.get_json(silent=True)
         if not isinstance(data, dict):
-            return json_error("JSON object is required.", status_code=400)
+            return json_error("Request body must be a JSON object.", status_code=400)
         return jsonify(_get_services().cloud_backup_service.save_schedule(data))
     except Exception as exc:
         current_app.logger.error("Error saving backup schedule: %s", exc)
@@ -119,7 +117,7 @@ def api_cloud_backup_mega_validate():
     try:
         data = request.get_json(silent=True)
         if not isinstance(data, dict):
-            return json_error("JSON object is required.", status_code=400)
+            return json_error("Request body must be a JSON object.", status_code=400)
         return jsonify(_get_services().cloud_backup_service.validate_mega(data))
     except Exception as exc:
         current_app.logger.error("Error validating MEGA credentials: %s", exc)

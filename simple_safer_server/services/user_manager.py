@@ -120,8 +120,8 @@ class UserManager:
             logger.error(f"Error removing user {username} from Samba: {e}")
             return False
 
-    def create_user(self, username, password, is_admin=True):
-        """Create a new user"""
+    def create_user(self, username, password, is_admin=False):
+        """Create a new user with explicit admin elevation at call sites."""
         # Validate username
         if not re.match(r'^[a-zA-Z0-9_-]+$', username):
             return False, "Username may only contain letters, numbers, underscores, and hyphens"
@@ -223,13 +223,33 @@ class UserManager:
 
         return True, "Password changed successfully"
 
+    def set_password(self, username, new_password):
+        """Set a user's password from an admin flow and keep Samba in sync."""
+        if username not in self.users:
+            return False, "User does not exist"
+
+        policy = PasswordPolicy()
+        is_valid, message = policy.validate(new_password)
+        if not is_valid:
+            return False, message
+
+        self.users[username]['password_hash'] = generate_password_hash(new_password)
+        self._save_users()
+
+        if not self._sync_user_to_samba(username, new_password):
+            return False, "Password changed but failed to sync with Samba"
+
+        return True, "Password changed successfully"
+
     def delete_user(self, username):
         """Delete a user"""
         if username not in self.users:
             return False, "User does not exist"
 
-        # Remove from Samba first
-        self._remove_user_from_samba(username)
+        # Remove from Samba first so a stale share account cannot outlive the
+        # app account after the UI reports a successful delete.
+        if not self._remove_user_from_samba(username):
+            return False, "Failed to remove user from Samba"
 
         # Remove from JSON store
         del self.users[username]

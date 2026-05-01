@@ -1,3 +1,4 @@
+import os
 from typing import Optional
 
 from simple_safer_server.adapters.command_runner import CommandRunner
@@ -31,8 +32,10 @@ class BackupDriveCommandAdapter:
         return self._command_runner.run(["umount", device], capture_output=True, text=True)
 
     def mount_ntfs(self, partition: str, mount_point: str):
+        uid = os.getuid()
+        gid = os.getgid()
         return self._command_runner.run(
-            ["ntfs-3g", partition, mount_point, "-o", "rw,uid=1000,gid=1000"],
+            ["ntfs-3g", partition, mount_point, "-o", f"rw,uid={uid},gid={gid}"],
             capture_output=True,
             text=True,
         )

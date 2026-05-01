@@ -41,6 +41,8 @@ class StorageService:
         mount_point = self._config_manager.get_value(
             "backup", "mount_point", self._runtime.default_mount_point
         )
+        if not mount_point:
+            return {"success": False, "message": "No mount point configured."}, 400
         uuid = self._config_manager.get_value("backup", "uuid", None)
         if self._runtime.is_fake:
             if not os.path.isdir(mount_point):
@@ -77,3 +79,11 @@ class StorageService:
             return {"success": True, "message": "Drive mounted and available for use."}, 200
         except CalledProcessError as exc:
             return {"success": False, "message": f"Failed to mount drive: {exc}"}, 500
+        except OSError:
+            return {
+                "success": False,
+                "message": (
+                    "Could not prepare the mount point. Check that the configured "
+                    "folder path is valid and writable."
+                ),
+            }, 500

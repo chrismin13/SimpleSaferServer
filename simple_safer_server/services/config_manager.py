@@ -32,12 +32,11 @@ class ConfigManager:
         if not self.key_path.exists():
             key = Fernet.generate_key()
             self.key_path.write_bytes(key)
-            # Set proper permissions
-            self.key_path.chmod(0o600)
+        self.key_path.chmod(0o600)
 
         if not self.secrets_path.exists():
             self.secrets_path.write_text('{}')
-            self.secrets_path.chmod(0o600)
+        self.secrets_path.chmod(0o600)
 
         self.cipher = Fernet(self.key_path.read_bytes())
 
@@ -49,6 +48,9 @@ class ConfigManager:
 
     def load_config(self):
         """Load the configuration file"""
+        # ConfigParser.read() merges into existing state, so reloads need a
+        # fresh parser or deleted options can linger in memory.
+        self.config = configparser.ConfigParser()
         if self.config_path.exists():
             self.config.read(self.config_path)
         else:

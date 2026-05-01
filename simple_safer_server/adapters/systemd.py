@@ -20,17 +20,19 @@ class SystemdAdapter:
         return result.stdout
 
     def start_unit(self, unit_name: str) -> None:
-        self._command_runner.popen(
+        self._command_runner.run(
             ["systemctl", "start", unit_name, "--no-block"],
             stdout=DEVNULL,
             stderr=DEVNULL,
+            check=True,
         )
 
     def stop_unit(self, unit_name: str) -> None:
-        self._command_runner.popen(
+        self._command_runner.run(
             ["systemctl", "stop", unit_name, "--no-block"],
             stdout=DEVNULL,
             stderr=DEVNULL,
+            check=True,
         )
 
     def show_property(self, unit_name: str, property_name: str) -> str:

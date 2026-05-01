@@ -20,6 +20,25 @@ def _invalid_share_name(name: str) -> bool:
     )
 
 
+def _trimmed_string(data, key, required=False):
+    value = data.get(key, "")
+    if value is None and not required:
+        return ""
+    if not isinstance(value, str):
+        raise ValueError(f"{key} must be a string")
+    value = value.strip()
+    if required and not value:
+        raise ValueError(f"{key} is required")
+    return value
+
+
+def _validated_user_list(data):
+    users = data.get("users", data.get("valid_users", []))
+    if not isinstance(users, list) or not all(isinstance(user, str) for user in users):
+        raise ValueError("users must be a JSON array of username strings")
+    return users
+
+
 @smb.route("/api/smb/shares", methods=["GET"])
 @api_admin_required
 def api_list_smb_shares():
@@ -46,12 +65,12 @@ def api_add_smb_share():
     try:
         data = request.get_json(silent=True)
         if not isinstance(data, dict):
-            return jsonify({"error": "JSON object is required"}), 400
-        share_name = data.get("name", "").strip()
-        path = data.get("path", "").strip()
+            return jsonify({"error": "Request body must be a JSON object"}), 400
+        share_name = _trimmed_string(data, "name", required=True)
+        path = _trimmed_string(data, "path", required=True)
         writable = data.get("writable", False)
-        comment = data.get("comment", "").strip()
-        valid_users = data.get("valid_users", [])
+        comment = _trimmed_string(data, "comment")
+        valid_users = _validated_user_list(data)
 
         if not share_name or not path:
             return jsonify({"error": "Share name and path are required"}), 400
@@ -75,12 +94,12 @@ def api_edit_smb_share(share_name):
     try:
         data = request.get_json(silent=True)
         if not isinstance(data, dict):
-            return jsonify({"error": "JSON object is required"}), 400
-        new_name = data.get("name", "").strip()
-        path = data.get("path", "").strip()
+            return jsonify({"error": "Request body must be a JSON object"}), 400
+        new_name = _trimmed_string(data, "name", required=True)
+        path = _trimmed_string(data, "path", required=True)
         writable = data.get("writable", False)
-        comment = data.get("comment", "").strip()
-        valid_users = data.get("valid_users", [])
+        comment = _trimmed_string(data, "comment")
+        valid_users = _validated_user_list(data)
 
         if not new_name or not path:
             return jsonify({"error": "Share name and path are required"}), 400
@@ -159,8 +178,8 @@ def api_update_share_users(share_name):
     try:
         data = request.get_json(silent=True)
         if not isinstance(data, dict):
-            return jsonify({"error": "JSON object is required"}), 400
-        users = data.get("users", [])
+            return jsonify({"error": "Request body must be a JSON object"}), 400
+        users = _validated_user_list(data)
         services = _get_services()
         for username in users:
             if not services.user_manager.get_user(username):
@@ -190,5 +209,6 @@ def api_list_dirs():
         entries.sort()
         parent = os.path.dirname(path) if path != "/" else None
         return jsonify({"path": path, "parent": parent, "dirs": entries})
-    except Exception as exc:
-        return jsonify({"error": str(exc)}), 500
+    except Exception:
+        current_app.logger.exception("Error listing directories")
+        return jsonify({"error": "Could not list folders for that path."}), 500

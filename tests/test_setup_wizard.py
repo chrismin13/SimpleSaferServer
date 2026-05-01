@@ -216,7 +216,10 @@ class SetupWizardTests(unittest.TestCase):
             response = client.post('/api/setup/mount')
 
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.get_json(), {'success': False, 'error': 'partition is required'})
+        self.assertEqual(
+            response.get_json(),
+            {'success': False, 'error': 'Request body must be a JSON object'},
+        )
 
     def test_mount_drive_returns_400_when_partition_is_absent(self):
         # Valid JSON body but the required 'partition' key is missing.

@@ -106,7 +106,7 @@ class CloudBackupServiceTests(unittest.TestCase):
         )
         return service, config, system_utils, runtime
 
-    def test_get_config_exposes_non_sensitive_settings_and_rclone_text(self):
+    def test_get_config_exposes_existing_rclone_text_for_advanced_editing(self):
         service, config, _system_utils, runtime = self.make_service()
         config.config["backup"] = {
             "cloud_mode": "advanced",
@@ -150,6 +150,24 @@ class CloudBackupServiceTests(unittest.TestCase):
             service.save_config({"cloud_mode": "advanced", "rclone_config": "", "remote_name": ""}),
             {"success": False, "error": "Rclone config and remote name are required."},
         )
+
+    def test_mega_config_rewrites_rclone_when_reusing_stored_credentials(self):
+        service, config, system_utils, _runtime = self.make_service()
+        config.config["backup"] = {
+            "mega_email": "user@example.com",
+            "mega_pass": "stored-obscured",
+        }
+
+        result = service.save_config(
+            {
+                "cloud_mode": "mega",
+                "mega_email": "user@example.com",
+                "mega_folder": "/Backups",
+            }
+        )
+
+        self.assertEqual(result, {"success": True})
+        self.assertIn("stored-obscured", system_utils.rclone_config)
 
     def test_list_mega_folders_uses_command_runner(self):
         command_runner = FakeCommandRunner()

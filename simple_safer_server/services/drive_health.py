@@ -13,6 +13,7 @@ from tempfile import NamedTemporaryFile
 from simple_safer_server.adapters.drive_health_commands import (
     CalledProcessError,
     DriveHealthCommandAdapter,
+    TimeoutExpired,
 )
 from simple_safer_server.services.runtime import get_runtime
 
@@ -27,6 +28,10 @@ except (ImportError, OSError):
 
 
 LOGGER = logging.getLogger(__name__)
+DRIVE_HEALTH_TIMEOUT_MESSAGE = (
+    "The drive health check timed out before the device responded. "
+    "A sleeping USB drive, adapter, or dock may need another check after it spins up."
+)
 drive_health_command_adapter = DriveHealthCommandAdapter()
 SMARTCTL_JSON_UPGRADE_MESSAGE = (
     "The installed smartctl version does not support JSON output required for SMART-based health prediction. "
@@ -200,7 +205,13 @@ def resolve_backup_partition_device(config_manager, runtime=None):
     if not uuid:
         return None, "No backup drive UUID configured."
 
-    blkid_out = drive_health_command_adapter.find_device_by_uuid(uuid)
+    try:
+        blkid_out = drive_health_command_adapter.find_device_by_uuid(uuid)
+    except TimeoutExpired:
+        return None, (
+            "The backup drive lookup timed out before the device responded. "
+            "A sleeping USB drive, adapter, or dock may need another check after it spins up."
+        )
     partition_device = blkid_out.stdout.strip()
     if not partition_device:
         return None, f"Backup drive with UUID {uuid} was not found."
@@ -260,7 +271,7 @@ def get_smart_attributes(config_manager, system_utils, device=None, runtime=None
         data = json.loads(stdout)
 
         smart_table = data.get("ata_smart_attributes", {}).get("table")
-        if result.returncode != 0 and not smart_table:
+        if not smart_table:
             # Some smartctl failures still emit valid JSON, but without the ATA
             # SMART table we need for prediction. Treat that as a read failure
             # instead of silently falling back to model defaults.
@@ -289,6 +300,10 @@ def get_smart_attributes(config_manager, system_utils, device=None, runtime=None
                 LOGGER.warning("Could not parse SMART value for %s", field_name)
 
         return attrs, list(missing_attrs), None
+    except TimeoutExpired:
+        error_message = DRIVE_HEALTH_TIMEOUT_MESSAGE
+        LOGGER.warning(error_message)
+        return None, None, error_message
     except json.JSONDecodeError as exc:
         LOGGER.warning("Failed to parse smartctl JSON output: %s", exc)
         # We only surface the upgrade warning from the explicit capability
@@ -602,7 +617,12 @@ def collect_hdsentinel_snapshot(config_manager, system_utils, runtime=None, devi
             snapshot["error"] = error
             return snapshot
 
-    solid_result = _run_hdsentinel_command(binary_path, ["-solid", "-dev", device])
+    try:
+        solid_result = _run_hdsentinel_command(binary_path, ["-solid", "-dev", device])
+    except TimeoutExpired:
+        snapshot["device"] = device
+        snapshot["error"] = DRIVE_HEALTH_TIMEOUT_MESSAGE
+        return snapshot
     if solid_result.returncode != 0:
         stderr = (solid_result.stderr or solid_result.stdout or "").strip()
         snapshot["device"] = device
@@ -621,10 +641,14 @@ def collect_hdsentinel_snapshot(config_manager, system_utils, runtime=None, devi
         report_path = Path(tmp_file.name)
 
     try:
-        report_result = _run_hdsentinel_command(
-            binary_path, ["-dev", device, "-r", str(report_path)]
-        )
-        if report_result.returncode == 0 and report_path.exists():
+        try:
+            report_result = _run_hdsentinel_command(
+                binary_path, ["-dev", device, "-r", str(report_path)]
+            )
+        except TimeoutExpired:
+            report_result = None
+            snapshot["error"] = DRIVE_HEALTH_TIMEOUT_MESSAGE
+        if report_result is not None and report_result.returncode == 0 and report_path.exists():
             report_text = report_path.read_text(errors="replace")
             report_data = parse_hdsentinel_report(report_text)
     finally:
