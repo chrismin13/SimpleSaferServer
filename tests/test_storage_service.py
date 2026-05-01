@@ -140,7 +140,7 @@ class StorageServiceTests(unittest.TestCase):
     def test_real_mount_preserves_called_process_error_message(self):
         with tempfile.TemporaryDirectory() as mount_point:
             service, _fake_state, adapter = self.build_service(mount_point=mount_point)
-            adapter.raise_on_mount = subprocess.CalledProcessError(1, ["sudo", "mount"])
+            adapter.raise_on_mount = subprocess.CalledProcessError(1, ["mount"])
 
             payload, status_code = service.mount_dashboard_drive()
 

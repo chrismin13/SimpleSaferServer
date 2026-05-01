@@ -8,10 +8,10 @@ API response status codes, fake runtime isolation, and small route consistency i
 
 ## Sudo Policy
 
-SimpleSaferServer's installed web service is expected to run as root, so adapter code should invoke
-privileged system binaries directly by default. Operator-facing documentation can still show
-`sudo` because a human shell often starts as a non-root user.
+SimpleSaferServer's installed web service is expected to run as root, so adapter code invokes
+privileged system binaries directly. Operator-facing documentation can still show `sudo` because a
+human shell often starts as a non-root user.
 
-Keep any non-root developer workflow explicit, such as an adapter-level `use_sudo` option, rather
-than implicitly adding `sudo` based on host state. This keeps subprocess argv predictable in tests
-and avoids failures on minimal systems where `sudo` is not installed.
+Do not implicitly add `sudo` based on host state. This keeps subprocess argv predictable in tests
+and avoids failures on minimal systems where `sudo` is not installed. Process-detection code may
+still recognize `sudo` because operators can run package-manager commands from a shell.

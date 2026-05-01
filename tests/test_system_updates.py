@@ -64,7 +64,7 @@ class FakeSystemUpdatesCommandAdapter:
             returncode=self.attach_returncode,
             stdout="",
             stderr="already attached" if self.attach_returncode == 2 else "",
-            args=["sudo", pro_binary, "attach", "--attach-config", str(attach_config_path)],
+            args=[pro_binary, "attach", "--attach-config", str(attach_config_path)],
         )
 
     def pro_enable_livepatch(self, pro_binary):
@@ -139,6 +139,13 @@ class SystemUpdatesTests(unittest.TestCase):
                 manager.remove_stale_locks()
 
     def test_apt_process_matching_uses_executable_tokens(self):
+        self.assertTrue(_is_apt_process("apt-get", ["apt-get", "update"]))
+        self.assertTrue(
+            _is_apt_process(
+                "env",
+                ["env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "-y", "upgrade"],
+            )
+        )
         self.assertTrue(_is_apt_process("sudo", ["sudo", "apt-get", "update"]))
         self.assertTrue(
             _is_apt_process(

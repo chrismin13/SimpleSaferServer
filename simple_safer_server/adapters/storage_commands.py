@@ -10,10 +10,10 @@ class StorageCommandAdapter:
         self._command_runner = command_runner or CommandRunner()
 
     def reboot(self) -> None:
-        self._command_runner.run(["sudo", "systemctl", "reboot"], check=True)
+        self._command_runner.run(["systemctl", "reboot"], check=True)
 
     def poweroff(self) -> None:
-        self._command_runner.run(["sudo", "systemctl", "poweroff"], check=True)
+        self._command_runner.run(["systemctl", "poweroff"], check=True)
 
     def find_device_by_uuid(self, uuid: str) -> str:
         result = self._command_runner.run(
@@ -24,9 +24,9 @@ class StorageCommandAdapter:
         return result.stdout.strip()
 
     def mount(self, device: str, mount_point: str) -> None:
-        self._command_runner.run(["sudo", "mount", device, mount_point], check=True)
+        self._command_runner.run(["mount", device, mount_point], check=True)
 
     def start_unit(self, unit_name: str) -> None:
         # These service restarts are best-effort after a successful mount so
         # one unavailable helper does not hide the drive from the dashboard.
-        self._command_runner.run(["sudo", "systemctl", "start", unit_name], check=False)
+        self._command_runner.run(["systemctl", "start", unit_name], check=False)

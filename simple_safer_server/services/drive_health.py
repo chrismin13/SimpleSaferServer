@@ -2,7 +2,6 @@ import contextlib
 import csv
 import json
 import logging
-import os
 import re
 import shutil
 import threading
@@ -370,8 +369,6 @@ def get_smart_attributes(config_manager, system_utils, device=None, runtime=None
                 return None, None, error
 
         command = ["smartctl", "-A", "-j", device]
-        if os.geteuid() != 0 and shutil.which("sudo"):
-            command.insert(0, "sudo")
 
         result = drive_health_command_adapter.smartctl_attributes(command)
         stdout = (result.stdout or "").strip()
@@ -681,8 +678,6 @@ def parse_hdsentinel_report(report_text):
 
 def _run_hdsentinel_command(binary_path: Path, args):
     command = [str(binary_path), *args]
-    if os.geteuid() != 0 and shutil.which("sudo"):
-        command.insert(0, "sudo")
     return drive_health_command_adapter.hdsentinel(command)
 
 

@@ -58,9 +58,9 @@ intentionally calls Debian system utilities. Subprocess use should still validat
 arguments before execution and document operational assumptions near the code.
 
 The installed service normally runs as root, so runtime adapters should invoke privileged binaries
-directly instead of prepending `sudo`. Keep `sudo` explicit and opt-in for tests or developer
-workflows that intentionally exercise non-root command paths. Operator documentation can still show
-`sudo` commands because humans often start from a non-root shell.
+directly instead of prepending `sudo`. Operator documentation can still show `sudo` commands because
+humans often start from a non-root shell, and process-detection code may still recognize
+operator-started commands that include `sudo`.
 
 ## Legacy And Compatibility Code
 

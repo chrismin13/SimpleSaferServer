@@ -24,15 +24,15 @@ class SmbCommandAdapterTests(unittest.TestCase):
             [(["cp", "/etc/samba/smb.conf", "/tmp/smb.conf.backup"], {"check": True})],
         )
 
-    def test_restart_unit_uses_sudo_when_requested(self):
+    def test_restart_unit_uses_root_direct_command(self):
         runner = RecordingRunner()
-        adapter = SmbCommandAdapter(command_runner=runner, use_sudo=True)
+        adapter = SmbCommandAdapter(command_runner=runner)
 
         adapter.restart_unit("smbd")
 
         self.assertEqual(
             runner.calls,
-            [(["sudo", "systemctl", "restart", "smbd"], {"check": True})],
+            [(["systemctl", "restart", "smbd"], {"check": True})],
         )
 
 

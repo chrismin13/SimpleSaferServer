@@ -426,9 +426,9 @@ class SystemUpdatesManager:
 
     def _command_for_operation(self, operation: str) -> List[str]:
         if operation == "update":
-            return ["sudo", "apt-get", "update"]
+            return ["apt-get", "update"]
         if operation == "upgrade":
-            return ["sudo", "env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "-y", "upgrade"]
+            return ["env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "-y", "upgrade"]
         raise ValueError("Unsupported apt operation.")
 
     def _progress_from_line(
@@ -815,8 +815,8 @@ class SystemUpdatesManager:
         temp_path = self.runtime.data_dir / "20auto-upgrades"
         temp_path.write_text(content)
         temp_path.chmod(0o644)
-        # tee avoids shell redirection and works whether the Flask process is
-        # root or is allowed to sudo only this write.
+        # The command adapter owns the privileged destination write so this
+        # service only needs to stage validated content in app-owned storage.
         with temp_path.open("r") as temp_file:
             self.command_adapter.write_apt_periodic_config(temp_file)
 

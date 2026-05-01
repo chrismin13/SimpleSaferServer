@@ -7,19 +7,11 @@ from simple_safer_server.adapters.command_runner import CommandRunner
 class SmbCommandAdapter:
     """Wraps Samba validation, backup, service, and status commands."""
 
-    def __init__(
-        self, command_runner: Optional[CommandRunner] = None, use_sudo: bool = False
-    ) -> None:
+    def __init__(self, command_runner: Optional[CommandRunner] = None) -> None:
         self._command_runner = command_runner or CommandRunner()
-        self._use_sudo = use_sudo
 
     def _command(self, *parts: str):
-        # SimpleSaferServer normally runs as root; sudo stays opt-in for tests
-        # or developer workflows that intentionally exercise non-root command paths.
-        command = list(parts)
-        if self._use_sudo:
-            return ["sudo", *command]
-        return command
+        return list(parts)
 
     def copy_config(self, source: str, backup_path: str) -> None:
         self._command_runner.run(self._command("cp", source, backup_path), check=True)

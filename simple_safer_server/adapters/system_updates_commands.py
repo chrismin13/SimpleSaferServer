@@ -15,8 +15,13 @@ from simple_safer_server.adapters.command_runner import (
 class SystemUpdatesCommandAdapter:
     """Wraps package-manager support commands outside the long-running apt worker."""
 
-    def __init__(self, command_runner: Optional[CommandRunner] = None) -> None:
+    def __init__(
+        self,
+        command_runner: Optional[CommandRunner] = None,
+        apt_periodic_path: Path = Path("/etc/apt/apt.conf.d/20auto-upgrades"),
+    ) -> None:
         self._command_runner = command_runner or CommandRunner()
+        self._apt_periodic_path = apt_periodic_path
 
     def is_lock_held(self, fuser_binary: str, path: Path) -> bool:
         result = self._command_runner.run(
@@ -28,7 +33,7 @@ class SystemUpdatesCommandAdapter:
 
     def remove_files(self, paths):
         return self._command_runner.run(
-            ["sudo", "rm", "-f", *paths],
+            ["rm", "-f", *paths],
             check=True,
             capture_output=True,
             text=True,
@@ -62,14 +67,10 @@ class SystemUpdatesCommandAdapter:
 
     def write_apt_periodic_config(self, temp_file):
         temp_file.seek(0)
-        return self._command_runner.run(
-            ["sudo", "tee", "/etc/apt/apt.conf.d/20auto-upgrades"],
-            input=temp_file.read(),
-            stdout=DEVNULL,
-            stderr=PIPE,
-            text=True,
-            check=True,
-        )
+        # The web service runs as root, so write the managed apt config
+        # directly instead of depending on sudo or shell redirection.
+        self._apt_periodic_path.write_text(temp_file.read())
+        self._apt_periodic_path.chmod(0o644)
 
     def livepatch_status_json(self, binary: str):
         return self._command_runner.run(
@@ -89,7 +90,7 @@ class SystemUpdatesCommandAdapter:
 
     def pro_attach(self, pro_binary: str, attach_config_path: Path):
         return self._command_runner.run(
-            ["sudo", pro_binary, "attach", "--attach-config", str(attach_config_path)],
+            [pro_binary, "attach", "--attach-config", str(attach_config_path)],
             check=False,
             capture_output=True,
             text=True,
@@ -97,7 +98,7 @@ class SystemUpdatesCommandAdapter:
 
     def pro_enable_livepatch(self, pro_binary: str):
         return self._command_runner.run(
-            ["sudo", pro_binary, "enable", "livepatch"],
+            [pro_binary, "enable", "livepatch"],
             check=True,
             capture_output=True,
             text=True,
