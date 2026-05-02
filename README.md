@@ -1,7 +1,7 @@
 # SimpleSaferServer
 
 > [!TIP]
-> ** Want to see it in action?**  
+> **Want to see it in action?**  
 > Check out the [Live Management Demo](https://sssdemo.chrismin13.com) to explore the dashboard and features in a simulated environment!
 
 SimpleSaferServer is my vibe-coded experimentation project for helping with backing up your files on your home or small-business server using a 3-2-1 backup strategy. Over time, I have been working towards adding all the features and services that I would want in my own server when I set up from scratch, as well as experimenting with the latest hotness in vibe coding at that period in time. 
