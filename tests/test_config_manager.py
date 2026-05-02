@@ -1,4 +1,5 @@
 # pyright: reportAttributeAccessIssue=false
+import os
 import tempfile
 import types
 import unittest
@@ -63,6 +64,32 @@ class ConfigManagerDefaultsTests(unittest.TestCase):
 
         self.assertEqual(manager.get_value("apt_updates", "managed"), "false")
         self.assertEqual(manager.get_value("apt_updates", "autoclean_interval"), "7")
+
+    def test_secret_files_are_created_private(self):
+        manager = create_config_manager()
+
+        self.assertEqual(manager.config_dir.stat().st_mode & 0o777, 0o700)
+        self.assertEqual(manager.key_path.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(manager.secrets_path.stat().st_mode & 0o777, 0o600)
+
+    def test_existing_secret_file_permissions_are_repaired(self):
+        manager = create_config_manager()
+        manager.secrets_path.chmod(0o644)
+
+        manager._ensure_private_regular_file(manager.secrets_path)
+
+        self.assertEqual(manager.secrets_path.stat().st_mode & 0o777, 0o600)
+
+    @unittest.skipUnless(hasattr(os, "symlink"), "symlink support is required")
+    def test_secret_file_helper_rejects_existing_symlink(self):
+        manager = create_config_manager()
+        target_path = manager.config_dir / "target"
+        link_path = manager.config_dir / "secret-link"
+        target_path.write_text("target")
+        os.symlink(str(target_path), str(link_path))
+
+        with self.assertRaises(RuntimeError):
+            manager._ensure_private_regular_file(link_path)
 
     def test_alert_ids_stay_monotonic_after_retention_trim(self):
         manager = create_config_manager()

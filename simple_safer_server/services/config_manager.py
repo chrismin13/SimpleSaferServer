@@ -3,6 +3,7 @@ import fcntl
 import json
 import logging
 import os
+import stat
 import tempfile
 from datetime import datetime
 
@@ -23,8 +24,8 @@ class ConfigManager:
         self.config = configparser.ConfigParser()
         self.logger = logging.getLogger(__name__)
 
-        # Ensure config directory exists
         self.config_dir.mkdir(parents=True, exist_ok=True)
+        self.config_dir.chmod(0o700)
 
         # Initialize configuration
         self.load_config()
@@ -35,14 +36,37 @@ class ConfigManager:
         """Initialize the secrets management system"""
         if not self.key_path.exists():
             key = Fernet.generate_key()
-            self.key_path.write_bytes(key)
-        self.key_path.chmod(0o600)
+            self._create_private_file(self.key_path, key)
+        self._ensure_private_regular_file(self.key_path)
 
         if not self.secrets_path.exists():
-            self.secrets_path.write_text('{}')
-        self.secrets_path.chmod(0o600)
+            self._create_private_file(self.secrets_path, b'{}')
+        self._ensure_private_regular_file(self.secrets_path)
 
         self.cipher = Fernet(self.key_path.read_bytes())
+
+    def _create_private_file(self, path, data):
+        # Key material and encrypted secret stores must be mode 0600 from the
+        # first inode creation; chmod-after-write can briefly expose umask perms.
+        flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY
+        try:
+            fd = os.open(str(path), flags, 0o600)
+        except FileExistsError:
+            # Another worker created the file between exists() and os.open().
+            # The explicit validation call below owns the existing-file policy.
+            return
+        try:
+            os.write(fd, data)
+        finally:
+            os.close(fd)
+
+    def _ensure_private_regular_file(self, path):
+        # Treat the config directory as trusted and private, but do not accept
+        # symlinks or device files for secret material.
+        file_stat = path.lstat()
+        if not stat.S_ISREG(file_stat.st_mode):
+            raise RuntimeError(f"Refusing to use non-regular secret file: {path}")
+        path.chmod(0o600)
 
     def _init_alerts(self):
         """Initialize the alerts storage system"""

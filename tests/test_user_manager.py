@@ -13,6 +13,7 @@ class FakeUserCommandAdapter:
         self.samba_users_set = set()
         self.removed_users = []
         self.fail_remove = False
+        self.fail_sync = False
         self.passwords = {}
 
     def system_user_exists(self, username):
@@ -29,6 +30,10 @@ class FakeUserCommandAdapter:
 
     def set_samba_password(self, username, password):
         # Store the latest test password without invoking smbpasswd.
+        if self.fail_sync:
+            from simple_safer_server.adapters.command_runner import CalledProcessError
+
+            raise CalledProcessError(1, ["smbpasswd", "-s", "-a", username])
         self.samba_users_set.add(username)
         self.passwords[username] = password
 
@@ -68,6 +73,17 @@ class UserManagerTests(unittest.TestCase):
 
         self.assertTrue(success, message)
         self.assertEqual(adapter.passwords["operator"], "NewOperatorPassw0rd!")
+
+    def test_create_user_rolls_back_when_samba_sync_fails(self):
+        manager, adapter = self.make_manager()
+        adapter.fail_sync = True
+
+        success, message = manager.create_user("operator", "OperatorPassw0rd!")
+
+        self.assertFalse(success)
+        self.assertEqual(message, "User created but failed to sync with Samba")
+        self.assertNotIn("operator", manager.users)
+        self.assertEqual(manager._load_users(), {})
 
     def test_delete_user_stops_when_samba_removal_fails(self):
         manager, adapter = self.make_manager()

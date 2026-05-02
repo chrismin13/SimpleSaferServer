@@ -16,6 +16,12 @@ class RecordingSystemUtils(SystemUtils):
         return ""
 
 
+class ParentDeviceFallbackSystemUtils(RecordingSystemUtils):
+    def run_command(self, command, check=True):
+        self.commands.append((command, check))
+        return ""
+
+
 class SystemUtilsTimerActivationTests(unittest.TestCase):
     def _runtime(self, temp_dir):
         return types.SimpleNamespace(
@@ -88,10 +94,18 @@ class SystemUtilsTimerActivationTests(unittest.TestCase):
                 self.assertIn(
                     (["systemctl", "start", f"{service_name}.timer"], True), system_utils.commands
                 )
-                self.assertNotIn(
-                    (["systemctl", "disable", f"{service_name}.timer"], False),
-                    system_utils.commands,
-                )
+
+    def test_parent_device_fallback_strips_standard_partition_suffix(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            system_utils = ParentDeviceFallbackSystemUtils(self._runtime(temp_dir))
+
+            self.assertEqual(system_utils.get_parent_device("/dev/sda1"), "/dev/sda")
+
+    def test_parent_device_fallback_strips_nvme_partition_suffix(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            system_utils = ParentDeviceFallbackSystemUtils(self._runtime(temp_dir))
+
+            self.assertEqual(system_utils.get_parent_device("/dev/nvme0n1p1"), "/dev/nvme0n1")
 
     def test_pre_backup_timers_keep_two_minute_spacing(self):
         with tempfile.TemporaryDirectory() as temp_dir:

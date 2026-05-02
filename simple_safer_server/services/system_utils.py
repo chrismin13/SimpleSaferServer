@@ -1,4 +1,5 @@
 import logging
+import re
 import shutil
 
 from simple_safer_server.adapters.command_runner import CalledProcessError, CommandRunner
@@ -145,10 +146,12 @@ account default : simplesaferserver
             if result:
                 parent = result.strip()
                 return f"/dev/{parent}"
-            # Fallback: strip trailing digits (works for /dev/sda1, /dev/nvme0n1p1, etc.)
-            import re
-
-            m = re.match(r"(/dev/[a-zA-Z0-9]+)", partition_path)
+            # Fallback for environments where lsblk cannot report PKNAME. NVMe
+            # and MMC partition names use a "p" separator; SATA-style names do not.
+            m = re.match(r"^(/dev/(?:nvme\d+n\d+|mmcblk\d+|loop\d+))p\d+$", partition_path)
+            if m:
+                return m.group(1)
+            m = re.match(r"^(/dev/[a-z]+)\d+$", partition_path)
             if m:
                 return m.group(1)
             return None

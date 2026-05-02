@@ -56,3 +56,16 @@ that explain compatibility and operational contracts future maintainers could ea
 - `.venv/bin/python -m ruff check simple_safer_server/legacy/migration.py simple_safer_server/routes/tasks.py simple_safer_server/routes/storage.py simple_safer_server/services/cloud_backup_service.py simple_safer_server/services/drive_health.py simple_safer_server/adapters/backup_drive_commands.py simple_safer_server/adapters/storage_commands.py tests/test_backup_drive_command_adapter.py tests/test_smb_command_adapter.py tests/test_cloud_backup_service.py tests/test_drive_health.py tests/test_drive_health_summary.py tests/test_migration.py`
 - `.venv/bin/python -m pytest tests/test_backup_drive_command_adapter.py tests/test_smb_command_adapter.py tests/test_cloud_backup_service.py tests/test_drive_health.py tests/test_drive_health_summary.py tests/test_migration.py tests/test_runtime_command_adapters.py`
 - `.venv/bin/python - <<'PY' ... yaml.safe_load(Path('.github/workflows/python-ci.yml').read_text()) ... PY`
+
+## CodeRabbit Rerun After Additional Batch
+
+`coderabbit review` completed and returned 5 relevant findings. The follow-up fixes strengthen
+test assertions, create secret files with private permissions at inode creation time, make the
+partition-parent fallback actually strip suffixes, use timezone-aware user creation timestamps, and
+avoid persisting users when Samba sync fails.
+
+### Verification
+
+- `.venv/bin/python -m ruff format --check simple_safer_server/services/config_manager.py simple_safer_server/services/system_utils.py simple_safer_server/services/user_manager.py tests/test_config_manager.py tests/test_system_utils.py tests/test_user_manager.py tests/test_drive_health.py`
+- `.venv/bin/python -m ruff check simple_safer_server/services/config_manager.py simple_safer_server/services/system_utils.py simple_safer_server/services/user_manager.py tests/test_config_manager.py tests/test_system_utils.py tests/test_user_manager.py tests/test_drive_health.py`
+- `.venv/bin/python -m pytest tests/test_config_manager.py tests/test_system_utils.py tests/test_user_manager.py tests/test_drive_health.py`

@@ -143,18 +143,20 @@ class UserManager:
         self.users[username] = {
             'password_hash': generate_password_hash(password),
             'is_admin': is_admin,
-            'created_at': str(datetime.datetime.utcnow()),
+            'created_at': datetime.datetime.now(datetime.timezone.utc).isoformat(),
             'last_login': None,
             'failed_attempts': 0,
             'locked_until': None,
         }
 
-        self._save_users()
-
         # Sync to Samba
         if not self._sync_user_to_samba(username, password):
+            # Keep JSON and in-memory users aligned with Samba; callers retry
+            # failed creates, so a half-created user would turn into "exists".
+            self.users.pop(username, None)
             return False, "User created but failed to sync with Samba"
 
+        self._save_users()
         return True, "User created successfully"
 
     def verify_user(self, username, password):

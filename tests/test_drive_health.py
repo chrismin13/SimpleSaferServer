@@ -2,7 +2,7 @@ import json
 import unittest
 from subprocess import TimeoutExpired
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from simple_safer_server.services import drive_health
 
@@ -139,9 +139,9 @@ class DriveHealthTests(unittest.TestCase):
         "simple_safer_server.services.drive_health.drive_health_command_adapter.send_email",
         side_effect=TimeoutExpired(cmd=["msmtp"], timeout=30),
     )
-    def test_log_and_email_alert_treats_email_timeout_as_warning(self, _mock_send_email):
+    def test_log_and_email_alert_treats_email_timeout_as_warning(self, mock_send_email):
         config_manager = SimpleNamespace(
-            log_alert=lambda *args, **kwargs: None,
+            log_alert=MagicMock(),
             get_value=lambda section, key, default="": {
                 ("backup", "email_address"): "admin@example.com",
                 ("backup", "from_address"): "server@example.com",
@@ -157,6 +157,14 @@ class DriveHealthTests(unittest.TestCase):
             alert_type="warning",
             source="drive_health",
         )
+
+        config_manager.log_alert.assert_called_once_with(
+            "Drive health",
+            "message",
+            alert_type="warning",
+            source="drive_health",
+        )
+        mock_send_email.assert_called_once()
 
 
 if __name__ == "__main__":
