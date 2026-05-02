@@ -25,3 +25,5 @@ When designing any UI elements, always use the frontend-design and uncodixfy ski
 Consider if anything that you add needs to be removed during the uninstallation by the uninstall.sh script.
 
 Security model: SimpleSaferServer is a root-run, admin-only local management tool. Admin users are trusted operators with server-level access, so do not hide useful managed secrets or config from them just for appearance; still avoid accidental leaks into logs, broad status responses, process argv, or unrelated UI.
+
+Do not edit the README.md, any edits to it will be done by the user.

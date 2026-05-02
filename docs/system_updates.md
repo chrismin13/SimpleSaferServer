@@ -7,6 +7,7 @@ The System Updates page manages Debian and Ubuntu package maintenance from the a
 - Shows the current Debian or Ubuntu release from `/etc/os-release`.
 - Shows the standard support end date and the support date used for the status badge when SimpleSaferServer has a built-in date for that release.
 - Returns the upstream release-date source URL in the support API response for diagnostics and future UI use.
+- The support-date metadata lives in `simple_safer_server.services.os_support` so installer-adjacent tests and the System Updates page use the same Python source of truth.
 - Debian support status includes Debian LTS dates, but excludes paid ELTS dates.
 - Ubuntu LTS support status includes Ubuntu Pro ESM dates because Ubuntu Pro has a free personal tier. Paid Legacy support add-on dates are not used.
 - The support badge turns amber with `EOL Soon` when the support end date is 183 days or less away.

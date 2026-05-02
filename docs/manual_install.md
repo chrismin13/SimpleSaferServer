@@ -1,6 +1,6 @@
 # Manual Installation Guide for SimpleSaferServer
 
-This guide explains how to manually install SimpleSaferServer on a clean Debian-based system without using the automated installer. It is written as a checklist so each step is easy to verify before you move on.
+This guide explains how to manually install SimpleSaferServer on a clean Debian or Ubuntu based system without using the automated installer. It is written as a checklist so each step is easy to verify before you move on.
 
 ---
 

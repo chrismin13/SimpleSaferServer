@@ -1,20 +1,32 @@
 import unittest
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import patch
 
 from simple_safer_server.legacy import migration
+from simple_safer_server.services.smb_manager import SMBManager
+from simple_safer_server.services.user_manager import UserManager
 
 
 class MigrationCommandHandlingTests(unittest.TestCase):
     def test_configure_backup_share_treats_missing_systemctl_as_nonfatal(self):
-        smb_manager = SimpleNamespace(
-            runtime=SimpleNamespace(is_fake=False),
-            ensure_default_backup_share=lambda *args, **kwargs: None,
+        # The migration helper only touches this small manager surface; the
+        # cast keeps the test double focused without constructing real system
+        # service managers in a command-failure unit test.
+        smb_manager = cast(
+            SMBManager,
+            SimpleNamespace(
+                runtime=SimpleNamespace(is_fake=False),
+                ensure_default_backup_share=lambda *args, **kwargs: None,
+            ),
         )
-        user_manager = SimpleNamespace(
-            users={"admin": {}},
-            reload_users=lambda: None,
-            user_exists_in_samba=lambda username: True,
+        user_manager = cast(
+            UserManager,
+            SimpleNamespace(
+                users={"admin": {}},
+                reload_users=lambda: None,
+                user_exists_in_samba=lambda username: True,
+            ),
         )
 
         with patch.object(

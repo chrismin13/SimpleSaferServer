@@ -18,7 +18,7 @@ If you are installing SimpleSaferServer on a real Debian-based machine, use the
 normal install flow instead:
 
 - [README.md](../README.md)
-- [manual_install.md](manual_install.md)
+- [install.md](install.md)
 
 ## Deploy Checklist
 

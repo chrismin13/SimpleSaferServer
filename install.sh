@@ -12,10 +12,183 @@ echo -e "${BLUE}==============================================="
 echo -e "   SimpleSaferServer Installer"
 echo -e "===============================================${NC}\n"
 
+UNSUPPORTED_OS_OK="${SSS_UNSUPPORTED_OS_OK:-0}"
+PREFLIGHT_ONLY="${SSS_INSTALLER_PREFLIGHT_ONLY:-0}"
+OS_RELEASE_PATH="${SSS_OS_RELEASE_PATH:-}"
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --unsupported-os-ok)
+            UNSUPPORTED_OS_OK=1
+            ;;
+        *)
+            echo -e "${RED}ERROR:${NC} Unknown installer option: $1"
+            exit 1
+            ;;
+    esac
+    shift
+done
+
+installer_command_available() {
+    local command_name="$1"
+    local fake_commands=",${SSS_INSTALLER_TEST_COMMANDS:-},"
+    local missing_commands=",${SSS_INSTALLER_TEST_MISSING_COMMANDS:-},"
+
+    if [ "$PREFLIGHT_ONLY" = "1" ] && [ "${fake_commands}" != ",," ]; then
+        case "$fake_commands" in
+            *,"$command_name",*) return 0 ;;
+        esac
+        return 1
+    fi
+
+    if [ "$PREFLIGHT_ONLY" = "1" ] && [ "${missing_commands}" != ",," ]; then
+        case "$missing_commands" in
+            *,"$command_name",*) return 1 ;;
+        esac
+    fi
+
+    command -v "$command_name" >/dev/null 2>&1
+}
+
+installer_systemd_available() {
+    if [ "$PREFLIGHT_ONLY" = "1" ] && [ "${SSS_INSTALLER_TEST_SYSTEMD:-0}" = "1" ]; then
+        return 0
+    fi
+    # Normal Debian/Ubuntu server installs are systemd-booted. This catches
+    # chroots and minimal containers where systemctl exists but service setup
+    # would fail later with a much less useful error.
+    [ -d /run/systemd/system ]
+}
+
+os_release_file() {
+    if [ -n "$OS_RELEASE_PATH" ]; then
+        printf '%s\n' "$OS_RELEASE_PATH"
+        return 0
+    fi
+    if [ -r /etc/os-release ]; then
+        printf '%s\n' /etc/os-release
+        return 0
+    fi
+    if [ -r /usr/lib/os-release ]; then
+        printf '%s\n' /usr/lib/os-release
+        return 0
+    fi
+    return 1
+}
+
+os_release_value() {
+    local file="$1"
+    local key="$2"
+    local line=""
+    line=$(grep -E "^[[:space:]]*${key}=" "$file" 2>/dev/null | tail -n 1 || true)
+    line=${line#"${line%%[![:space:]]*}"}
+    line=${line#*=}
+    line=${line%\"}
+    line=${line#\"}
+    line=${line%\'}
+    line=${line#\'}
+    printf '%s\n' "$line"
+}
+
+contains_os_family() {
+    local value=" $1 "
+    local family="$2"
+    case "$value" in
+        *" $family "*) return 0 ;;
+    esac
+    return 1
+}
+
+run_installer_preflight() {
+    local release_file=""
+    local os_id=""
+    local os_like=""
+    local pretty_name=""
+    local version_id=""
+    local missing_tools=""
+    local is_debian_family=0
+    local is_direct_supported_family=0
+
+    echo -e "${YELLOW}Preflight: Checking install platform...${NC}"
+
+    if ! installer_command_available apt-get; then
+        missing_tools="${missing_tools} apt-get"
+    fi
+    if ! installer_command_available dpkg; then
+        missing_tools="${missing_tools} dpkg"
+    fi
+    if ! installer_command_available systemctl; then
+        missing_tools="${missing_tools} systemctl"
+    fi
+
+    if [ -n "$missing_tools" ]; then
+        echo -e "${RED}ERROR:${NC} Missing required host tools:${missing_tools}"
+        echo -e "SimpleSaferServer installs Debian packages and systemd services, so this installer needs apt-get, dpkg, and systemctl."
+        exit 1
+    fi
+    if ! installer_systemd_available; then
+        echo -e "${RED}ERROR:${NC} systemctl is installed, but systemd does not appear to be running as the host init system."
+        echo -e "This usually means the installer is running inside a chroot, build container, or other non-booted environment. Run it on the target Debian/Ubuntu server instead."
+        exit 1
+    fi
+
+    if release_file=$(os_release_file); then
+        os_id=$(os_release_value "$release_file" ID | tr '[:upper:]' '[:lower:]')
+        os_like=$(os_release_value "$release_file" ID_LIKE | tr '[:upper:]' '[:lower:]')
+        pretty_name=$(os_release_value "$release_file" PRETTY_NAME)
+        version_id=$(os_release_value "$release_file" VERSION_ID)
+    else
+        echo -e "${YELLOW}Could not read /etc/os-release or /usr/lib/os-release.${NC}"
+        echo -e "${YELLOW}Continuing because the required Debian package and systemd tools are present.${NC}"
+        echo
+        return 0
+    fi
+
+    case "$os_id" in
+        debian|ubuntu)
+            is_debian_family=1
+            is_direct_supported_family=1
+            ;;
+        *)
+            if contains_os_family "$os_like" debian || contains_os_family "$os_like" ubuntu; then
+                is_debian_family=1
+            fi
+            ;;
+    esac
+
+    if [ "$is_debian_family" -ne 1 ]; then
+        if [ "$UNSUPPORTED_OS_OK" = "1" ]; then
+            echo -e "${YELLOW}Unsupported OS family detected (${pretty_name:-$os_id}); continuing because --unsupported-os-ok was set.${NC}"
+        else
+            echo -e "${RED}ERROR:${NC} Unsupported OS family detected: ${pretty_name:-$os_id}"
+            echo -e "SimpleSaferServer expects a Debian/Ubuntu-style APT and systemd host."
+            echo -e "Use --unsupported-os-ok only if this system intentionally provides compatible APT and systemd behavior."
+            exit 1
+        fi
+    elif [ "$is_direct_supported_family" -eq 1 ]; then
+        echo -e "${GREEN}✔ Detected ${pretty_name:-$os_id $version_id}.${NC}"
+        case "$os_id:$version_id" in
+            debian:10*|ubuntu:20.04*)
+                echo -e "${YELLOW}This is a legacy compatibility platform. The installer will use older Python dependencies if the installed Python runtime requires them.${NC}"
+                ;;
+        esac
+    else
+        echo -e "${YELLOW}Detected Debian/Ubuntu-family derivative: ${pretty_name:-$os_id $version_id}.${NC}"
+        echo -e "${YELLOW}Continuing because APT and systemd are available; derivative package differences may still cause apt-get to fail later.${NC}"
+    fi
+
+    echo -e "${GREEN}✔ Install platform preflight passed.${NC}\n"
+}
+
 # Check for root
-if [ "$EUID" -ne 0 ]; then
+if [ "$EUID" -ne 0 ] && [ "$PREFLIGHT_ONLY" != "1" ]; then
   echo -e "${RED}ERROR:${NC} This script must be run as root. Please use sudo or run as root user."
   exit 1
+fi
+
+run_installer_preflight
+if [ "$PREFLIGHT_ONLY" = "1" ]; then
+    exit 0
 fi
 
 # Determine if we are in a SimpleSaferServer repo
