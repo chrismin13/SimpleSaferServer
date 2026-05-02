@@ -1,6 +1,9 @@
 import configparser
+import fcntl
 import json
 import logging
+import os
+import tempfile
 from datetime import datetime
 
 from cryptography.fernet import Fernet
@@ -14,6 +17,7 @@ class ConfigManager:
         self.config_dir = self.runtime.config_dir
         self.config_path = self.config_dir / 'config.conf'
         self.secrets_path = self.config_dir / '.secrets'
+        self.secrets_lock_path = self.config_dir / '.secrets.lock'
         self.key_path = self.config_dir / '.key'
         self.alerts_path = self.config_dir / 'alerts.json'
         self.config = configparser.ConfigParser()
@@ -116,10 +120,31 @@ class ConfigManager:
     def store_secret(self, key, value):
         """Store a sensitive value"""
         try:
-            secrets = json.loads(self.secrets_path.read_text())
-            encrypted = self.cipher.encrypt(value.encode())
-            secrets[key] = encrypted.decode()
-            self.secrets_path.write_text(json.dumps(secrets))
+            self.secrets_lock_path.touch(mode=0o600, exist_ok=True)
+            self.secrets_lock_path.chmod(0o600)
+            with open(self.secrets_lock_path, 'w') as lock_file:
+                # Multiple admin requests can update different credentials at
+                # once; lock the whole read/modify/replace sequence so one
+                # request cannot overwrite another request's freshly stored key.
+                fcntl.flock(lock_file, fcntl.LOCK_EX)
+                secrets = json.loads(self.secrets_path.read_text())
+                encrypted = self.cipher.encrypt(value.encode())
+                secrets[key] = encrypted.decode()
+                temp_path = None
+                try:
+                    with tempfile.NamedTemporaryFile(
+                        'w',
+                        dir=str(self.config_dir),
+                        prefix='.secrets.',
+                        delete=False,
+                    ) as temp_file:
+                        temp_path = temp_file.name
+                        json.dump(secrets, temp_file)
+                    os.chmod(temp_path, 0o600)
+                    os.replace(temp_path, self.secrets_path)
+                finally:
+                    if temp_path and os.path.exists(temp_path):
+                        os.unlink(temp_path)
         except Exception as e:
             self.logger.error(f"Error storing secret: {e}")
             raise

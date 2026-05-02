@@ -88,6 +88,7 @@
 
     els['apt-operation-title'].textContent = running ? operationLabel(operation.operation) : operationLabel(null);
     els['apt-progress-bar'].style.width = `${progress}%`;
+    els['apt-progress-bar'].setAttribute('aria-valuenow', String(progress));
     els['apt-progress-bar'].className = `progress-bar-fill ${
       status === 'failure' ? 'danger' : status === 'stopped' ? 'warning' : status === 'success' ? 'success' : ''
     }`;

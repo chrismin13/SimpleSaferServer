@@ -41,7 +41,16 @@
   <div class="system-updates-command-grid">
     <div class="system-updates-progress-wrap">
       <div class="progress-bar-container system-updates-progress">
-        <div class="progress-bar-fill" id="apt-progress-bar" style="width: 0%"></div>
+        <div
+          class="progress-bar-fill"
+          id="apt-progress-bar"
+          role="progressbar"
+          aria-label="System update progress"
+          aria-valuemin="0"
+          aria-valuemax="100"
+          aria-valuenow="0"
+          style="width: 0%"
+        ></div>
       </div>
       <span class="text-mono" id="apt-progress-text">0%</span>
     </div>

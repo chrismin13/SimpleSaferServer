@@ -3,6 +3,9 @@ set -euo pipefail
 
 python3 -m venv .venv
 
+# pip 24.1 dropped support for legacy dependency specifiers that some Debian
+# 10/Python 3.7-compatible packages still expose, so keep the dev bootstrap on
+# the last pip release that can resolve both repository requirement lanes.
 ".venv/bin/python" -m pip install --upgrade "pip<24.1" wheel
 ".venv/bin/pip" install -r requirements.txt
 ".venv/bin/pip" install -r requirements-dev.txt

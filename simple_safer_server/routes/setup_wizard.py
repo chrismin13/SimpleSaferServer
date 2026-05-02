@@ -200,9 +200,12 @@ def _unmount_selected_partition_with_managed_retry(partition, force_managed=Fals
 def setup_page():
     """Render the setup wizard page"""
     try:
-        # Get current config
         current_config = config_manager.get_all_config()
-        logger.info(f"Current config during setup check: {current_config}")
+        # Log section names only; setup config can include admin contact details
+        # and managed service paths that do not belong in routine logs.
+        logger.debug(
+            "Checking setup status with config sections: %s", sorted(current_config.keys())
+        )
 
         # Check if setup is complete
         if config_manager.is_setup_complete():
@@ -573,7 +576,9 @@ def mount_drive():
             smb_manager,
             runtime=runtime,
         )
-        logger.info(f"Current config after mounting: {config_manager.get_all_config()}")
+        logger.info(
+            "Backup drive mounted successfully at %s", result.get('mount_point', mount_point)
+        )
         return jsonify({'success': True, 'message': result['message']})
     except BackupDriveSetupError as e:
         return jsonify({'success': False, 'error': str(e), 'details': e.details}), 400
@@ -662,10 +667,10 @@ def save_schedule():
         data, error_response, status_code = _json_object_payload()
         if error_response:
             return error_response, status_code
-        time = data.get('time')
+        schedule_time = data.get('time')
         bandwidth_limit = data.get('bandwidth_limit', '')
 
-        if not time:
+        if not schedule_time:
             return jsonify(
                 {
                     'success': False,
@@ -675,7 +680,7 @@ def save_schedule():
             ), 400
 
         # Validate time format (HH:MM)
-        if not re.match(r'^([01]?[0-9]|2[0-3]):[0-5][0-9]$', time):
+        if not re.match(r'^([01]?[0-9]|2[0-3]):[0-5][0-9]$', schedule_time):
             return jsonify(
                 {
                     'success': False,
@@ -685,11 +690,11 @@ def save_schedule():
             ), 400
 
         # Save schedule to config
-        config_manager.set_value('schedule', 'backup_cloud_time', time)
+        config_manager.set_value('schedule', 'backup_cloud_time', schedule_time)
         if bandwidth_limit is not None:
             config_manager.set_value('backup', 'bandwidth_limit', bandwidth_limit)
 
-        logger.info(f"Schedule saved: daily at {time}, bandwidth limit: {bandwidth_limit}")
+        logger.info(f"Schedule saved: daily at {schedule_time}, bandwidth limit: {bandwidth_limit}")
         return jsonify({'success': True, 'message': 'Backup settings saved successfully'})
 
     except Exception as e:
@@ -785,9 +790,9 @@ def setup_smb_share(config):
 def complete_setup():
     """Complete the setup process"""
     try:
-        # Get current config
         current_config = config_manager.get_all_config()
-        logger.info(f"Current config during setup completion: {current_config}")
+        # The validation loop below logs only missing section/field names.
+        logger.debug("Completing setup after loading current configuration")
 
         # Validate required fields
         required_fields = {

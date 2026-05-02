@@ -14,18 +14,30 @@ class FakeBackupDriveCommandAdapter:
         self.unmounted_partitions = []
         self.mounted_ntfs = []
         self.cleanup_unmounted = []
+        self.blkid_filesystem_type_result = SimpleNamespace(
+            returncode=0, stderr='', stdout='ntfs\n'
+        )
+        self.blkid_devices = []
         self.lsblk_devices_json_result = SimpleNamespace(
             returncode=0,
             stderr='',
             stdout='{"blockdevices":[]}',
         )
         self.current_mounts_result = SimpleNamespace(returncode=0, stderr='', stdout='')
+        self.system_drive_result = SimpleNamespace(returncode=0, stderr='', stdout='/dev/sda\n')
 
     def lsblk_devices_json(self):
         return self.lsblk_devices_json_result
 
     def current_mounts(self):
         return self.current_mounts_result
+
+    def blkid_filesystem_type(self, device):
+        self.blkid_devices.append(device)
+        return self.blkid_filesystem_type_result
+
+    def system_drive(self):
+        return self.system_drive_result
 
     def unmount_partition(self, device):
         self.unmounted_partitions.append(device)
@@ -109,7 +121,28 @@ class BackupDriveSetupTests(unittest.TestCase):
         self.assertEqual(len(drives), 1)
         self.assertEqual(drives[0]['partitions'][0]['path'], '/dev/sdb1')
         self.assertEqual(drives[0]['partitions'][0]['type'], 'ntfs')
-        mock_blkid.assert_called_once_with('/dev/sdb1')
+        mock_blkid.assert_called_once_with('/dev/sdb1', command_adapter=None)
+
+    def test_list_available_drives_uses_injected_adapter_for_fuseblk_blkid_check(self):
+        command_adapter = FakeBackupDriveCommandAdapter()
+        command_adapter.lsblk_devices_json_result = SimpleNamespace(
+            returncode=0,
+            stderr='',
+            stdout=(
+                '{"blockdevices":[{"type":"disk","path":"/dev/sdb","model":"Backup Disk",'
+                '"size":"1T","children":[{"path":"/dev/sdb1","fstype":"fuseblk",'
+                '"label":"Backup","size":"1T","mountpoint":"/media/backup"}]}]}'
+            ),
+        )
+
+        drives = backup_drive_setup.list_available_drives(
+            runtime=SimpleNamespace(is_fake=False),
+            ntfs_only=True,
+            command_adapter=command_adapter,
+        )
+
+        self.assertEqual(len(drives), 1)
+        self.assertEqual(command_adapter.blkid_devices, ['/dev/sdb1'])
 
     @patch(
         'simple_safer_server.services.backup_drive_setup._get_system_drive_path',
@@ -248,7 +281,7 @@ class BackupDriveSetupTests(unittest.TestCase):
             )
 
         self.assertEqual(drives, [])
-        mock_blkid.assert_called_once_with('/dev/sdb1')
+        mock_blkid.assert_called_once_with('/dev/sdb1', command_adapter=None)
 
     def test_get_mounted_partitions_for_disk_matches_child_partitions(self):
         blockdevices = [

@@ -84,6 +84,16 @@ class ConfigManagerDefaultsTests(unittest.TestCase):
         self.assertEqual(max(alert_ids), 1500)
         self.assertEqual(sorted(alert_ids), list(range(501, 1501)))
 
+    def test_store_secret_preserves_existing_keys_with_lock_file(self):
+        manager = create_config_manager()
+
+        manager.store_secret("duckdns_token", "duck-token")
+        manager.store_secret("cloudflare_token", "cf-token")
+
+        self.assertEqual(manager.get_secret("duckdns_token"), "duck-token")
+        self.assertEqual(manager.get_secret("cloudflare_token"), "cf-token")
+        self.assertTrue(manager.secrets_lock_path.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

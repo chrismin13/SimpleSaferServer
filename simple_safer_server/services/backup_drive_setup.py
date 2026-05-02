@@ -123,7 +123,13 @@ def _get_blkid_filesystem_type(device_path, command_adapter=None):
     return result.stdout.strip().lower()
 
 
-def _get_partition_type_for_scan(device_path, filesystem_type, fallback_type='', ntfs_only=False):
+def _get_partition_type_for_scan(
+    device_path,
+    filesystem_type,
+    fallback_type='',
+    ntfs_only=False,
+    command_adapter=None,
+):
     normalized_type = (filesystem_type or '').strip().lower()
     if not ntfs_only:
         return filesystem_type or fallback_type or 'unknown'
@@ -133,7 +139,10 @@ def _get_partition_type_for_scan(device_path, filesystem_type, fallback_type='',
         # than which exact driver spelling lsblk reported today.
         return 'ntfs'
 
-    if normalized_type == 'fuseblk' and _get_blkid_filesystem_type(device_path) == 'ntfs':
+    if (
+        normalized_type == 'fuseblk'
+        and _get_blkid_filesystem_type(device_path, command_adapter=command_adapter) == 'ntfs'
+    ):
         # This is an API contract for UI consumers, not a claim that the volume
         # is mounted with the in-kernel NTFS driver.
         return 'ntfs'
@@ -467,7 +476,7 @@ def get_drive_usb_id(drive):
     return ''
 
 
-def list_available_drives(runtime=None, ntfs_only=False):
+def list_available_drives(runtime=None, ntfs_only=False, command_adapter=None):
     runtime = runtime or get_runtime()
     fake_state = get_fake_state(runtime) if runtime.is_fake else None
 
@@ -476,8 +485,8 @@ def list_available_drives(runtime=None, ntfs_only=False):
             raise RuntimeError('Fake runtime is missing fake state.')
         return fake_state.get_virtual_drives()
 
-    blockdevices = _load_lsblk_devices()
-    system_drive = _get_system_drive_path()
+    blockdevices = _load_lsblk_devices(command_adapter=command_adapter)
+    system_drive = _get_system_drive_path(command_adapter=command_adapter)
 
     drives = []
     for block in _iter_non_system_disks(blockdevices, system_drive=system_drive):
@@ -493,6 +502,7 @@ def list_available_drives(runtime=None, ntfs_only=False):
                 filesystem_type,
                 fallback_type=child.get('type') or 'unknown',
                 ntfs_only=ntfs_only,
+                command_adapter=command_adapter,
             )
             if partition_type is None:
                 continue
@@ -517,6 +527,7 @@ def list_available_drives(runtime=None, ntfs_only=False):
                 block_filesystem_type,
                 fallback_type=block.get('type') or 'unknown',
                 ntfs_only=ntfs_only,
+                command_adapter=command_adapter,
             )
         if not partitions and block_partition_type is not None:
             partitions.append(
