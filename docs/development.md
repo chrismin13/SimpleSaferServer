@@ -130,7 +130,7 @@ a pull request, run the fast local check wrapper:
 bash check_ci.sh
 ```
 
-`check_ci.sh` runs the strict CI gates in your active `.venv`:
+`check_ci.sh` runs the advisory quality gates in your active `.venv`:
 
 ```bash
 .venv/bin/python -m ruff format --check .
@@ -172,7 +172,7 @@ Local venv checks catch most gate failures, but GitHub Actions runs the strict s
 compatibility check below is useful, but it does not catch Python 3.7 runtime behavior differences;
 use `check_ci_docker.sh python37-legacy-compat` for that.
 
-Check Python 3.7 syntax compatibility with:
+Check Python 3.7 syntax compatibility with a Python 3.8 or newer interpreter:
 
 ```bash
 python - <<'PY'
@@ -183,6 +183,8 @@ for path in sorted(Path(".").rglob("*.py")):
     if any(part in {".venv", ".git", "__pycache__"} for part in path.parts):
         continue
     source = path.read_text(encoding="utf-8")
+    # ast.parse(..., feature_version=(3, 7)) is available on Python 3.8+ and
+    # asks that newer interpreter to reject syntax that Python 3.7 cannot parse.
     ast.parse(source, filename=str(path), feature_version=(3, 7))
 PY
 ```

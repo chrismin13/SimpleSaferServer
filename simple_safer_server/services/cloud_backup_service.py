@@ -212,10 +212,10 @@ class CloudBackupService:
 
         if password:
             obscured_pw = self._obscure_password(password)
-            self._config_manager.set_value("backup", "mega_email", email)
-            self._config_manager.set_value("backup", "mega_pass", obscured_pw)
             if not self._system_utils.setup_rclone(self._mega_rclone_config(email, obscured_pw)):
                 return {"success": False, "error": "Failed to write rclone config for MEGA."}
+            self._config_manager.set_value("backup", "mega_email", email)
+            self._config_manager.set_value("backup", "mega_pass", obscured_pw)
         else:
             stored_email = self._config_manager.get_value("backup", "mega_email", "")
             stored_pass = self._config_manager.get_value("backup", "mega_pass", "")
@@ -269,6 +269,9 @@ class CloudBackupService:
         return result.stdout.strip()
 
     def _write_temp_mega_config(self, email: str, obscured_pw: str) -> str:
+        # rclone needs a file path for list/validation commands, but this
+        # transient config is not the managed root rclone.conf. delete=False
+        # lets callers pass the path to rclone; callers remove it after use.
         with NamedTemporaryFile(
             delete=False, mode="w", prefix="rclone-", suffix=".conf"
         ) as config_file:
@@ -276,4 +279,6 @@ class CloudBackupService:
             return config_file.name
 
     def _mega_rclone_config(self, email: str, obscured_pw: str) -> str:
+        # rclone stores MEGA passwords in obscured form, so every temporary or
+        # managed config path receives the output of rclone obscure, not raw input.
         return f"""[mega]\ntype = mega\nuser = {email}\npass = {obscured_pw}\n"""

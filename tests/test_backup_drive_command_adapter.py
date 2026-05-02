@@ -6,12 +6,18 @@ from simple_safer_server.adapters.backup_drive_commands import BackupDriveComman
 
 
 class FakeCommandRunner:
-    def __init__(self):
+    def __init__(self, responses=None, default_response=None):
         self.calls = []
+        self.responses = list(responses or [])
+        self.default_response = default_response or SimpleNamespace(
+            returncode=7, stdout="", stderr="busy"
+        )
 
     def run(self, command, **kwargs):
         self.calls.append((command, kwargs))
-        return SimpleNamespace(returncode=7, stdout="", stderr="busy")
+        if self.responses:
+            return self.responses.pop(0)
+        return self.default_response
 
 
 class BackupDriveCommandAdapterTests(unittest.TestCase):

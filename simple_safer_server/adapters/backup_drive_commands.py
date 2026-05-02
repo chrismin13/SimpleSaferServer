@@ -52,6 +52,8 @@ class BackupDriveCommandAdapter:
         self._command_runner.run(["umount", device], check=False)
 
     def find_device_by_uuid(self, uuid: str) -> str:
+        # result.stdout.strip() is the contract here: blkid returns an empty
+        # string when the UUID is not present, and callers must handle that.
         result = self._command_runner.run(
             ["blkid", "-t", f"UUID={uuid}", "-o", "device"],
             capture_output=True,

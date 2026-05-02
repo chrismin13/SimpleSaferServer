@@ -153,9 +153,11 @@ def api_storage_status():
             used_storage = total_storage = storage_usage = None
     else:
         used_storage = total_storage = storage_usage = None
+    disk_available = total_storage is not None
     return jsonify(
         {
             "mounted": mounted,
+            "disk_available": disk_available,
             "used_storage": used_storage,
             "total_storage": total_storage,
             "storage_usage": storage_usage,

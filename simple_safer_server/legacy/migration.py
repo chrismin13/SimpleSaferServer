@@ -174,6 +174,8 @@ def _write_preserved_file(source: Path, target: Path, *, mode: int) -> None:
 
 
 def _ensure_admin_user(user_manager: UserManager, username: str, password: str) -> str:
+    # user_manager.reload_users() is correctness-critical after file migrations:
+    # every decision below must use the users.json state currently on disk.
     user_manager.reload_users()
 
     if not re.match(r"^[a-zA-Z0-9_-]+$", username):
@@ -248,6 +250,8 @@ def _configure_backup_share(
         )
         return
 
+    # user_manager.reload_users() keeps Samba validation aligned with the user
+    # records written during this migration before the share is configured.
     user_manager.reload_users()
     if admin_username not in user_manager.users:
         raise MigrationError(f"Admin user '{admin_username}' was not found in the user database.")
@@ -268,9 +272,9 @@ def _configure_backup_share(
         command_runner.run(["systemctl", "enable", "nmbd"], check=True, timeout=30)
     # SMB boot enablement is intentionally non-fatal: systems without systemd,
     # non-root migrations, or externally managed Samba should still import data.
-    # CalledProcessError/TimeoutExpired are logged with LOGGER.warning and the
-    # migration continues by design.
-    except (CalledProcessError, TimeoutExpired) as exc:
+    # Command failures, timeouts, and missing systemctl are logged with
+    # LOGGER.warning and the migration continues by design.
+    except (CalledProcessError, FileNotFoundError, TimeoutExpired) as exc:
         LOGGER.warning("Failed to enable SMB services for boot: %s", exc)
 
 
@@ -279,6 +283,11 @@ def _restart_web_service(runtime) -> None:
         return
     try:
         command_runner.run(["systemctl", "restart", WEB_SERVICE_NAME], check=True, timeout=120)
+    except FileNotFoundError as exc:
+        LOGGER.error(
+            "systemctl was not found while restarting %s during migration.", WEB_SERVICE_NAME
+        )
+        raise MigrationError(f"Could not find systemctl to restart {WEB_SERVICE_NAME}.") from exc
     except CalledProcessError as exc:
         LOGGER.error("Failed to restart %s during migration: %s", WEB_SERVICE_NAME, exc)
         raise MigrationError(f"Failed to restart {WEB_SERVICE_NAME}.") from exc

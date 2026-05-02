@@ -13,7 +13,7 @@
       <span class="badge badge-neutral" id="mount-status-badge">Checking…</span>
     </div>
     <div class="status-tile-value" id="storage-used">—</div>
-    <div class="d-flex items-center gap-3">
+    <div class="d-flex items-center gap-3{% if mount_info and not mount_info.disk_available %} d-none{% endif %}" id="storage-meter">
       <div class="progress-bar-container flex-1">
         <div class="progress-bar-fill" id="storage-bar" style="width: 0%"></div>
       </div>
@@ -481,18 +481,21 @@ Remove the drive now if you do not want it mounted again.`;
         const bar = document.getElementById('storage-bar');
         const pct = document.getElementById('storage-percent');
         const detail = document.getElementById('storage-detail');
+        const meter = document.getElementById('storage-meter');
 
         if (data.mounted) {
           badge.className = 'badge badge-success';
           badge.textContent = 'Mounted';
-          if (data.total_storage != null) {
+          if (data.disk_available) {
             const usedPct = parseFloat(data.storage_usage || '0') || 0;
+            meter.classList.remove('d-none');
             val.textContent = data.used_storage + ' GB';
             pct.textContent = usedPct + '%';
             bar.style.width = usedPct + '%';
             bar.className = 'progress-bar-fill' + (usedPct > 90 ? ' danger' : usedPct > 70 ? ' warning' : ' success');
             detail.textContent = data.used_storage + ' / ' + data.total_storage + ' GB used';
           } else {
+            meter.classList.add('d-none');
             val.textContent = 'Mounted';
             pct.textContent = '—';
             detail.textContent = 'No storage info available';
@@ -502,6 +505,7 @@ Remove the drive now if you do not want it mounted again.`;
           badge.textContent = 'Not Mounted';
           val.textContent = 'Not Mounted';
           pct.textContent = '—';
+          meter.classList.add('d-none');
           bar.style.width = '0%';
           detail.textContent = data.mount_point || 'Drive is not mounted';
         }

@@ -34,3 +34,25 @@ verification, and preventing concurrent secret writes from losing updates.
   review cap, so there is no fresh review output to address yet.
 - A third `coderabbit review` attempt at 2026-05-02 14:04 UTC was also rejected for the same hourly
   review cap.
+
+## Additional Review Batch
+
+Verified the follow-up inline/duplicate/nitpick comment batch against the current tree. All 16
+findings were relevant: some were behavior fixes, while the rest were comments or documentation
+that explain compatibility and operational contracts future maintainers could easily miss.
+
+### Decisions
+
+- Remove the duplicate `/run_task/<task_name>` route because no template or static code references
+  it, and the explicit `/task/<task_name>/start` route already owns task starts.
+- Keep dashboard storage state split between `is_mounted` and `disk_available` so mount controls
+  follow the OS mount state while storage usage follows disk usage availability.
+- Use microsecond `checked_at` values plus an internal publish sequence for drive-health summaries
+  so later same-timestamp publishes win without exposing the sequence in API responses.
+
+### Verification
+
+- `.venv/bin/python -m ruff format --check simple_safer_server/legacy/migration.py simple_safer_server/routes/tasks.py simple_safer_server/routes/storage.py simple_safer_server/services/cloud_backup_service.py simple_safer_server/services/drive_health.py simple_safer_server/adapters/backup_drive_commands.py simple_safer_server/adapters/storage_commands.py tests/test_backup_drive_command_adapter.py tests/test_smb_command_adapter.py tests/test_cloud_backup_service.py tests/test_drive_health.py tests/test_drive_health_summary.py tests/test_migration.py`
+- `.venv/bin/python -m ruff check simple_safer_server/legacy/migration.py simple_safer_server/routes/tasks.py simple_safer_server/routes/storage.py simple_safer_server/services/cloud_backup_service.py simple_safer_server/services/drive_health.py simple_safer_server/adapters/backup_drive_commands.py simple_safer_server/adapters/storage_commands.py tests/test_backup_drive_command_adapter.py tests/test_smb_command_adapter.py tests/test_cloud_backup_service.py tests/test_drive_health.py tests/test_drive_health_summary.py tests/test_migration.py`
+- `.venv/bin/python -m pytest tests/test_backup_drive_command_adapter.py tests/test_smb_command_adapter.py tests/test_cloud_backup_service.py tests/test_drive_health.py tests/test_drive_health_summary.py tests/test_migration.py tests/test_runtime_command_adapters.py`
+- `.venv/bin/python - <<'PY' ... yaml.safe_load(Path('.github/workflows/python-ci.yml').read_text()) ... PY`

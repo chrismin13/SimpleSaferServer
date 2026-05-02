@@ -55,7 +55,11 @@ def dashboard():
         hdd_temp="Not checked",
         cpu_usage=f"{cpu_percent}%",
         ram_usage=f"{ram_percent}%",
-        mount_info={"is_mounted": mounted and disk is not None, "mount_point": mount_point},
+        mount_info={
+            "is_mounted": mounted,
+            "disk_available": disk is not None,
+            "mount_point": mount_point,
+        },
         tasks=task_summaries,
     )
 
@@ -125,28 +129,6 @@ def stop_task(task_name):
         if request.accept_mimetypes.best == "application/json":
             return jsonify(
                 {"success": False, "message": "Could not stop task. Check task logs."}
-            ), 500
-        abort(500)
-
-
-@tasks.route("/run_task/<task_name>", methods=["POST"])
-@admin_required
-def run_task(task_name):
-    task = _get_services().task_service.get_task(task_name)
-    if not task:
-        if request.accept_mimetypes.best == "application/json":
-            return jsonify({"success": False, "message": "Task not found"}), 404
-        abort(404)
-    try:
-        task.start()
-        if request.accept_mimetypes.best == "application/json":
-            return jsonify({"success": True, "message": f"Started {task_name}."})
-        return redirect(url_for("task_routes.task_detail", task_name=task_name))
-    except Exception:
-        current_app.logger.exception("Failed to run task %s", task_name)
-        if request.accept_mimetypes.best == "application/json":
-            return jsonify(
-                {"success": False, "message": "Could not run task. Check task logs."}
             ), 500
         abort(500)
 

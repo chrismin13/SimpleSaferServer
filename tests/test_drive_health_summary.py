@@ -140,3 +140,15 @@ def test_drive_health_summary_service_keeps_only_latest_summary():
     assert summary["status"] == "warning"
     assert summary["probability"] == 0.8
     assert summary["checked_at"] == "second"
+
+
+def test_drive_health_summary_service_accepts_later_publish_with_same_timestamp():
+    service = DriveHealthSummaryService()
+    checked_at = "2026-05-02T14:05:00"
+
+    service.publish({"status": "good", "probability": 0.03, "checked_at": checked_at})
+    latest = service.publish({"status": "warning", "probability": 0.8, "checked_at": checked_at})
+
+    assert latest["status"] == "warning"
+    assert "_publish_seq" not in latest
+    assert service.get_summary()["probability"] == 0.8

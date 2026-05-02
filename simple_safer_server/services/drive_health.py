@@ -120,6 +120,7 @@ class DriveHealthSummaryService:
     def __init__(self):
         self._lock = threading.Lock()
         self._summary = self._empty_summary()
+        self._publish_seq = 0
 
     def _empty_summary(self):
         return {
@@ -137,7 +138,10 @@ class DriveHealthSummaryService:
     def get_summary(self):
         # Return a copy so callers cannot mutate the last-known state in place.
         with self._lock:
-            return dict(self._summary)
+            return self._public_summary(self._summary)
+
+    def _public_summary(self, summary):
+        return {key: value for key, value in summary.items() if not key.startswith("_")}
 
     def publish(self, summary):
         latest = self._empty_summary()
@@ -147,14 +151,18 @@ class DriveHealthSummaryService:
         with self._lock:
             existing_checked_at = _summary_timestamp(self._summary)
             incoming_checked_at = _summary_timestamp(latest)
+            incoming_seq = self._publish_seq + 1
+            existing_seq = self._summary.get("_publish_seq", 0)
             if (
                 existing_checked_at is not None
                 and incoming_checked_at is not None
-                and incoming_checked_at <= existing_checked_at
+                and (incoming_checked_at, incoming_seq) <= (existing_checked_at, existing_seq)
             ):
-                return dict(self._summary)
+                return self._public_summary(self._summary)
+            self._publish_seq = incoming_seq
+            latest["_publish_seq"] = self._publish_seq
             self._summary = latest
-        return dict(latest)
+        return self._public_summary(latest)
 
 
 def _summary_timestamp(summary):
@@ -176,7 +184,7 @@ def build_drive_health_summary(
 ):
     """Run a live probe and convert it into the compact dashboard contract."""
     runtime = runtime or get_runtime()
-    checked_at = datetime.now().isoformat(timespec="seconds")
+    checked_at = datetime.now().isoformat()
     summary = {
         "status": "unknown",
         "source": "live",
@@ -774,6 +782,9 @@ def collect_hdsentinel_snapshot(config_manager, system_utils, runtime=None, devi
             snapshot["power_on_hours"]
         )
 
+    # HDSentinel can time out while writing the report after the quick SOLID
+    # probe succeeded. Preserve that partial data as available so the dashboard
+    # can show usable health fields alongside the timeout warning.
     snapshot["available"] = True
     return snapshot
 
@@ -804,7 +815,7 @@ def _log_and_email_alert(config_manager, runtime, title, message, *, alert_type,
     email_body = f"Subject: {title}\nFrom: {from_address}\n\n{message}"
     try:
         drive_health_command_adapter.send_email(from_address, email_address, email_body)
-    except (CalledProcessError, OSError) as exc:
+    except (CalledProcessError, OSError, TimeoutExpired) as exc:
         LOGGER.warning("Failed to send alert email '%s': %s", title, exc)
 
 

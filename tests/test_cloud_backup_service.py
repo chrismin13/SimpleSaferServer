@@ -25,12 +25,13 @@ class FakeConfigManager:
 class FakeSystemUtils:
     def __init__(self):
         self.rclone_config = None
+        self.setup_rclone_result = True
         self.created_systemd_config = False
         self.installed_timers = False
 
     def setup_rclone(self, config):
         self.rclone_config = config
-        return True
+        return self.setup_rclone_result
 
     def create_systemd_config_file(self, config):
         self.created_systemd_config = True
@@ -188,6 +189,27 @@ class CloudBackupServiceTests(unittest.TestCase):
         if rclone_config is None:
             self.fail("Expected rclone config to be written")
         self.assertIn("stored-obscured", rclone_config)
+
+    def test_mega_config_does_not_store_new_credentials_when_rclone_write_fails(self):
+        command_runner = FakeCommandRunner()
+        command_runner.queue_result(stdout="obscured-password\n")
+        service, config, system_utils, _runtime = self.make_service(command_runner=command_runner)
+        system_utils.setup_rclone_result = False
+
+        result = service.save_config(
+            {
+                "cloud_mode": "mega",
+                "mega_email": "user@example.com",
+                "mega_password": "secret",
+                "mega_folder": "/Backups",
+            }
+        )
+
+        self.assertEqual(
+            result, {"success": False, "error": "Failed to write rclone config for MEGA."}
+        )
+        self.assertNotIn("mega_email", config.config["backup"])
+        self.assertNotIn("mega_pass", config.config["backup"])
 
     def test_list_mega_folders_uses_command_runner(self):
         command_runner = FakeCommandRunner()

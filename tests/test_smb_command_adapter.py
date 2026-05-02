@@ -1,4 +1,5 @@
 import unittest
+from types import SimpleNamespace
 
 from simple_safer_server.adapters.command_runner import CommandRunner
 from simple_safer_server.adapters.smb_commands import SmbCommandAdapter
@@ -10,6 +11,7 @@ class RecordingRunner(CommandRunner):
 
     def run(self, command, **kwargs):
         self.calls.append((command, kwargs))
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
 
 
 class SmbCommandAdapterTests(unittest.TestCase):

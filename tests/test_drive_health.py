@@ -1,5 +1,6 @@
 import json
 import unittest
+from subprocess import TimeoutExpired
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -133,6 +134,29 @@ class DriveHealthTests(unittest.TestCase):
         self.assertIsNone(missing)
         self.assertIn("Unknown USB bridge", error)
         self.assertNotEqual(error, drive_health.SMARTCTL_JSON_UPGRADE_MESSAGE)
+
+    @patch(
+        "simple_safer_server.services.drive_health.drive_health_command_adapter.send_email",
+        side_effect=TimeoutExpired(cmd=["msmtp"], timeout=30),
+    )
+    def test_log_and_email_alert_treats_email_timeout_as_warning(self, _mock_send_email):
+        config_manager = SimpleNamespace(
+            log_alert=lambda *args, **kwargs: None,
+            get_value=lambda section, key, default="": {
+                ("backup", "email_address"): "admin@example.com",
+                ("backup", "from_address"): "server@example.com",
+            }.get((section, key), default),
+        )
+        runtime = SimpleNamespace(is_fake=False)
+
+        drive_health._log_and_email_alert(
+            config_manager,
+            runtime,
+            "Drive health",
+            "message",
+            alert_type="warning",
+            source="drive_health",
+        )
 
 
 if __name__ == "__main__":

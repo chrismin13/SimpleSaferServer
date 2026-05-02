@@ -16,6 +16,8 @@ class StorageCommandAdapter:
         self._command_runner.run(["systemctl", "poweroff"], check=True)
 
     def find_device_by_uuid(self, uuid: str) -> str:
+        # The blkid lookup can produce no stdout for an absent UUID; returning
+        # result.stdout.strip() means callers must check for an empty device path.
         result = self._command_runner.run(
             ["blkid", "-t", f"UUID={uuid}", "-o", "device"],
             capture_output=True,
