@@ -65,6 +65,9 @@ Livepatch status is shown only on Ubuntu.
 - Setup requires the Ubuntu Pro Client (`pro`) and a Canonical Ubuntu Pro token.
 - Setup writes the token to a temporary `0600` attach-config file, runs `sudo pro attach --attach-config <file>`, removes the file, and then runs `sudo pro enable livepatch`.
 - The token is not passed as a command-line argument, because local process listings and process audit logs can expose argv while a command is running.
+- After a successful real setup, SimpleSaferServer records `livepatch_managed = true` under `system_updates` in its config.
+- Uninstall does not detach Ubuntu Pro or disable Livepatch. Those are host-level subscription and security states, so the uninstaller leaves them for the admin to review.
+- The uninstall summary warns about retained Ubuntu Pro and Livepatch state only when SimpleSaferServer has recorded that it managed Livepatch setup.
 
 Ubuntu Livepatch status behavior follows Canonical's Livepatch client documentation:
 

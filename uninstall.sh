@@ -115,6 +115,25 @@ raise SystemExit(1)
 PY
 }
 
+livepatch_was_managed() {
+    if [ ! -f "$CONFIG_FILE" ]; then
+        return 1
+    fi
+
+    require_python3 "read $CONFIG_FILE" || return 1
+
+    python3 - "$CONFIG_FILE" <<'PY'
+import configparser
+import sys
+
+config = configparser.ConfigParser()
+config.read(sys.argv[1])
+if config.getboolean("system_updates", "livepatch_managed", fallback=False):
+    raise SystemExit(0)
+raise SystemExit(1)
+PY
+}
+
 backup_file_if_present() {
     local path="$1"
     local label="$2"
@@ -296,6 +315,10 @@ main() {
     if apt_updates_were_managed; then
         apt_updates_managed="true"
     fi
+    local livepatch_managed="false"
+    if livepatch_was_managed; then
+        livepatch_managed="true"
+    fi
 
     echo "Stopping and disabling systemd units..."
     for svc in check_mount check_health backup_cloud ddns_update; do
@@ -369,6 +392,11 @@ main() {
     if [ "$apt_updates_managed" = "true" ]; then
         echo "SimpleSaferServer had managed apt periodic settings in $APT_AUTO_UPGRADES_CONF."
         echo "That file was left in place. Review it manually if you want to disable automatic apt updates."
+    fi
+    if [ "$livepatch_managed" = "true" ]; then
+        echo "SimpleSaferServer enabled Ubuntu Livepatch through Ubuntu Pro integration."
+        echo "Ubuntu Pro and Livepatch state were left in place."
+        echo "Review or disable them manually if you do not want them after uninstall."
     fi
 }
 

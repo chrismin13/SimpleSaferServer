@@ -938,4 +938,7 @@ class SystemUpdatesManager:
                 attach_config_path.unlink()
 
         self.command_adapter.pro_enable_livepatch(pro_binary)
+        # This marker is only written after the real Pro commands succeed. The
+        # uninstaller uses it to warn without touching an admin's subscription.
+        self.config_manager.set_value("system_updates", "livepatch_managed", "true")
         return self.get_livepatch_status()

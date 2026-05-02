@@ -138,6 +138,90 @@ class UninstallScriptTests(unittest.TestCase):
 
         self.assertNotEqual(result.returncode, 0)
 
+    def test_livepatch_was_managed_detects_managed_config(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            config_path = Path(tempdir) / "config.conf"
+            config_path.write_text(
+                textwrap.dedent(
+                    """\
+                    [system_updates]
+                    livepatch_managed = true
+                    """
+                )
+            )
+
+            self.run_bash(
+                textwrap.dedent(
+                    f"""\
+                    source "{UNINSTALL_SCRIPT}"
+                    CONFIG_FILE="{config_path}"
+                    livepatch_was_managed
+                    """
+                )
+            )
+
+    def test_livepatch_was_managed_ignores_missing_or_false_config(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            missing_path = Path(tempdir) / "missing.conf"
+            false_path = Path(tempdir) / "config.conf"
+            false_path.write_text(
+                textwrap.dedent(
+                    """\
+                    [system_updates]
+                    livepatch_managed = false
+                    """
+                )
+            )
+
+            missing_result = self.run_bash_raw(
+                textwrap.dedent(
+                    f"""\
+                    source "{UNINSTALL_SCRIPT}"
+                    CONFIG_FILE="{missing_path}"
+                    livepatch_was_managed
+                    """
+                )
+            )
+            false_result = self.run_bash_raw(
+                textwrap.dedent(
+                    f"""\
+                    source "{UNINSTALL_SCRIPT}"
+                    CONFIG_FILE="{false_path}"
+                    livepatch_was_managed
+                    """
+                )
+            )
+
+        self.assertNotEqual(missing_result.returncode, 0)
+        self.assertNotEqual(false_result.returncode, 0)
+
+    def test_livepatch_was_managed_ignores_other_managed_sections(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            config_path = Path(tempdir) / "config.conf"
+            config_path.write_text(
+                textwrap.dedent(
+                    """\
+                    [apt_updates]
+                    managed = true
+
+                    [other]
+                    livepatch_managed = true
+                    """
+                )
+            )
+
+            result = self.run_bash_raw(
+                textwrap.dedent(
+                    f"""\
+                    source "{UNINSTALL_SCRIPT}"
+                    CONFIG_FILE="{config_path}"
+                    livepatch_was_managed
+                    """
+                )
+            )
+
+        self.assertNotEqual(result.returncode, 0)
+
     def test_remove_managed_fstab_entries_only_removes_tagged_lines(self):
         with tempfile.TemporaryDirectory() as tempdir:
             fstab_path = Path(tempdir) / "fstab"

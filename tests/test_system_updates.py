@@ -2,6 +2,7 @@ import tempfile
 import unittest
 from datetime import date
 from pathlib import Path
+from subprocess import CalledProcessError
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -439,8 +440,9 @@ class SystemUpdatesTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             command_adapter = FakeSystemUpdatesCommandAdapter()
+            config = FakeConfigManager()
             manager = SystemUpdatesManager(
-                FakeConfigManager(),
+                config,
                 runtime=make_real_runtime(root),
                 command_adapter=command_adapter,
             )
@@ -470,6 +472,7 @@ class SystemUpdatesTests(unittest.TestCase):
             self.assertEqual(command_adapter.calls[1], ("pro_enable_livepatch", "/usr/bin/pro"))
             self.assertIn('token: "secret-token"', seen_attach_config["content"])
             self.assertFalse(seen_attach_config["path"].exists())
+            self.assertEqual(config.get_value("system_updates", "livepatch_managed"), "true")
             status.assert_called_once()
 
     def test_livepatch_setup_enables_livepatch_when_machine_is_already_attached(self):
@@ -491,6 +494,37 @@ class SystemUpdatesTests(unittest.TestCase):
                         manager.setup_livepatch("secret-token")
 
             self.assertEqual(command_adapter.calls[-1], ("pro_enable_livepatch", "/usr/bin/pro"))
+
+    def test_livepatch_setup_does_not_mark_fake_mode_as_managed(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config = FakeConfigManager()
+            manager = SystemUpdatesManager(config, runtime=make_runtime(Path(temp_dir)))
+
+            with patch.object(manager, "get_distribution_info", return_value={"id": "ubuntu"}):
+                manager.setup_livepatch("secret-token")
+
+            self.assertIsNone(config.get_value("system_updates", "livepatch_managed", None))
+
+    def test_failed_livepatch_setup_does_not_claim_ownership(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            command_adapter = FakeSystemUpdatesCommandAdapter()
+            command_adapter.attach_returncode = 1
+            config = FakeConfigManager()
+            manager = SystemUpdatesManager(
+                config,
+                runtime=make_real_runtime(Path(temp_dir)),
+                command_adapter=command_adapter,
+            )
+
+            with patch.object(manager, "get_distribution_info", return_value={"id": "ubuntu"}):
+                with patch(
+                    "simple_safer_server.services.system_updates.shutil.which",
+                    return_value="/usr/bin/pro",
+                ):
+                    with self.assertRaises(CalledProcessError):
+                        manager.setup_livepatch("secret-token")
+
+            self.assertIsNone(config.get_value("system_updates", "livepatch_managed", None))
 
     def test_livepatch_setup_requires_ubuntu_pro_client(self):
         with tempfile.TemporaryDirectory() as temp_dir:
