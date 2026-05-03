@@ -29,6 +29,7 @@ class FakeSystemUtils:
         self.setup_rclone_result = True
         self.created_systemd_config = False
         self.installed_timers = False
+        self.systemd_config = None
 
     def setup_rclone(self, config):
         self.rclone_config = config
@@ -36,6 +37,7 @@ class FakeSystemUtils:
 
     def create_systemd_config_file(self, config):
         self.created_systemd_config = True
+        self.systemd_config = config
         return True, None
 
     def install_systemd_services_and_timers(self, config):
@@ -155,6 +157,16 @@ class CloudBackupServiceTests(unittest.TestCase):
 
         self.assertNotIn("bandwidth_limit", config.config["backup"])
 
+    def test_fake_schedule_save_rejects_non_strict_time(self):
+        service, config, system_utils, _runtime = self.make_service(is_fake=True)
+
+        with self.assertRaisesRegex(ValidationProblem, "HH:MM"):
+            service.save_schedule({"backup_cloud_time": "4:00", "bandwidth_limit": "4M"})
+
+        self.assertNotIn("backup_cloud_time", config.config["schedule"])
+        self.assertNotIn("bandwidth_limit", config.config["backup"])
+        self.assertFalse(system_utils.created_systemd_config)
+
     def test_real_config_save_routes_schedule_values_through_timer_update(self):
         service, config, system_utils, _runtime = self.make_service(is_fake=False)
 
@@ -169,7 +181,22 @@ class CloudBackupServiceTests(unittest.TestCase):
         self.assertEqual(result, {})
         self.assertTrue(system_utils.created_systemd_config)
         self.assertTrue(system_utils.installed_timers)
+        systemd_config = system_utils.systemd_config
+        if systemd_config is None:
+            self.fail("Expected systemd config to be generated.")
+        self.assertEqual(systemd_config["schedule"]["backup_cloud_time"], "05:15")
         self.assertEqual(config.config["schedule"]["backup_cloud_time"], "05:15")
+        self.assertEqual(config.config["backup"]["bandwidth_limit"], "8M")
+
+    def test_schedule_save_allows_bandwidth_only_update(self):
+        service, config, system_utils, _runtime = self.make_service(is_fake=False)
+        config.config["schedule"] = {"backup_cloud_time": "03:00"}
+
+        result = service.save_schedule({"bandwidth_limit": "8M"})
+
+        self.assertEqual(result, {})
+        self.assertTrue(system_utils.created_systemd_config)
+        self.assertEqual(config.config["schedule"]["backup_cloud_time"], "03:00")
         self.assertEqual(config.config["backup"]["bandwidth_limit"], "8M")
 
     def test_advanced_config_requires_remote_and_rclone_config(self):

@@ -99,7 +99,8 @@ Advanced mode:
 
 ## Step 6: Schedule
 
-- Set the backup time.
+- Set the backup time. The setup wizard saves two-digit 24-hour `HH:MM` values such as `03:00`
+  or `23:30`.
 - Optionally set a bandwidth limit.
 - Save to complete setup.
 - Completing setup installs and activates the recurring systemd timers for mount checks, drive-health checks, cloud backups, and DDNS updates.

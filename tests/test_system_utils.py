@@ -158,6 +158,26 @@ class SystemUtilsTimerActivationTests(unittest.TestCase):
                 (runtime.systemd_dir / "check_health.timer").read_text(),
             )
 
+    def test_install_systemd_services_normalizes_legacy_single_digit_hour(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime = self._runtime(temp_dir)
+            runtime.systemd_dir.mkdir()
+            system_utils = RecordingSystemUtils(runtime)
+            config = self._config()
+            config["schedule"]["backup_cloud_time"] = "3:00"
+
+            ok, error = system_utils.install_systemd_services_and_timers(
+                config,
+                activate_timers=False,
+            )
+
+            self.assertTrue(ok, error)
+            self.assertIsNone(error)
+            self.assertIn(
+                "OnCalendar=*-*-* 03:00:00",
+                (runtime.systemd_dir / "backup_cloud.timer").read_text(),
+            )
+
     def test_install_systemd_services_rejects_invalid_backup_time_seconds(self):
         invalid_values = [
             "03:00:99",  # too many seconds

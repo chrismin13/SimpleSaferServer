@@ -101,7 +101,7 @@ class ConfigManager:
             'bandwidth_limit': '',
         }
 
-        self.config['schedule'] = {'backup_cloud_time': '3:00'}
+        self.config['schedule'] = {'backup_cloud_time': '03:00'}
 
         self.config['hdsentinel'] = {'enabled': 'true', 'health_change_alert': 'true'}
 

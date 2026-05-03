@@ -15,6 +15,10 @@ from simple_safer_server.adapters.command_runner import (
 )
 from simple_safer_server.services.config_manager import ConfigManager
 from simple_safer_server.services.runtime import get_runtime
+from simple_safer_server.services.schedule_time import (
+    ScheduleTimeError,
+    normalize_legacy_schedule_time,
+)
 from simple_safer_server.services.smb_manager import SMBManager
 from simple_safer_server.services.system_utils import SystemUtils
 from simple_safer_server.services.user_manager import PasswordPolicy, UserManager
@@ -76,24 +80,10 @@ def _parse_msmtp_config(path: Path) -> Dict[str, str]:
 
 
 def normalize_legacy_backup_time(value: str) -> str:
-    parts = value.strip().split(":")
-    if len(parts) not in {2, 3}:
-        raise MigrationError(
-            f"Legacy backup time '{value}' is invalid. Expected HH:MM or HH:MM:SS."
-        )
-
     try:
-        hour = int(parts[0])
-        minute = int(parts[1])
-    except ValueError as exc:
+        return normalize_legacy_schedule_time(value)
+    except ScheduleTimeError as exc:
         raise MigrationError(f"Legacy backup time '{value}' is invalid.") from exc
-
-    if hour < 0 or hour > 23 or minute < 0 or minute > 59:
-        raise MigrationError(
-            f"Legacy backup time '{value}' is out of range. Expected 00:00 to 23:59."
-        )
-
-    return f"{hour:02d}:{minute:02d}"
 
 
 def load_legacy_bundle(bundle_dir: Union[str, Path]) -> LegacyBundle:

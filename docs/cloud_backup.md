@@ -9,7 +9,7 @@ The Cloud Backup page manages cloud backup settings, schedules, and status.
 - **Error Feedback**: Inline error messages for backup issues.
 
 ## Backup Schedule & Bandwidth
-- **Backup Time**: Set the daily backup time.
+- **Backup Time**: Set the daily backup time in two-digit 24-hour `HH:MM` format.
 - **Bandwidth Limit**: (Optional) Limit backup bandwidth (e.g., 4M for 4 MB/s).
 - **Save**: Button to save schedule settings by disabling during the request.
 - **Error/Success Feedback**: Inline messages for save actions.

@@ -7,27 +7,12 @@ import shutil
 from simple_safer_server.adapters.command_runner import CalledProcessError, CommandRunner
 from simple_safer_server.services.file_persistence import atomic_write_text
 from simple_safer_server.services.runtime import get_fake_state, get_runtime
+from simple_safer_server.services.schedule_time import systemd_schedule_time
 
 
 def _time_before(hour, minute, *, minutes_before):
     total_minutes = ((hour * 60) + minute - minutes_before) % (24 * 60)
     return divmod(total_minutes, 60)
-
-
-def _parse_backup_cloud_time(backup_cloud_time):
-    """Return normalized backup time fields for systemd OnCalendar entries."""
-    time_parts = backup_cloud_time.split(':')
-    if len(time_parts) not in (2, 3):
-        raise ValueError("schedule.backup_cloud_time must be in HH:MM or HH:MM:SS format")
-    # int() accepts signs and surrounding whitespace; systemd timer config should only use digits.
-    if not all(time_part.isdigit() for time_part in time_parts):
-        raise ValueError("schedule.backup_cloud_time must be in HH:MM or HH:MM:SS format")
-    backup_hour = int(time_parts[0])
-    backup_minute = int(time_parts[1])
-    backup_second = int(time_parts[2]) if len(time_parts) == 3 else 0
-    if not (0 <= backup_hour < 24 and 0 <= backup_minute < 60 and 0 <= backup_second < 60):
-        raise ValueError("schedule.backup_cloud_time contains an invalid time")
-    return backup_hour, backup_minute, f"{backup_hour:02d}:{backup_minute:02d}:{backup_second:02d}"
 
 
 class SystemUtils:
@@ -239,10 +224,9 @@ account default : simplesaferserver
             schedule = config.get('schedule', {})
             backup_cloud_time = schedule.get('backup_cloud_time', '3:00:00')
 
-            # Parse the backup time and calculate sequential times.
-            backup_hour, backup_minute, backup_cloud_time = _parse_backup_cloud_time(
-                backup_cloud_time
-            )
+            # Existing installs may still carry older H:MM or HH:MM:SS values;
+            # normalize here before publishing systemd unit files.
+            backup_hour, backup_minute, backup_cloud_time = systemd_schedule_time(backup_cloud_time)
 
             # Keep the pre-backup jobs spaced out so randomized timer delay or
             # slow USB spin-up is less likely to make health start before mount.

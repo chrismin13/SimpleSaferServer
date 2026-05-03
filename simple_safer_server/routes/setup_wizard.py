@@ -1,6 +1,5 @@
 import logging
 import os
-import re
 import stat
 import time
 from datetime import datetime
@@ -28,6 +27,10 @@ from simple_safer_server.services.backup_drive_unmount import (
 from simple_safer_server.services.cloud_backup_service import normalize_bandwidth_limit
 from simple_safer_server.services.config_manager import ConfigManager
 from simple_safer_server.services.runtime import get_fake_state, get_runtime
+from simple_safer_server.services.schedule_time import (
+    ScheduleTimeError,
+    normalize_ui_schedule_time,
+)
 from simple_safer_server.services.smb_manager import SMBManager
 from simple_safer_server.services.system_utils import SystemUtils
 from simple_safer_server.services.user_manager import UserManager
@@ -653,14 +656,16 @@ def save_schedule():
         if not schedule_time:
             return _validation_problem('Missing required fields', details='Time is required')
 
-        # Validate time format (HH:MM)
-        if not re.match(r'^([01]?[0-9]|2[0-3]):[0-5][0-9]$', schedule_time):
+        try:
+            schedule_time = normalize_ui_schedule_time(schedule_time)
+        except ScheduleTimeError:
             return _validation_problem(
                 'Invalid time format',
                 details='Time must be in HH:MM format (24-hour)',
             )
 
-        # Save schedule to config
+        # Store the same HH:MM shape emitted by browser time inputs so later
+        # timer generation does not need to guess which UI contract produced it.
         config_manager.set_value('schedule', 'backup_cloud_time', schedule_time)
         if bandwidth_limit is not None:
             config_manager.set_value('backup', 'bandwidth_limit', bandwidth_limit)

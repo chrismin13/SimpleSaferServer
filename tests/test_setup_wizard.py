@@ -468,6 +468,48 @@ class SetupWizardTests(unittest.TestCase):
             'server@example.com', 'smtp.example.com', '587', 'server', 'secret'
         )
 
+    def test_setup_schedule_rejects_single_digit_hour(self):
+        config_manager = MagicMock()
+        config_manager.is_setup_complete.return_value = False
+
+        with patch.object(self.setup_wizard, 'config_manager', config_manager):
+            with self.app.test_client() as client:
+                response = client.post(
+                    '/api/setup/schedule',
+                    json={'time': '7:05', 'bandwidth_limit': ''},
+                )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertProblemDetail(response, 'Invalid time format')
+        config_manager.set_value.assert_not_called()
+
+    def test_setup_schedule_saves_two_digit_time(self):
+        config_manager = MagicMock()
+        config_manager.is_setup_complete.return_value = False
+
+        with patch.object(self.setup_wizard, 'config_manager', config_manager):
+            with self.app.test_client() as client:
+                response = client.post(
+                    '/api/setup/schedule',
+                    json={'time': '07:05', 'bandwidth_limit': '4M'},
+                )
+
+        self.assertEqual(response.status_code, 200)
+        config_manager.set_value.assert_any_call('schedule', 'backup_cloud_time', '07:05')
+        config_manager.set_value.assert_any_call('backup', 'bandwidth_limit', '4M')
+
+    def test_setup_schedule_requires_time(self):
+        config_manager = MagicMock()
+        config_manager.is_setup_complete.return_value = False
+
+        with patch.object(self.setup_wizard, 'config_manager', config_manager):
+            with self.app.test_client() as client:
+                response = client.post('/api/setup/schedule', json={'bandwidth_limit': '4M'})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertProblemDetail(response, 'Missing required fields')
+        config_manager.set_value.assert_not_called()
+
     def test_format_drive_rejects_non_string_disk(self):
         # JSON clients can send numeric or other non-string values; reject cleanly.
         with self.app.test_client() as client:

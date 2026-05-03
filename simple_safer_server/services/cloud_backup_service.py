@@ -6,6 +6,10 @@ from tempfile import NamedTemporaryFile
 from typing import Any, Dict, List, Optional, Tuple
 
 from simple_safer_server.adapters.command_runner import PIPE, CommandRunner
+from simple_safer_server.services.schedule_time import (
+    ScheduleTimeError,
+    normalize_ui_schedule_time,
+)
 from simple_safer_server.web.problems import NotFoundProblem, OperationProblem, ValidationProblem
 
 
@@ -198,6 +202,11 @@ class CloudBackupService:
         backup_time = data.get("backup_cloud_time")
         has_bandwidth_limit = "bandwidth_limit" in data
         bandwidth_limit = normalize_bandwidth_limit(data.get("bandwidth_limit"))
+        if backup_time:
+            try:
+                backup_time = normalize_ui_schedule_time(backup_time)
+            except ScheduleTimeError as exc:
+                raise ValidationProblem(str(exc)) from exc
 
         if self._runtime.is_fake:
             if backup_time:
