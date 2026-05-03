@@ -39,6 +39,6 @@ if ! command -v rclone >/dev/null 2>&1; then
 fi
 
 printf 'Development environment ready in %s using Python %s and %s.\n' "${VENV_DIR}" "${PYTHON_VERSION}" "${RUNTIME_REQUIREMENTS}"
-printf '%s\n' "Development environment ready. Start fake mode with: bash run_fake.sh"
+printf '%s\n' "Start fake mode with: bash run_fake.sh"
 printf 'Optional: install commit hooks with %s/bin/pre-commit install\n' "${VENV_DIR}"
 printf '%s\n' "To reset fake-mode setup data later, run: bash reset_fake_mode.sh"

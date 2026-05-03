@@ -23,17 +23,24 @@ def _add_app_to_path():
             # patched before the intentionally delayed import below.
             sys.path.insert(0, str(candidate))
             return
-    print(
-        "WARNING: neither candidate path contained the simple_safer_server package; "
-        "check the working directory or install location.",
-        file=sys.stderr,
-    )
 
 
-_add_app_to_path()
+try:
+    from simple_safer_server.legacy.migration import MigrationError, import_legacy_bundle
+except ImportError:
+    _add_app_to_path()
+    try:
+        # Retry from the checkout or /opt application path for script-style installs.
+        from simple_safer_server.legacy.migration import MigrationError, import_legacy_bundle
+    except ImportError:
+        print(
+            "WARNING: could not import simple_safer_server.legacy.migration; "
+            "check the working directory or install location.",
+            file=sys.stderr,
+        )
+        raise
 
-# The E402 suppression is intentional because _add_app_to_path() must run before importing the package.
-from simple_safer_server.legacy.migration import MigrationError, import_legacy_bundle  # noqa: E402
+# The imports above are intentionally delayed so installed packages can load without sys.path edits.
 
 
 def parse_args() -> argparse.Namespace:
