@@ -107,7 +107,9 @@ def test_drive_health_page_renders_warning_when_smartctl_support_check_fails():
                             response = route_module.drives.__wrapped__()
 
     assert response == "rendered"
-    warning = mock_render.call_args.kwargs["smart_support_warning"]
+    # Python 3.7's mock call tuple does not expose the newer kwargs convenience property.
+    _args, kwargs = mock_render.call_args
+    warning = kwargs["smart_support_warning"]
     assert "Could not check smartctl JSON support:" in warning
     assert "timed out" in warning
 
