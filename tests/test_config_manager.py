@@ -1,4 +1,5 @@
 # pyright: reportAttributeAccessIssue=false
+import configparser
 import os
 import tempfile
 import types
@@ -22,16 +23,18 @@ class FakeFernet:
         return value
 
 
-def create_config_manager():
+def create_config_manager(runtime=None):
     cryptography_module = types.ModuleType("cryptography")
     fernet_module = types.ModuleType("cryptography.fernet")
     fernet_module.Fernet = FakeFernet
 
-    temp_dir = tempfile.TemporaryDirectory()
-    runtime = types.SimpleNamespace(
-        config_dir=Path(temp_dir.name) / "config",
-        default_mount_point="/media/backup",
-    )
+    temp_dir = None
+    if runtime is None:
+        temp_dir = tempfile.TemporaryDirectory()
+        runtime = types.SimpleNamespace(
+            config_dir=Path(temp_dir.name) / "config",
+            default_mount_point="/media/backup",
+        )
 
     module_patch = patch.dict(
         "sys.modules",
@@ -47,7 +50,8 @@ def create_config_manager():
         manager = ConfigManager(runtime=runtime)
     finally:
         module_patch.stop()
-    manager._test_temp_dir = temp_dir
+    if temp_dir is not None:
+        manager._test_temp_dir = temp_dir
     return manager
 
 
@@ -120,6 +124,41 @@ class ConfigManagerDefaultsTests(unittest.TestCase):
         self.assertEqual(manager.get_secret("duckdns_token"), "duck-token")
         self.assertEqual(manager.get_secret("cloudflare_token"), "cf-token")
         self.assertTrue(manager.secrets_lock_path.exists())
+
+    def test_set_value_preserves_other_manager_update_with_lock_file(self):
+        first_manager = create_config_manager()
+        second_manager = create_config_manager(runtime=first_manager.runtime)
+
+        first_manager.set_value("backup", "uuid", "new-uuid")
+        second_manager.set_value("ddns", "duckdns_enabled", "true")
+
+        first_manager.load_config()
+        self.assertEqual(first_manager.get_value("backup", "uuid"), "new-uuid")
+        self.assertEqual(first_manager.get_value("ddns", "duckdns_enabled"), "true")
+        self.assertTrue(first_manager.config_lock_path.exists())
+
+    def test_create_default_config_does_not_replace_existing_file(self):
+        manager = create_config_manager()
+        manager.set_value("system", "server_name", "existing-server")
+
+        manager.config["system"]["server_name"] = "stale-memory"
+        manager.create_default_config()
+
+        self.assertEqual(manager.get_value("system", "server_name"), "existing-server")
+
+    def test_replace_config_is_explicit_full_snapshot_write(self):
+        manager = create_config_manager()
+        imported_config = configparser.ConfigParser()
+        imported_config["system"] = {
+            "username": "admin",
+            "server_name": "imported",
+            "setup_complete": "false",
+        }
+
+        manager.replace_config(imported_config)
+
+        self.assertEqual(manager.get_value("system", "server_name"), "imported")
+        self.assertIsNone(manager.get_value("backup", "mount_point"))
 
 
 if __name__ == "__main__":

@@ -21,6 +21,7 @@ class ConfigManager:
         self.runtime = runtime or get_runtime()
         self.config_dir = self.runtime.config_dir
         self.config_path = self.config_dir / 'config.conf'
+        self.config_lock_path = self.config_path.with_suffix(self.config_path.suffix + ".lock")
         self.secrets_path = self.config_dir / '.secrets'
         self.secrets_lock_path = self.config_dir / '.secrets.lock'
         self.key_path = self.config_dir / '.key'
@@ -87,11 +88,12 @@ class ConfigManager:
         else:
             self.create_default_config()
 
-    def create_default_config(self):
-        """Create default configuration"""
-        self.config['system'] = {'username': '', 'server_name': '', 'setup_complete': 'false'}
+    def _default_config_parser(self):
+        """Build the first-run configuration without touching disk."""
+        config = configparser.ConfigParser()
+        config['system'] = {'username': '', 'server_name': '', 'setup_complete': 'false'}
 
-        self.config['backup'] = {
+        config['backup'] = {
             'email_address': '',
             'from_address': '',
             'uuid': '',
@@ -101,18 +103,18 @@ class ConfigManager:
             'bandwidth_limit': '',
         }
 
-        self.config['schedule'] = {'backup_cloud_time': '03:00'}
+        config['schedule'] = {'backup_cloud_time': '03:00'}
 
-        self.config['hdsentinel'] = {'enabled': 'true', 'health_change_alert': 'true'}
+        config['hdsentinel'] = {'enabled': 'true', 'health_change_alert': 'true'}
 
-        self.config['apt_updates'] = {
+        config['apt_updates'] = {
             'managed': 'false',
             'update_package_lists': 'false',
             'unattended_upgrade': 'false',
             'autoclean_interval': '7',
         }
 
-        self.config['ddns'] = {
+        config['ddns'] = {
             'duckdns_enabled': 'false',
             'duckdns_domain': '',
             'cloudflare_enabled': 'false',
@@ -121,13 +123,46 @@ class ConfigManager:
             'cloudflare_proxy': 'false',
         }
 
-        self.save_config()
+        return config
 
-    def save_config(self):
-        """Save the configuration to file"""
+    def _write_config_parser(self, config):
         stream = io.StringIO()
-        self.config.write(stream)
+        config.write(stream)
         atomic_write_text(self.config_path, stream.getvalue(), mode=0o644)
+
+    def _locked_config_update(self, update_config):
+        # config.conf is replaced atomically, so all writers must lock a stable
+        # sidecar path and re-read the latest file before applying their change.
+        with locked_path(self.config_lock_path, mode=0o644):
+            config = configparser.ConfigParser()
+            if self.config_path.exists():
+                config.read(self.config_path)
+            else:
+                config = self._default_config_parser()
+            update_config(config)
+            self._write_config_parser(config)
+            self.config = config
+
+    def create_default_config(self):
+        """Create default configuration if no on-disk config exists."""
+        def create_if_missing(config):
+            if self.config_path.exists():
+                return
+            replacement = self._default_config_parser()
+            config.clear()
+            for section in replacement.sections():
+                config[section] = dict(replacement[section])
+
+        self._locked_config_update(create_if_missing)
+
+    def replace_config(self, config):
+        """Replace config.conf with a deliberate full configuration snapshot."""
+        def replace(current_config):
+            current_config.clear()
+            for section in config.sections():
+                current_config[section] = dict(config[section])
+
+        self._locked_config_update(replace)
 
     def get_value(self, section, key, default=None):
         """Get a configuration value"""
@@ -138,10 +173,12 @@ class ConfigManager:
 
     def set_value(self, section, key, value):
         """Set a configuration value"""
-        if not self.config.has_section(section):
-            self.config.add_section(section)
-        self.config.set(section, key, str(value))
-        self.save_config()
+        def update(config):
+            if not config.has_section(section):
+                config.add_section(section)
+            config.set(section, key, str(value))
+
+        self._locked_config_update(update)
 
     def store_secret(self, key, value):
         """Store a sensitive value"""

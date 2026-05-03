@@ -314,13 +314,13 @@ def import_legacy_bundle(
         or legacy_config["EMAIL_ADDRESS"]
     )
 
-    config_manager.config = configparser.ConfigParser()
-    config_manager.config["system"] = {
+    imported_config = configparser.ConfigParser()
+    imported_config["system"] = {
         "username": admin_username,
         "server_name": legacy_config["SERVER_NAME"],
         "setup_complete": "false",
     }
-    config_manager.config["backup"] = {
+    imported_config["backup"] = {
         "email_address": legacy_config["EMAIL_ADDRESS"],
         "from_address": from_address,
         "uuid": legacy_config["UUID"],
@@ -334,14 +334,14 @@ def import_legacy_bundle(
         "mega_pass": "",
         "mega_folder": "",
     }
-    config_manager.config["schedule"] = {
+    imported_config["schedule"] = {
         "backup_cloud_time": backup_time,
     }
-    config_manager.config["hdsentinel"] = {
+    imported_config["hdsentinel"] = {
         "enabled": "true",
         "health_change_alert": "true",
     }
-    config_manager.save_config()
+    config_manager.replace_config(imported_config)
 
     _write_preserved_file(bundle.msmtp_path, runtime.msmtp_config_path, mode=0o600)
     _write_preserved_file(bundle.rclone_path, runtime.rclone_config_dir / "rclone.conf", mode=0o600)
