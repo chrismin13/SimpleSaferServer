@@ -99,6 +99,8 @@ class CloudflareDdnsTests(unittest.TestCase):
         return exit_code, status_data, config_instances[0]
 
     def test_get_cloudflare_record_returns_proxy_state(self):
+        # Cloudflare's provider API uses a top-level success flag. This fixture
+        # is not a SimpleSaferServer API response envelope.
         payload = {
             "success": True,
             "result": [
@@ -141,6 +143,8 @@ class CloudflareDdnsTests(unittest.TestCase):
         def fake_urlopen(request, timeout):
             # Keep the request so the test can prove the proxy-only change reaches Cloudflare.
             captured_requests.append(request)
+            # Cloudflare's provider API uses a top-level success flag. This is
+            # not a SimpleSaferServer API response envelope.
             return FakeResponse({"success": True})
 
         with patch(
