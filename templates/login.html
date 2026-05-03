@@ -72,6 +72,10 @@
             const feedbackSlot = document.querySelector('.login-feedback-slot');
 
             function showLoginError(message) {
+                if (!feedbackSlot) {
+                    console.error(message || 'Login failed');
+                    return;
+                }
                 feedbackSlot.textContent = '';
                 const alert = document.createElement('div');
                 alert.className = 'login-alert login-alert-error';
@@ -97,7 +101,7 @@
                             headers: { 'Accept': 'application/json' }
                         });
 
-                        if (result.data) {
+                        if (result.data && result.data.redirect) {
                             window.AsyncButtonState.success(submitBtn);
                             window.location.href = result.data.redirect;
                         } else {
