@@ -145,6 +145,16 @@ class CloudBackupServiceTests(unittest.TestCase):
         self.assertFalse(system_utils.created_systemd_config)
         self.assertFalse(system_utils.installed_timers)
 
+    def test_schedule_save_rejects_unsafe_bandwidth_limit(self):
+        service, config, _system_utils, _runtime = self.make_service(is_fake=True)
+
+        with self.assertRaisesRegex(ValidationProblem, "Bandwidth limit"):
+            service.save_schedule(
+                {"backup_cloud_time": "04:00", "bandwidth_limit": "4M --delete-excluded"}
+            )
+
+        self.assertNotIn("bandwidth_limit", config.config["backup"])
+
     def test_real_config_save_routes_schedule_values_through_timer_update(self):
         service, config, system_utils, _runtime = self.make_service(is_fake=False)
 

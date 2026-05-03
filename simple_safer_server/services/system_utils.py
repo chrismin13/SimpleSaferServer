@@ -1,3 +1,5 @@
+import configparser
+import io
 import logging
 import re
 import shutil
@@ -178,39 +180,48 @@ account default : simplesaferserver
             schedule_config = config.get('schedule', {})
             hdsentinel_config = config.get('hdsentinel', {})
             ddns_config = config.get('ddns', {})
-
-            config_content = f"""[system]
-username = {system_config.get('username', '')}
-server_name = {system_config.get('server_name', 'SimpleSaferServer')}
-setup_complete = {system_config.get('setup_complete', 'false')}
-
-[backup]
-mount_point = {backup_config.get('mount_point', self.runtime.default_mount_point)}
-uuid = {backup_config.get('uuid', '')}
-usb_id = {backup_config.get('usb_id', '')}
-email_address = {backup_config.get('email_address', '')}
-rclone_dir = {backup_config.get('rclone_dir', '')}
-bandwidth_limit = {backup_config.get('bandwidth_limit', '')}
-cloud_mode = {backup_config.get('cloud_mode', '')}
-mega_email = {backup_config.get('mega_email', '')}
-mega_pass = {backup_config.get('mega_pass', '')}
-mega_folder = {backup_config.get('mega_folder', '')}
-
-[schedule]
-backup_cloud_time = {schedule_config.get('backup_cloud_time', '')}
-
-[hdsentinel]
-enabled = {hdsentinel_config.get('enabled', 'true')}
-health_change_alert = {hdsentinel_config.get('health_change_alert', 'true')}
-
-[ddns]
-duckdns_enabled = {ddns_config.get('duckdns_enabled', 'false')}
-duckdns_domain = {ddns_config.get('duckdns_domain', '')}
-cloudflare_enabled = {ddns_config.get('cloudflare_enabled', 'false')}
-cloudflare_zone = {ddns_config.get('cloudflare_zone', '')}
-cloudflare_record = {ddns_config.get('cloudflare_record', '')}
-cloudflare_proxy = {ddns_config.get('cloudflare_proxy', 'false')}
-"""
+            parser = configparser.ConfigParser()
+            # This file is consumed by both Python helpers and shell scripts.
+            # Let ConfigParser serialize values so first-run setup input cannot
+            # create accidental extra sections or keys by containing newlines.
+            parser['system'] = {
+                'username': str(system_config.get('username', '')),
+                'server_name': str(system_config.get('server_name', 'SimpleSaferServer')),
+                'setup_complete': str(system_config.get('setup_complete', 'false')),
+            }
+            parser['backup'] = {
+                'mount_point': str(
+                    backup_config.get('mount_point', self.runtime.default_mount_point)
+                ),
+                'uuid': str(backup_config.get('uuid', '')),
+                'usb_id': str(backup_config.get('usb_id', '')),
+                'email_address': str(backup_config.get('email_address', '')),
+                'from_address': str(backup_config.get('from_address', '')),
+                'rclone_dir': str(backup_config.get('rclone_dir', '')),
+                'bandwidth_limit': str(backup_config.get('bandwidth_limit', '')),
+                'cloud_mode': str(backup_config.get('cloud_mode', '')),
+                'mega_email': str(backup_config.get('mega_email', '')),
+                'mega_pass': str(backup_config.get('mega_pass', '')),
+                'mega_folder': str(backup_config.get('mega_folder', '')),
+            }
+            parser['schedule'] = {
+                'backup_cloud_time': str(schedule_config.get('backup_cloud_time', '')),
+            }
+            parser['hdsentinel'] = {
+                'enabled': str(hdsentinel_config.get('enabled', 'true')),
+                'health_change_alert': str(hdsentinel_config.get('health_change_alert', 'true')),
+            }
+            parser['ddns'] = {
+                'duckdns_enabled': str(ddns_config.get('duckdns_enabled', 'false')),
+                'duckdns_domain': str(ddns_config.get('duckdns_domain', '')),
+                'cloudflare_enabled': str(ddns_config.get('cloudflare_enabled', 'false')),
+                'cloudflare_zone': str(ddns_config.get('cloudflare_zone', '')),
+                'cloudflare_record': str(ddns_config.get('cloudflare_record', '')),
+                'cloudflare_proxy': str(ddns_config.get('cloudflare_proxy', 'false')),
+            }
+            config_stream = io.StringIO()
+            parser.write(config_stream)
+            config_content = config_stream.getvalue()
             # Create the config directory
             config_dir = self.runtime.config_dir
             config_dir.mkdir(parents=True, exist_ok=True)

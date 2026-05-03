@@ -41,6 +41,11 @@ def test_fake_dashboard_renders_storage_action_urls():
 
                 assert response.status_code == 200
                 page = response.get_data(as_text=True)
+                # The server-rendered dashboard should be useful before the
+                # browser's storage polling has a chance to refresh the card.
+                assert 'id="storage-meter"' in page
+                assert 'd-none" id="storage-meter"' not in page
+                assert "Unavailable / Unavailable GB used" not in page
                 assert 'action="/unmount"' in page
                 assert 'action="/mount"' in page
                 assert 'id="health-refresh-button"' in page

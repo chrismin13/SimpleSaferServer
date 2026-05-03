@@ -27,7 +27,7 @@ BANDWIDTH_LIMIT=$(get_config_value backup bandwidth_limit)
 # Function to send email and log alert
 function send_email {
     echo "$1 - $2" # Log the status
-    echo -e "Subject: $1 - $SERVER_NAME\nFrom: $FROM_ADDRESS\n\n$2" | msmtp --from=$FROM_ADDRESS $EMAIL_ADDRESS
+    echo -e "Subject: $1 - $SERVER_NAME\nFrom: $FROM_ADDRESS\n\n$2" | msmtp --from="$FROM_ADDRESS" -- "$EMAIL_ADDRESS"
     # Log alert using the standalone script
     "$PYTHON_BIN" /opt/SimpleSaferServer/scripts/log_alert.py "$1" "$2" "error" "backup_cloud"
 }
@@ -54,10 +54,10 @@ fi
 
 # Check if there's a bandwidth limit
 if [ -n "$BANDWIDTH_LIMIT" ]; then
-    extra_args="--bwlimit $BANDWIDTH_LIMIT"
+    extra_args=(--bwlimit "$BANDWIDTH_LIMIT")
     echo "Using bandwidth limit: $BANDWIDTH_LIMIT"
 else
-    extra_args=""
+    extra_args=()
 fi
 
 # Run rclone sync
@@ -65,7 +65,7 @@ echo "Starting cloud backup to $RCLONE_DIR..."
 echo "Source: $MOUNT_POINT"
 echo "Destination: $RCLONE_DIR"
 
-rclone sync "$MOUNT_POINT" "$RCLONE_DIR" --create-empty-src-dirs -v $extra_args
+rclone sync "$MOUNT_POINT" "$RCLONE_DIR" --create-empty-src-dirs -v "${extra_args[@]}"
 
 # Check if backup was successful
 if [ $? -ne 0 ]; then

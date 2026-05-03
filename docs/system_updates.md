@@ -14,8 +14,8 @@ The System Updates page manages Debian and Ubuntu package maintenance from the a
 
 ## Apt operations
 
-- **Update** runs `sudo apt-get update`.
-- **Upgrade** runs `sudo env DEBIAN_FRONTEND=noninteractive apt-get -y upgrade`.
+- **Update** runs `apt-get update`.
+- **Upgrade** runs `env DEBIAN_FRONTEND=noninteractive apt-get -y upgrade`.
 - **Stop** asks the SimpleSaferServer-started apt process group to terminate.
 - The page keeps the apt log as the primary visible area and polls progress while an operation runs.
 - Progress is estimated from apt output phases because apt does not provide one stable machine-readable progress stream for both update and upgrade.
@@ -64,7 +64,7 @@ Livepatch status is shown only on Ubuntu.
 
 - If `canonical-livepatch` is installed, the page runs `canonical-livepatch status --format json`.
 - Setup requires the Ubuntu Pro Client (`pro`) and a Canonical Ubuntu Pro token.
-- Setup writes the token to a temporary `0600` attach-config file, runs `sudo pro attach --attach-config <file>`, removes the file, and then runs `sudo pro enable livepatch`.
+- Setup writes the token to a temporary `0600` attach-config file, runs `pro attach --attach-config <file>`, removes the file, and then runs `pro enable livepatch`.
 - The token is not passed as a command-line argument, because local process listings and process audit logs can expose argv while a command is running.
 - After a successful real setup, SimpleSaferServer records `livepatch_managed = true` under `system_updates` in its config.
 - Uninstall does not detach Ubuntu Pro or disable Livepatch. Those are host-level subscription and security states, so the uninstaller leaves them for the admin to review.

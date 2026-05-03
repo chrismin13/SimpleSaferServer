@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from dataclasses import dataclass
 from tempfile import NamedTemporaryFile
 from typing import Any, Dict, List, Optional, Tuple
@@ -21,6 +22,21 @@ class MegaFolderList:
     folders: List[str]
     path: str
     parent: str
+
+
+BANDWIDTH_LIMIT_RE = re.compile(r"^\d+(?:k|M|G)$", re.IGNORECASE)
+
+
+def normalize_bandwidth_limit(value: Any) -> str:
+    """Return a safe rclone bwlimit value or raise a validation problem."""
+    if value is None:
+        return ""
+    text = str(value).strip()
+    if not text:
+        return ""
+    if not BANDWIDTH_LIMIT_RE.match(text):
+        raise ValidationProblem("Bandwidth limit must look like 512k, 4M, or 1G.")
+    return text
 
 
 class CloudBackupService:
@@ -180,19 +196,20 @@ class CloudBackupService:
 
     def save_schedule(self, data: Dict[str, Any]) -> Dict[str, Any]:
         backup_time = data.get("backup_cloud_time")
-        bandwidth_limit = data.get("bandwidth_limit")
+        has_bandwidth_limit = "bandwidth_limit" in data
+        bandwidth_limit = normalize_bandwidth_limit(data.get("bandwidth_limit"))
 
         if self._runtime.is_fake:
             if backup_time:
                 self._config_manager.set_value("schedule", "backup_cloud_time", backup_time)
-            if bandwidth_limit is not None:
+            if has_bandwidth_limit:
                 self._config_manager.set_value("backup", "bandwidth_limit", bandwidth_limit)
             return {}
 
         config = self._config_manager.get_all_config()
         if backup_time:
             config.setdefault("schedule", {})["backup_cloud_time"] = backup_time
-        if bandwidth_limit is not None:
+        if has_bandwidth_limit:
             config.setdefault("backup", {})["bandwidth_limit"] = bandwidth_limit
         ok, err = self._system_utils.create_systemd_config_file(config)
         if not ok:
@@ -204,7 +221,7 @@ class CloudBackupService:
 
         if backup_time:
             self._config_manager.set_value("schedule", "backup_cloud_time", backup_time)
-        if bandwidth_limit is not None:
+        if has_bandwidth_limit:
             self._config_manager.set_value("backup", "bandwidth_limit", bandwidth_limit)
         return {}
 

@@ -44,7 +44,6 @@ def dashboard():
             disk = psutil.disk_usage(mount_point)
         except Exception:
             current_app.logger.exception("Could not read backup drive usage for %s", mount_point)
-        disk = None
 
     cpu_percent = psutil.cpu_percent()
     ram_percent = psutil.virtual_memory().percent

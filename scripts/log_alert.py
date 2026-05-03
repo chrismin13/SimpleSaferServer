@@ -5,6 +5,7 @@ This script can be called independently of the web UI to log alerts.
 """
 
 import json
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -13,7 +14,7 @@ from pathlib import Path
 def log_alert(title, message, alert_type="info", source="script"):
     """Log an alert to the alerts file"""
     try:
-        config_dir = Path('/etc/SimpleSaferServer')
+        config_dir = Path(os.environ.get('SSS_CONFIG_DIR', '/etc/SimpleSaferServer'))
         alerts_path = config_dir / 'alerts.json'
 
         # Ensure config directory exists
@@ -27,9 +28,21 @@ def log_alert(title, message, alert_type="info", source="script"):
         # Read existing alerts
         alerts = json.loads(alerts_path.read_text())
 
-        # Create new alert
+        next_id = (
+            max(
+                (
+                    existing_alert.get('id', 0)
+                    for existing_alert in alerts
+                    if isinstance(existing_alert.get('id'), int)
+                ),
+                default=0,
+            )
+            + 1
+        )
+
+        # IDs stay monotonic even after retention trims old alerts.
         alert = {
-            'id': len(alerts) + 1,
+            'id': next_id,
             'title': title,
             'message': message,
             'type': alert_type,

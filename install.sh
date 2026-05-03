@@ -367,14 +367,17 @@ fi
 # 2. Install rclone using the official install script
 #    The apt version of rclone is missing support for many cloud services (e.g., MEGA, Google Drive, etc).
 #    The official script always installs the latest version with all backends.
-#    We use 'sudo sh -c' to isolate the install script's exit so it never terminates this script.
+#    This installer already runs as root, so avoid depending on sudo being present
+#    on minimal Debian servers.
 echo -e "${YELLOW}Step 2: Installing rclone (latest, all cloud services supported)...${NC}"
-sudo -v
 TMPFILE=$(mktemp)
 curl -s https://rclone.org/install.sh -o "$TMPFILE"
-sudo sh -c "bash $TMPFILE || true"
+if ! bash "$TMPFILE"; then
+  echo -e "${YELLOW}rclone installer reported an error. Continuing; install rclone manually before configuring cloud backup.${NC}"
+else
+  echo -e "${GREEN}✔ rclone installed.${NC}\n"
+fi
 rm -f "$TMPFILE"
-echo -e "${GREEN}✔ rclone installed.${NC}\n"
 
 # 3. Install HDSentinel for supported architectures
 echo -e "${YELLOW}Step 3: Installing HDSentinel...${NC}"

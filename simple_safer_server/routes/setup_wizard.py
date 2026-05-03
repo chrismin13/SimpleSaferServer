@@ -25,6 +25,7 @@ from simple_safer_server.services.backup_drive_unmount import (
     is_selected_partition_managed_backup_drive,
     unmount_managed_backup_drive,
 )
+from simple_safer_server.services.cloud_backup_service import normalize_bandwidth_limit
 from simple_safer_server.services.config_manager import ConfigManager
 from simple_safer_server.services.runtime import get_fake_state, get_runtime
 from simple_safer_server.services.smb_manager import SMBManager
@@ -640,7 +641,7 @@ def save_schedule():
     try:
         data = json_request_data()
         schedule_time = data.get('time')
-        bandwidth_limit = data.get('bandwidth_limit', '')
+        bandwidth_limit = normalize_bandwidth_limit(data.get('bandwidth_limit', ''))
 
         if not schedule_time:
             return _validation_problem('Missing required fields', details='Time is required')

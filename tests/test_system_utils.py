@@ -1,3 +1,4 @@
+import configparser
 import tempfile
 import types
 import unittest
@@ -185,6 +186,66 @@ class SystemUtilsTimerActivationTests(unittest.TestCase):
                 if error is None:
                     self.fail("Expected validation error")
                 self.assertIn("schedule.backup_cloud_time", error)
+
+    def test_create_systemd_config_file_serializes_multiline_values_safely(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime = types.SimpleNamespace(
+                is_fake=False,
+                config_dir=Path(temp_dir) / "config",
+                default_mount_point="/media/backup",
+            )
+            system_utils = RecordingSystemUtils(runtime)
+
+            ok, error = system_utils.create_systemd_config_file(
+                {
+                    "system": {
+                        "username": "admin",
+                        "server_name": "safe\n[ddns]\ncloudflare_enabled = true",
+                        "setup_complete": "true",
+                    },
+                    "backup": {},
+                    "schedule": {},
+                    "hdsentinel": {},
+                    "ddns": {"cloudflare_enabled": "false"},
+                }
+            )
+
+            self.assertTrue(ok, error)
+            parser = configparser.ConfigParser()
+            parser.read(runtime.config_dir / "config.conf")
+            self.assertEqual(
+                parser.get("system", "server_name"),
+                "safe\n[ddns]\ncloudflare_enabled = true",
+            )
+            self.assertEqual(parser.get("ddns", "cloudflare_enabled"), "false")
+
+    def test_create_systemd_config_file_includes_script_email_fields(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime = types.SimpleNamespace(
+                is_fake=False,
+                config_dir=Path(temp_dir) / "config",
+                default_mount_point="/media/backup",
+            )
+            system_utils = RecordingSystemUtils(runtime)
+
+            ok, error = system_utils.create_systemd_config_file(
+                {
+                    "backup": {
+                        "email_address": "admin@example.com",
+                        "from_address": "server@example.com",
+                    },
+                    "system": {},
+                    "schedule": {},
+                    "hdsentinel": {},
+                    "ddns": {},
+                }
+            )
+
+            self.assertTrue(ok, error)
+            parser = configparser.ConfigParser()
+            parser.read(runtime.config_dir / "config.conf")
+            self.assertEqual(parser.get("backup", "email_address"), "admin@example.com")
+            self.assertEqual(parser.get("backup", "from_address"), "server@example.com")
 
 
 if __name__ == "__main__":
