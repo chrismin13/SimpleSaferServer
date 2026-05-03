@@ -294,18 +294,3 @@ class ConfigManager:
         for section in self.config.sections():
             config_dict[section] = dict(self.config[section])
         return config_dict
-
-    def validate_config(self):
-        """Validate the current configuration"""
-        required_fields = {
-            'system': ['username', 'server_name'],
-            'backup': ['email_address', 'uuid', 'usb_id', 'mount_point', 'rclone_dir'],
-        }
-
-        missing_fields = []
-        for section, fields in required_fields.items():
-            for field in fields:
-                if not self.get_value(section, field):
-                    missing_fields.append(f"{section}.{field}")
-
-        return len(missing_fields) == 0, missing_fields

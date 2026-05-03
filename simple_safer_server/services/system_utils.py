@@ -60,56 +60,6 @@ class SystemUtils:
             self.logger.error(f"Error setting up rclone: {e}")
             return False
 
-    def setup_systemd_service(self, service_name, command, user, timer=None):
-        """Set up systemd service and timer"""
-        try:
-            # Create service file
-            service_content = f"""[Unit]
-Description={service_name} service
-After=network.target
-
-[Service]
-Type=simple
-User={user}
-ExecStart={command}
-Restart=on-failure
-
-[Install]
-WantedBy=multi-user.target
-"""
-
-            service_path = self.runtime.systemd_dir / f'{service_name}.service'
-            service_path.write_text(service_content)
-
-            # Create timer if specified
-            if timer:
-                timer_content = f"""[Unit]
-Description=Run {service_name} on schedule
-
-[Timer]
-OnCalendar={timer}
-Persistent=true
-
-[Install]
-WantedBy=timers.target
-"""
-                timer_path = self.runtime.systemd_dir / f'{service_name}.timer'
-                timer_path.write_text(timer_content)
-
-            # Reload systemd and enable service
-            if self.runtime.is_fake:
-                return True
-            self.run_command(['systemctl', 'daemon-reload'])
-            self.run_command(['systemctl', 'enable', f'{service_name}.service'])
-            if timer:
-                self.run_command(['systemctl', 'enable', f'{service_name}.timer'])
-                self.run_command(['systemctl', 'start', f'{service_name}.timer'])
-
-            return True
-        except Exception as e:
-            self.logger.error(f"Error setting up systemd service: {e}")
-            return False
-
     def write_msmtp_config(self, from_address, server, port, user, password):
         """Write /etc/msmtprc with the supplied SMTP settings. 'from_address' is used for the 'from' line and as the envelope-from in scripts."""
         try:

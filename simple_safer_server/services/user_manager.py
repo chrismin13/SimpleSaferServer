@@ -222,24 +222,6 @@ class UserManager:
         """List all users without password hashes or lockout internals."""
         return [self.get_user(username) for username in self.users]
 
-    def change_password(self, username, current_password, new_password):
-        """Change user password"""
-        if not self.verify_user(username, current_password):
-            return False, "Current password is incorrect"
-
-        # Validate new password
-        policy = PasswordPolicy()
-        is_valid, message = policy.validate(new_password)
-        if not is_valid:
-            return False, message
-
-        if not self._sync_user_to_samba(username, new_password):
-            return False, "Password changed but failed to sync with Samba"
-
-        self.users[username]['password_hash'] = generate_password_hash(new_password)
-        self._save_users()
-        return True, "Password changed successfully"
-
     def set_password(self, username, new_password):
         """Set a user's password from an admin flow and keep Samba in sync."""
         if username not in self.users:
@@ -300,12 +282,6 @@ class UserManager:
             return username in self.command_adapter.samba_users()
         except CalledProcessError:
             return False
-
-    def user_exists_in_system(self, username):
-        """Check if user exists in system user database"""
-        if self.runtime.is_fake:
-            return username in self.users
-        return self.command_adapter.system_user_exists(username)
 
 
 def admin_required(f):

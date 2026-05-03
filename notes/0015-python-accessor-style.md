@@ -16,9 +16,9 @@ fake-mode state, or coordinate Samba/user state.
 
 ## Cleanup
 
-This pass documents the rule, removes unused SMB compatibility wrappers, and moves user listing
-and admin-role persistence behind public `UserManager` methods so routes do not reach into private
-storage details.
+This pass documents the rule, removes unused SMB compatibility wrappers, removes additional
+unused service helpers, and moves user listing and admin-role persistence behind public
+`UserManager` methods so routes do not reach into private storage details.
 
 ## Checks
 

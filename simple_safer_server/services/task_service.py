@@ -96,9 +96,6 @@ class TaskService:
             Task(self, "DDNS Update", "ddns_update.service", "ddns_update.timer"),
         ]
 
-    def list_tasks(self) -> List[Task]:
-        return list(self._tasks)
-
     def get_task(self, name: str) -> Optional[Task]:
         for task in self._tasks:
             if task.name == name:

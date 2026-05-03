@@ -117,24 +117,6 @@ class UserManagerTests(unittest.TestCase):
         self.assertNotIn("operator", manager.users)
         self.assertEqual(manager._load_users(), {})
 
-    def test_change_password_does_not_persist_when_samba_sync_fails(self):
-        manager, adapter = self.make_manager()
-        success, message = manager.create_user("operator", "OperatorPassw0rd!")
-        self.assertTrue(success, message)
-        original_hash = manager.users["operator"]["password_hash"]
-        adapter.fail_sync = True
-
-        success, message = manager.change_password(
-            "operator",
-            "OperatorPassw0rd!",
-            "NewOperatorPassw0rd!",
-        )
-
-        self.assertFalse(success)
-        self.assertEqual(message, "Password changed but failed to sync with Samba")
-        self.assertEqual(manager.users["operator"]["password_hash"], original_hash)
-        self.assertEqual(manager._load_users()["operator"]["password_hash"], original_hash)
-
     def test_set_password_does_not_persist_when_samba_sync_fails(self):
         manager, adapter = self.make_manager()
         success, message = manager.create_user("operator", "OperatorPassw0rd!")
