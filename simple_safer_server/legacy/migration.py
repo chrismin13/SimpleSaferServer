@@ -8,8 +8,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Union
 
-from werkzeug.security import generate_password_hash
-
 from simple_safer_server.adapters.command_runner import (
     CalledProcessError,
     CommandRunner,
@@ -197,16 +195,7 @@ def _ensure_admin_user(user_manager: UserManager, username: str, password: str) 
                 "Cannot reuse existing admin user because other SimpleSaferServer users already exist."
             )
 
-        user = user_manager.users[username]
-        user["password_hash"] = generate_password_hash(password)
-        user["is_admin"] = True
-        user["failed_attempts"] = 0
-        user["locked_until"] = None
-        user.setdefault("created_at", str(datetime.utcnow()))
-        user.setdefault("last_login", None)
-        user_manager._save_users()
-
-        if not user_manager._sync_user_to_samba(username, password):
+        if not user_manager.reset_existing_admin_user(username, password):
             raise MigrationError(f"Failed to sync the existing admin user '{username}' into Samba.")
         return "updated"
 

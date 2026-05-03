@@ -224,6 +224,41 @@ class UserManager:
         """List all users without password hashes or lockout internals."""
         return [self.get_user(username) for username in self.users]
 
+    def _commit_password_record_after_samba_sync(self, username, password, user_record):
+        """Persist a user record only after Samba accepts the same password."""
+        if username not in self.users:
+            return False
+
+        previous_record = dict(self.users[username])
+        next_record = dict(user_record)
+        next_record['password_hash'] = generate_password_hash(password)
+
+        # Samba password changes cannot be rolled back because the app does not
+        # retain plaintext passwords. Sync first so a Samba failure leaves the
+        # app login and SMB login on the previous usable password.
+        if not self._sync_user_to_samba(username, password):
+            self.users[username] = previous_record
+            return False
+
+        self.users[username] = next_record
+        self._save_users()
+        return True
+
+    def reset_existing_admin_user(self, username, password):
+        """Refresh an existing sole user into the migrated admin account."""
+        if username not in self.users:
+            return False
+
+        user_record = dict(self.users[username])
+        user_record['is_admin'] = True
+        user_record['failed_attempts'] = 0
+        user_record['locked_until'] = None
+        user_record.setdefault(
+            'created_at', datetime.datetime.now(datetime.timezone.utc).isoformat()
+        )
+        user_record.setdefault('last_login', None)
+        return self._commit_password_record_after_samba_sync(username, password, user_record)
+
     def set_password(self, username, new_password):
         """Set a user's password from an admin flow and keep Samba in sync."""
         if username not in self.users:
@@ -234,11 +269,10 @@ class UserManager:
         if not is_valid:
             return False, message
 
-        self.users[username]['password_hash'] = generate_password_hash(new_password)
-        self._save_users()
-
-        if not self._sync_user_to_samba(username, new_password):
-            return False, "Password saved but failed to sync with Samba"
+        if not self._commit_password_record_after_samba_sync(
+            username, new_password, self.users[username]
+        ):
+            return False, "Password change failed: could not sync with Samba"
 
         return True, "Password changed successfully"
 
