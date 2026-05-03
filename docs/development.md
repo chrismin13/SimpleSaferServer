@@ -80,6 +80,18 @@ web helper, or legacy migration behavior inside the `simple_safer_server/` packa
 - Keep comments focused on operational surprises, hidden assumptions, and future-forgettable behavior.
 - Do not write comments or docs that assume the reader knows a previous implementation. Describe the current behavior directly.
 
+### Accessors, Properties, And Service Methods
+
+Do not add Java-style `get_x()` or `set_x()` methods for plain in-memory attributes. Python code
+should use direct attributes for passive data, and `@property` for cheap, side-effect-free derived
+facts that callers can reasonably treat like attributes.
+
+Use explicit methods when access performs real work: persistence, validation, secrets handling,
+system commands, provider calls, fake-state mutation, or any other side effect. In those cases a
+method name should make the operation obvious. Prefer `list_*` for collection-returning service
+methods, and prefer behavior names such as `set_password()` when the method enforces policy or
+coordinates external state.
+
 ## Documentation Rules
 
 Any behavior change should check the related docs and the documentation links in `index.html`.

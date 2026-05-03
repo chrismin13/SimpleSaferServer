@@ -218,6 +218,10 @@ class UserManager:
             }
         return None
 
+    def list_users(self):
+        """List all users without password hashes or lockout internals."""
+        return [self.get_user(username) for username in self.users]
+
     def change_password(self, username, current_password, new_password):
         """Change user password"""
         if not self.verify_user(username, current_password):
@@ -253,6 +257,14 @@ class UserManager:
         self._save_users()
         return True, "Password changed successfully"
 
+    def update_admin_status(self, username, is_admin):
+        """Persist an admin-role change for an existing user."""
+        if username not in self.users:
+            return False, "User does not exist"
+        self.users[username]['is_admin'] = is_admin
+        self._save_users()
+        return True, "User updated successfully"
+
     def delete_user(self, username):
         """Delete a user"""
         if username not in self.users:
@@ -268,10 +280,6 @@ class UserManager:
         self._save_users()
 
         return True, "User deleted successfully"
-
-    def get_all_users(self):
-        """Get all users (excluding sensitive data)"""
-        return [self.get_user(username) for username in self.users]
 
     def get_preferred_admin_username(self, preferred_username=None):
         """Return the best admin user to auto-login for local fake mode."""

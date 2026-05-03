@@ -44,17 +44,7 @@ def users_page():
 def api_list_users():
     user_manager = _get_services().user_manager
     user_manager.reload_users()
-    response_users = []
-    for username, data in user_manager.users.items():
-        response_users.append(
-            {
-                "username": username,
-                "is_admin": data.get("is_admin", False),
-                "created_at": data.get("created_at"),
-                "last_login": data.get("last_login"),
-            }
-        )
-    return jsonify({"success": True, "users": response_users})
+    return jsonify({"success": True, "users": user_manager.list_users()})
 
 
 @users.route("/api/users", methods=["POST"])
@@ -123,9 +113,9 @@ def api_edit_user(username):
             return jsonify({"success": False, "error": message}), 400
 
     if is_admin is not None:
-        user_manager.users[username]["is_admin"] = is_admin
-
-    user_manager._save_users()
+        success, message = user_manager.update_admin_status(username, is_admin)
+        if not success:
+            return jsonify({"success": False, "error": message}), 400
     return jsonify({"success": True})
 
 

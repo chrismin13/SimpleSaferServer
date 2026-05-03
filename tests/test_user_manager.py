@@ -74,6 +74,38 @@ class UserManagerTests(unittest.TestCase):
         self.assertTrue(success, message)
         self.assertEqual(adapter.passwords["operator"], "NewOperatorPassw0rd!")
 
+    def test_list_users_excludes_sensitive_state(self):
+        manager, _adapter = self.make_manager(is_fake=True)
+        success, message = manager.create_user("operator", "OperatorPassw0rd!", is_admin=True)
+        self.assertTrue(success, message)
+
+        users = manager.list_users()
+
+        self.assertEqual(len(users), 1)
+        self.assertEqual(users[0]["username"], "operator")
+        self.assertTrue(users[0]["is_admin"])
+        self.assertNotIn("password_hash", users[0])
+        self.assertNotIn("failed_attempts", users[0])
+
+    def test_update_admin_status_persists_role_change(self):
+        manager, _adapter = self.make_manager(is_fake=True)
+        success, message = manager.create_user("operator", "OperatorPassw0rd!")
+        self.assertTrue(success, message)
+
+        success, message = manager.update_admin_status("operator", True)
+
+        self.assertTrue(success, message)
+        self.assertTrue(manager.users["operator"]["is_admin"])
+        self.assertTrue(manager._load_users()["operator"]["is_admin"])
+
+    def test_update_admin_status_rejects_missing_user(self):
+        manager, _adapter = self.make_manager(is_fake=True)
+
+        success, message = manager.update_admin_status("missing", True)
+
+        self.assertFalse(success)
+        self.assertEqual(message, "User does not exist")
+
     def test_create_user_rolls_back_when_samba_sync_fails(self):
         manager, adapter = self.make_manager()
         adapter.fail_sync = True

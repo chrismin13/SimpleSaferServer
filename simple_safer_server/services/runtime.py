@@ -157,9 +157,6 @@ class FakeState:
             return False
         return bool(state.get("mounted"))
 
-    def get_mount_point(self) -> str:
-        return self.load().get("mount_point", str(self.runtime.backup_drive_dir))
-
     def set_smb_services(self, smbd: str, nmbd: str) -> None:
         with self._lock:
             state = self.load()

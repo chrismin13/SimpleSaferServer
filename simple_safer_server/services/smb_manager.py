@@ -739,20 +739,6 @@ class SMBManager:
             valid_users=[admin_username],
         )
 
-    # Compatibility wrappers for older call sites that still expect the old
-    # names while the rest of the codebase is migrating to explicit ownership.
-    def get_shares(self):
-        return self.list_managed_shares()
-
-    def add_share(self, name, path, writable=True, comment="", valid_users=None):
-        return self.create_managed_share(name, path, writable, comment, valid_users)
-
-    def update_share(self, old_name, new_name, path, writable=True, comment="", valid_users=None):
-        return self.update_managed_share(old_name, new_name, path, writable, comment, valid_users)
-
-    def delete_share(self, name):
-        return self.delete_managed_share(name)
-
     def _get_managed_share_or_raise(self, share_name):
         # Keep the unmanaged-share rejection in one place so legacy helper
         # methods do not drift apart and accidentally expose raw Samba state.
