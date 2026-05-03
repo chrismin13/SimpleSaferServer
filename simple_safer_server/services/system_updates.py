@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from simple_safer_server.adapters.command_runner import CalledProcessError
+from simple_safer_server.adapters.command_runner import CalledProcessError, TimeoutExpired
 from simple_safer_server.adapters.system_updates_commands import SystemUpdatesCommandAdapter
 from simple_safer_server.services.file_persistence import atomic_write_json, atomic_write_text
 from simple_safer_server.services.os_support import (
@@ -677,6 +677,16 @@ class SystemUpdatesManager:
             self.command_adapter.write_apt_periodic_config(temp_file)
 
     def get_livepatch_status(self) -> Dict[str, Any]:
+        def status_command_failed(exc: Exception) -> Dict[str, Any]:
+            return {
+                "supported_distro": True,
+                "installed": False,
+                "enabled": False,
+                "status_text": f"Livepatch status unavailable: {exc}",
+                "details": {},
+                "source_url": SUPPORT_SOURCES["livepatch"],
+            }
+
         distro = self.get_distribution_info()
         if distro["id"] != "ubuntu":
             return {
@@ -706,7 +716,10 @@ class SystemUpdatesManager:
                 "source_url": SUPPORT_SOURCES["livepatch"],
             }
 
-        result = self.command_adapter.livepatch_status_json(binary)
+        try:
+            result = self.command_adapter.livepatch_status_json(binary)
+        except (CalledProcessError, OSError, TimeoutExpired) as exc:
+            return status_command_failed(exc)
         if result.returncode == 0:
             try:
                 details = json.loads(result.stdout or "{}")
@@ -722,7 +735,10 @@ class SystemUpdatesManager:
                 "source_url": SUPPORT_SOURCES["livepatch"],
             }
 
-        fallback = self.command_adapter.livepatch_status_text(binary)
+        try:
+            fallback = self.command_adapter.livepatch_status_text(binary)
+        except (CalledProcessError, OSError, TimeoutExpired) as exc:
+            return status_command_failed(exc)
         output = (
             fallback.stdout or fallback.stderr or result.stderr or "Livepatch status unavailable."
         ).strip()

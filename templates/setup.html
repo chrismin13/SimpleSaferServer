@@ -803,10 +803,20 @@ unmount the share, then restart SMB automatically."
             window.AsyncButtonState.start(createUserBtn);
             try {
                 await window.ApiClient.fetchJson('/api/setup/user', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
+            } catch (error) {
+                window.AsyncButtonState.error(createUserBtn);
+                showError('Error creating user: ' + (error.message || 'An error occurred while creating the user'), 'adminError');
+                return;
+            }
+            try {
                 await window.ApiClient.fetchJson('/api/setup/system', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, server_name: serverName }) });
-                window.AsyncButtonState.success(createUserBtn);
-                nextStep();
-            } catch (error) { window.AsyncButtonState.error(createUserBtn); showError('Error creating user: ' + (error.message || 'An error occurred while creating the user'), 'adminError'); }
+            } catch (error) {
+                window.AsyncButtonState.error(createUserBtn);
+                showError('Error configuring system: ' + (error.message || 'An error occurred while configuring the system'), 'adminError');
+                return;
+            }
+            window.AsyncButtonState.success(createUserBtn);
+            nextStep();
         }
 
         function showPersistentStepSuccess() {

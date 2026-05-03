@@ -155,7 +155,13 @@ class UserManager:
             self.users.pop(username, None)
             return False, "User creation failed: could not sync with Samba"
 
-        self._save_users()
+        try:
+            self._save_users()
+        except Exception as exc:
+            # The Samba account has been synced, but this in-memory record is
+            # still transient until the JSON store accepts it.
+            self.users.pop(username, None)
+            return False, f"User creation failed: could not save user record: {exc}"
         return True, "User created successfully"
 
     def verify_user(self, username, password):

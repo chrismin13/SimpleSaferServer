@@ -71,6 +71,34 @@ class DriveHealthTests(unittest.TestCase):
     @patch(
         "simple_safer_server.services.drive_health.drive_health_command_adapter.smartctl_attributes"
     )
+    def test_get_smart_attributes_handles_empty_smartctl_messages(
+        self, mock_run, _mock_json_support
+    ):
+        runtime = SimpleNamespace(is_fake=False)
+        mock_run.return_value = SimpleNamespace(
+            returncode=2,
+            stdout=json.dumps({"smartctl": {"messages": []}}),
+            stderr="",
+        )
+
+        attrs, missing, error = drive_health.get_smart_attributes(
+            config_manager=None,
+            system_utils=None,
+            device="/dev/sdb",
+            runtime=runtime,
+        )
+
+        self.assertIsNone(attrs)
+        self.assertIsNone(missing)
+        self.assertEqual(error, "smartctl could not retrieve SMART attributes")
+
+    @patch(
+        "simple_safer_server.services.drive_health.get_smartctl_json_support",
+        return_value=(True, None),
+    )
+    @patch(
+        "simple_safer_server.services.drive_health.drive_health_command_adapter.smartctl_attributes"
+    )
     def test_get_smart_attributes_accepts_nonzero_exit_when_attributes_are_present(
         self, mock_run, _mock_json_support
     ):

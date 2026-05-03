@@ -371,11 +371,19 @@ fi
 #    on minimal Debian servers.
 echo -e "${YELLOW}Step 2: Installing rclone (latest, all cloud services supported)...${NC}"
 TMPFILE=$(mktemp)
-curl -s https://rclone.org/install.sh -o "$TMPFILE"
-if ! bash "$TMPFILE"; then
-  echo -e "${YELLOW}rclone installer reported an error. Continuing; install rclone manually before configuring cloud backup.${NC}"
-else
+# Cloud backup is part of the supported setup path, so a missing rclone should
+# stop installation instead of producing a partially capable server.
+if curl -fS https://rclone.org/install.sh -o "$TMPFILE" && bash "$TMPFILE"; then
   echo -e "${GREEN}✔ rclone installed.${NC}\n"
+else
+  echo -e "${RED}ERROR: Failed to install rclone.${NC}"
+  echo -e "${RED}Cloud backup requires rclone, so SimpleSaferServer cannot complete installation safely.${NC}"
+  echo -e "${YELLOW}Remediation:${NC}"
+  echo -e "  1. Check network access to https://rclone.org/install.sh"
+  echo -e "  2. Install rclone manually if needed: https://rclone.org/install/"
+  echo -e "  3. Rerun this installer."
+  rm -f "$TMPFILE"
+  exit 1
 fi
 rm -f "$TMPFILE"
 
@@ -439,7 +447,8 @@ from simple_safer_server.services.system_utils import SystemUtils
 
 rt = get_runtime()
 config = ConfigManager(runtime=rt).get_all_config()
-setup_complete = config.get('system', {}).get('setup_complete', 'false').lower() == 'true'
+setup_complete_raw = config.get('system', {}).get('setup_complete', 'false')
+setup_complete = setup_complete_raw is True or str(setup_complete_raw).lower() == 'true'
 # install_systemd_services_and_timers catches exceptions and returns (success, error)
 # rather than raising, so we must check the tuple explicitly.
 success, error = SystemUtils(runtime=rt).install_systemd_services_and_timers(

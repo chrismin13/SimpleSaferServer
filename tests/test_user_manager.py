@@ -2,6 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from simple_safer_server.services.user_manager import UserManager
 
@@ -118,6 +119,17 @@ class UserManagerTests(unittest.TestCase):
         self.assertFalse(success)
         self.assertEqual(message, "User creation failed: could not sync with Samba")
         self.assertNotIn("operator", manager.users)
+
+    def test_create_user_rolls_back_when_save_fails_after_samba_sync(self):
+        manager, adapter = self.make_manager()
+
+        with patch.object(manager, "_save_users", side_effect=OSError("disk full")):
+            success, message = manager.create_user("operator", "OperatorPassw0rd!")
+
+        self.assertFalse(success)
+        self.assertIn("could not save user record", message)
+        self.assertNotIn("operator", manager.users)
+        self.assertIn("operator", adapter.samba_users_set)
         self.assertEqual(manager._load_users(), {})
 
     def test_set_password_keeps_old_hash_when_samba_sync_fails(self):

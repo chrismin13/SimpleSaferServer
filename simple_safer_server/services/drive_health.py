@@ -395,10 +395,10 @@ def get_smart_attributes(config_manager, system_utils, device=None, runtime=None
             # Some smartctl failures still emit valid JSON, but without the ATA
             # SMART table we need for prediction. Treat that as a read failure
             # instead of silently falling back to model defaults.
+            messages = data.get("smartctl", {}).get("messages") or []
+            first_message = messages[0].get("string") if messages else None
             error_message = (
-                stderr
-                or data.get("smartctl", {}).get("messages", [{}])[0].get("string")
-                or "smartctl could not retrieve SMART attributes"
+                stderr or first_message or "smartctl could not retrieve SMART attributes"
             )
             LOGGER.warning("Failed to retrieve SMART JSON: %s", error_message)
             return None, None, error_message

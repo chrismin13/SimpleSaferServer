@@ -1,7 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
-from subprocess import CalledProcessError
+from subprocess import CalledProcessError, TimeoutExpired
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -69,6 +69,14 @@ class FakeSystemUpdatesCommandAdapter:
         self.calls.append(("pro_enable_livepatch", pro_binary))
         return SimpleNamespace(returncode=0, stdout="", stderr="")
 
+    def livepatch_status_json(self, binary):
+        self.calls.append(("livepatch_status_json", binary))
+        return SimpleNamespace(returncode=0, stdout='{"status": []}', stderr="")
+
+    def livepatch_status_text(self, binary):
+        self.calls.append(("livepatch_status_text", binary))
+        return SimpleNamespace(returncode=0, stdout="enabled", stderr="")
+
 
 class SystemUpdatesTests(unittest.TestCase):
     def test_remove_stale_locks_refuses_active_apt_processes(self):
@@ -111,6 +119,59 @@ class SystemUpdatesTests(unittest.TestCase):
         self.assertFalse(
             _is_apt_process("backup", ["/usr/local/bin/backup", "/var/log/apt/history.log"])
         )
+
+    def test_livepatch_json_status_timeout_returns_unavailable_payload(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime = make_real_runtime(Path(temp_dir))
+            adapter = FakeSystemUpdatesCommandAdapter()
+            adapter.livepatch_status_json = lambda binary: (_ for _ in ()).throw(
+                TimeoutExpired(cmd=[binary, "status"], timeout=60)
+            )
+            manager = SystemUpdatesManager(
+                FakeConfigManager(), runtime=runtime, command_adapter=adapter
+            )
+
+            with patch.object(
+                manager, "get_distribution_info", return_value={"id": "ubuntu"}
+            ), patch(
+                "simple_safer_server.services.system_updates.shutil.which",
+                return_value="/usr/bin/canonical-livepatch",
+            ):
+                status = manager.get_livepatch_status()
+
+        self.assertTrue(status["supported_distro"])
+        self.assertFalse(status["installed"])
+        self.assertFalse(status["enabled"])
+        self.assertEqual(status["details"], {})
+        self.assertIn("Livepatch status unavailable:", status["status_text"])
+
+    def test_livepatch_text_status_os_error_returns_unavailable_payload(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime = make_real_runtime(Path(temp_dir))
+            adapter = FakeSystemUpdatesCommandAdapter()
+            adapter.livepatch_status_json = lambda binary: SimpleNamespace(
+                returncode=1, stdout="", stderr="json failed"
+            )
+            adapter.livepatch_status_text = lambda binary: (_ for _ in ()).throw(
+                OSError("cannot execute")
+            )
+            manager = SystemUpdatesManager(
+                FakeConfigManager(), runtime=runtime, command_adapter=adapter
+            )
+
+            with patch.object(
+                manager, "get_distribution_info", return_value={"id": "ubuntu"}
+            ), patch(
+                "simple_safer_server.services.system_updates.shutil.which",
+                return_value="/usr/bin/canonical-livepatch",
+            ):
+                status = manager.get_livepatch_status()
+
+        self.assertTrue(status["supported_distro"])
+        self.assertFalse(status["installed"])
+        self.assertFalse(status["enabled"])
+        self.assertEqual(status["details"], {})
+        self.assertIn("cannot execute", status["status_text"])
 
     def test_status_clears_stale_running_state_after_restart_when_apt_is_idle(self):
         with tempfile.TemporaryDirectory() as temp_dir:
