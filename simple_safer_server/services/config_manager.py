@@ -145,6 +145,7 @@ class ConfigManager:
 
     def create_default_config(self):
         """Create default configuration if no on-disk config exists."""
+
         def create_if_missing(config):
             if self.config_path.exists():
                 return
@@ -157,6 +158,7 @@ class ConfigManager:
 
     def replace_config(self, config):
         """Replace config.conf with a deliberate full configuration snapshot."""
+
         def replace(current_config):
             current_config.clear()
             for section in config.sections():
@@ -173,6 +175,7 @@ class ConfigManager:
 
     def set_value(self, section, key, value):
         """Set a configuration value"""
+
         def update(config):
             if not config.has_section(section):
                 config.add_section(section)
