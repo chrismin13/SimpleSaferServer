@@ -618,6 +618,9 @@ def setup_email():
         if not all([email, from_address, smtp_server, smtp_port, smtp_username, smtp_password]):
             logger.error("Missing email fields")
             return _validation_problem('All email fields are required')
+        # Validate and write the same canonical value so msmtp never receives
+        # whitespace that happened to pass the numeric port check.
+        smtp_port = str(smtp_port).strip()
         if not _valid_tcp_port(smtp_port):
             return _validation_problem('SMTP port must be between 1 and 65535')
 

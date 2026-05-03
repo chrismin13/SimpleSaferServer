@@ -398,9 +398,7 @@ class SetupWizardTests(unittest.TestCase):
                     )
 
         self.assertEqual(response.status_code, 200)
-        config_manager.set_value.assert_called_once_with(
-            'system', 'server_name', 'simple-safer'
-        )
+        config_manager.set_value.assert_called_once_with('system', 'server_name', 'simple-safer')
 
     def test_setup_system_info_rejects_username_that_does_not_match_created_admin(self):
         config_manager = MagicMock()
@@ -443,6 +441,32 @@ class SetupWizardTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertProblemDetail(response, 'SMTP port must be between 1 and 65535')
         system_utils.write_msmtp_config.assert_not_called()
+
+    def test_setup_email_writes_trimmed_smtp_port(self):
+        system_utils = MagicMock()
+        system_utils.write_msmtp_config.return_value = True
+        config_manager = MagicMock()
+        config_manager.is_setup_complete.return_value = False
+
+        with patch.object(self.setup_wizard, 'system_utils', system_utils):
+            with patch.object(self.setup_wizard, 'config_manager', config_manager):
+                with self.app.test_client() as client:
+                    response = client.post(
+                        '/api/setup/email',
+                        json={
+                            'emailAddress': 'admin@example.com',
+                            'fromAddress': 'server@example.com',
+                            'smtpServer': 'smtp.example.com',
+                            'smtpPort': ' 587 ',
+                            'smtpUsername': 'server',
+                            'smtpPassword': 'secret',
+                        },
+                    )
+
+        self.assertEqual(response.status_code, 200)
+        system_utils.write_msmtp_config.assert_called_once_with(
+            'server@example.com', 'smtp.example.com', '587', 'server', 'secret'
+        )
 
     def test_format_drive_rejects_non_string_disk(self):
         # JSON clients can send numeric or other non-string values; reject cleanly.
