@@ -524,15 +524,32 @@ Remove the drive now if you do not want it mounted again.`;
     checkedAt.textContent = formatHealthCheckedAt(data.checked_at);
     checkedAt.title = data.checked_at || 'No check yet';
 
-    const renderDetailLines = (lines, fallback) => {
+    const renderDetailText = (message) => {
       detail.textContent = '';
+      detail.classList.remove('status-tile-metrics');
+      detail.textContent = message;
+    };
+
+    const renderMetricRow = (lines, fallback) => {
+      detail.textContent = '';
+      detail.classList.remove('status-tile-metrics');
       if (!lines.length) {
-        detail.textContent = fallback;
+        renderDetailText(fallback);
         return;
       }
+      detail.classList.add('status-tile-metrics');
       lines.forEach((line, index) => {
-        if (index) detail.appendChild(document.createElement('br'));
-        detail.appendChild(document.createTextNode(line));
+        if (index) {
+          const separator = document.createElement('span');
+          separator.className = 'status-tile-metric-separator';
+          separator.setAttribute('aria-hidden', 'true');
+          separator.textContent = '|';
+          detail.appendChild(separator);
+        }
+        const metric = document.createElement('span');
+        metric.className = 'status-tile-metric';
+        metric.textContent = line;
+        detail.appendChild(metric);
       });
     };
 
@@ -540,7 +557,7 @@ Remove the drive now if you do not want it mounted again.`;
       badge.className = 'badge badge-neutral';
       badge.textContent = 'Not Checked';
       val.textContent = 'No check yet';
-      detail.textContent = 'Refresh to check';
+      renderDetailText('Refresh to check');
       return;
     }
 
@@ -548,7 +565,9 @@ Remove the drive now if you do not want it mounted again.`;
       badge.className = 'badge badge-success';
       badge.textContent = 'Healthy';
       val.textContent = 'No Issues';
-      renderDetailLines(metrics, data.detail || 'Checked');
+      // Keep volatile summary metrics on one row so the overview tile does not
+      // grow vertically when both SMART risk and temperature are present.
+      renderMetricRow(metrics, data.detail || 'Checked');
       return;
     }
 
@@ -556,14 +575,14 @@ Remove the drive now if you do not want it mounted again.`;
       badge.className = 'badge badge-danger';
       badge.textContent = 'Warning';
       val.textContent = 'Needs Attention';
-      renderDetailLines(metrics, data.detail || 'Warning');
+      renderMetricRow(metrics, data.detail || 'Warning');
       return;
     }
 
     badge.className = 'badge badge-neutral';
     badge.textContent = 'Unknown';
     val.textContent = 'No Data';
-    detail.textContent = data.detail || 'Health data is not available';
+    renderDetailText(data.detail || 'Health data is not available');
   }
 
   function updateHealth() {

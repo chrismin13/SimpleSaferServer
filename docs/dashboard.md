@@ -8,7 +8,9 @@ Four cards display real-time status:
 - **Network File Sharing**: Shows if network file sharing is enabled (SMB status).
 - **Hard Drive Health**: Shows the last drive-health summary remembered by the running web process.
   Dashboard load does not probe SMART or HDSentinel. Use the tile refresh button when you want a
-  live drive-health probe.
+  live drive-health probe. When both SMART failure risk and drive temperature are available, the
+  tile shows them as a compact inline row so the overview does not jump taller during normal
+  refreshes.
 - **System Resources**: Displays CPU and RAM usage, and live network traffic (up/down rates).
 
 ## Task Schedule

@@ -496,6 +496,23 @@ body.fake-mode-active .toast-stack {
   color: var(--text-muted);
 }
 
+.status-tile-metrics {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-2);
+  min-height: 1.25em;
+}
+
+.status-tile-metric {
+  white-space: nowrap;
+}
+
+.status-tile-metric-separator {
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
 /* ── Badge ──────────────────────────────────────────────────── */
 .badge {
   display: inline-flex;
