@@ -83,6 +83,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
       duckBadge.textContent = 'Pending';
       duckBadge.className = 'badge badge-warning';
+      document.getElementById('duckdns-message').textContent = '';
       document.getElementById('duckdns-message').title = '';
     }
     document.getElementById('duckdns-last-sync').textContent = formatTime(status?.last_check);
@@ -108,6 +109,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
       cfBadge.textContent = 'Pending';
       cfBadge.className = 'badge badge-warning';
+      document.getElementById('cf-message').textContent = '';
       document.getElementById('cf-message').title = '';
     }
     document.getElementById('cf-last-sync').textContent = formatTime(status?.last_check);
@@ -157,6 +159,8 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     };
 
+    // Blank token fields mean "keep the current token"; leaving these
+    // properties undefined prevents the server from storing an empty token.
     if (duckdnsToken) {
       payload.duckdns.token = duckdnsToken;
     }

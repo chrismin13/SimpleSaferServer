@@ -191,14 +191,14 @@ class TaskServiceTests(unittest.TestCase):
         finally:
             thread.join()
 
-    def test_fake_stop_is_idempotent(self):
+    def test_fake_stop_leaves_initial_idle_state_unchanged(self):
         service, fake_state = self.build_service()
         task = service.get_task("Cloud Backup")
         assert task is not None
 
         task.stop()
 
-        self.assertEqual(fake_state.get_task_state("Cloud Backup")["status"], Status.STOPPED)
+        self.assertEqual(fake_state.get_task_state("Cloud Backup")["status"], Status.NOT_RUN_YET)
         self.assertIn(
             ("Cloud Backup", "Stop requested for Cloud Backup, but it was not running."),
             fake_state.logs,

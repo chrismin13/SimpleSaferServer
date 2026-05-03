@@ -70,6 +70,19 @@
             const form = document.getElementById('loginForm');
             const submitBtn = document.getElementById('loginSubmitBtn');
             const feedbackSlot = document.querySelector('.login-feedback-slot');
+
+            function showLoginError(message) {
+                feedbackSlot.textContent = '';
+                const alert = document.createElement('div');
+                alert.className = 'login-alert login-alert-error';
+                const icon = document.createElement('i');
+                icon.className = 'fas fa-exclamation-triangle';
+                icon.setAttribute('aria-hidden', 'true');
+                const text = document.createElement('span');
+                text.textContent = message || 'Login failed';
+                alert.append(icon, text);
+                feedbackSlot.appendChild(alert);
+            }
             
             if (form && submitBtn) {
                 form.addEventListener('submit', async (e) => {
@@ -78,25 +91,18 @@
                     
                     try {
                         const formData = new FormData(form);
-                        const response = await fetch(form.action, {
+                        const result = await window.ApiClient.fetchJson(form.action, {
                             method: 'POST',
                             body: formData,
                             headers: { 'Accept': 'application/json' }
                         });
-                        
-                        const data = await response.json();
 
-                        if (response.ok && data.data) {
+                        if (result.data) {
                             window.AsyncButtonState.success(submitBtn);
-                            window.location.href = data.data.redirect;
+                            window.location.href = result.data.redirect;
                         } else {
                             window.AsyncButtonState.error(submitBtn);
-                            feedbackSlot.innerHTML = `
-                                <div class="login-alert login-alert-error">
-                                    <i class="fas fa-exclamation-triangle"></i>
-                                    <span>${data.detail || 'Login failed'}</span>
-                                </div>
-                            `;
+                            showLoginError(result.message || result.detail || 'Login failed');
                             // Clear password field for standard UX
                             const pwField = document.getElementById('password');
                             if (pwField) {
@@ -106,12 +112,7 @@
                         }
                     } catch (err) {
                         window.AsyncButtonState.error(submitBtn);
-                        feedbackSlot.innerHTML = `
-                            <div class="login-alert login-alert-error">
-                                <i class="fas fa-exclamation-triangle"></i>
-                                <span>Network error. Please try again.</span>
-                            </div>
-                        `;
+                        showLoginError(err.message || err.detail || 'Login failed');
                     }
                 });
             }

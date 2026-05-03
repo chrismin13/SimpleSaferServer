@@ -234,11 +234,12 @@ class UserManager:
         if not is_valid:
             return False, message
 
-        if not self._sync_user_to_samba(username, new_password):
-            return False, "Password changed but failed to sync with Samba"
-
         self.users[username]['password_hash'] = generate_password_hash(new_password)
         self._save_users()
+
+        if not self._sync_user_to_samba(username, new_password):
+            return False, "Password saved but failed to sync with Samba"
+
         return True, "Password changed successfully"
 
     def update_admin_status(self, username, is_admin):

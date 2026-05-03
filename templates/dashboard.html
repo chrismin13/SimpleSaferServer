@@ -505,7 +505,7 @@ Remove the drive now if you do not want it mounted again.`;
   // --- Drive health status ---
   function formatHealthCheckedAt(value) {
     if (!value) {
-      return '';
+      return 'No check yet';
     }
     return window.formatRelativeTimestamp(value, { fallback: value, compact: true });
   }
@@ -594,6 +594,9 @@ Remove the drive now if you do not want it mounted again.`;
         document.getElementById('health-status-badge').className = 'badge badge-neutral';
         document.getElementById('health-status-badge').textContent = 'Unavailable';
         document.getElementById('health-status').textContent = '—';
+        document.getElementById('health-detail').textContent = 'Health data unavailable';
+        document.getElementById('health-checked-at').textContent = 'No check yet';
+        document.getElementById('health-checked-at').title = 'No check yet';
       });
   }
 

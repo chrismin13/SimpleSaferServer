@@ -602,7 +602,7 @@ window.formatRelativeTimestamp = function formatRelativeTimestamp(value, options
 
   if (Math.abs(diffMs) < 60000) {
     if (compact) {
-      return isFuture ? '<1m' : 'Just now';
+      return isFuture && futurePrefix ? 'in <1m' : (isFuture ? '<1m' : 'Just now');
     }
     if (isFuture) {
       return futurePrefix ? 'in a few seconds' : 'a few seconds';

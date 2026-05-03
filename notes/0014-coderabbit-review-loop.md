@@ -14,6 +14,11 @@ handled structurally rather than as one-off patches where a broader code pattern
   os-release quote normalization, unknown distro response shape, root debug warning, apt cleanup
   guard/reaping, drive-health refresh error ordering, storage UUID defaults, installer fixture
   dedenting, user timestamp handling, and Samba-first password persistence.
+- Follow-up inline comments were checked against the current tree before editing. Confirmed fixes
+  include the manual install service/Gunicorn distinction, drive-health upgrade notice publishing,
+  apt conflict typing, dashboard mount probing, MEGA config persistence ordering, Samba UTF-8 file
+  I/O, stable storage errors, append-only system update logs, user password persistence ordering,
+  stale UI state cleanup, legacy import diagnostics, alert write locking, and requested comments.
 
 ## Decisions
 
@@ -22,6 +27,9 @@ handled structurally rather than as one-off patches where a broader code pattern
   Python 3.7 syntax.
 - Treat legacy user timestamps without an offset as UTC so existing `users.json` lockout state
   remains comparable after current code starts writing timezone-aware values.
+- Store system update output in a separate append-only volatile log file while keeping compact
+  operation metadata in JSON. This avoids repeated full JSON rewrites during noisy apt runs while
+  preserving the existing `get_status()["log"]` response contract.
 
 ## Verification
 

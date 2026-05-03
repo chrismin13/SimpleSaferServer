@@ -38,10 +38,12 @@ def dashboard():
         services.runtime.default_mount_point,
     )
     mounted = services.system_utils.is_mounted(mount_point)
-    try:
-        disk = psutil.disk_usage(mount_point)
-    except Exception:
-        current_app.logger.exception("Could not read backup drive usage for %s", mount_point)
+    disk = None
+    if mounted:
+        try:
+            disk = psutil.disk_usage(mount_point)
+        except Exception:
+            current_app.logger.exception("Could not read backup drive usage for %s", mount_point)
         disk = None
 
     cpu_percent = psutil.cpu_percent()

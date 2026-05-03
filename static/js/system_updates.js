@@ -118,9 +118,11 @@
     els['auto-update-lists'].checked = Boolean(settings.update_package_lists);
     els['auto-unattended-upgrade'].checked = Boolean(settings.unattended_upgrade);
     els['auto-autoclean'].checked = Boolean(settings.autoclean);
-    if (settings.update_package_lists || settings.unattended_upgrade) {
+    if (settings.update_package_lists || settings.unattended_upgrade || settings.autoclean) {
       setBadge(els['auto-updates-badge'], 'Enabled', 'success');
-      els['auto-updates-summary'].textContent = settings.unattended_upgrade ? 'Upgrades' : 'Lists only';
+      els['auto-updates-summary'].textContent = settings.unattended_upgrade
+        ? 'Upgrades'
+        : (settings.update_package_lists ? 'Lists only' : 'Autoclean');
     } else {
       setBadge(els['auto-updates-badge'], 'Manual', 'neutral');
       els['auto-updates-summary'].textContent = 'Manual';

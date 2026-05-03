@@ -261,13 +261,13 @@ class CloudBackupService:
                     title="Missing MEGA credentials",
                     slug="cloud-backup-missing-mega-credentials",
                 )
-            if stored_email != email:
-                self._config_manager.set_value("backup", "mega_email", email)
             if not self._system_utils.setup_rclone(self._mega_rclone_config(email, stored_pass)):
                 raise OperationProblem(
                     "Failed to write rclone config for MEGA.",
                     slug="cloud-backup-rclone-config-write-failed",
                 )
+            if stored_email != email:
+                self._config_manager.set_value("backup", "mega_email", email)
 
         self._config_manager.set_value("backup", "cloud_mode", "mega")
         self._config_manager.set_value("backup", "mega_folder", folder)

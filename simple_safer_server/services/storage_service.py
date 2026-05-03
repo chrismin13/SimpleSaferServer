@@ -27,7 +27,7 @@ class StorageService:
             self._command_adapter.reboot()
             return "System is restarting..."
         except CalledProcessError as exc:
-            raise OperationProblem(f"Failed to restart system: {exc}") from exc
+            raise OperationProblem("Failed to restart system.") from exc
 
     def shutdown_system(self) -> str:
         if self._runtime.is_fake:
@@ -36,7 +36,7 @@ class StorageService:
             self._command_adapter.poweroff()
             return "System is shutting down..."
         except CalledProcessError as exc:
-            raise OperationProblem(f"Failed to shut down system: {exc}") from exc
+            raise OperationProblem("Failed to shut down system.") from exc
 
     def mount_dashboard_drive(self) -> str:
         mount_point = self._config_manager.get_value(
@@ -80,7 +80,7 @@ class StorageService:
                 self._command_adapter.start_unit(unit_name)
             return "Drive mounted and available for use."
         except CalledProcessError as exc:
-            raise OperationProblem(f"Failed to mount drive: {exc}") from exc
+            raise OperationProblem("Failed to mount drive.") from exc
         except OSError as exc:
             raise OperationProblem(
                 "Could not prepare the mount point. Check that the configured "

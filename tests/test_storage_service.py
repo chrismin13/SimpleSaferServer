@@ -126,10 +126,10 @@ class StorageServiceTests(unittest.TestCase):
             service.mount_dashboard_drive()
         self.assertEqual(adapter.mounted, [])
 
-    def test_real_mount_preserves_called_process_error_message(self):
+    def test_real_mount_uses_stable_error_message(self):
         with tempfile.TemporaryDirectory() as mount_point:
             service, _fake_state, adapter = self.build_service(mount_point=mount_point)
             adapter.raise_on_mount = subprocess.CalledProcessError(1, ["mount"])
 
-            with self.assertRaisesRegex(OperationProblem, "Failed to mount drive:"):
+            with self.assertRaisesRegex(OperationProblem, "Failed to mount drive\\."):
                 service.mount_dashboard_drive()

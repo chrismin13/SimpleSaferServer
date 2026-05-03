@@ -163,6 +163,8 @@ class AppRouteAuthorizationTests(unittest.TestCase):
             if route_paths:
                 routes[node.name] = guard_names
 
+        # Handler names are stable after blueprint registration; literal paths can
+        # pick up prefixes elsewhere and make this guard check fail for the wrong reason.
         system_update_api_routes = {
             function_name: guards
             for function_name, guards in routes.items()

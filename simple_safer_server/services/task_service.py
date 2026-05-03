@@ -171,7 +171,10 @@ class TaskService:
                 )
             # Stop is idempotent because the UI may retry after a timeout or page refresh.
             current_status = fake_state.get_task_state(task.name).get("status")
-            if is_running or current_status not in TERMINAL_FAKE_STATUSES:
+            if is_running or (
+                current_status != Status.NOT_RUN_YET
+                and current_status not in TERMINAL_FAKE_STATUSES
+            ):
                 fake_state.set_task_state(task.name, status=Status.STOPPED)
             return
         try:

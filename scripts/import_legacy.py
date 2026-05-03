@@ -10,18 +10,29 @@ from pathlib import Path
 
 def _add_app_to_path():
     script_path = Path(__file__).resolve()
+    # Prefer the checkout path for development, then the installed /opt path used
+    # by production installs that run this script from /usr/local/bin.
     candidates = [
         script_path.parents[1],
         Path("/opt/SimpleSaferServer"),
     ]
     for candidate in candidates:
-        if (candidate / "simple_safer_server").exists():
+        # A directory check avoids treating a stray file as the application package.
+        if (candidate / "simple_safer_server").is_dir():
+            # The legacy importer lives in the app package, so sys.path must be
+            # patched before the intentionally delayed import below.
             sys.path.insert(0, str(candidate))
             return
+    print(
+        "WARNING: neither candidate path contained the simple_safer_server package; "
+        "check the working directory or install location.",
+        file=sys.stderr,
+    )
 
 
 _add_app_to_path()
 
+# The E402 suppression is intentional because _add_app_to_path() must run before importing the package.
 from simple_safer_server.legacy.migration import MigrationError, import_legacy_bundle  # noqa: E402
 
 
@@ -52,6 +63,8 @@ def main() -> int:
     args = parse_args()
 
     if not args.admin_password_stdin:
+        # The import command is often run from shell history; stdin keeps the
+        # temporary admin password out of argv and process listings.
         raise MigrationError("For safety, --admin-password-stdin is required.")
 
     admin_password = sys.stdin.readline().rstrip("\r\n")
@@ -75,6 +88,7 @@ def main() -> int:
 
 if __name__ == "__main__":
     try:
+        # Propagate main()'s return code as the process exit status.
         raise SystemExit(main())
     except MigrationError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)

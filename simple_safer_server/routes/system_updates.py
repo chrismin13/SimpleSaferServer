@@ -3,6 +3,7 @@ from typing import Any
 from flask import Blueprint, current_app, render_template, session
 
 from simple_safer_server.adapters.command_runner import CalledProcessError
+from simple_safer_server.services.system_updates import AptOperationConflict
 from simple_safer_server.services.user_manager import admin_required, api_admin_required
 from simple_safer_server.web.api import json_data, json_problem, json_request_data
 from simple_safer_server.web.problems import ConflictProblem, OperationProblem, ValidationProblem
@@ -61,7 +62,7 @@ def api_system_updates_start(operation):
         return json_data({"operation": status})
     except ValueError as exc:
         return json_problem(ValidationProblem(str(exc)))
-    except Exception:
+    except AptOperationConflict:
         current_app.logger.exception("Could not start apt %s", operation)
         return json_problem(
             ConflictProblem(
@@ -69,6 +70,9 @@ def api_system_updates_start(operation):
                 slug="system-updates-operation-conflict",
             )
         )
+    except Exception:
+        current_app.logger.exception("Could not start apt %s", operation)
+        return json_problem(OperationProblem("Could not start the apt operation."))
 
 
 @system_updates.route("/api/system_updates/stop", methods=["POST"])
@@ -77,7 +81,7 @@ def api_system_updates_stop():
     try:
         status = _manager().stop_operation()
         return json_data({"operation": status})
-    except Exception:
+    except AptOperationConflict:
         current_app.logger.exception("Could not stop apt operation")
         return json_problem(
             ConflictProblem(
@@ -85,6 +89,9 @@ def api_system_updates_stop():
                 slug="system-updates-operation-conflict",
             )
         )
+    except Exception:
+        current_app.logger.exception("Could not stop apt operation")
+        return json_problem(OperationProblem("Could not stop the apt operation."))
 
 
 @system_updates.route("/api/system_updates/settings", methods=["POST"])
@@ -114,10 +121,18 @@ def api_system_updates_remove_stale_locks():
                 slug="system-updates-lock-removal-failed",
             )
         )
-    except Exception:
+    except AptOperationConflict:
         current_app.logger.exception("Could not remove stale apt locks")
         return json_problem(
             ConflictProblem(
+                "Could not remove stale apt locks. Check System Updates logs before retrying.",
+                slug="system-updates-lock-removal-failed",
+            )
+        )
+    except Exception:
+        current_app.logger.exception("Could not remove stale apt locks")
+        return json_problem(
+            OperationProblem(
                 "Could not remove stale apt locks. Check System Updates logs before retrying.",
                 slug="system-updates-lock-removal-failed",
             )

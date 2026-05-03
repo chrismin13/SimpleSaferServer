@@ -119,6 +119,11 @@ window.openMegaFolderPicker = function openMegaFolderPicker(options) {
     newFolderNameEl.classList.remove('is-invalid');
     window.AsyncButtonState.start(saveNewFolderBtn);
     const creds = getCredentials();
+    if (!creds || !creds.email || !creds.password) {
+      window.AsyncButtonState.error(saveNewFolderBtn);
+      showError('MEGA credentials are required before creating a folder.');
+      return;
+    }
     window.ApiClient.fetchJson(createUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

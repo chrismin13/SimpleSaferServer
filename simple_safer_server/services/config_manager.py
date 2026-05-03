@@ -5,11 +5,14 @@ import logging
 import os
 import stat
 import tempfile
+import threading
 from datetime import datetime
 
 from cryptography.fernet import Fernet
 
 from simple_safer_server.services.runtime import get_runtime
+
+_ALERTS_LOCK = threading.RLock()
 
 
 class ConfigManager:
@@ -188,35 +191,36 @@ class ConfigManager:
     def log_alert(self, title, message, alert_type="info", source="system"):
         """Log an alert to the alerts file"""
         try:
-            alerts = self.get_alerts()
-            next_id = (
-                max(
-                    (
-                        existing_alert.get('id', 0)
-                        for existing_alert in alerts
-                        if isinstance(existing_alert.get('id'), int)
-                    ),
-                    default=0,
+            with _ALERTS_LOCK:
+                alerts = self.get_alerts()
+                next_id = (
+                    max(
+                        (
+                            existing_alert.get('id', 0)
+                            for existing_alert in alerts
+                            if isinstance(existing_alert.get('id'), int)
+                        ),
+                        default=0,
+                    )
+                    + 1
                 )
-                + 1
-            )
-            alert = {
-                # IDs stay monotonic even after retention trims old alerts.
-                'id': next_id,
-                'title': title,
-                'message': message,
-                'type': alert_type,
-                'source': source,
-                'timestamp': datetime.now().isoformat(),
-                'read': False,
-            }
-            alerts.append(alert)
+                alert = {
+                    # IDs stay monotonic even after retention trims old alerts.
+                    'id': next_id,
+                    'title': title,
+                    'message': message,
+                    'type': alert_type,
+                    'source': source,
+                    'timestamp': datetime.now().isoformat(),
+                    'read': False,
+                }
+                alerts.append(alert)
 
-            # Keep only the last 1000 alerts to prevent file from growing too large
-            if len(alerts) > 1000:
-                alerts = alerts[-1000:]
+                # Keep only the last 1000 alerts to prevent file from growing too large
+                if len(alerts) > 1000:
+                    alerts = alerts[-1000:]
 
-            self.alerts_path.write_text(json.dumps(alerts, indent=2))
+                self.alerts_path.write_text(json.dumps(alerts, indent=2))
             self.logger.info(f"Alert logged: {title}")
             return True
         except Exception as e:
@@ -245,13 +249,14 @@ class ConfigManager:
     def mark_alert_read(self, alert_id):
         """Mark an alert as read"""
         try:
-            alerts = self.get_alerts()
-            for alert in alerts:
-                if alert['id'] == alert_id:
-                    alert['read'] = True
-                    break
+            with _ALERTS_LOCK:
+                alerts = self.get_alerts()
+                for alert in alerts:
+                    if alert['id'] == alert_id:
+                        alert['read'] = True
+                        break
 
-            self.alerts_path.write_text(json.dumps(alerts, indent=2))
+                self.alerts_path.write_text(json.dumps(alerts, indent=2))
             return True
         except Exception as e:
             self.logger.error(f"Error marking alert as read: {e}")
@@ -260,7 +265,8 @@ class ConfigManager:
     def clear_alerts(self):
         """Clear all alerts"""
         try:
-            self.alerts_path.write_text('[]')
+            with _ALERTS_LOCK:
+                self.alerts_path.write_text('[]')
             self.logger.info("All alerts cleared")
             return True
         except Exception as e:
@@ -270,10 +276,11 @@ class ConfigManager:
     def mark_all_alerts_read(self):
         """Mark all alerts as read"""
         try:
-            alerts = self.get_alerts()
-            for alert in alerts:
-                alert['read'] = True
-            self.alerts_path.write_text(json.dumps(alerts, indent=2))
+            with _ALERTS_LOCK:
+                alerts = self.get_alerts()
+                for alert in alerts:
+                    alert['read'] = True
+                self.alerts_path.write_text(json.dumps(alerts, indent=2))
             return True
         except Exception as e:
             self.logger.error(f"Error marking all alerts as read: {e}")

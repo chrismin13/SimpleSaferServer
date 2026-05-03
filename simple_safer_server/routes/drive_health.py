@@ -90,6 +90,7 @@ def drives():
             if smart is None:
                 if smart_error == SMARTCTL_JSON_UPGRADE_MESSAGE:
                     smart_support_warning = smart_error
+                    error = smart_error
                 else:
                     error = smart_error or "Could not retrieve SMART data"
             else:
@@ -201,11 +202,12 @@ def api_drive_health_refresh():
         return json_data(services.drive_health_summary_service.publish(summary))
     except Exception:
         current_app.logger.exception("Drive health refresh failed")
+        checked_at = datetime.now().isoformat(timespec="seconds")
         services.drive_health_summary_service.publish(
             {
                 "status": "unknown",
                 "source": "live",
-                "checked_at": None,
+                "checked_at": checked_at,
                 "probability": None,
                 "temperature": None,
                 "hdsentinel_health": None,

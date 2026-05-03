@@ -42,6 +42,10 @@ APT_PROCESS_MARKERS = (
 )
 
 
+class AptOperationConflict(RuntimeError):
+    """Raised when an apt action cannot proceed because package work is busy."""
+
+
 def _apt_process_token(value: Any) -> str:
     # Process names can be bare executable names, while argv entries may be full
     # paths; compare only the executable token so paths like /tmp/adapt do not
@@ -94,11 +98,13 @@ class SystemUpdatesManager:
         self.runtime = runtime or get_runtime()
         self.command_adapter = command_adapter or SystemUpdatesCommandAdapter()
         self.state_path = self.runtime.volatile_dir / "system_updates_state.json"
+        self.state_log_path = self.runtime.volatile_dir / "system_updates.log"
         self._lock = threading.RLock()
         self._thread: Optional[threading.Thread] = None
         self._process: Optional[Any] = None
         self._cancel_event: Optional[threading.Event] = None
         self.state_path.parent.mkdir(parents=True, exist_ok=True)
+        self.state_log_path.parent.mkdir(parents=True, exist_ok=True)
         if not self.state_path.exists():
             self._write_state(self._default_state())
 
@@ -117,17 +123,27 @@ class SystemUpdatesManager:
 
     def _read_state(self) -> Dict[str, Any]:
         try:
-            state = json.loads(self.state_path.read_text())
+            state = json.loads(self.state_path.read_text(encoding="utf-8"))
         except Exception:
             state = self._default_state()
-        return {**self._default_state(), **state}
+        state = {**self._default_state(), **state}
+        state["log"] = self._read_log()
+        return state
+
+    def _read_log(self) -> str:
+        try:
+            return self.state_log_path.read_text(encoding="utf-8")
+        except Exception:
+            return ""
 
     def _write_state(self, state: Dict[str, Any]) -> None:
-        state_json = json.dumps(state, indent=2)
+        state_without_log = dict(state)
+        state_without_log.pop("log", None)
+        state_json = json.dumps(state_without_log, indent=2)
         temp_path = self.state_path.with_name(f".{self.state_path.name}.tmp.{os.getpid()}")
         # Readers poll this file from the UI, so replace it atomically after
         # fsync instead of exposing half-written JSON during an update.
-        with temp_path.open("w") as temp_file:
+        with temp_path.open("w", encoding="utf-8") as temp_file:
             temp_file.write(state_json)
             temp_file.flush()
             os.fsync(temp_file.fileno())
@@ -137,6 +153,10 @@ class SystemUpdatesManager:
     def _update_state(self, **updates) -> Dict[str, Any]:
         with self._lock:
             state = self._read_state()
+            if "log" in updates:
+                # A new apt run starts with an empty append-only log; keeping the
+                # log outside JSON avoids rewriting a growing state file per line.
+                self.state_log_path.write_text(updates.pop("log") or "")
             state.update(updates)
             self._write_state(state)
             return state
@@ -145,11 +165,9 @@ class SystemUpdatesManager:
         if not line:
             return
         with self._lock:
-            state = self._read_state()
-            current = state.get("log", "")
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            state["log"] = f"{current}{timestamp} {line.rstrip()}\n"
-            self._write_state(state)
+            with self.state_log_path.open("a", encoding="utf-8") as log_file:
+                log_file.write(f"{timestamp} {line.rstrip()}\n")
 
     def get_distribution_info(self) -> Dict[str, Any]:
         if self.runtime.is_fake:
@@ -304,10 +322,10 @@ class SystemUpdatesManager:
             raise ValueError("Operation must be update or upgrade.")
         with self._lock:
             if self.is_own_operation_running():
-                raise RuntimeError("A system update operation is already running.")
+                raise AptOperationConflict("A system update operation is already running.")
             lock_status = self.get_lock_status()
             if lock_status["locked"]:
-                raise RuntimeError(
+                raise AptOperationConflict(
                     "Apt is already busy. Wait for the current package operation to finish."
                 )
 
@@ -440,7 +458,7 @@ class SystemUpdatesManager:
     def stop_operation(self) -> Dict[str, Any]:
         with self._lock:
             if not self.is_own_operation_running() or not self._cancel_event:
-                raise RuntimeError("No SimpleSaferServer apt operation is running.")
+                raise AptOperationConflict("No SimpleSaferServer apt operation is running.")
             self._cancel_event.set()
             proc = self._process
         if proc and proc.poll() is None:
@@ -496,7 +514,7 @@ class SystemUpdatesManager:
             or lock_status["own_operation_running"]
             or lock_status["held_locks"]
         ):
-            raise RuntimeError(
+            raise AptOperationConflict(
                 "Apt or dpkg is running. Stop or wait for it before removing stale locks."
             )
 

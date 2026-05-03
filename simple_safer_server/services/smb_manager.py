@@ -90,7 +90,7 @@ class SMBManager:
     def _read_smb_conf(self):
         """Read the current smb.conf file."""
         try:
-            with open(self.smb_conf_path) as handle:
+            with open(self.smb_conf_path, encoding="utf-8") as handle:
                 return handle.read()
         except FileNotFoundError:
             return self._get_default_config()
@@ -306,7 +306,7 @@ class SMBManager:
     def _write_smb_conf(self, content):
         """Write content to smb.conf."""
         self._create_backup()
-        with open(self.smb_conf_path, "w") as handle:
+        with open(self.smb_conf_path, "w", encoding="utf-8") as handle:
             handle.write(content)
         os.chmod(self.smb_conf_path, 0o644)
 
