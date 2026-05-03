@@ -265,6 +265,10 @@ def create_user():
 
         success, message = user_manager.create_user(username, password, is_admin=True)
         if success:
+            # The setup admin is the account Samba and completion checks must
+            # use later; keep this tied to the account creation step so the
+            # system-info step cannot drift into a second source of truth.
+            config_manager.set_value('system', 'username', username)
             # Log in the user
             session['username'] = username
             return json_data()
@@ -823,16 +827,24 @@ def complete_setup():
 @setup.route('/api/setup/system', methods=['POST'])
 @setup_api_access_required
 def setup_system_info():
-    """Save system-level info such as username and server name"""
+    """Save system-level info after the admin account has been created."""
     try:
         data = json_request_data()
         username = data.get('username')
         server_name = data.get('server_name')
 
-        if not username or not server_name:
-            return _validation_problem('Username and server name are required')
+        if not server_name:
+            return _validation_problem('Server name is required')
 
-        config_manager.set_value('system', 'username', username)
+        if username:
+            configured_username = config_manager.get_value('system', 'username', '')
+            # Older setup pages still send username with the server name. Treat
+            # it as a consistency check only; /api/setup/user owns persistence.
+            if username != configured_username or username not in user_manager.users:
+                return _validation_problem(
+                    'Username must match the admin account created during setup'
+                )
+
         config_manager.set_value('system', 'server_name', server_name)
         return json_data()
     except ApiProblem:

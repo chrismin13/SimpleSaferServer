@@ -365,6 +365,64 @@ class SetupWizardTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertProblemDetail(response, 'Username and password are required')
 
+    def test_create_user_persists_canonical_setup_username(self):
+        config_manager = MagicMock()
+        config_manager.is_setup_complete.return_value = False
+        user_manager = MagicMock()
+        user_manager.create_user.return_value = (True, 'created')
+
+        with patch.object(self.setup_wizard, 'config_manager', config_manager):
+            with patch.object(self.setup_wizard, 'user_manager', user_manager):
+                with self.app.test_client() as client:
+                    response = client.post(
+                        '/api/setup/user',
+                        json={'username': 'admin', 'password': 'secret-pass'},
+                    )
+
+        self.assertEqual(response.status_code, 200)
+        config_manager.set_value.assert_called_once_with('system', 'username', 'admin')
+
+    def test_setup_system_info_only_persists_server_name(self):
+        config_manager = MagicMock()
+        config_manager.is_setup_complete.return_value = False
+        config_manager.get_value.return_value = 'admin'
+        user_manager = MagicMock()
+        user_manager.users = {'admin': {'is_admin': True}}
+
+        with patch.object(self.setup_wizard, 'config_manager', config_manager):
+            with patch.object(self.setup_wizard, 'user_manager', user_manager):
+                with self.app.test_client() as client:
+                    response = client.post(
+                        '/api/setup/system',
+                        json={'username': 'admin', 'server_name': 'simple-safer'},
+                    )
+
+        self.assertEqual(response.status_code, 200)
+        config_manager.set_value.assert_called_once_with(
+            'system', 'server_name', 'simple-safer'
+        )
+
+    def test_setup_system_info_rejects_username_that_does_not_match_created_admin(self):
+        config_manager = MagicMock()
+        config_manager.is_setup_complete.return_value = False
+        config_manager.get_value.return_value = 'admin'
+        user_manager = MagicMock()
+        user_manager.users = {'admin': {'is_admin': True}}
+
+        with patch.object(self.setup_wizard, 'config_manager', config_manager):
+            with patch.object(self.setup_wizard, 'user_manager', user_manager):
+                with self.app.test_client() as client:
+                    response = client.post(
+                        '/api/setup/system',
+                        json={'username': 'different', 'server_name': 'simple-safer'},
+                    )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertProblemDetail(
+            response, 'Username must match the admin account created during setup'
+        )
+        config_manager.set_value.assert_not_called()
+
     def test_setup_email_rejects_out_of_range_smtp_port(self):
         system_utils = MagicMock()
 
