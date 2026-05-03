@@ -50,8 +50,8 @@ def test_drive_health_summary_starts_with_no_check_yet():
             response = client.get("/api/drive_health/summary")
 
         assert response.status_code == 200
-        assert response.get_json()["detail"] == "No check yet"
-        assert response.get_json()["checked_at"] is None
+        assert response.get_json()["data"]["detail"] == "No check yet"
+        assert response.get_json()["data"]["checked_at"] is None
     finally:
         cleanup()
 
@@ -67,7 +67,7 @@ def test_drive_health_summary_get_does_not_probe_drive():
                 response = client.get("/api/drive_health/summary")
 
         assert response.status_code == 200
-        assert response.get_json()["detail"] == "No check yet"
+        assert response.get_json()["data"]["detail"] == "No check yet"
     finally:
         cleanup()
 
@@ -101,9 +101,9 @@ def test_drive_health_refresh_probes_and_updates_ram_summary():
                             summary = client.get("/api/drive_health/summary")
 
         assert refresh.status_code == 200
-        assert refresh.get_json()["status"] == "good"
-        assert summary.get_json()["probability"] == 0.04
-        assert summary.get_json()["hdsentinel_health"] == 99
+        assert refresh.get_json()["data"]["status"] == "good"
+        assert summary.get_json()["data"]["probability"] == 0.04
+        assert summary.get_json()["data"]["hdsentinel_health"] == 99
         mock_smart.assert_called_once()
     finally:
         cleanup()
@@ -123,7 +123,7 @@ def test_drive_health_timeout_summary_stays_neutral():
                 with app.test_client() as client:
                     response = client.post("/api/drive_health/refresh")
 
-        data = response.get_json()
+        data = response.get_json()["data"]
         assert response.status_code == 200
         assert data["status"] == "unknown"
         assert data["detail"] == "The drive health check timed out."

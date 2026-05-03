@@ -170,20 +170,9 @@
     }
   }
 
-  // fetchJson enforces both response.ok and data.success because these APIs mix
-  // HTTP errors with 200 {success:false}; data.error/data.message preserve server details.
-  async function fetchJson(url, options) {
-    const response = await fetch(url, options);
-    const data = await response.json();
-    if (!response.ok || data.success === false) {
-      throw new Error(data.error || data.message || 'Request failed.');
-    }
-    return data;
-  }
-
   async function loadSummary() {
     try {
-      const data = await fetchJson('/api/system_updates/summary');
+      const { data } = await window.ApiClient.fetchJson('/api/system_updates/summary');
       renderDistribution(data.distribution);
       renderOperation(data.operation);
       renderSettings(data.settings);
@@ -195,7 +184,7 @@
 
   async function pollStatus() {
     try {
-      const data = await fetchJson('/api/system_updates/status');
+      const { data } = await window.ApiClient.fetchJson('/api/system_updates/status');
       renderOperation(data.operation);
     } catch (error) {
       console.error(error);
@@ -206,7 +195,7 @@
     window.AsyncButtonState.start(button);
     let latestOperation = null;
     try {
-      const data = await fetchJson(`/api/system_updates/${operation}/start`, {
+      const { data } = await window.ApiClient.fetchJson(`/api/system_updates/${operation}/start`, {
         method: 'POST',
         headers: { 'Accept': 'application/json' }
       });
@@ -225,7 +214,7 @@
     window.AsyncButtonState.start(button);
     let latestOperation = null;
     try {
-      const data = await fetchJson('/api/system_updates/stop', {
+      const { data } = await window.ApiClient.fetchJson('/api/system_updates/stop', {
         method: 'POST',
         headers: { 'Accept': 'application/json' }
       });
@@ -244,7 +233,7 @@
     const button = els['auto-updates-save-btn'];
     window.AsyncButtonState.start(button);
     try {
-      const data = await fetchJson('/api/system_updates/settings', {
+      const { data } = await window.ApiClient.fetchJson('/api/system_updates/settings', {
         method: 'POST',
         headers: {
           'Accept': 'application/json',
@@ -270,7 +259,7 @@
     const button = els['livepatch-setup-btn'];
     window.AsyncButtonState.start(button);
     try {
-      const data = await fetchJson('/api/system_updates/livepatch/setup', {
+      const { data } = await window.ApiClient.fetchJson('/api/system_updates/livepatch/setup', {
         method: 'POST',
         headers: {
           'Accept': 'application/json',
@@ -291,11 +280,11 @@
   async function removeStaleLocks(button) {
     window.AsyncButtonState.start(button);
     try {
-      const data = await fetchJson('/api/system_updates/remove_stale_locks', {
+      const { message } = await window.ApiClient.fetchJson('/api/system_updates/remove_stale_locks', {
         method: 'POST',
         headers: { 'Accept': 'application/json' }
       });
-      showAlert(data.message || 'Stale apt locks removed.', 'success');
+      showAlert(message || 'Stale apt locks removed.', 'success');
       pollStatus();
     } catch (error) {
       showAlert(error.message || 'Could not remove apt locks.', 'danger');

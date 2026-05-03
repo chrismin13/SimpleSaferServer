@@ -82,10 +82,13 @@ class UserManagerTests(unittest.TestCase):
         users = manager.list_users()
 
         self.assertEqual(len(users), 1)
-        self.assertEqual(users[0]["username"], "operator")
-        self.assertTrue(users[0]["is_admin"])
-        self.assertNotIn("password_hash", users[0])
-        self.assertNotIn("failed_attempts", users[0])
+        user = users[0]
+        if user is None:
+            self.fail("Expected list_users to return a user dictionary.")
+        self.assertEqual(user["username"], "operator")
+        self.assertTrue(user["is_admin"])
+        self.assertNotIn("password_hash", user)
+        self.assertNotIn("failed_attempts", user)
 
     def test_update_admin_status_persists_role_change(self):
         manager, _adapter = self.make_manager(is_fake=True)

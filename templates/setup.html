@@ -568,11 +568,7 @@ unmount the share, then restart SMB automatically."
 
         async function loadFormatDrives() {
             try {
-                const response = await fetch('/api/setup/format-drives');
-                const data = await response.json();
-                if (!data.success) {
-                    throw new Error(data.error || 'Failed to load drives for formatting');
-                }
+                const { data } = await window.ApiClient.fetchJson('/api/setup/format-drives');
                 populateFormatDriveSelect(data.drives || []);
             } catch (error) {
                 console.error('Error:', error);
@@ -582,11 +578,7 @@ unmount the share, then restart SMB automatically."
 
         async function loadMountDrives() {
             try {
-                const response = await fetch('/api/setup/mount-drives');
-                const data = await response.json();
-                if (!data.success) {
-                    throw new Error(data.error || 'Failed to load NTFS drives for mounting');
-                }
+                const { data } = await window.ApiClient.fetchJson('/api/setup/mount-drives');
                 populateMountDriveSelect(data.drives || []);
                 setManagedUnmountRetryState(false);
             } catch (error) {
@@ -606,19 +598,16 @@ unmount the share, then restart SMB automatically."
             window.AsyncButtonState.start(formatBtn);
             setDriveStatus('Formatting drive…', 'info');
             try {
-                const response = await fetch('/api/setup/format', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ disk }) });
-                const data = await response.json();
-                if (data.success) {
-                    window.AsyncButtonState.success(formatBtn);
-                    localStorage.setItem('formatSuccess', '1');
-                    nextStep();
-                    hideFormatError();
-                    setDriveStatus('Drive formatted successfully.', 'success');
-                    await loadDrives();
-                    const formatSelect = document.getElementById('formatDriveSelect');
-                    for (let i = 0; i < formatSelect.options.length; i++) { if (formatSelect.options[i].value === disk) { formatSelect.selectedIndex = i; break; } }
-                } else { window.AsyncButtonState.error(formatBtn); setDriveStatus('Failed to format drive.', 'error'); showFormatError(data.error, data.details, data.can_unmount); }
-            } catch (error) { window.AsyncButtonState.error(formatBtn); setDriveStatus('An error occurred.', 'error'); showFormatError('An error occurred while formatting the drive'); }
+                await window.ApiClient.fetchJson('/api/setup/format', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ disk }) });
+                window.AsyncButtonState.success(formatBtn);
+                localStorage.setItem('formatSuccess', '1');
+                nextStep();
+                hideFormatError();
+                setDriveStatus('Drive formatted successfully.', 'success');
+                await loadDrives();
+                const formatSelect = document.getElementById('formatDriveSelect');
+                for (let i = 0; i < formatSelect.options.length; i++) { if (formatSelect.options[i].value === disk) { formatSelect.selectedIndex = i; break; } }
+            } catch (error) { window.AsyncButtonState.error(formatBtn); setDriveStatus('Failed to format drive.', 'error'); showFormatError(error.message || 'An error occurred while formatting the drive', error.details, error.can_unmount); }
         }
 
         async function unmountDrive() {
@@ -628,13 +617,11 @@ unmount the share, then restart SMB automatically."
             window.AsyncButtonState.start(unmountBtn);
             setDriveStatus('Unmounting drive…', 'info');
             try {
-                const response = await fetch('/api/setup/unmount', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ disk }) });
-                const data = await response.json();
+                await window.ApiClient.fetchJson('/api/setup/unmount', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ disk }) });
                 // Keep this message explicit because setup unmount only affects
                 // live mounts. Backup-drive settings are applied later.
-                if (data.success) { window.AsyncButtonState.success(unmountBtn); hideFormatError(); setDriveStatus('Drive unmounted. You can continue formatting.', 'success'); await loadDrives(); const formatSelect = document.getElementById('formatDriveSelect'); for (let i = 0; i < formatSelect.options.length; i++) { if (formatSelect.options[i].value === disk) { formatSelect.selectedIndex = i; break; } } }
-                else { window.AsyncButtonState.error(unmountBtn); setDriveStatus('Failed to unmount drive.', 'error'); showFormatError(data.error, data.details); }
-            } catch (error) { window.AsyncButtonState.error(unmountBtn); setDriveStatus('An error occurred.', 'error'); showFormatError('An error occurred while unmounting the drive'); }
+                window.AsyncButtonState.success(unmountBtn); hideFormatError(); setDriveStatus('Drive unmounted. You can continue formatting.', 'success'); await loadDrives(); const formatSelect = document.getElementById('formatDriveSelect'); for (let i = 0; i < formatSelect.options.length; i++) { if (formatSelect.options[i].value === disk) { formatSelect.selectedIndex = i; break; } }
+            } catch (error) { window.AsyncButtonState.error(unmountBtn); setDriveStatus('Failed to unmount drive.', 'error'); showFormatError(error.message || 'An error occurred while unmounting the drive', error.details); }
         }
 
         function showFormatError(error, details = null) {
@@ -666,11 +653,9 @@ unmount the share, then restart SMB automatically."
             window.AsyncButtonState.start(mountBtn);
             setMountStatus('Mounting drive…', 'info');
             try {
-                const response = await fetch('/api/setup/mount', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ partition, mount_point: mountPoint, auto_mount: autoMount }) });
-                const data = await response.json();
-                if (data.success) { window.AsyncButtonState.success(mountBtn); localStorage.setItem('mountSuccess', '1'); nextStep(); hideMountError(); setMountStatus('Drive mounted successfully.', 'success'); await loadDrives(); }
-                else { window.AsyncButtonState.error(mountBtn); setMountStatus('Failed to mount drive.', 'error'); showMountError(data.error, data.details); }
-            } catch (error) { window.AsyncButtonState.error(mountBtn); setMountStatus('An error occurred.', 'error'); showMountError('An error occurred while mounting the drive'); }
+                await window.ApiClient.fetchJson('/api/setup/mount', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ partition, mount_point: mountPoint, auto_mount: autoMount }) });
+                window.AsyncButtonState.success(mountBtn); localStorage.setItem('mountSuccess', '1'); nextStep(); hideMountError(); setMountStatus('Drive mounted successfully.', 'success'); await loadDrives();
+            } catch (error) { window.AsyncButtonState.error(mountBtn); setMountStatus('Failed to mount drive.', 'error'); showMountError(error.message || 'An error occurred while mounting the drive', error.details); }
         }
 
         async function unmountMountDrive() {
@@ -690,24 +675,17 @@ unmount the share, then restart SMB automatically."
             window.AsyncButtonState.start(activeBtn);
             setMountStatus(forceManaged ? 'Retrying with the SMB-safe unmount path…' : 'Unmounting drive…', 'info');
             try {
-                const response = await fetch('/api/setup/unmount', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ partition, force_managed: forceManaged }) });
-                const data = await response.json();
+                await window.ApiClient.fetchJson('/api/setup/unmount', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ partition, force_managed: forceManaged }) });
                 // This stays temporary on purpose so only a successful mount step
                 // changes the backup-drive settings.
-                if (data.success) {
-                    window.AsyncButtonState.success(activeBtn);
-                    hideMountError();
-                    setMountStatus('Drive unmounted. You can continue mounting the selected partition.', 'success');
-                    await loadDrives();
-                } else {
-                    window.AsyncButtonState.error(activeBtn);
-                    setMountStatus('Failed to unmount drive.', 'error');
-                    showMountError(data.error, data.details, { canRetryManagedUnmount: !!data.can_retry_managed_unmount });
-                }
+                window.AsyncButtonState.success(activeBtn);
+                hideMountError();
+                setMountStatus('Drive unmounted. You can continue mounting the selected partition.', 'success');
+                await loadDrives();
             } catch (error) {
                 window.AsyncButtonState.error(activeBtn);
-                setMountStatus('An error occurred.', 'error');
-                showMountError('An error occurred while unmounting the drive');
+                setMountStatus('Failed to unmount drive.', 'error');
+                showMountError(error.message || 'An error occurred while unmounting the drive', error.details, { canRetryManagedUnmount: !!error.can_retry_managed_unmount });
             }
         }
 
@@ -737,11 +715,9 @@ unmount the share, then restart SMB automatically."
             const smtpPassword = document.getElementById('smtpPassword').value;
             if (!email || !fromAddress || !smtpServer || !smtpPort || !smtpUsername || !smtpPassword) { showError('Please fill in all email fields', 'emailError'); return; }
             try {
-                const response = await fetch('/api/setup/email', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ emailAddress: email, fromAddress, smtpServer, smtpPort, smtpUsername, smtpPassword }) });
-                const data = await response.json();
-                if (data.success) nextStep();
-                else showError('Error setting up email: ' + data.error, 'emailError');
-            } catch (error) { showError('An error occurred while setting up email', 'emailError'); }
+                await window.ApiClient.fetchJson('/api/setup/email', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ emailAddress: email, fromAddress, smtpServer, smtpPort, smtpUsername, smtpPassword }) });
+                nextStep();
+            } catch (error) { showError('Error setting up email: ' + (error.message || 'An error occurred while setting up email'), 'emailError'); }
         }
 
         // --- Schedule ---
@@ -755,16 +731,12 @@ unmount the share, then restart SMB automatically."
             const saveBtn = document.querySelector('button[onclick="saveSchedule()"]');
             window.AsyncButtonState.start(saveBtn);
             try {
-                const response = await fetch('/api/setup/schedule', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ time, bandwidth_limit: bandwidthLimit }) });
-                const data = await response.json();
-                if (data.success) {
-                    hideError();
-                    const completed = await completeSetup();
-                    if (completed) window.AsyncButtonState.success(saveBtn);
-                    else window.AsyncButtonState.error(saveBtn);
-                }
-                else { window.AsyncButtonState.error(saveBtn); showError(data.error || 'Failed to save schedule'); }
-            } catch (error) { window.AsyncButtonState.error(saveBtn); showError('Error saving schedule: ' + error); }
+                await window.ApiClient.fetchJson('/api/setup/schedule', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ time, bandwidth_limit: bandwidthLimit }) });
+                hideError();
+                const completed = await completeSetup();
+                if (completed) window.AsyncButtonState.success(saveBtn);
+                else window.AsyncButtonState.error(saveBtn);
+            } catch (error) { window.AsyncButtonState.error(saveBtn); showError('Error saving schedule: ' + (error.message || error)); }
         }
 
         // --- Complete ---
@@ -793,30 +765,26 @@ unmount the share, then restart SMB automatically."
             return fallback.replace(/_/g, ' ');
         }
 
-        function formatSetupCompletionError(data) {
-            const details = Array.isArray(data.details) ? data.details : [];
+        function formatSetupCompletionError(problem) {
+            const details = Array.isArray(problem.details) ? problem.details : [];
             if (details.length > 0) {
                 const labels = details.map(formatSetupFieldLabel);
                 return 'Setup is still missing: ' + labels.join(', ') + '.';
             }
-            if (data.error === 'Missing required fields') {
+            if (problem.detail === 'Missing required fields') {
                 return 'Setup is still missing a few required details.';
             }
-            return data.error || 'Could not complete setup.';
+            return problem.detail || problem.message || 'Could not complete setup.';
         }
 
         async function completeSetup() {
             try {
-                const response = await fetch('/api/setup/complete', { method: 'POST' });
-                const data = await response.json();
-                if (data.success) {
-                    clearSetupStorage();
-                    window.location.href = '/';
-                    return true;
-                }
-                showError(formatSetupCompletionError(data));
+                await window.ApiClient.fetchJson('/api/setup/complete', { method: 'POST' });
+                clearSetupStorage();
+                window.location.href = '/';
+                return true;
             } catch (error) {
-                showError('Something went wrong while completing setup. Please try again.');
+                showError(formatSetupCompletionError(error.problem || error));
             }
             return false;
         }
@@ -832,18 +800,11 @@ unmount the share, then restart SMB automatically."
             const createUserBtn = document.querySelector('button[onclick="createUser()"]');
             window.AsyncButtonState.start(createUserBtn);
             try {
-                const response = await fetch('/api/setup/user', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
-                const data = await response.json();
-                if (data.success) {
-                    try {
-                        const sysResp = await fetch('/api/setup/system', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, server_name: serverName }) });
-                        const sysData = await sysResp.json();
-                        if (!sysData.success) { window.AsyncButtonState.error(createUserBtn); showError('Error saving system info: ' + sysData.error, 'adminError'); return; }
-                    } catch (err) { window.AsyncButtonState.error(createUserBtn); showError('An error occurred while saving system info', 'adminError'); return; }
-                    window.AsyncButtonState.success(createUserBtn);
-                    nextStep();
-                } else { window.AsyncButtonState.error(createUserBtn); showError('Error creating user: ' + data.error, 'adminError'); }
-            } catch (error) { window.AsyncButtonState.error(createUserBtn); showError('An error occurred while creating the user', 'adminError'); }
+                await window.ApiClient.fetchJson('/api/setup/user', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
+                await window.ApiClient.fetchJson('/api/setup/system', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, server_name: serverName }) });
+                window.AsyncButtonState.success(createUserBtn);
+                nextStep();
+            } catch (error) { window.AsyncButtonState.error(createUserBtn); showError('Error creating user: ' + (error.message || 'An error occurred while creating the user'), 'adminError'); }
         }
 
         function showPersistentStepSuccess() {

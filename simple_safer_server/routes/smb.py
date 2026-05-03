@@ -1,10 +1,12 @@
 import os
 from typing import Any
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, current_app, request
 
 from simple_safer_server.services.smb_manager import SMB_DOCS_URL
 from simple_safer_server.services.user_manager import api_admin_required
+from simple_safer_server.web.api import json_data, json_problem, json_request_data
+from simple_safer_server.web.problems import OperationProblem, ValidationProblem
 
 smb = Blueprint("smb_routes", __name__)
 
@@ -53,7 +55,7 @@ def api_list_smb_shares():
         manager = _get_services().smb_manager
         shares = manager.list_managed_shares()
         unmanaged_shares = manager.list_unmanaged_shares()
-        return jsonify(
+        return json_data(
             {
                 "shares": shares,
                 "unmanaged_shares_detected": bool(unmanaged_shares),
@@ -63,16 +65,14 @@ def api_list_smb_shares():
         )
     except Exception as exc:
         current_app.logger.error("Error reading SMB shares: %s", exc)
-        return jsonify({"error": "Failed to read SMB shares"}), 500
+        return json_problem(OperationProblem("Failed to read SMB shares."))
 
 
 @smb.route("/api/smb/shares", methods=["POST"])
 @api_admin_required
 def api_add_smb_share():
     try:
-        data = request.get_json(silent=True)
-        if not isinstance(data, dict):
-            return jsonify({"error": "Request body must be a JSON object"}), 400
+        data = json_request_data()
         share_name = _trimmed_string(data, "name", required=True)
         path = _trimmed_string(data, "path", required=True)
         writable = _validated_writable(data)
@@ -80,28 +80,34 @@ def api_add_smb_share():
         valid_users = _validated_user_list(data)
 
         if not share_name or not path:
-            return jsonify({"error": "Share name and path are required"}), 400
+            return json_problem(
+                ValidationProblem("Share name and path are required.", slug="smb-validation-error")
+            )
         if _invalid_share_name(share_name):
-            return jsonify({"error": "Share name contains invalid characters"}), 400
+            return json_problem(
+                ValidationProblem(
+                    "Share name contains invalid characters.", slug="smb-validation-error"
+                )
+            )
 
         _get_services().smb_manager.create_managed_share(
             share_name, path, writable, comment, valid_users
         )
-        return jsonify({"message": f"Share {share_name} added successfully"})
+        return json_data({}, message=f"Share {share_name} added successfully.")
     except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return json_problem(ValidationProblem(str(exc), slug="smb-validation-error"))
     except Exception as exc:
         current_app.logger.error("Error adding SMB share: %s", exc)
-        return jsonify({"error": "Failed to add SMB share"}), 500
+        return json_problem(
+            OperationProblem("Failed to add SMB share.", slug="smb-operation-failed")
+        )
 
 
 @smb.route("/api/smb/shares/<share_name>", methods=["PUT"])
 @api_admin_required
 def api_edit_smb_share(share_name):
     try:
-        data = request.get_json(silent=True)
-        if not isinstance(data, dict):
-            return jsonify({"error": "Request body must be a JSON object"}), 400
+        data = json_request_data()
         new_name = _trimmed_string(data, "name", required=True)
         path = _trimmed_string(data, "path", required=True)
         writable = _validated_writable(data)
@@ -109,19 +115,27 @@ def api_edit_smb_share(share_name):
         valid_users = _validated_user_list(data)
 
         if not new_name or not path:
-            return jsonify({"error": "Share name and path are required"}), 400
+            return json_problem(
+                ValidationProblem("Share name and path are required.", slug="smb-validation-error")
+            )
         if _invalid_share_name(new_name):
-            return jsonify({"error": "Share name contains invalid characters"}), 400
+            return json_problem(
+                ValidationProblem(
+                    "Share name contains invalid characters.", slug="smb-validation-error"
+                )
+            )
 
         _get_services().smb_manager.update_managed_share(
             share_name, new_name, path, writable, comment, valid_users
         )
-        return jsonify({"message": f"Share {share_name} updated successfully"})
+        return json_data({}, message=f"Share {share_name} updated successfully.")
     except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return json_problem(ValidationProblem(str(exc), slug="smb-validation-error"))
     except Exception as exc:
         current_app.logger.error("Error editing SMB share: %s", exc)
-        return jsonify({"error": "Failed to edit SMB share"}), 500
+        return json_problem(
+            OperationProblem("Failed to edit SMB share.", slug="smb-operation-failed")
+        )
 
 
 @smb.route("/api/smb/shares/<share_name>", methods=["DELETE"])
@@ -129,22 +143,26 @@ def api_edit_smb_share(share_name):
 def api_delete_smb_share(share_name):
     try:
         _get_services().smb_manager.delete_managed_share(share_name)
-        return jsonify({"message": f"Share {share_name} deleted successfully"})
+        return json_data({}, message=f"Share {share_name} deleted successfully.")
     except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return json_problem(ValidationProblem(str(exc), slug="smb-validation-error"))
     except Exception as exc:
         current_app.logger.error("Error deleting SMB share: %s", exc)
-        return jsonify({"error": "Failed to delete SMB share"}), 500
+        return json_problem(
+            OperationProblem("Failed to delete SMB share.", slug="smb-operation-failed")
+        )
 
 
 @smb.route("/api/smb/status")
 @api_admin_required
 def api_smb_status():
     try:
-        return jsonify(_get_services().smb_manager.get_service_status())
+        return json_data(_get_services().smb_manager.get_service_status())
     except Exception as exc:
         current_app.logger.error("Error getting SMB status: %s", exc)
-        return jsonify({"error": "Failed to get SMB status"}), 500
+        return json_problem(
+            OperationProblem("Failed to get SMB status.", slug="smb-operation-failed")
+        )
 
 
 @smb.route("/api/smb/restart", methods=["POST"])
@@ -152,11 +170,15 @@ def api_smb_status():
 def api_restart_smb():
     try:
         if _get_services().smb_manager.restart_services():
-            return jsonify({"message": "SMB services restarted successfully"})
-        return jsonify({"error": "Failed to restart SMB services"}), 500
+            return json_data({}, message="SMB services restarted successfully.")
+        return json_problem(
+            OperationProblem("Failed to restart SMB services.", slug="smb-operation-failed")
+        )
     except Exception as exc:
         current_app.logger.error("Error restarting SMB services: %s", exc)
-        return jsonify({"error": "Failed to restart SMB services"}), 500
+        return json_problem(
+            OperationProblem("Failed to restart SMB services.", slug="smb-operation-failed")
+        )
 
 
 @smb.route("/api/smb/shares/<share_name>/users", methods=["GET"])
@@ -165,40 +187,45 @@ def api_get_share_users(share_name):
     try:
         share = _get_services().smb_manager.get_managed_share(share_name)
         if share is None:
-            return jsonify(
-                {
-                    "error": (
-                        f"Share {share_name} is not managed by SimpleSaferServer. "
-                        f"See {SMB_DOCS_URL} for manual conversion guidance."
-                    )
-                }
-            ), 400
-        return jsonify({"users": share.get("valid_users", [])})
+            return json_problem(
+                ValidationProblem(
+                    f"Share {share_name} is not managed by SimpleSaferServer. "
+                    f"See {SMB_DOCS_URL} for manual conversion guidance.",
+                    slug="smb-validation-error",
+                )
+            )
+        return json_data({"users": share.get("valid_users", [])})
     except Exception as exc:
         current_app.logger.error("Error getting share users: %s", exc)
-        return jsonify({"error": "Failed to get share users"}), 500
+        return json_problem(
+            OperationProblem("Failed to get share users.", slug="smb-operation-failed")
+        )
 
 
 @smb.route("/api/smb/shares/<share_name>/users", methods=["PUT"])
 @api_admin_required
 def api_update_share_users(share_name):
     try:
-        data = request.get_json(silent=True)
-        if not isinstance(data, dict):
-            return jsonify({"error": "Request body must be a JSON object"}), 400
+        data = json_request_data()
         users = _validated_user_list(data)
         services = _get_services()
         for username in users:
             if not services.user_manager.get_user(username):
-                return jsonify({"error": f"User {username} does not exist"}), 400
+                return json_problem(
+                    ValidationProblem(
+                        f"User {username} does not exist.", slug="smb-validation-error"
+                    )
+                )
 
         services.smb_manager.update_share_users(share_name, users)
-        return jsonify({"message": f"Share {share_name} users updated successfully"})
+        return json_data({}, message=f"Share {share_name} users updated successfully.")
     except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return json_problem(ValidationProblem(str(exc), slug="smb-validation-error"))
     except Exception as exc:
         current_app.logger.error("Error updating share users: %s", exc)
-        return jsonify({"error": "Failed to update share users"}), 500
+        return json_problem(
+            OperationProblem("Failed to update share users.", slug="smb-operation-failed")
+        )
 
 
 @smb.route("/api/list_dirs", methods=["GET"])
@@ -207,7 +234,7 @@ def api_list_dirs():
     path = os.path.abspath(request.args.get("path", "/"))
     try:
         if not os.path.isdir(path):
-            return jsonify({"error": "Not a directory"}), 400
+            return json_problem(ValidationProblem("Not a directory."))
         entries = []
         for entry in os.listdir(path):
             full_path = os.path.join(path, entry)
@@ -215,7 +242,7 @@ def api_list_dirs():
                 entries.append(entry)
         entries.sort()
         parent = os.path.dirname(path) if path != "/" else None
-        return jsonify({"path": path, "parent": parent, "dirs": entries})
+        return json_data({"path": path, "parent": parent, "dirs": entries})
     except Exception:
         current_app.logger.exception("Error listing directories")
-        return jsonify({"error": "Could not list folders for that path."}), 500
+        return json_problem(OperationProblem("Could not list folders for that path."))

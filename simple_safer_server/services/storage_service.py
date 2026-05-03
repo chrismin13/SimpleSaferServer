@@ -1,7 +1,8 @@
 import os
-from typing import Any, Dict, Tuple
+from typing import Any
 
 from simple_safer_server.adapters.command_runner import CalledProcessError
+from simple_safer_server.web.problems import OperationProblem, ValidationProblem
 
 
 class StorageService:
@@ -19,53 +20,52 @@ class StorageService:
         self._config_manager = config_manager
         self._command_adapter = command_adapter
 
-    def restart_system(self) -> Tuple[Dict[str, Any], int]:
+    def restart_system(self) -> str:
         if self._runtime.is_fake:
-            return {"success": True, "message": "Fake mode: restart simulated."}, 200
+            return "Fake mode: restart simulated."
         try:
             self._command_adapter.reboot()
-            return {"success": True, "message": "System is restarting..."}, 200
+            return "System is restarting..."
         except CalledProcessError as exc:
-            return {"success": False, "message": f"Failed to restart system: {exc}"}, 500
+            raise OperationProblem(f"Failed to restart system: {exc}") from exc
 
-    def shutdown_system(self) -> Tuple[Dict[str, Any], int]:
+    def shutdown_system(self) -> str:
         if self._runtime.is_fake:
-            return {"success": True, "message": "Fake mode: shutdown simulated."}, 200
+            return "Fake mode: shutdown simulated."
         try:
             self._command_adapter.poweroff()
-            return {"success": True, "message": "System is shutting down..."}, 200
+            return "System is shutting down..."
         except CalledProcessError as exc:
-            return {"success": False, "message": f"Failed to shut down system: {exc}"}, 500
+            raise OperationProblem(f"Failed to shut down system: {exc}") from exc
 
-    def mount_dashboard_drive(self) -> Tuple[Dict[str, Any], int]:
+    def mount_dashboard_drive(self) -> str:
         mount_point = self._config_manager.get_value(
             "backup", "mount_point", self._runtime.default_mount_point
         )
         if not mount_point:
-            return {"success": False, "message": "No mount point configured."}, 400
+            raise ValidationProblem("No mount point configured.", slug="storage-validation-error")
         uuid = self._config_manager.get_value("backup", "uuid", None)
         if self._runtime.is_fake:
             if not os.path.isdir(mount_point):
-                return {
-                    "success": False,
-                    "message": f"Source folder not found: {mount_point}",
-                }, 400
+                raise ValidationProblem(
+                    f"Source folder not found: {mount_point}", slug="storage-validation-error"
+                )
             self._fake_state.set_mount(True, mount_point=mount_point)
             self._fake_state.append_task_log(
                 "Check Mount", f"Backup source connected at {mount_point}."
             )
-            return {"success": True, "message": "Local backup source connected."}, 200
+            return "Local backup source connected."
 
         if not uuid:
-            return {"success": False, "message": "No drive UUID configured."}, 400
+            raise ValidationProblem("No drive UUID configured.", slug="storage-validation-error")
 
         try:
             partition_device = self._command_adapter.find_device_by_uuid(uuid)
             if not partition_device:
-                return {
-                    "success": False,
-                    "message": "Drive not found. Please check the connection.",
-                }, 400
+                raise ValidationProblem(
+                    "Drive not found. Please check the connection.",
+                    slug="storage-validation-error",
+                )
             os.makedirs(mount_point, exist_ok=True)
             self._command_adapter.mount(partition_device, mount_point)
             # Start mount-dependent checks/backups only after the volume exists;
@@ -78,14 +78,11 @@ class StorageService:
                 "nmbd",
             ]:
                 self._command_adapter.start_unit(unit_name)
-            return {"success": True, "message": "Drive mounted and available for use."}, 200
+            return "Drive mounted and available for use."
         except CalledProcessError as exc:
-            return {"success": False, "message": f"Failed to mount drive: {exc}"}, 500
-        except OSError:
-            return {
-                "success": False,
-                "message": (
-                    "Could not prepare the mount point. Check that the configured "
-                    "folder path is valid and writable."
-                ),
-            }, 500
+            raise OperationProblem(f"Failed to mount drive: {exc}") from exc
+        except OSError as exc:
+            raise OperationProblem(
+                "Could not prepare the mount point. Check that the configured "
+                "folder path is valid and writable."
+            ) from exc

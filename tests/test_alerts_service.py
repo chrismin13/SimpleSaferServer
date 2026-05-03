@@ -4,6 +4,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from simple_safer_server.services.alerts_service import AlertsService
+from simple_safer_server.web.problems import ForbiddenProblem, ValidationProblem
 
 
 class FakeConfigManager:
@@ -58,20 +59,17 @@ class AlertsServiceTests(unittest.TestCase):
     def test_generate_test_alerts_is_fake_mode_only(self):
         service, config, _system_utils, _runtime = self.make_service(is_fake=True)
 
-        payload, status_code = service.generate_test_alerts()
+        result = service.generate_test_alerts()
 
-        self.assertEqual(payload, {"success": True})
-        self.assertEqual(status_code, 200)
+        self.assertIsNone(result)
         self.assertEqual(len(config.alerts), 4)
         self.assertGreater(len(config.alerts[-1][1]), 2000)
 
     def test_generate_test_alerts_rejects_real_mode(self):
         service, _config, _system_utils, _runtime = self.make_service(is_fake=False)
 
-        self.assertEqual(
-            service.generate_test_alerts(),
-            ({"success": False, "error": "Not available in production mode"}, 403),
-        )
+        with self.assertRaisesRegex(ForbiddenProblem, "Not available in production mode"):
+            service.generate_test_alerts()
 
     def test_email_config_exposes_existing_password_for_admin_editing(self):
         service, _config, _system_utils, runtime = self.make_service()
@@ -79,8 +77,8 @@ class AlertsServiceTests(unittest.TestCase):
 
         payload = service.get_email_config()
 
-        self.assertTrue(payload["has_smtp_password"])
-        self.assertEqual(payload["config"]["smtp_password"], "secret")
+        self.assertTrue(payload.has_smtp_password)
+        self.assertEqual(payload.config["smtp_password"], "secret")
 
     def test_save_email_config_reuses_existing_password(self):
         service, config, system_utils, runtime = self.make_service()
@@ -96,7 +94,7 @@ class AlertsServiceTests(unittest.TestCase):
             }
         )
 
-        self.assertEqual(payload, {"success": True})
+        self.assertIsNone(payload)
         self.assertEqual(config.values[("backup", "email_address")], "admin@example.com")
         self.assertIsNotNone(system_utils.msmtp_args)
         msmtp_args = system_utils.msmtp_args
@@ -107,19 +105,16 @@ class AlertsServiceTests(unittest.TestCase):
         service, _config, system_utils, runtime = self.make_service()
         runtime.msmtp_config_path.write_text("password existing-secret\n")
 
-        payload = service.save_email_config(
-            {
-                "email_address": "admin@example.com",
-                "from_address": "server@example.com",
-                "smtp_server": "smtp.example.com",
-                "smtp_port": "587abc",
-                "smtp_username": "server",
-            }
-        )
-
-        self.assertEqual(
-            payload, {"success": False, "error": "SMTP port must be between 1 and 65535"}
-        )
+        with self.assertRaisesRegex(ValidationProblem, "SMTP port must be between 1 and 65535"):
+            service.save_email_config(
+                {
+                    "email_address": "admin@example.com",
+                    "from_address": "server@example.com",
+                    "smtp_server": "smtp.example.com",
+                    "smtp_port": "587abc",
+                    "smtp_username": "server",
+                }
+            )
         self.assertIsNone(system_utils.msmtp_args)
 
 

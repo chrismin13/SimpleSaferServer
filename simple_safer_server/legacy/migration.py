@@ -23,6 +23,8 @@ from simple_safer_server.services.user_manager import PasswordPolicy, UserManage
 
 LOGGER = logging.getLogger(__name__)
 LEGACY_BUNDLE_FORMAT = 1
+# The bundle format is produced by https://github.com/chrismin13/SimpleSaferServer-old.
+# Keep this importer until that repository no longer needs a migration target here.
 WEB_SERVICE_NAME = "simple_safer_server_web.service"
 command_runner = CommandRunner()
 

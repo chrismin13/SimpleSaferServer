@@ -1,1 +1,1 @@
-"""Flask blueprints for refactored route groups."""
+"""Flask blueprints for route groups."""

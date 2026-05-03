@@ -4,12 +4,14 @@ import logging
 import re
 from functools import wraps
 
-from flask import flash, jsonify, redirect, session, url_for
+from flask import flash, redirect, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from simple_safer_server.adapters.command_runner import CalledProcessError
 from simple_safer_server.adapters.user_commands import UserCommandAdapter
 from simple_safer_server.services.runtime import get_runtime
+from simple_safer_server.web.api import json_problem
+from simple_safer_server.web.problems import ForbiddenProblem, UnauthorizedProblem
 
 logger = logging.getLogger(__name__)
 
@@ -314,14 +316,18 @@ def api_admin_required(f):
     def decorated_function(*args, **kwargs):
         username = session.get('username')
         if not username:
-            return jsonify({'success': False, 'error': 'Please log in again.'}), 401
+            return json_problem(
+                UnauthorizedProblem("Please log in again.", slug="api-login-required")
+            )
 
         # API callers need status codes and JSON instead of redirects; keep this
         # separate from admin_required so fetch() handlers can fail predictably.
         user_manager = UserManager()
         if not user_manager.is_admin(username):
             session.clear()
-            return jsonify({'success': False, 'error': 'Admin privileges required.'}), 403
+            return json_problem(
+                ForbiddenProblem("Admin privileges required.", slug="api-admin-required")
+            )
         return f(*args, **kwargs)
 
     return decorated_function

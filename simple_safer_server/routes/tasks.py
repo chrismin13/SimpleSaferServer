@@ -5,7 +5,6 @@ from flask import (
     Blueprint,
     abort,
     current_app,
-    jsonify,
     redirect,
     render_template,
     request,
@@ -13,6 +12,8 @@ from flask import (
 )
 
 from simple_safer_server.services.user_manager import admin_required, api_admin_required
+from simple_safer_server.web.api import json_data, json_problem
+from simple_safer_server.web.problems import NotFoundProblem, OperationProblem
 
 tasks = Blueprint("task_routes", __name__)
 
@@ -95,19 +96,23 @@ def start_task(task_name):
     task = _get_services().task_service.get_task(task_name)
     if not task:
         if request.accept_mimetypes.best == "application/json":
-            return jsonify({"success": False, "message": "Task not found"}), 404
+            return json_problem(
+                NotFoundProblem("Task not found.", title="Task not found", slug="task-not-found")
+            )
         abort(404)
     try:
         task.start()
         if request.accept_mimetypes.best == "application/json":
-            return jsonify({"success": True, "message": f"Started {task_name}."})
+            return json_data({}, message=f"Started {task_name}.")
         return redirect(url_for("task_routes.task_detail", task_name=task_name))
     except Exception:
         current_app.logger.exception("Failed to start task %s", task_name)
         if request.accept_mimetypes.best == "application/json":
-            return jsonify(
-                {"success": False, "message": "Could not start task. Check task logs."}
-            ), 500
+            return json_problem(
+                OperationProblem(
+                    "Could not start task. Check task logs.", slug="task-operation-failed"
+                )
+            )
         abort(500)
 
 
@@ -117,19 +122,23 @@ def stop_task(task_name):
     task = _get_services().task_service.get_task(task_name)
     if not task:
         if request.accept_mimetypes.best == "application/json":
-            return jsonify({"success": False, "message": "Task not found"}), 404
+            return json_problem(
+                NotFoundProblem("Task not found.", title="Task not found", slug="task-not-found")
+            )
         abort(404)
     try:
         task.stop()
         if request.accept_mimetypes.best == "application/json":
-            return jsonify({"success": True, "message": f"Stopped {task_name}."})
+            return json_data({}, message=f"Stopped {task_name}.")
         return redirect(url_for("task_routes.task_detail", task_name=task_name))
     except Exception:
         current_app.logger.exception("Failed to stop task %s", task_name)
         if request.accept_mimetypes.best == "application/json":
-            return jsonify(
-                {"success": False, "message": "Could not stop task. Check task logs."}
-            ), 500
+            return json_problem(
+                OperationProblem(
+                    "Could not stop task. Check task logs.", slug="task-operation-failed"
+                )
+            )
         abort(500)
 
 
@@ -137,7 +146,7 @@ def stop_task(task_name):
 @api_admin_required
 def api_tasks_schedule():
     try:
-        return jsonify({"tasks": _get_services().task_service.task_summaries()})
+        return json_data({"tasks": _get_services().task_service.task_summaries()})
     except Exception:
         current_app.logger.exception("Failed to load task schedule")
-        return jsonify({"error": "Failed to load task schedule"}), 500
+        return json_problem(OperationProblem("Failed to load task schedule."))

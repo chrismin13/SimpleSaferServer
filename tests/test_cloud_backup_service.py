@@ -6,6 +6,7 @@ from subprocess import CalledProcessError
 from tempfile import TemporaryDirectory
 
 from simple_safer_server.services.cloud_backup_service import CloudBackupService
+from simple_safer_server.web.problems import OperationProblem, ValidationProblem
 
 
 class FakeConfigManager:
@@ -129,8 +130,8 @@ class CloudBackupServiceTests(unittest.TestCase):
         task = FakeTask()
         service, _config, _system_utils, _runtime = self.make_service(task=task)
 
-        self.assertEqual(service.get_status()["status"]["next_run"], "tomorrow")
-        self.assertEqual(service.run_backup(), {"success": True})
+        self.assertEqual(service.get_status().next_run, "tomorrow")
+        self.assertIsNone(service.run_backup())
         self.assertEqual(task.starts, 1)
 
     def test_fake_schedule_save_does_not_reinstall_timers(self):
@@ -138,7 +139,7 @@ class CloudBackupServiceTests(unittest.TestCase):
 
         result = service.save_schedule({"backup_cloud_time": "04:00", "bandwidth_limit": "4M"})
 
-        self.assertEqual(result, {"success": True})
+        self.assertEqual(result, {})
         self.assertEqual(config.config["schedule"]["backup_cloud_time"], "04:00")
         self.assertEqual(config.config["backup"]["bandwidth_limit"], "4M")
         self.assertFalse(system_utils.created_systemd_config)
@@ -155,7 +156,7 @@ class CloudBackupServiceTests(unittest.TestCase):
             }
         )
 
-        self.assertEqual(result, {"success": True})
+        self.assertEqual(result, {})
         self.assertTrue(system_utils.created_systemd_config)
         self.assertTrue(system_utils.installed_timers)
         self.assertEqual(config.config["schedule"]["backup_cloud_time"], "05:15")
@@ -164,10 +165,8 @@ class CloudBackupServiceTests(unittest.TestCase):
     def test_advanced_config_requires_remote_and_rclone_config(self):
         service, _config, _system_utils, _runtime = self.make_service()
 
-        self.assertEqual(
-            service.save_config({"cloud_mode": "advanced", "rclone_config": "", "remote_name": ""}),
-            {"success": False, "error": "Rclone config and remote name are required."},
-        )
+        with self.assertRaisesRegex(ValidationProblem, "Rclone config and remote name"):
+            service.save_config({"cloud_mode": "advanced", "rclone_config": "", "remote_name": ""})
 
     def test_mega_config_rewrites_rclone_when_reusing_stored_credentials(self):
         service, config, system_utils, _runtime = self.make_service()
@@ -184,7 +183,7 @@ class CloudBackupServiceTests(unittest.TestCase):
             }
         )
 
-        self.assertEqual(result, {"success": True})
+        self.assertEqual(result, {})
         rclone_config = system_utils.rclone_config
         if rclone_config is None:
             self.fail("Expected rclone config to be written")
@@ -196,18 +195,15 @@ class CloudBackupServiceTests(unittest.TestCase):
         service, config, system_utils, _runtime = self.make_service(command_runner=command_runner)
         system_utils.setup_rclone_result = False
 
-        result = service.save_config(
-            {
-                "cloud_mode": "mega",
-                "mega_email": "user@example.com",
-                "mega_password": "secret",
-                "mega_folder": "/Backups",
-            }
-        )
-
-        self.assertEqual(
-            result, {"success": False, "error": "Failed to write rclone config for MEGA."}
-        )
+        with self.assertRaisesRegex(OperationProblem, "Failed to write rclone config"):
+            service.save_config(
+                {
+                    "cloud_mode": "mega",
+                    "mega_email": "user@example.com",
+                    "mega_password": "secret",
+                    "mega_folder": "/Backups",
+                }
+            )
         self.assertNotIn("mega_email", config.config["backup"])
         self.assertNotIn("mega_pass", config.config["backup"])
 
@@ -219,7 +215,7 @@ class CloudBackupServiceTests(unittest.TestCase):
 
         result = service.list_mega_folders({"path": "/"})
 
-        self.assertEqual(result["folders"], ["Backups"])
+        self.assertEqual(result.folders, ["Backups"])
         self.assertEqual(command_runner.calls[0][0][:3], ["rclone", "lsjson", "mega:/"])
         self.assertTrue(command_runner.calls[0][1]["capture_output"])
 
@@ -231,7 +227,7 @@ class CloudBackupServiceTests(unittest.TestCase):
 
         result = service.validate_mega({"email": "user@example.com", "password": "secret"})
 
-        self.assertEqual(result, {"success": True})
+        self.assertIsNone(result)
         self.assertEqual(command_runner.calls[0][0], ["rclone", "obscure", "-"])
         self.assertEqual(command_runner.calls[0][1]["input"], "secret\n")
         self.assertEqual(command_runner.calls[1][0][0:3], ["rclone", "lsjson", "mega:/"])

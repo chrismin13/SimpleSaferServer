@@ -1,4 +1,28 @@
-from typing import Any, Dict, Tuple
+from dataclasses import dataclass
+from typing import Any, Dict, List
+
+from simple_safer_server.web.problems import (
+    ForbiddenProblem,
+    NotFoundProblem,
+    OperationProblem,
+    ValidationProblem,
+)
+
+
+@dataclass(frozen=True)
+class AlertsList:
+    alerts: List[Dict[str, Any]]
+
+
+@dataclass(frozen=True)
+class AlertDetail:
+    alert: Dict[str, Any]
+
+
+@dataclass(frozen=True)
+class EmailConfig:
+    config: Dict[str, str]
+    has_smtp_password: bool
 
 
 class AlertsService:
@@ -9,9 +33,13 @@ class AlertsService:
         self._config_manager = config_manager
         self._system_utils = system_utils
 
-    def generate_test_alerts(self) -> Tuple[Dict[str, Any], int]:
+    def generate_test_alerts(self) -> None:
         if not self._runtime.is_fake:
-            return {"success": False, "error": "Not available in production mode"}, 403
+            raise ForbiddenProblem(
+                "Not available in production mode.",
+                title="Fake mode required",
+                slug="alerts-fake-mode-required",
+            )
 
         long_scroll_test_message = "\n\n".join(
             [
@@ -76,34 +104,34 @@ class AlertsService:
             alert_type="info",
             source="System Test",
         )
-        return {"success": True}, 200
+        return None
 
-    def get_alerts(self) -> Dict[str, Any]:
-        return {"success": True, "alerts": self._config_manager.get_alerts()}
+    def get_alerts(self) -> AlertsList:
+        return AlertsList(alerts=self._config_manager.get_alerts())
 
-    def get_alert(self, alert_id: int) -> Tuple[Dict[str, Any], int]:
+    def get_alert(self, alert_id: int) -> AlertDetail:
         alerts = self._config_manager.get_alerts()
         alert = next((item for item in alerts if item["id"] == alert_id), None)
         if alert:
-            return {"success": True, "alert": alert}, 200
-        return {"success": False, "error": "Alert not found"}, 404
+            return AlertDetail(alert=alert)
+        raise NotFoundProblem("Alert not found.", title="Alert not found", slug="alert-not-found")
 
-    def mark_alert_read(self, alert_id: int) -> Dict[str, Any]:
+    def mark_alert_read(self, alert_id: int) -> None:
         if self._config_manager.mark_alert_read(alert_id):
-            return {"success": True}
-        return {"success": False, "error": "Failed to mark alert as read"}
+            return None
+        raise OperationProblem("Failed to mark alert as read.")
 
-    def clear_alerts(self) -> Dict[str, Any]:
+    def clear_alerts(self) -> None:
         if self._config_manager.clear_alerts():
-            return {"success": True}
-        return {"success": False, "error": "Failed to clear alerts"}
+            return None
+        raise OperationProblem("Failed to clear alerts.")
 
-    def mark_all_alerts_read(self) -> Dict[str, Any]:
+    def mark_all_alerts_read(self) -> None:
         if self._config_manager.mark_all_alerts_read():
-            return {"success": True}
-        return {"success": False, "error": "Failed to mark all alerts as read"}
+            return None
+        raise OperationProblem("Failed to mark all alerts as read.")
 
-    def get_email_config(self) -> Dict[str, Any]:
+    def get_email_config(self) -> EmailConfig:
         msmtp_config = self._read_msmtp_config()
         email_address = self._config_manager.get_value("backup", "email_address", "")
         from_address = self._config_manager.get_value("backup", "from_address", "")
@@ -112,13 +140,12 @@ class AlertsService:
         if from_address and "from_address" not in msmtp_config:
             msmtp_config["from_address"] = from_address
 
-        return {
-            "success": True,
-            "config": msmtp_config,
-            "has_smtp_password": bool(msmtp_config.get("smtp_password")),
-        }
+        return EmailConfig(
+            config=msmtp_config,
+            has_smtp_password=bool(msmtp_config.get("smtp_password")),
+        )
 
-    def save_email_config(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    def save_email_config(self, data: Dict[str, Any]) -> None:
         email = data.get("email_address")
         from_address = data.get("from_address")
         smtp_server = data.get("smtp_server")
@@ -127,26 +154,25 @@ class AlertsService:
         smtp_password = (data.get("smtp_password") or "").strip()
 
         if not all([email, from_address, smtp_server, smtp_port, smtp_username]):
-            return {
-                "success": False,
-                "error": "Email, from address, SMTP server, port, and username are required",
-            }
+            raise ValidationProblem(
+                "Email, from address, SMTP server, port, and username are required."
+            )
         smtp_port_text = str(smtp_port).strip()
         if not smtp_port_text.isdigit() or not 1 <= int(smtp_port_text) <= 65535:
-            return {"success": False, "error": "SMTP port must be between 1 and 65535"}
+            raise ValidationProblem("SMTP port must be between 1 and 65535.")
 
         if not smtp_password:
             smtp_password = self._read_msmtp_config().get("smtp_password", "")
         if not smtp_password:
-            return {"success": False, "error": "SMTP password is required"}
+            raise ValidationProblem("SMTP password is required.")
 
         if not self._system_utils.write_msmtp_config(
             from_address, smtp_server, smtp_port_text, smtp_username, smtp_password
         ):
-            return {"success": False, "error": "Failed to write msmtp configuration"}
+            raise OperationProblem("Failed to write msmtp configuration.")
         self._config_manager.set_value("backup", "email_address", email)
         self._config_manager.set_value("backup", "from_address", from_address)
-        return {"success": True}
+        return None
 
     def _read_msmtp_config(self) -> Dict[str, str]:
         msmtp_config = {}

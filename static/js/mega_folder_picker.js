@@ -43,16 +43,6 @@ window.openMegaFolderPicker = function openMegaFolderPicker(options) {
     errorEl.classList.remove('visible');
   }
 
-  function parseJsonResponse(response) {
-    return response.text().then(text => {
-      try {
-        return JSON.parse(text);
-      } catch (error) {
-        throw new Error(`Unexpected response from server (${response.status})`);
-      }
-    });
-  }
-
   function loadDirs(path) {
     clearError();
     if (dirsListEl) {
@@ -64,14 +54,12 @@ window.openMegaFolderPicker = function openMegaFolderPicker(options) {
       `;
     }
     const creds = getCredentials();
-    fetch(listUrl, {
+    window.ApiClient.fetchJson(listUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ path, email: creds ? creds.email : null, password: creds ? creds.password : null })
     })
-      .then(parseJsonResponse)
-      .then(data => {
-        if (!data.success && data.error) throw new Error(data.error);
+      .then(({ data }) => {
         currentPath = data.path;
         parentPath = data.parent;
         if (currentPathEl) window.renderPathBreadcrumbs(currentPathEl, currentPath, loadDirs);
@@ -131,23 +119,17 @@ window.openMegaFolderPicker = function openMegaFolderPicker(options) {
     newFolderNameEl.classList.remove('is-invalid');
     window.AsyncButtonState.start(saveNewFolderBtn);
     const creds = getCredentials();
-    fetch(createUrl, {
+    window.ApiClient.fetchJson(createUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ folder_name: folderName, path: currentPath, email: creds.email, password: creds.password })
     })
-      .then(parseJsonResponse)
-      .then(data => {
-        if (data.success) {
-          window.AsyncButtonState.success(saveNewFolderBtn);
-          newFolderNameEl.value = '';
-          newFolderNameEl.classList.add('d-none');
-          saveNewFolderBtn.classList.add('d-none');
-          loadDirs(currentPath);
-        } else {
-          window.AsyncButtonState.error(saveNewFolderBtn);
-          showError(data.error || 'Failed to create folder.');
-        }
+      .then(() => {
+        window.AsyncButtonState.success(saveNewFolderBtn);
+        newFolderNameEl.value = '';
+        newFolderNameEl.classList.add('d-none');
+        saveNewFolderBtn.classList.add('d-none');
+        loadDirs(currentPath);
       })
       .catch(e => {
         window.AsyncButtonState.error(saveNewFolderBtn);

@@ -354,11 +354,7 @@ Remove the drive now if you do not want it mounted again.`;
   async function updateTaskSchedule() {
     try {
       hideTaskContextMenu();
-      const response = await fetch('/api/tasks/schedule');
-      const data = await response.json();
-      if (!response.ok || data.error) {
-        throw new Error(data.error || 'Could not refresh task schedule.');
-      }
+      const { data } = await window.ApiClient.fetchJson('/api/tasks/schedule');
 
       rememberTaskSchedule(data.tasks);
       tasksBody.innerHTML = '';
@@ -401,15 +397,11 @@ Remove the drive now if you do not want it mounted again.`;
   }
 
   async function runTaskAction(taskName, action) {
-    const response = await fetch(`/task/${encodeURIComponent(taskName)}/${action}`, {
+    const { message } = await window.ApiClient.fetchJson(`/task/${encodeURIComponent(taskName)}/${action}`, {
       method: 'POST',
       headers: { 'Accept': 'application/json' }
     });
-    const data = await response.json();
-    if (!response.ok || data.success === false) {
-      throw new Error(data.message || 'Task action failed.');
-    }
-    showAlert(data.message || 'Task updated.', 'success');
+    showAlert(message || 'Task updated.', 'success');
     updateTaskSchedule();
     setTimeout(updateTaskSchedule, 1500);
   }
@@ -443,20 +435,15 @@ Remove the drive now if you do not want it mounted again.`;
         }
 
         try {
-          const response = await fetch(form.action, {
+          const { message } = await window.ApiClient.fetchJson(form.action, {
             method: form.method || 'POST',
             headers: { 'Accept': 'application/json' }
           });
-          const data = await response.json();
-
-          if (!response.ok || data.success === false) {
-            throw new Error(data.message || data.error || 'Action failed.');
-          }
 
           if (submitButton) {
             window.AsyncButtonState.success(submitButton);
           }
-          showAlert(data.message || 'Action completed successfully.', 'success');
+          showAlert(message || 'Action completed successfully.', 'success');
           if (form.dataset.successAction === 'refresh-drive-ui') {
             window.setTimeout(refreshDriveUi, 150);
           }
@@ -472,9 +459,8 @@ Remove the drive now if you do not want it mounted again.`;
 
   // --- Storage status ---
   function updateStorage() {
-    fetch('/api/storage/status')
-      .then(r => r.json())
-      .then(data => {
+    window.ApiClient.fetchJson('/api/storage/status')
+      .then(({ data }) => {
         renderDriveActionForm(Boolean(data.mounted));
         const badge = document.getElementById('mount-status-badge');
         const val = document.getElementById('storage-used');
@@ -581,9 +567,8 @@ Remove the drive now if you do not want it mounted again.`;
   }
 
   function updateHealth() {
-    fetch('/api/drive_health/summary')
-      .then(r => r.json())
-      .then(renderHealthSummary)
+    window.ApiClient.fetchJson('/api/drive_health/summary')
+      .then(({ data }) => renderHealthSummary(data))
       .catch(() => {
         document.getElementById('health-status-badge').className = 'badge badge-neutral';
         document.getElementById('health-status-badge').textContent = 'Unavailable';
@@ -596,14 +581,10 @@ Remove the drive now if you do not want it mounted again.`;
       window.AsyncButtonState.start(healthRefreshButton);
     }
     try {
-      const response = await fetch('/api/drive_health/refresh', {
+      const { data } = await window.ApiClient.fetchJson('/api/drive_health/refresh', {
         method: 'POST',
         headers: { 'Accept': 'application/json' }
       });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || data.detail || 'Drive health refresh failed.');
-      }
       renderHealthSummary(data);
       if (healthRefreshButton) {
         window.AsyncButtonState.success(healthRefreshButton);
@@ -619,21 +600,13 @@ Remove the drive now if you do not want it mounted again.`;
 
   // --- Cloud backup status ---
   function updateBackup() {
-    fetch('/api/cloud_backup/status')
-      .then(r => r.json())
-      .then(data => {
+    window.ApiClient.fetchJson('/api/cloud_backup/status')
+      .then(({ data }) => {
         const badge = document.getElementById('backup-status-badge');
         const val = document.getElementById('backup-last-run');
         const detail = document.getElementById('backup-detail');
 
-        if (!data.success) {
-          badge.className = 'badge badge-neutral';
-          badge.textContent = 'Unknown';
-          val.textContent = '—';
-          return;
-        }
-
-        const s = data.status;
+        const s = data;
         if (s.status === 'Success') {
           badge.className = 'badge badge-success';
           badge.textContent = 'OK';
@@ -661,20 +634,11 @@ Remove the drive now if you do not want it mounted again.`;
 
   // --- SMB / sharing status ---
   function updateSharing() {
-    fetch('/api/smb/status')
-      .then(r => r.json())
-      .then(data => {
+    window.ApiClient.fetchJson('/api/smb/status')
+      .then(({ data }) => {
         const badge = document.getElementById('sharing-status-badge');
         const val = document.getElementById('sharing-status');
         const detail = document.getElementById('sharing-detail');
-
-        if (data.error) {
-          badge.className = 'badge badge-danger';
-          badge.textContent = 'Error';
-          val.textContent = 'Unavailable';
-          detail.textContent = data.error;
-          return;
-        }
 
         if (data.smbd === 'active' && data.nmbd === 'active') {
           badge.className = 'badge badge-success';
@@ -701,9 +665,8 @@ Remove the drive now if you do not want it mounted again.`;
 
   // --- System resources ---
   function updateResources() {
-    fetch('/api/system/resources')
-      .then(r => r.json())
-      .then(data => {
+    window.ApiClient.fetchJson('/api/system/resources')
+      .then(({ data }) => {
         const cpuPct = document.getElementById('cpu-percent');
         const cpuBar = document.getElementById('cpu-bar');
         const ramPct = document.getElementById('ram-percent');

@@ -17,7 +17,6 @@ class DdnsService:
         ddns_task = self._task_service.get_task("DDNS Update")
         next_run = ddns_task.next_run if ddns_task else "Unknown"
         return {
-            "success": True,
             "config": {
                 "duckdns": {
                     "enabled": self._config_manager.get_value("ddns", "duckdns_enabled", "false")

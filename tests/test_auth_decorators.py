@@ -27,7 +27,7 @@ def build_test_app():
     @app.route('/api/protected')
     @api_admin_required
     def api_protected():
-        return {'success': True}
+        return {'data': {}}
 
     return app
 
@@ -72,7 +72,15 @@ def test_api_admin_required_returns_json_for_anonymous_users():
         response = client.get('/api/protected')
 
     assert response.status_code == 401
-    assert response.get_json() == {'success': False, 'error': 'Please log in again.'}
+    assert response.get_json() == {
+        'type': (
+            'https://github.com/chrismin13/SimpleSaferServer/blob/main/'
+            'docs/api_responses.md#api-login-required'
+        ),
+        'title': 'Unauthorized',
+        'status': 401,
+        'detail': 'Please log in again.',
+    }
 
 
 def test_api_admin_required_clears_stale_non_admin_api_session():
@@ -92,7 +100,15 @@ def test_api_admin_required_clears_stale_non_admin_api_session():
             assert 'username' not in session
 
     assert response.status_code == 403
-    assert response.get_json() == {'success': False, 'error': 'Admin privileges required.'}
+    assert response.get_json() == {
+        'type': (
+            'https://github.com/chrismin13/SimpleSaferServer/blob/main/'
+            'docs/api_responses.md#api-admin-required'
+        ),
+        'title': 'Forbidden',
+        'status': 403,
+        'detail': 'Admin privileges required.',
+    }
     user_manager.is_admin.assert_called_once_with('operator')
 
 
@@ -110,7 +126,7 @@ def test_api_admin_required_allows_admin_sessions():
         response = client.get('/api/protected')
 
     assert response.status_code == 200
-    assert response.get_json() == {'success': True}
+    assert response.get_json() == {'data': {}}
     user_manager.is_admin.assert_called_once_with('admin')
 
 

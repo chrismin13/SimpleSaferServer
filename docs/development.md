@@ -40,13 +40,16 @@ Python 3.7 compatibility is a hard requirement for application code:
 
 Routes should stay thin. A route should parse HTTP input, call a service or helper, and return HTTP output.
 
-Feature routes should move into blueprints as they are refactored. `setup_wizard.py` already uses this pattern, and new feature modules should follow it.
+Feature routes should live in blueprints. `setup_wizard.py` already uses this pattern, and new feature modules should follow it.
 
 System behavior belongs outside route modules. Code that touches systemd, rclone, Samba, filesystems, SMTP, provider APIs, disks, or secrets should live behind a small service or adapter boundary.
 
 Fake mode should be an alternate implementation behind those boundaries. Avoid scattering `runtime.is_fake` conditionals through unrelated route logic.
 
-Shared response and validation helpers should be preferred over per-route ad hoc response shapes. Until a formal API schema pass happens, keep API responses predictable and use clear status codes.
+Shared response and validation helpers should be preferred over per-route ad hoc response shapes.
+API routes should follow `docs/api_responses.md`: success responses use a `data` envelope,
+failures use Problem Details with real HTTP status codes, and services return Python objects or
+raise app-level exceptions instead of returning HTTP-shaped dictionaries.
 
 Security work should follow the app's admin trust model. SimpleSaferServer is a root-run,
 admin-only local management tool, so do not hide useful managed credentials or configuration from
@@ -57,7 +60,7 @@ broad status responses, process argv, unrelated UI, and overly broad filesystem 
 Avoid persistent writes unless the data must survive restart or is durable operator history/config.
 Use volatile runtime state for status/cache data that can be rebuilt.
 
-`docs/architecture.md` describes the current package architecture. New refactored code should move toward:
+`docs/architecture.md` describes the current package architecture. New code should move toward:
 
 - `simple_safer_server/routes/` for Flask blueprints.
 - `simple_safer_server/services/` for route-independent behavior.
@@ -76,6 +79,8 @@ web helper, or legacy migration behavior inside the `simple_safer_server/` packa
 - Avoid broad `except Exception` except at HTTP or script boundaries where the caller must receive a controlled response.
 - Internal code should raise specific exceptions that routes can map to HTTP responses.
 - Use dataclasses, enums, or typed objects when repeated dictionaries or string constants are becoming a contract.
+- Prefer frozen dataclasses for read-only service result objects, and use explicit `as_dict()`
+  methods when serialized field names, secret filtering, or stable API aliases matter.
 - Prefer structured parsers and standard library APIs over ad hoc string manipulation when practical.
 - Keep comments focused on operational surprises, hidden assumptions, and future-forgettable behavior.
 - Do not write comments or docs that assume the reader knows a previous implementation. Describe the current behavior directly.

@@ -85,16 +85,16 @@
                         });
                         
                         const data = await response.json();
-                        
-                        if (data.success) {
+
+                        if (response.ok && data.data) {
                             window.AsyncButtonState.success(submitBtn);
-                            window.location.href = data.redirect;
+                            window.location.href = data.data.redirect;
                         } else {
                             window.AsyncButtonState.error(submitBtn);
                             feedbackSlot.innerHTML = `
                                 <div class="login-alert login-alert-error">
                                     <i class="fas fa-exclamation-triangle"></i>
-                                    <span>${data.message || 'Login failed'}</span>
+                                    <span>${data.detail || 'Login failed'}</span>
                                 </div>
                             `;
                             // Clear password field for standard UX

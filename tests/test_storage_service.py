@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from typing import Optional
 
 from simple_safer_server.services.storage_service import StorageService
+from simple_safer_server.web.problems import OperationProblem, ValidationProblem
 
 
 class FakeConfigManager:
@@ -86,14 +87,8 @@ class StorageServiceTests(unittest.TestCase):
     def test_restart_and_shutdown_delegate_to_command_adapter(self):
         service, _fake_state, adapter = self.build_service()
 
-        self.assertEqual(
-            service.restart_system(),
-            ({"success": True, "message": "System is restarting..."}, 200),
-        )
-        self.assertEqual(
-            service.shutdown_system(),
-            ({"success": True, "message": "System is shutting down..."}, 200),
-        )
+        self.assertEqual(service.restart_system(), "System is restarting...")
+        self.assertEqual(service.shutdown_system(), "System is shutting down...")
         self.assertTrue(adapter.rebooted)
         self.assertTrue(adapter.powered_off)
 
@@ -101,10 +96,7 @@ class StorageServiceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as mount_point:
             service, fake_state, adapter = self.build_service(is_fake=True, mount_point=mount_point)
 
-            self.assertEqual(
-                service.mount_dashboard_drive(),
-                ({"success": True, "message": "Local backup source connected."}, 200),
-            )
+            self.assertEqual(service.mount_dashboard_drive(), "Local backup source connected.")
             self.assertTrue(fake_state.mounted)
             self.assertEqual(adapter.mounted, [])
 
@@ -113,8 +105,7 @@ class StorageServiceTests(unittest.TestCase):
             service, _fake_state, adapter = self.build_service(mount_point=mount_point)
 
             self.assertEqual(
-                service.mount_dashboard_drive(),
-                ({"success": True, "message": "Drive mounted and available for use."}, 200),
+                service.mount_dashboard_drive(), "Drive mounted and available for use."
             )
             self.assertEqual(adapter.mounted, [("/dev/sdb1", mount_point)])
         self.assertEqual(
@@ -131,10 +122,8 @@ class StorageServiceTests(unittest.TestCase):
     def test_real_mount_reports_missing_uuid_without_system_commands(self):
         service, _fake_state, adapter = self.build_service(uuid=None)
 
-        self.assertEqual(
-            service.mount_dashboard_drive(),
-            ({"success": False, "message": "No drive UUID configured."}, 400),
-        )
+        with self.assertRaisesRegex(ValidationProblem, "No drive UUID configured"):
+            service.mount_dashboard_drive()
         self.assertEqual(adapter.mounted, [])
 
     def test_real_mount_preserves_called_process_error_message(self):
@@ -142,8 +131,5 @@ class StorageServiceTests(unittest.TestCase):
             service, _fake_state, adapter = self.build_service(mount_point=mount_point)
             adapter.raise_on_mount = subprocess.CalledProcessError(1, ["mount"])
 
-            payload, status_code = service.mount_dashboard_drive()
-
-        self.assertFalse(payload["success"])
-        self.assertIn("Failed to mount drive:", payload["message"])
-        self.assertEqual(status_code, 500)
+            with self.assertRaisesRegex(OperationProblem, "Failed to mount drive:"):
+                service.mount_dashboard_drive()

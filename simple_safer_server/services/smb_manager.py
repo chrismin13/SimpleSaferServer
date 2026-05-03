@@ -740,8 +740,8 @@ class SMBManager:
         )
 
     def _get_managed_share_or_raise(self, share_name):
-        # Keep the unmanaged-share rejection in one place so legacy helper
-        # methods do not drift apart and accidentally expose raw Samba state.
+        # Keep the unmanaged-share rejection in one place so helper methods do
+        # not drift apart and accidentally expose raw Samba state.
         _, shares = self._load_shares()
         share = self._find_share_record(shares, share_name)
         if share is None:

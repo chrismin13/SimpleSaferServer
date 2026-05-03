@@ -6,8 +6,6 @@ from typing import Tuple
 from flask import (
     Flask,
     flash,
-    jsonify,
-    make_response,
     redirect,
     render_template,
     request,
@@ -44,6 +42,13 @@ from simple_safer_server.services.system_updates import SystemUpdatesManager
 from simple_safer_server.services.system_utils import SystemUtils
 from simple_safer_server.services.task_service import TaskService
 from simple_safer_server.services.user_manager import UserManager, admin_required
+from simple_safer_server.web.api import json_data, json_problem
+from simple_safer_server.web.problems import (
+    ApiProblem,
+    ForbiddenProblem,
+    NotFoundProblem,
+    UnauthorizedProblem,
+)
 
 
 def create_app() -> Tuple[Flask, SocketIO]:
@@ -190,9 +195,7 @@ def create_app() -> Tuple[Flask, SocketIO]:
                     session["username"] = username
                     session.pop("skip_login_disabled", None)
                     if request.accept_mimetypes.best == "application/json":
-                        return jsonify(
-                            {"success": True, "redirect": url_for("task_routes.dashboard")}
-                        )
+                        return json_data({"redirect": url_for("task_routes.dashboard")})
                     return redirect(url_for("task_routes.dashboard"))
                 msg = (
                     "This account does not have administrator privileges. Only administrators can access the "
@@ -201,12 +204,20 @@ def create_app() -> Tuple[Flask, SocketIO]:
                     "shares that you have been given access to."
                 )
                 if request.accept_mimetypes.best == "application/json":
-                    return jsonify({"success": False, "message": msg})
+                    return json_problem(
+                        ForbiddenProblem(
+                            msg,
+                            title="Admin privileges required",
+                            slug="login-admin-required",
+                        )
+                    )
                 flash(msg, "error")
                 return render_template("login.html")
             msg = "Invalid username or password"
             if request.accept_mimetypes.best == "application/json":
-                return jsonify({"success": False, "message": msg})
+                return json_problem(
+                    UnauthorizedProblem(msg, title="Login failed", slug="login-failed")
+                )
             flash(msg, "error")
 
         return render_template("login.html")
@@ -266,22 +277,26 @@ def create_app() -> Tuple[Flask, SocketIO]:
             "is_admin": user_manager.is_admin(username) if username else False,
         }
 
+    @app.errorhandler(ApiProblem)
+    def handle_api_problem(error):
+        return json_problem(error)
+
     @app.errorhandler(401)
     def handle_unauthorized(error):
         if request.path.startswith("/api/"):
-            return make_response(jsonify({"success": False, "error": "Unauthorized"}), 401)
+            return json_problem(UnauthorizedProblem("Unauthorized."))
         return error
 
     @app.errorhandler(403)
     def handle_forbidden(error):
         if request.path.startswith("/api/"):
-            return make_response(jsonify({"success": False, "error": "Forbidden"}), 403)
+            return json_problem(ForbiddenProblem("Forbidden."))
         return error
 
     @app.errorhandler(404)
     def handle_not_found(error):
         if request.path.startswith("/api/"):
-            return make_response(jsonify({"success": False, "error": "Not found"}), 404)
+            return json_problem(NotFoundProblem("Not found."))
         return error
 
     @app.route("/favicon.ico")

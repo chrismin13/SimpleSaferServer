@@ -26,9 +26,11 @@ Keep `__init__.py` files minimal. Put meaningful behavior in clearly named modul
 
 ## Route And Service Boundaries
 
-Routes should parse HTTP input, call a service or helper, and return HTTP output. System behavior
-belongs outside route modules. Code that touches systemd, rclone, Samba, filesystems, SMTP,
-provider APIs, disks, or secrets should live behind a service or adapter boundary.
+Routes should parse HTTP input, call a service or helper, and return HTTP output. Routes are the
+JSON boundary: API routes serialize service result objects with `simple_safer_server.web` helpers
+and map app-level exceptions to Problem Details. System behavior belongs outside route modules.
+Code that touches systemd, rclone, Samba, filesystems, SMTP, provider APIs, disks, or secrets
+should live behind a service or adapter boundary.
 
 Existing extracted services include task handling, DDNS, Cloud Backup, and alerts. Existing
 blueprints cover dashboard/tasks, DDNS, Cloud Backup, System Updates, alerts, SMB, users, storage,
@@ -65,6 +67,7 @@ operator-started commands that include `sudo`.
 ## Legacy And Compatibility Code
 
 Standalone proof-of-concept scripts should be removed when their behavior is available through the
-app. The legacy import tool remains as a deprecated operator escape hatch in
-`simple_safer_server/legacy/`, but it should not receive new feature work. Root-level files are
-reserved for repository metadata, install/deploy entrypoints, public docs, and operator scripts.
+app. The legacy import tool remains available for bundles produced by
+`https://github.com/chrismin13/SimpleSaferServer-old`; remove it only after that migration path is no
+longer needed. Root-level files are reserved for repository metadata, install/deploy entrypoints,
+public docs, and operator scripts.

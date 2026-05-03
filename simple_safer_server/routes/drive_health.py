@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any
 
-from flask import Blueprint, abort, jsonify, render_template, request, send_file
+from flask import Blueprint, abort, current_app, render_template, request, send_file
 
 from simple_safer_server.services.drive_health import (
     SMART_FIELDS,
@@ -18,6 +18,8 @@ from simple_safer_server.services.drive_health import (
     save_hdsentinel_settings,
 )
 from simple_safer_server.services.user_manager import admin_required, api_admin_required
+from simple_safer_server.web.api import json_data, json_problem
+from simple_safer_server.web.problems import NotFoundProblem, OperationProblem
 
 drive_health = Blueprint("drive_health_routes", __name__)
 
@@ -154,12 +156,13 @@ def download_telemetry():
     if services.runtime.telemetry_path.exists():
         return send_file(services.runtime.telemetry_path, as_attachment=True)
     if request.headers.get("X-Requested-With") == "XMLHttpRequest":
-        return jsonify(
-            {
-                "success": False,
-                "error": "Telemetry has not been generated yet. Run a health check first.",
-            }
-        ), 404
+        return json_problem(
+            NotFoundProblem(
+                "Telemetry has not been generated yet. Run a health check first.",
+                title="Telemetry not found",
+                slug="drive-health-telemetry-not-found",
+            )
+        )
     abort(404)
 
 
@@ -168,9 +171,9 @@ def download_telemetry():
 def api_drive_health_summary():
     services = _get_services()
     try:
-        return jsonify(services.drive_health_summary_service.get_summary())
+        return json_data(services.drive_health_summary_service.get_summary())
     except Exception:
-        return jsonify(
+        return json_data(
             {
                 "status": "unknown",
                 "source": "memory",
@@ -195,10 +198,8 @@ def api_drive_health_refresh():
             services.system_utils,
             runtime=services.runtime,
         )
-        return jsonify(services.drive_health_summary_service.publish(summary))
+        return json_data(services.drive_health_summary_service.publish(summary))
     except Exception:
-        from flask import current_app
-
         current_app.logger.exception("Drive health refresh failed")
         services.drive_health_summary_service.publish(
             {
@@ -213,4 +214,4 @@ def api_drive_health_refresh():
                 "error": "Drive health refresh failed.",
             }
         )
-        return jsonify(services.drive_health_summary_service.get_summary()), 500
+        return json_problem(OperationProblem("Drive health refresh failed."))

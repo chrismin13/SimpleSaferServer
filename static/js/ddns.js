@@ -27,18 +27,12 @@ document.addEventListener('DOMContentLoaded', () => {
   // Load config and status
   async function loadData() {
     try {
-      const response = await fetch('/api/ddns/config');
-      const data = await response.json();
-
-      if (response.ok && data.success) {
-        populateForm(data.config);
-        updateStatusTiles(data.status, data.config, data);
-      } else {
-        showAlert(data.message || data.error || 'Failed to load DDNS configuration', 'error');
-      }
+      const { data } = await window.ApiClient.fetchJson('/api/ddns/config');
+      populateForm(data.config);
+      updateStatusTiles(data.status, data.config, data);
     } catch (error) {
       console.error('Error fetching DDNS config:', error);
-      showAlert('Connection error while loading DDNS configuration.', 'error');
+      showAlert(error.message || 'Connection error while loading DDNS configuration.', 'error');
     }
   }
 
@@ -171,26 +165,20 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     try {
-      const response = await fetch('/api/ddns/config', {
+      const { message } = await window.ApiClient.fetchJson('/api/ddns/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      const data = await response.json();
 
-      if (data.success) {
-        window.AsyncButtonState.success(saveBtn);
-        showAlert(data.message, 'success');
-        // Refresh to show newly triggered sync
-        setTimeout(loadData, 2000);
-      } else {
-        window.AsyncButtonState.error(saveBtn);
-        showAlert(data.message || data.error || 'Failed to save configuration', 'error');
-      }
+      window.AsyncButtonState.success(saveBtn);
+      showAlert(message || 'DDNS configuration saved.', 'success');
+      // Refresh to show newly triggered sync
+      setTimeout(loadData, 2000);
     } catch (error) {
       console.error('Error saving:', error);
       window.AsyncButtonState.error(saveBtn);
-      showAlert('Connection error while saving.', 'error');
+      showAlert(error.message || 'Connection error while saving.', 'error');
     }
   });
 
@@ -214,28 +202,17 @@ document.addEventListener('DOMContentLoaded', () => {
       runBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running...';
 
       try {
-        const response = await fetch('/api/ddns/run', {
+        const { message } = await window.ApiClient.fetchJson('/api/ddns/run', {
           method: 'POST',
           headers: { 'Accept': 'application/json' }
         });
 
-        let json = null;
-        try {
-          json = await response.json();
-        } catch (_) {
-          json = null;
-        }
-
-        if (json && json.success) {
-          showAlert('DDNS sync started successfully.', 'success');
-        } else {
-          showAlert(json?.message || 'Failed to start DDNS sync.', 'error');
-        }
+        showAlert(message || 'DDNS sync started successfully.', 'success');
 
         setTimeout(loadData, 3000);
       } catch (err) {
         console.error('Error starting DDNS sync:', err);
-        showAlert('Failed to start DDNS sync.', 'error');
+        showAlert(err.message || 'Failed to start DDNS sync.', 'error');
         setTimeout(loadData, 2000);
       } finally {
         runBtn.disabled = false;

@@ -91,6 +91,60 @@ document.addEventListener('input', (e) => {
   input.value = numericValue;
 });
 
+/* ── API Client ─────────────────────────────────────────────── */
+class ApiProblemError extends Error {
+  constructor(problem, fallbackMessage) {
+    const message = problem && problem.detail ? problem.detail : fallbackMessage;
+    super(message || 'Request failed.');
+    this.name = 'ApiProblemError';
+    this.problem = problem || null;
+    this.status = problem && problem.status ? problem.status : 0;
+    this.title = problem && problem.title ? problem.title : 'Request failed';
+    this.type = problem && problem.type ? problem.type : 'about:blank';
+    if (problem && typeof problem === 'object') {
+      Object.keys(problem).forEach((key) => {
+        if (!Object.prototype.hasOwnProperty.call(this, key)) {
+          this[key] = problem[key];
+        }
+      });
+    }
+  }
+}
+
+window.ApiProblemError = ApiProblemError;
+
+window.ApiClient = {
+  async fetchJson(url, options = {}) {
+    const response = await fetch(url, options);
+    const text = await response.text();
+    let payload = {};
+
+    if (text) {
+      try {
+        payload = JSON.parse(text);
+      } catch (error) {
+        throw new ApiProblemError(null, `Unexpected response from server (${response.status})`);
+      }
+    }
+
+    if (!response.ok) {
+      throw new ApiProblemError(payload, payload.detail || payload.error || payload.message);
+    }
+
+    if (payload && Object.prototype.hasOwnProperty.call(payload, 'data')) {
+      return {
+        data: payload.data,
+        message: payload.message || ''
+      };
+    }
+
+    return {
+      data: payload,
+      message: payload && payload.message ? payload.message : ''
+    };
+  }
+};
+
 
 /* ── Collapse System ────────────────────────────────────────── */
 document.addEventListener('click', (e) => {

@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+"""Import bundles produced by https://github.com/chrismin13/SimpleSaferServer-old."""
+
 import argparse
 import logging
 import sys

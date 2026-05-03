@@ -57,7 +57,23 @@ class SetupWizardTests(unittest.TestCase):
         self.setup_wizard = importlib.import_module("simple_safer_server.routes.setup_wizard")
         self.app = Flask(__name__)
         self.app.secret_key = 'test-secret'
+        self.app.register_error_handler(
+            self.setup_wizard.ApiProblem,
+            lambda error: self.setup_wizard.json_problem(error),
+        )
         self.app.register_blueprint(self.setup_wizard.setup)
+
+    def assertDataResponse(self, response, expected_data=None):
+        payload = response.get_json()
+        self.assertIn("data", payload)
+        self.assertEqual(payload["data"], expected_data or {})
+        return payload
+
+    def assertProblemDetail(self, response, detail):
+        payload = response.get_json()
+        self.assertEqual(payload["detail"], detail)
+        self.assertIn("type", payload)
+        return payload
 
     def test_list_format_drives_uses_broad_disk_scan(self):
         with patch.object(
@@ -68,7 +84,7 @@ class SetupWizardTests(unittest.TestCase):
             response = client.get("/api/setup/format-drives")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.get_json()["success"], True)
+        self.assertDataResponse(response, {"drives": [{"path": "/dev/sdb", "partitions": []}]})
         mock_get_available_backup_drives.assert_called_once_with(
             runtime=self.setup_wizard.runtime,
             ntfs_only=False,
@@ -83,7 +99,7 @@ class SetupWizardTests(unittest.TestCase):
             response = client.get("/api/setup/mount-drives")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.get_json()["success"], True)
+        self.assertDataResponse(response, {"drives": [{"path": "/dev/sdb", "partitions": []}]})
         mock_get_available_backup_drives.assert_called_once_with(
             runtime=self.setup_wizard.runtime,
             ntfs_only=True,
@@ -101,7 +117,7 @@ class SetupWizardTests(unittest.TestCase):
                     response = client.get('/api/setup/format-drives')
 
         self.assertEqual(response.status_code, 401)
-        self.assertEqual(response.get_json(), {'success': False, 'error': 'Please log in again.'})
+        self.assertProblemDetail(response, 'Please log in again.')
         mock_get_available_backup_drives.assert_not_called()
 
     def test_setup_api_requires_admin_after_setup_is_complete(self):
@@ -121,9 +137,7 @@ class SetupWizardTests(unittest.TestCase):
                         response = client.get('/api/setup/format-drives')
 
         self.assertEqual(response.status_code, 403)
-        self.assertEqual(
-            response.get_json(), {'success': False, 'error': 'Admin privileges required.'}
-        )
+        self.assertProblemDetail(response, 'Admin privileges required.')
         non_admin_user_manager.is_admin.assert_called_once_with('operator')
         mock_get_available_backup_drives.assert_not_called()
 
@@ -150,16 +164,10 @@ class SetupWizardTests(unittest.TestCase):
                             '/api/setup/unmount', json={'partition': '/dev/sdb1'}
                         )
 
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(
-            response.get_json(),
-            {
-                'success': False,
-                'error': self.setup_wizard.MANAGED_UNMOUNT_RETRY_ERROR,
-                'details': self.setup_wizard.MANAGED_UNMOUNT_RETRY_DETAILS,
-                'can_retry_managed_unmount': True,
-            },
-        )
+        self.assertEqual(response.status_code, 400)
+        data = self.assertProblemDetail(response, self.setup_wizard.MANAGED_UNMOUNT_RETRY_ERROR)
+        self.assertEqual(data['details'], self.setup_wizard.MANAGED_UNMOUNT_RETRY_DETAILS)
+        self.assertEqual(data['can_retry_managed_unmount'], True)
         mock_unmount_selected.assert_called_once_with(
             '/dev/sdb1', runtime=self.setup_wizard.runtime
         )
@@ -193,7 +201,7 @@ class SetupWizardTests(unittest.TestCase):
                         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.get_json()['success'], True)
+        self.assertDataResponse(response)
         self.assertIn('SMB-safe retry', response.get_json()['message'])
         mock_is_managed.assert_called_once_with(
             '/dev/sdb1',
@@ -216,10 +224,7 @@ class SetupWizardTests(unittest.TestCase):
             response = client.post('/api/setup/mount')
 
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(
-            response.get_json(),
-            {'success': False, 'error': 'Request body must be a JSON object'},
-        )
+        self.assertProblemDetail(response, 'Request body must be a JSON object.')
 
     def test_mount_drive_returns_400_when_body_is_invalid_json(self):
         with self.app.test_client() as client:
@@ -230,20 +235,14 @@ class SetupWizardTests(unittest.TestCase):
             )
 
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(
-            response.get_json(),
-            {'success': False, 'error': 'Request body must be a JSON object'},
-        )
+        self.assertProblemDetail(response, 'Request body must be a JSON object.')
 
     def test_mount_drive_returns_400_when_body_is_not_object(self):
         with self.app.test_client() as client:
             response = client.post('/api/setup/mount', json=[1, 2, 3])
 
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(
-            response.get_json(),
-            {'success': False, 'error': 'Request body must be a JSON object'},
-        )
+        self.assertProblemDetail(response, 'Request body must be a JSON object.')
 
     def test_mount_drive_returns_400_when_partition_is_absent(self):
         # Valid JSON body but the required 'partition' key is missing.
@@ -251,7 +250,7 @@ class SetupWizardTests(unittest.TestCase):
             response = client.post('/api/setup/mount', json={'mount_point': '/some/path'})
 
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.get_json(), {'success': False, 'error': 'partition is required'})
+        self.assertProblemDetail(response, 'partition is required')
 
     # ------------------------------------------------------------------
     # get_partition_node helper — NVMe/MMC partition naming
@@ -347,10 +346,7 @@ class SetupWizardTests(unittest.TestCase):
             response = client.post('/api/setup/format')
 
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(
-            response.get_json(),
-            {'success': False, 'error': 'Request body must be a JSON object'},
-        )
+        self.assertProblemDetail(response, 'Request body must be a JSON object.')
 
     def test_format_drive_rejects_non_dict_body(self):
         # A JSON body that is not an object (e.g. an array) must be rejected
@@ -360,18 +356,14 @@ class SetupWizardTests(unittest.TestCase):
 
         data = response.get_json()
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(data['success'], False)
-        self.assertIn('JSON object', data['error'])
+        self.assertIn('JSON object', data['detail'])
 
     def test_create_user_returns_400_when_required_fields_are_missing(self):
         with self.app.test_client() as client:
             response = client.post('/api/setup/user', json={'username': 'admin'})
 
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(
-            response.get_json(),
-            {'success': False, 'error': 'Username and password are required'},
-        )
+        self.assertProblemDetail(response, 'Username and password are required')
 
     def test_setup_email_rejects_out_of_range_smtp_port(self):
         system_utils = MagicMock()
@@ -391,10 +383,7 @@ class SetupWizardTests(unittest.TestCase):
                 )
 
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(
-            response.get_json(),
-            {'success': False, 'error': 'SMTP port must be between 1 and 65535'},
-        )
+        self.assertProblemDetail(response, 'SMTP port must be between 1 and 65535')
         system_utils.write_msmtp_config.assert_not_called()
 
     def test_format_drive_rejects_non_string_disk(self):
@@ -403,8 +392,7 @@ class SetupWizardTests(unittest.TestCase):
             response = client.post('/api/setup/format', json={'disk': 123})
 
         data = response.get_json()
-        self.assertEqual(data['success'], False)
-        self.assertIn('string', data['error'])
+        self.assertIn('string', data['detail'])
 
     def test_format_drive_rejects_falsey_non_string_disk(self):
         # Falsey but non-None values (e.g. False, 0) must hit the isinstance check,
@@ -413,8 +401,7 @@ class SetupWizardTests(unittest.TestCase):
             response = client.post('/api/setup/format', json={'disk': False})
 
         data = response.get_json()
-        self.assertEqual(data['success'], False)
-        self.assertIn('string', data['error'])
+        self.assertIn('string', data['detail'])
 
     def test_format_drive_rejects_non_dev_path(self):
         # Paths that resolve outside /dev/ must be rejected without touching the disk.
@@ -423,8 +410,7 @@ class SetupWizardTests(unittest.TestCase):
                 response = self._post_format(client, '/tmp/evil')
 
         data = response.get_json()
-        self.assertEqual(data['success'], False)
-        self.assertIn('/dev/', data['error'])
+        self.assertIn('/dev/', data['detail'])
 
     def test_format_drive_rejects_nonexistent_device(self):
         # A path under /dev/ that doesn't exist must be rejected.
@@ -434,8 +420,7 @@ class SetupWizardTests(unittest.TestCase):
                     response = self._post_format(client, '/dev/sdb')
 
         data = response.get_json()
-        self.assertEqual(data['success'], False)
-        self.assertIn('does not exist', data['error'])
+        self.assertIn('does not exist', data['detail'])
 
     def test_format_drive_rejects_non_block_device(self):
         # A node that exists but is not a block device (e.g. /dev/null) must be rejected.
@@ -451,8 +436,7 @@ class SetupWizardTests(unittest.TestCase):
                         response = self._post_format(client, '/dev/null')
 
         data = response.get_json()
-        self.assertEqual(data['success'], False)
-        self.assertIn('block device', data['error'])
+        self.assertIn('block device', data['detail'])
 
     def test_format_drive_rejects_partition_node(self):
         # Passing a partition (/dev/sda1) instead of a whole disk must be rejected.
@@ -474,8 +458,7 @@ class SetupWizardTests(unittest.TestCase):
                             response = self._post_format(client, '/dev/sda1')
 
         data = response.get_json()
-        self.assertEqual(data['success'], False)
-        self.assertIn('whole-disk', data['error'])
+        self.assertIn('whole-disk', data['detail'])
 
     def test_format_drive_handles_lsblk_not_found(self):
         # If lsblk isn't installed, return a clear error rather than crashing.
@@ -496,8 +479,7 @@ class SetupWizardTests(unittest.TestCase):
                             response = self._post_format(client, '/dev/sdb')
 
         data = response.get_json()
-        self.assertEqual(data['success'], False)
-        self.assertIn('verify disk type', data['error'])
+        self.assertIn('verify disk type', data['detail'])
 
     def test_format_drive_partprobe_missing_is_non_fatal(self):
         # OSError from partprobe (not installed, or permission denied) must not abort formatting.
@@ -553,7 +535,7 @@ class SetupWizardTests(unittest.TestCase):
                                             with self.app.test_client() as client:
                                                 response = self._post_format(client, '/dev/sdb')
 
-        self.assertEqual(response.get_json()['success'], True)
+        self.assertDataResponse(response)
 
     def test_format_drive_partprobe_permission_error_is_non_fatal(self):
         # PermissionError (an OSError subclass) from partprobe must also be non-fatal.
@@ -601,7 +583,7 @@ class SetupWizardTests(unittest.TestCase):
                                             with self.app.test_client() as client:
                                                 response = self._post_format(client, '/dev/sdb')
 
-        self.assertEqual(response.get_json()['success'], True)
+        self.assertDataResponse(response)
 
     def test_format_drive_partprobe_nonzero_is_non_fatal(self):
         # Non-zero exit from partprobe must be logged at debug, not abort formatting.
@@ -653,7 +635,7 @@ class SetupWizardTests(unittest.TestCase):
                                             with self.app.test_client() as client:
                                                 response = self._post_format(client, '/dev/sdb')
 
-        self.assertEqual(response.get_json()['success'], True)
+        self.assertDataResponse(response)
 
     def test_format_drive_poll_timeout_returns_error(self):
         # If the partition node never appears as a block device within the
@@ -718,5 +700,4 @@ class SetupWizardTests(unittest.TestCase):
                                                 response = self._post_format(client, '/dev/sdb')
 
         data = response.get_json()
-        self.assertEqual(data['success'], False)
-        self.assertIn('did not appear', data['error'])
+        self.assertIn('did not appear', data['detail'])
