@@ -373,10 +373,31 @@ echo -e "${YELLOW}Step 2: Installing rclone (latest, all cloud services supporte
 TMPFILE=$(mktemp)
 # Cloud backup is part of the supported setup path, so a missing rclone should
 # stop installation instead of producing a partially capable server.
-if curl -fS https://rclone.org/install.sh -o "$TMPFILE" && bash "$TMPFILE"; then
-  echo -e "${GREEN}✔ rclone installed.${NC}\n"
+if curl -fS https://rclone.org/install.sh -o "$TMPFILE"; then
+  if bash "$TMPFILE"; then
+    echo -e "${GREEN}✔ rclone installed.${NC}\n"
+  else
+    RCLONE_INSTALL_EXIT_CODE=$?
+    # The upstream script returns 3 when the newest rclone is already present.
+    # Verify the binary before deciding whether this server is actually unsafe.
+    if command -v rclone >/dev/null 2>&1; then
+      echo -e "${YELLOW}rclone installer exited with code ${RCLONE_INSTALL_EXIT_CODE}, but rclone is available.${NC}"
+      rclone version | head -n 1
+      echo -e "${GREEN}✔ rclone is installed.${NC}\n"
+    else
+      echo -e "${RED}ERROR: Failed to install rclone. Exit code: ${RCLONE_INSTALL_EXIT_CODE}.${NC}"
+      echo -e "${RED}Cloud backup requires rclone, so SimpleSaferServer cannot complete installation safely.${NC}"
+      echo -e "${YELLOW}Remediation:${NC}"
+      echo -e "  1. Check network access to https://rclone.org/install.sh"
+      echo -e "  2. Install rclone manually if needed: https://rclone.org/install/"
+      echo -e "  3. Rerun this installer."
+      rm -f "$TMPFILE"
+      exit 1
+    fi
+  fi
 else
-  echo -e "${RED}ERROR: Failed to install rclone.${NC}"
+  RCLONE_DOWNLOAD_EXIT_CODE=$?
+  echo -e "${RED}ERROR: Failed to download rclone installer. Exit code: ${RCLONE_DOWNLOAD_EXIT_CODE}.${NC}"
   echo -e "${RED}Cloud backup requires rclone, so SimpleSaferServer cannot complete installation safely.${NC}"
   echo -e "${YELLOW}Remediation:${NC}"
   echo -e "  1. Check network access to https://rclone.org/install.sh"
