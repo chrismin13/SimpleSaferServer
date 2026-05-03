@@ -173,7 +173,8 @@ def api_drive_health_summary():
     services = _get_services()
     try:
         return json_data(services.drive_health_summary_service.get_summary())
-    except Exception:
+    except Exception as exc:
+        current_app.logger.exception("Drive health summary lookup failed: %s", exc)
         return json_data(
             {
                 "status": "unknown",
