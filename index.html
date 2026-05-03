@@ -34,12 +34,26 @@
             color: #333;
             font-size: 1.15em;
         }
-        pre, code {
+        pre {
             background: #f0f4fa;
             border-radius: 6px;
             padding: 0.7em 1em;
             font-size: 1.1em;
             margin-bottom: 0;
+            min-width: 0;
+            overflow-x: auto;
+        }
+        pre code {
+            background: transparent;
+            border-radius: 0;
+            display: block;
+            padding: 0;
+            white-space: nowrap;
+        }
+        code {
+            background: #f0f4fa;
+            border-radius: 4px;
+            padding: 0.12em 0.35em;
         }
         .copy-btn {
             background: #2a5d9f;
@@ -48,7 +62,6 @@
             border-radius: 4px;
             padding: 0.5em 1.2em;
             cursor: pointer;
-            margin-left: 1em;
             font-size: 1em;
             transition: background 0.2s;
         }
@@ -64,7 +77,15 @@
         .fa-check-circle {
             color: #28a745;
         }
-        .fa-cloud, .fa-hdd, .fa-user, .fa-folder-open, .fa-bell {
+        .command-row {
+            display: flex;
+            align-items: stretch;
+            gap: 1em;
+        }
+        .command-row pre {
+            flex: 1 1 auto;
+        }
+        .fa-cloud, .fa-hdd, .fa-user, .fa-folder-open {
             color: #2a5d9f;
         }
         .brand-cloud-icon {
@@ -101,6 +122,11 @@
             color: #fff;
             transform: translateY(-2px);
         }
+        @media (max-width: 575.98px) {
+            .command-row {
+                flex-direction: column;
+            }
+        }
     </style>
 </head>
 <body>
@@ -117,7 +143,7 @@
         </div>
 
         <h2 class="mb-3"><i class="fa-solid fa-terminal"></i> One-Line Install</h2>
-        <div class="mb-3 d-flex align-items-center">
+        <div class="command-row mb-3">
             <pre class="flex-grow-1 mb-0"><code id="install-cmd">curl -fsSL https://sss.chrismin13.com/install.sh | sudo bash</code></pre>
             <button class="copy-btn" onclick="copyCmd('install-cmd', this)"><i class="fa-regular fa-copy"></i> Copy</button>
         </div>
@@ -155,7 +181,7 @@
         <hr>
         <h2 class="mb-3"><i class="fa-solid fa-trash"></i> Uninstallation</h2>
         <p>To completely remove SimpleSaferServer from your system, you can run the following command:</p>
-          <div class="d-flex align-items-center mb-2">
+          <div class="command-row mb-2">
             <pre class="flex-grow-1 mb-0"><code id="uninstall-cmd-web">curl -fsSL https://sss.chrismin13.com/uninstall.sh | sudo bash</code></pre>
             <button class="copy-btn" onclick="copyCmd('uninstall-cmd-web', this)"><i class="fa-regular fa-copy"></i> Copy</button>
         </div>
