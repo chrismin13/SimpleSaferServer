@@ -1,4 +1,6 @@
 import argparse
+import os
+import sys
 
 from simple_safer_server.wsgi import app
 
@@ -16,6 +18,12 @@ def main() -> None:
     parser.add_argument("--no-debug", dest="debug", action="store_false", help="Disable debug mode")
     parser.set_defaults(debug=False)
     args = parser.parse_args()
+    if args.debug and hasattr(os, "geteuid") and os.geteuid() == 0:
+        print(
+            "WARNING: Flask debug mode is dangerous when SimpleSaferServer runs as root; "
+            "disable debug mode unless this is an isolated development session.",
+            file=sys.stderr,
+        )
     app.run(host=args.host, port=args.port, debug=args.debug)
 
 

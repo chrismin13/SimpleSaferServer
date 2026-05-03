@@ -9,6 +9,7 @@ class OsSupportTests(unittest.TestCase):
         values = parse_os_release_text(
             """
             NAME="Linux Mint"
+            PRETTY_NAME='Linux Mint 22'
             VERSION_ID="22"
             # ignored
             ID=linuxmint
@@ -18,6 +19,7 @@ class OsSupportTests(unittest.TestCase):
 
         self.assertEqual(values["ID"], "linuxmint")
         self.assertEqual(values["ID_LIKE"], "ubuntu debian")
+        self.assertEqual(values["PRETTY_NAME"], "Linux Mint 22")
 
     def test_debian_support_uses_major_version(self):
         support = get_support_info("debian", "12.7")
@@ -53,6 +55,12 @@ class OsSupportTests(unittest.TestCase):
         self.assertTrue(support["is_supported"])
         self.assertFalse(support["approaching_eol"])
         self.assertEqual(support["days_until_eol"], 184)
+
+    def test_unknown_support_info_has_stable_shape(self):
+        support = get_support_info("unknown", "1")
+
+        self.assertFalse(support["known"])
+        self.assertFalse(support["is_supported"])
 
 
 if __name__ == "__main__":

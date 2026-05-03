@@ -101,7 +101,7 @@ def parse_os_release_text(text: str) -> Dict[str, str]:
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, value = line.split("=", 1)
-        values[key] = value.strip().strip('"')
+        values[key] = value.strip().strip("\"'")
     return values
 
 
@@ -136,6 +136,7 @@ def get_support_info(
             "max_eol_display": "Unknown",
             "notes": "Support dates are not built into this version of SimpleSaferServer.",
             "source_url": SUPPORT_SOURCES.get(distro),
+            "is_supported": False,
             "approaching_eol": False,
             "days_until_eol": None,
         }

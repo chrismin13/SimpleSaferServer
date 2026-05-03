@@ -1,6 +1,7 @@
 import os
 import subprocess
 import tempfile
+import textwrap
 import unittest
 from pathlib import Path
 
@@ -12,7 +13,7 @@ class InstallPreflightTests(unittest.TestCase):
     def run_preflight(self, os_release_text, *args, fake_commands="apt-get,dpkg,systemctl"):
         with tempfile.TemporaryDirectory() as temp_dir:
             os_release_path = Path(temp_dir) / "os-release"
-            os_release_path.write_text(os_release_text)
+            os_release_path.write_text(textwrap.dedent(os_release_text))
             env = {
                 **os.environ,
                 "SSS_INSTALLER_PREFLIGHT_ONLY": "1",

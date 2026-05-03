@@ -74,6 +74,15 @@ class RuntimeCommandAdapterTests(unittest.TestCase):
             ],
         )
 
+    def test_system_updates_adapter_skips_empty_remove_batch(self):
+        runner = RecordingRunner()
+        adapter = SystemUpdatesCommandAdapter(command_runner=runner)
+
+        result = adapter.remove_files([])
+
+        self.assertIsNone(result)
+        self.assertEqual(runner.calls, [])
+
     def test_system_updates_adapter_writes_apt_periodic_config_directly(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             destination = Path(temp_dir) / "20auto-upgrades"

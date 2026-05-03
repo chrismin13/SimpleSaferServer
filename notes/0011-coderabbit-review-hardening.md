@@ -20,7 +20,7 @@ verification, and preventing concurrent secret writes from losing updates.
 
 - [x] Address verified CodeRabbit findings.
 - [x] Run focused tests and local quality checks for touched areas.
-- [ ] Rerun `coderabbit review` after the hourly review cap clears.
+- [x] Rerun `coderabbit review` after the hourly review cap clears.
 - [x] Commit the review/fix round without pushing.
 
 ## Verification

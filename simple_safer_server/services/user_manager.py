@@ -14,6 +14,15 @@ from simple_safer_server.services.runtime import get_runtime
 logger = logging.getLogger(__name__)
 
 
+def _parse_user_timestamp(value):
+    timestamp = datetime.datetime.fromisoformat(value)
+    if timestamp.tzinfo is None:
+        # Older user records stored UTC values without an offset; keep them
+        # comparable with the aware timestamps written by current code.
+        return timestamp.replace(tzinfo=datetime.timezone.utc)
+    return timestamp
+
+
 class PasswordPolicy:
     def __init__(self):
         self.min_length = 4
@@ -154,7 +163,7 @@ class UserManager:
             # Keep JSON and in-memory users aligned with Samba; callers retry
             # failed creates, so a half-created user would turn into "exists".
             self.users.pop(username, None)
-            return False, "User created but failed to sync with Samba"
+            return False, "User creation failed: could not sync with Samba"
 
         self._save_users()
         return True, "User created successfully"
@@ -165,10 +174,11 @@ class UserManager:
             return False
 
         user = self.users[username]
+        now = datetime.datetime.now(datetime.timezone.utc)
 
         # Check if account is locked
         if user.get('locked_until'):
-            if datetime.datetime.utcnow() < datetime.datetime.fromisoformat(user['locked_until']):
+            if now < _parse_user_timestamp(user['locked_until']):
                 return False
             # Reset lock if time has passed
             user['locked_until'] = None
@@ -178,7 +188,7 @@ class UserManager:
         if check_password_hash(user['password_hash'], password):
             # Reset failed attempts on successful login
             user['failed_attempts'] = 0
-            user['last_login'] = str(datetime.datetime.utcnow())
+            user['last_login'] = now.isoformat()
             self._save_users()
             return True
 
@@ -187,7 +197,7 @@ class UserManager:
 
         # Lock account after 5 failed attempts
         if user['failed_attempts'] >= 5:
-            user['locked_until'] = str(datetime.datetime.utcnow() + datetime.timedelta(minutes=15))
+            user['locked_until'] = (now + datetime.timedelta(minutes=15)).isoformat()
 
         self._save_users()
         return False
@@ -219,14 +229,11 @@ class UserManager:
         if not is_valid:
             return False, message
 
-        # Update password
-        self.users[username]['password_hash'] = generate_password_hash(new_password)
-        self._save_users()
-
-        # Sync to Samba
         if not self._sync_user_to_samba(username, new_password):
             return False, "Password changed but failed to sync with Samba"
 
+        self.users[username]['password_hash'] = generate_password_hash(new_password)
+        self._save_users()
         return True, "Password changed successfully"
 
     def set_password(self, username, new_password):
@@ -239,12 +246,11 @@ class UserManager:
         if not is_valid:
             return False, message
 
-        self.users[username]['password_hash'] = generate_password_hash(new_password)
-        self._save_users()
-
         if not self._sync_user_to_samba(username, new_password):
             return False, "Password changed but failed to sync with Samba"
 
+        self.users[username]['password_hash'] = generate_password_hash(new_password)
+        self._save_users()
         return True, "Password changed successfully"
 
     def delete_user(self, username):

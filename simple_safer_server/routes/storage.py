@@ -230,7 +230,7 @@ def api_backup_drive_unmount():
             "mount_point",
             services.runtime.default_mount_point,
         )
-        configured_uuid = services.config_manager.get_value("backup", "uuid", "")
+        configured_uuid = services.config_manager.get_value("backup", "uuid", None)
 
         if is_selected_partition_managed_backup_drive(
             partition,

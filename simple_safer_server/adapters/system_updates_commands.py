@@ -1,5 +1,6 @@
 import os
 import signal
+from contextlib import suppress
 from pathlib import Path
 from typing import Optional
 
@@ -32,6 +33,10 @@ class SystemUpdatesCommandAdapter:
         return result.returncode == 0
 
     def remove_files(self, paths):
+        if not paths:
+            # The caller normally filters missing locks first; keep an empty
+            # cleanup batch from turning into an invalid rm invocation.
+            return None
         return self._command_runner.run(
             ["rm", "-f", *paths],
             check=True,
@@ -64,6 +69,8 @@ class SystemUpdatesCommandAdapter:
                 os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
             except Exception:
                 proc.kill()
+            with suppress(TimeoutExpired):
+                proc.wait(timeout=5)
 
     def write_apt_periodic_config(self, temp_file):
         temp_file.seek(0)

@@ -601,10 +601,10 @@ Remove the drive now if you do not want it mounted again.`;
         headers: { 'Accept': 'application/json' }
       });
       const data = await response.json();
-      renderHealthSummary(data);
       if (!response.ok) {
         throw new Error(data.error || data.detail || 'Drive health refresh failed.');
       }
+      renderHealthSummary(data);
       if (healthRefreshButton) {
         window.AsyncButtonState.success(healthRefreshButton);
       }
