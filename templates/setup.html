@@ -115,7 +115,7 @@
                                     <option value="">Select a drive…</option>
                                 </select>
                                 <div id="driveMountStatusBadge" class="mt-2"></div>
-                                <div class="form-hint"><i class="fas fa-triangle-exclamation text-warning me-1"></i>Formatting will erase all data on the selected drive</div>
+                                <div class="form-hint"><i class="fas fa-triangle-exclamation text-warning me-1"></i>Formatting removes all files on the selected drive and prepares it as one backup drive.</div>
                             </div>
                             <div id="driveStatusArea" class="d-flex items-center mb-3" style="min-height:1.5rem;font-size:var(--text-sm);"></div>
                             <div class="d-flex gap-3 mb-4">
@@ -126,7 +126,9 @@ This only clears live mounts so formatting can continue.
 Backup settings are NOT updated until the 'Drive Mount' step.">
                                     <i class="fas fa-eject me-1"></i> Unmount
                                 </button>
-                                <button id="formatDriveBtn" class="btn btn-danger btn-sm" data-confirm="Are you sure you want to format this drive? This will erase all data.">
+                                <button id="formatDriveBtn" class="btn btn-danger btn-sm" data-confirm="Are you sure you want to format this drive?
+
+This removes all files on the selected drive and prepares it as one backup drive.">
                                     <i class="fas fa-exclamation-triangle me-1"></i> Format Drive
                                 </button>
                             </div>

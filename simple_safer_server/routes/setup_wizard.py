@@ -57,6 +57,7 @@ logger = logging.getLogger(__name__)
 # (e.g. /dev/nvme0n1p1) before giving up and reporting an error.
 PARTITION_POLL_INTERVAL_SECONDS = 0.5  # delay between existence checks
 PARTITION_POLL_TIMEOUT_SECONDS = 5.0  # maximum total wait
+MICROSOFT_BASIC_DATA_PARTITION_TYPE = "EBD0A0A2-B9E5-4433-87C0-68B6B72699C7"
 
 
 def _validation_problem(message, **extra):
@@ -406,58 +407,60 @@ def format_drive():
         # nodes use a 'p' separator (e.g. /dev/nvme0n1p1).  Standard SCSI/SATA
         # disks (e.g. /dev/sdb) just append the number (e.g. /dev/sdb1).
         partition = get_partition_node(disk)
-        if not os.path.exists(partition):
-            # Create partition using fdisk
-            fdisk_input = "n\np\n1\n\n\nw\n"
-            result = setup_command_adapter.create_partition(disk, fdisk_input.encode())
-            if result.returncode != 0:
-                return _operation_problem(
-                    'Failed to create partition',
-                    details='Could not create partition on the drive. Please ensure the drive is not in use.',
+        # Step 2 promises to erase and prepare the whole selected disk, so
+        # formatting must not quietly reuse an old multi-partition layout.
+        # sfdisk creates a fresh GPT layout with one full-size partition that
+        # Windows and Linux both recognize as general data storage.
+        partition_script = f"type={MICROSOFT_BASIC_DATA_PARTITION_TYPE}\n"
+        result = setup_command_adapter.create_partition(disk, partition_script.encode())
+        if result.returncode != 0:
+            return _operation_problem(
+                'Failed to prepare drive',
+                details='Could not erase and prepare the selected drive. Please make sure it is not in use and try again.',
+            )
+
+        # Ask the kernel to re-read the partition table so the new partition
+        # node (e.g. /dev/nvme0n1p1) appears in /dev before mkfs.ntfs runs.
+        # partprobe failures are non-fatal: mkfs.ntfs will still succeed on
+        # most kernels without it, but we log at debug so failures are
+        # visible if troubleshooting a race condition.
+        try:
+            result_probe = setup_command_adapter.partprobe(disk)
+            if result_probe.returncode != 0:
+                logger.debug(
+                    "partprobe %s exited %d: %s",
+                    disk,
+                    result_probe.returncode,
+                    result_probe.stderr.strip(),
                 )
+        except OSError as e:
+            logger.debug("partprobe failed for %s; continuing without it: %s", disk, e)
 
-            # Ask the kernel to re-read the partition table so the new partition
-            # node (e.g. /dev/nvme0n1p1) appears in /dev before mkfs.ntfs runs.
-            # partprobe failures are non-fatal: mkfs.ntfs will still succeed on
-            # most kernels without it, but we log at debug so failures are
-            # visible if troubleshooting a race condition.
+        # Poll for up to 5 seconds so udev has time to create the new device
+        # node before mkfs.ntfs tries to open it.  Without this wait, mkfs can
+        # fail with "No such file or directory" on kernels where udev
+        # processing is slightly delayed.
+        deadline = time.monotonic() + PARTITION_POLL_TIMEOUT_SECONDS
+        while True:
+            # Verify the node exists *and* is a block device — udev could
+            # briefly create a placeholder file of the wrong type.
             try:
-                result_probe = setup_command_adapter.partprobe(disk)
-                if result_probe.returncode != 0:
-                    logger.debug(
-                        "partprobe %s exited %d: %s",
-                        disk,
-                        result_probe.returncode,
-                        result_probe.stderr.strip(),
-                    )
-            except OSError as e:
-                logger.debug("partprobe failed for %s; continuing without it: %s", disk, e)
-
-            # Poll for up to 5 seconds so udev has time to create the new
-            # device node before mkfs.ntfs tries to open it.  Without this
-            # wait, mkfs can fail with "No such file or directory" on kernels
-            # where udev processing is slightly delayed.
-            deadline = time.monotonic() + PARTITION_POLL_TIMEOUT_SECONDS
-            while True:
-                # Verify the node exists *and* is a block device — udev could
-                # briefly create a placeholder file of the wrong type.
-                try:
-                    is_block_device = stat.S_ISBLK(os.stat(partition).st_mode)
-                except OSError:
-                    is_block_device = False
-                if is_block_device:
-                    break
-                if time.monotonic() >= deadline:
-                    return _operation_problem(
-                        'Partition node did not appear after partitioning',
-                        details=(
-                            f'{partition} was not created within '
-                            f'{PARTITION_POLL_TIMEOUT_SECONDS:.0f} seconds of partitioning. '
-                            'The kernel may not have processed the new partition table yet. '
-                            'Please try again.'
-                        ),
-                    )
-                time.sleep(PARTITION_POLL_INTERVAL_SECONDS)
+                is_block_device = stat.S_ISBLK(os.stat(partition).st_mode)
+            except OSError:
+                is_block_device = False
+            if is_block_device:
+                break
+            if time.monotonic() >= deadline:
+                return _operation_problem(
+                    'Partition node did not appear after partitioning',
+                    details=(
+                        f'{partition} was not created within '
+                        f'{PARTITION_POLL_TIMEOUT_SECONDS:.0f} seconds of partitioning. '
+                        'The kernel may not have processed the new partition table yet. '
+                        'Please try again.'
+                    ),
+                )
+            time.sleep(PARTITION_POLL_INTERVAL_SECONDS)
 
         # Verify the partition node immediately before formatting so both the
         # "already existed" and "just created" paths are protected.

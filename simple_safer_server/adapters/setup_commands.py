@@ -22,10 +22,19 @@ class SetupCommandAdapter:
             timeout=SETUP_PROBE_TIMEOUT_SECONDS,
         )
 
-    def create_partition(self, disk: str, fdisk_input: bytes):
+    def create_partition(self, disk: str, partition_script: bytes):
         return self._command_runner.run(
-            ["fdisk", disk],
-            input=fdisk_input,
+            [
+                "sfdisk",
+                "--wipe",
+                "always",
+                "--wipe-partitions",
+                "always",
+                "--label",
+                "gpt",
+                disk,
+            ],
+            input=partition_script,
             capture_output=True,
             timeout=SETUP_PROBE_TIMEOUT_SECONDS,
         )

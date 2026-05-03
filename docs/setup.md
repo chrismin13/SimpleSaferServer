@@ -31,14 +31,14 @@ This step is disk-oriented.
 - The unmount button unmounts every currently mounted partition that belongs to the selected disk.
 - That unmount action only clears live mounts so the format step can proceed safely.
 - It does not clear the saved backup-drive config and it does not remove the SimpleSaferServer-managed `/etc/fstab` entry.
-- The format button creates a single partition if needed and formats that partition as NTFS.
+- The format button removes the existing drive layout, creates one large backup partition, and formats that partition as NTFS.
 - Formatting erases all existing data on the selected disk.
 
 Why it works this way:
 
 - Formatting is a whole-disk preparation step.
 - Desktop automounters often mount child partitions such as `/dev/sdb1`, so the wizard checks for mounted child partitions before allowing formatting.
-- This is a simple destructive preparation flow. It is not a partition resizer and it does not try to preserve or rearrange an existing multi-partition layout.
+- This is a simple destructive preparation flow. It does not try to preserve or rearrange an existing multi-partition layout.
 
 ## Step 3: Drive Mount
 

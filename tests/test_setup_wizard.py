@@ -616,12 +616,12 @@ class SetupWizardTests(unittest.TestCase):
         blk_stat = MagicMock()
         blk_stat.st_mode = stat_module.S_IFBLK | 0o660
 
-        # lsblk succeeds → disk is valid; fdisk succeeds → partition created;
+        # lsblk succeeds -> disk is valid; sfdisk succeeds -> disk layout rebuilt;
         # partprobe raises OSError (FileNotFoundError) → caught, logged at debug, not fatal;
         # os.stat on partition shows a block device → poll succeeds immediately;
         # mkfs.ntfs succeeds → overall success.
         lsblk_ok = MagicMock(returncode=0, stdout='disk\n', stderr='')
-        fdisk_ok = MagicMock(returncode=0, stdout='', stderr='')
+        partition_ok = MagicMock(returncode=0, stdout='', stderr='')
         mkfs_ok = MagicMock(returncode=0, stdout='', stderr='')
 
         partition_stat = MagicMock()
@@ -643,7 +643,7 @@ class SetupWizardTests(unittest.TestCase):
                             with patch.object(
                                 self.setup_wizard.setup_command_adapter,
                                 'create_partition',
-                                return_value=fdisk_ok,
+                                return_value=partition_ok,
                             ):
                                 with patch.object(
                                     self.setup_wizard.setup_command_adapter,
@@ -665,6 +665,57 @@ class SetupWizardTests(unittest.TestCase):
 
         self.assertDataResponse(response)
 
+    def test_format_drive_recreates_partition_layout_when_first_partition_exists(self):
+        # Step 2 is a whole-disk erase flow, so an existing /dev/sdb1 must not
+        # cause the wizard to skip recreating the selected disk as one partition.
+        import stat as stat_module
+
+        blk_stat = MagicMock()
+        blk_stat.st_mode = stat_module.S_IFBLK | 0o660
+
+        lsblk_ok = MagicMock(returncode=0, stdout='disk\n', stderr='')
+        partition_ok = MagicMock(returncode=0, stdout='', stderr='')
+        partprobe_ok = MagicMock(returncode=0, stdout='', stderr='')
+        mkfs_ok = MagicMock(returncode=0, stdout='', stderr='')
+
+        with patch('os.path.realpath', return_value='/dev/sdb'):
+            with patch('os.path.exists', return_value=True):
+                with patch('os.stat', return_value=blk_stat):
+                    with patch('os.lstat', return_value=blk_stat):
+                        with patch.object(
+                            self.setup_wizard.setup_command_adapter,
+                            'whole_disk_type',
+                            return_value=lsblk_ok,
+                        ):
+                            with patch.object(
+                                self.setup_wizard.setup_command_adapter,
+                                'create_partition',
+                                return_value=partition_ok,
+                            ) as create_partition:
+                                with patch.object(
+                                    self.setup_wizard.setup_command_adapter,
+                                    'partprobe',
+                                    return_value=partprobe_ok,
+                                ):
+                                    with patch.object(
+                                        self.setup_wizard.setup_command_adapter,
+                                        'format_ntfs',
+                                        return_value=mkfs_ok,
+                                    ):
+                                        with patch.object(
+                                            self.setup_wizard,
+                                            '_get_mounted_partitions_for_disk',
+                                            return_value=[],
+                                        ):
+                                            with self.app.test_client() as client:
+                                                response = self._post_format(client, '/dev/sdb')
+
+        self.assertDataResponse(response)
+        create_partition.assert_called_once_with(
+            '/dev/sdb',
+            (f'type={self.setup_wizard.MICROSOFT_BASIC_DATA_PARTITION_TYPE}\n').encode(),
+        )
+
     def test_format_drive_partprobe_permission_error_is_non_fatal(self):
         # PermissionError (an OSError subclass) from partprobe must also be non-fatal.
         import stat as stat_module
@@ -673,7 +724,7 @@ class SetupWizardTests(unittest.TestCase):
         blk_stat.st_mode = stat_module.S_IFBLK | 0o660
 
         lsblk_ok = MagicMock(returncode=0, stdout='disk\n', stderr='')
-        fdisk_ok = MagicMock(returncode=0, stdout='', stderr='')
+        partition_ok = MagicMock(returncode=0, stdout='', stderr='')
         mkfs_ok = MagicMock(returncode=0, stdout='', stderr='')
 
         partition_stat = MagicMock()
@@ -691,7 +742,7 @@ class SetupWizardTests(unittest.TestCase):
                             with patch.object(
                                 self.setup_wizard.setup_command_adapter,
                                 'create_partition',
-                                return_value=fdisk_ok,
+                                return_value=partition_ok,
                             ):
                                 with patch.object(
                                     self.setup_wizard.setup_command_adapter,
@@ -721,7 +772,7 @@ class SetupWizardTests(unittest.TestCase):
         blk_stat.st_mode = stat_module.S_IFBLK | 0o660
 
         lsblk_ok = MagicMock(returncode=0, stdout='disk\n', stderr='')
-        fdisk_ok = MagicMock(returncode=0, stdout='', stderr='')
+        partition_ok = MagicMock(returncode=0, stdout='', stderr='')
         partprobe_fail = MagicMock(returncode=1, stdout='', stderr='ioctl error')
         mkfs_ok = MagicMock(returncode=0, stdout='', stderr='')
 
@@ -743,7 +794,7 @@ class SetupWizardTests(unittest.TestCase):
                             with patch.object(
                                 self.setup_wizard.setup_command_adapter,
                                 'create_partition',
-                                return_value=fdisk_ok,
+                                return_value=partition_ok,
                             ):
                                 with patch.object(
                                     self.setup_wizard.setup_command_adapter,
@@ -774,7 +825,7 @@ class SetupWizardTests(unittest.TestCase):
         blk_stat.st_mode = stat_module.S_IFBLK | 0o660
 
         lsblk_ok = MagicMock(returncode=0, stdout='disk\n', stderr='')
-        fdisk_ok = MagicMock(returncode=0, stdout='', stderr='')
+        partition_ok = MagicMock(returncode=0, stdout='', stderr='')
 
         disk_stat = MagicMock()
         disk_stat.st_mode = stat_module.S_IFBLK | 0o660
@@ -802,7 +853,7 @@ class SetupWizardTests(unittest.TestCase):
                         with patch.object(
                             self.setup_wizard.setup_command_adapter,
                             'create_partition',
-                            return_value=fdisk_ok,
+                            return_value=partition_ok,
                         ):
                             with patch.object(
                                 self.setup_wizard.setup_command_adapter,
