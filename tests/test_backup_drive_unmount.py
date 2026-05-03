@@ -1,13 +1,40 @@
 import unittest
 from types import SimpleNamespace
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
-import backup_drive_unmount
-from backup_drive_setup import BackupDriveSetupError
+from simple_safer_server.services import backup_drive_unmount
+from simple_safer_server.services.backup_drive_setup import BackupDriveSetupError
+
+
+class FakeBackupDriveCommandAdapter:
+    def __init__(self):
+        self.calls = []
+        self.unmount_result = SimpleNamespace(returncode=0, stderr='', stdout='')
+        self.partition_device = '/dev/sdb1'
+
+    def close_smb_share(self, mount_point):
+        self.calls.append(('close_smb_share', mount_point))
+
+    def stop_unit(self, unit_name):
+        self.calls.append(('stop_unit', unit_name))
+
+    def start_unit(self, unit_name):
+        self.calls.append(('start_unit', unit_name))
+
+    def unmount(self, mount_point):
+        self.calls.append(('unmount', mount_point))
+        return self.unmount_result
+
+    def find_device_by_uuid(self, uuid):
+        self.calls.append(('find_device_by_uuid', uuid))
+        return self.partition_device
+
+    def power_down_device(self, device):
+        self.calls.append(('power_down_device', device))
 
 
 class BackupDriveUnmountTests(unittest.TestCase):
-    @patch('backup_drive_unmount._get_mount_for_partition')
+    @patch('simple_safer_server.services.backup_drive_unmount._get_mount_for_partition')
     def test_is_selected_partition_managed_backup_drive_matches_live_mount_point(
         self,
         mock_get_mount,
@@ -26,8 +53,12 @@ class BackupDriveUnmountTests(unittest.TestCase):
 
         self.assertTrue(result)
         system_utils.is_mounted.assert_not_called()
+        mock_get_mount.assert_called_once_with('/dev/sdb1', command_adapter=None)
 
-    @patch('backup_drive_unmount._get_mount_for_partition', return_value=None)
+    @patch(
+        'simple_safer_server.services.backup_drive_unmount._get_mount_for_partition',
+        return_value=None,
+    )
     def test_is_selected_partition_managed_backup_drive_does_not_match_by_uuid_only(
         self,
         _mock_get_mount,
@@ -47,7 +78,10 @@ class BackupDriveUnmountTests(unittest.TestCase):
         self.assertFalse(result)
         system_utils.is_mounted.assert_not_called()
 
-    @patch('backup_drive_unmount._get_mount_for_partition', return_value=None)
+    @patch(
+        'simple_safer_server.services.backup_drive_unmount._get_mount_for_partition',
+        return_value=None,
+    )
     def test_is_selected_partition_managed_backup_drive_does_not_match_unmounted_old_backup_partition(
         self,
         _mock_get_mount,
@@ -66,11 +100,12 @@ class BackupDriveUnmountTests(unittest.TestCase):
         self.assertFalse(result)
         system_utils.is_mounted.assert_not_called()
 
-    @patch('backup_drive_unmount.subprocess.run')
-    def test_unmount_managed_backup_drive_stops_services_and_restarts_smb_without_power_down(self, mock_run):
+    def test_unmount_managed_backup_drive_stops_services_and_restarts_smb_without_power_down(
+        self,
+    ):
         runtime = SimpleNamespace(is_fake=False)
         system_utils = MagicMock()
-        mock_run.return_value = SimpleNamespace(returncode=0, stderr='', stdout='')
+        command_adapter = FakeBackupDriveCommandAdapter()
 
         backup_drive_unmount.unmount_managed_backup_drive(
             '/media/backup',
@@ -78,41 +113,29 @@ class BackupDriveUnmountTests(unittest.TestCase):
             system_utils,
             runtime=runtime,
             power_down=False,
+            command_adapter=command_adapter,
         )
 
         self.assertEqual(
-            mock_run.call_args_list,
+            command_adapter.calls,
             [
-                call(['sudo', 'smbcontrol', 'all', 'close-share', '/media/backup'], check=False),
-                call(['sudo', 'systemctl', 'stop', 'check_mount.service'], check=False),
-                call(['sudo', 'systemctl', 'stop', 'check_health.service'], check=False),
-                call(['sudo', 'systemctl', 'stop', 'backup_cloud.service'], check=False),
-                call(['sudo', 'systemctl', 'stop', 'smbd'], check=False),
-                call(['sudo', 'systemctl', 'stop', 'nmbd'], check=False),
-                call(['sudo', 'umount', '/media/backup'], capture_output=True, text=True),
-                call(['sudo', 'systemctl', 'start', 'smbd'], check=False),
-                call(['sudo', 'systemctl', 'start', 'nmbd'], check=False),
+                ('close_smb_share', '/media/backup'),
+                ('stop_unit', 'check_mount.service'),
+                ('stop_unit', 'check_health.service'),
+                ('stop_unit', 'backup_cloud.service'),
+                ('stop_unit', 'smbd'),
+                ('stop_unit', 'nmbd'),
+                ('unmount', '/media/backup'),
+                ('start_unit', 'smbd'),
+                ('start_unit', 'nmbd'),
             ],
         )
 
-    @patch('backup_drive_unmount.subprocess.run')
-    def test_unmount_managed_backup_drive_can_power_down_parent_device(self, mock_run):
+    def test_unmount_managed_backup_drive_can_power_down_parent_device(self):
         runtime = SimpleNamespace(is_fake=False)
         system_utils = MagicMock()
         system_utils.get_parent_device.return_value = '/dev/sdb'
-        mock_run.side_effect = [
-            SimpleNamespace(returncode=0, stderr='', stdout=''),
-            SimpleNamespace(returncode=0, stderr='', stdout=''),
-            SimpleNamespace(returncode=0, stderr='', stdout=''),
-            SimpleNamespace(returncode=0, stderr='', stdout=''),
-            SimpleNamespace(returncode=0, stderr='', stdout=''),
-            SimpleNamespace(returncode=0, stderr='', stdout=''),
-            SimpleNamespace(returncode=0, stderr='', stdout=''),
-            SimpleNamespace(returncode=0, stderr='', stdout='/dev/sdb1\n'),
-            SimpleNamespace(returncode=0, stderr='', stdout=''),
-            SimpleNamespace(returncode=0, stderr='', stdout=''),
-            SimpleNamespace(returncode=0, stderr='', stdout=''),
-        ]
+        command_adapter = FakeBackupDriveCommandAdapter()
 
         backup_drive_unmount.unmount_managed_backup_drive(
             '/media/backup',
@@ -120,29 +143,17 @@ class BackupDriveUnmountTests(unittest.TestCase):
             system_utils,
             runtime=runtime,
             power_down=True,
+            command_adapter=command_adapter,
         )
 
-        self.assertIn(
-            call(['blkid', '-t', 'UUID=UUID-1', '-o', 'device'], capture_output=True, text=True),
-            mock_run.call_args_list,
-        )
-        self.assertIn(call(['sudo', 'hdparm', '-y', '/dev/sdb'], check=False), mock_run.call_args_list)
+        self.assertIn(('find_device_by_uuid', 'UUID-1'), command_adapter.calls)
+        self.assertIn(('power_down_device', '/dev/sdb'), command_adapter.calls)
 
-    @patch('backup_drive_unmount.subprocess.run')
-    def test_unmount_managed_backup_drive_restarts_smb_after_unmount_failure(self, mock_run):
+    def test_unmount_managed_backup_drive_restarts_smb_after_unmount_failure(self):
         runtime = SimpleNamespace(is_fake=False)
         system_utils = MagicMock()
-        mock_run.side_effect = [
-            SimpleNamespace(returncode=0, stderr='', stdout=''),
-            SimpleNamespace(returncode=0, stderr='', stdout=''),
-            SimpleNamespace(returncode=0, stderr='', stdout=''),
-            SimpleNamespace(returncode=0, stderr='', stdout=''),
-            SimpleNamespace(returncode=0, stderr='', stdout=''),
-            SimpleNamespace(returncode=0, stderr='', stdout=''),
-            SimpleNamespace(returncode=1, stderr='busy', stdout=''),
-            SimpleNamespace(returncode=0, stderr='', stdout=''),
-            SimpleNamespace(returncode=0, stderr='', stdout=''),
-        ]
+        command_adapter = FakeBackupDriveCommandAdapter()
+        command_adapter.unmount_result = SimpleNamespace(returncode=1, stderr='busy', stdout='')
 
         with self.assertRaisesRegex(BackupDriveSetupError, 'Failed to unmount drive: busy'):
             backup_drive_unmount.unmount_managed_backup_drive(
@@ -151,13 +162,14 @@ class BackupDriveUnmountTests(unittest.TestCase):
                 system_utils,
                 runtime=runtime,
                 power_down=False,
+                command_adapter=command_adapter,
             )
 
         self.assertEqual(
-            mock_run.call_args_list[-2:],
+            command_adapter.calls[-2:],
             [
-                call(['sudo', 'systemctl', 'start', 'smbd'], check=False),
-                call(['sudo', 'systemctl', 'start', 'nmbd'], check=False),
+                ('start_unit', 'smbd'),
+                ('start_unit', 'nmbd'),
             ],
         )
 

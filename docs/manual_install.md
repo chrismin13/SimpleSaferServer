@@ -1,13 +1,13 @@
 # Manual Installation Guide for SimpleSaferServer
 
-This guide explains how to manually install SimpleSaferServer on a clean Debian-based system without using the automated installer. It is written as a checklist so each step is easy to verify before you move on.
+This guide explains how to manually install SimpleSaferServer on a clean Debian or Ubuntu based system without using the automated installer. It is written as a checklist so each step is easy to verify before you move on.
 
 ---
 
 ## 1. Install System Dependencies
 
 - Run `sudo apt-get update`.
-- Run `sudo apt-get install -y git python3 python3-pip python3-venv smartmontools samba msmtp rsync curl unzip ntfs-3g`.
+- Run `sudo apt-get install -y git python3 python3-pip python3-venv smartmontools samba msmtp rsync curl unzip fdisk ntfs-3g`.
 
 ## 2. Install rclone
 
@@ -72,9 +72,9 @@ Install the extracted binary:
 - Run `sudo python3 -m venv --system-site-packages /opt/SimpleSaferServer/venv`.
 - Because the virtualenv lives under `/opt`, open a root shell with `sudo -s` before activating it so `pip` can write into that environment.
 - In that root shell, run `source /opt/SimpleSaferServer/venv/bin/activate`.
-- Run `pip install --upgrade pip wheel`.
-- Run `pip install Flask-SocketIO==5.4.1 cryptography psutil joblib pandas scikit-learn xgboost`.
-- If you want the rest of the Python packages from the repository list, run `pip install -r /opt/SimpleSaferServer/requirements.txt`.
+- On Python 3.9 or newer, run `pip install --upgrade pip wheel`, then run `pip install -r /opt/SimpleSaferServer/requirements.txt`.
+- On Python runtimes older than 3.9, including Debian 10 / Python 3.7 and Ubuntu 20.04 / Python 3.8, run `pip install --upgrade "pip<24.1" wheel`, then run `pip install -r /opt/SimpleSaferServer/requirements-legacy-py37.txt`.
+- Older Python runtimes use a legacy dependency set because upstream security fixes for several packages require newer Python releases. Use Debian 13 or another Python 3.9+ platform for the strict security-supported baseline.
 - Run `deactivate`, then run `exit` to leave the root shell when you are done installing Python packages.
 
 ## 7. Install Scripts and Model Files
@@ -88,7 +88,9 @@ Install the extracted binary:
 ## 8. Set Up the Systemd Service
 
 - Copy `simple_safer_server_web.service` to `/etc/systemd/system/simple_safer_server_web.service`.
-- `simple_safer_server_web.service` uses `ExecStart=/opt/SimpleSaferServer/venv/bin/python /opt/SimpleSaferServer/app.py --host=0.0.0.0 --port=5000 --no-debug`, so `/opt/SimpleSaferServer/venv` must exist before you start the service.
+- `simple_safer_server_web.service` runs the package module entrypoint with `ExecStart=/opt/SimpleSaferServer/venv/bin/python -m simple_safer_server --host=0.0.0.0 --port=5000 --no-debug`, so `/opt/SimpleSaferServer/venv` must exist before you start the service.
+- The module entrypoint is `simple_safer_server/__main__.py`; it starts the built-in Flask server path, so the `WEB_THREADS` variable has no effect on this systemd unit.
+- Hosted deployments that need Gunicorn should use the `Procfile` command instead: it runs `gunicorn -k gthread --threads ${WEB_THREADS:-4}` and reads `WEB_THREADS` to tune concurrent request handling.
 - This matches the `VENV_DIR="/opt/SimpleSaferServer/venv"` flow in `install.sh`, which is why the manual install should use the same venv path instead of distro Python packages for the app runtime.
 - Run `sudo systemctl daemon-reload`.
 - Run `sudo systemctl enable simple_safer_server_web.service`.

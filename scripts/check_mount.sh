@@ -27,7 +27,7 @@ SERVER_NAME=$(get_config_value system server_name)
 # Function to send email and log alert
 function send_email {
     echo "$1 - $2" # Log the status
-    echo -e "Subject: $1 - $SERVER_NAME\nFrom: $FROM_ADDRESS\n\n$2" | msmtp --from=$FROM_ADDRESS $EMAIL_ADDRESS
+    echo -e "Subject: $1 - $SERVER_NAME\nFrom: $FROM_ADDRESS\n\n$2" | msmtp --from="$FROM_ADDRESS" -- "$EMAIL_ADDRESS"
     # Log alert using the standalone script
     "$PYTHON_BIN" /opt/SimpleSaferServer/scripts/log_alert.py "$1" "$2" "error" "check_mount"
 }
@@ -37,7 +37,7 @@ echo "Checking if the backup drive is available."
 # Check if the device is plugged in (only if USB_ID is set)
 if [ -n "$USB_ID" ]; then
     echo "Checking if the USB device is plugged in."
-    if ! lsusb | grep -q $USB_ID; then
+    if ! lsusb | grep -F -q -- "$USB_ID"; then
         send_email "USB device with ID $USB_ID is not plugged in" "USB Device Error"
         exit 1
     else

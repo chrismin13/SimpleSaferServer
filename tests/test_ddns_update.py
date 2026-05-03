@@ -1,9 +1,10 @@
+# pyright: reportArgumentType=false, reportAttributeAccessIssue=false, reportOptionalSubscript=false
 import json
-from pathlib import Path
 import sys
-from tempfile import TemporaryDirectory
 import types
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 # The script imports the full app runtime for main(); these unit tests only need
@@ -76,26 +77,30 @@ class CloudflareDdnsTests(unittest.TestCase):
                 self.alerts.append((args, kwargs))
 
         with TemporaryDirectory() as temp_dir:
-            runtime = types.SimpleNamespace(data_dir=Path(temp_dir))
+            runtime = types.SimpleNamespace(
+                data_dir=Path(temp_dir),
+                volatile_dir=Path(temp_dir) / "run",
+            )
             if initial_status is not None:
                 # Seed the status file exactly like a prior scheduled run would
                 # leave it, because alert de-dupe depends on persisted messages.
-                (runtime.data_dir / "ddns_status.json").write_text(json.dumps(initial_status))
+                runtime.volatile_dir.mkdir(parents=True, exist_ok=True)
+                (runtime.volatile_dir / "ddns_status.json").write_text(json.dumps(initial_status))
             with patch("scripts.ddns_update.get_runtime", return_value=runtime), patch(
                 "scripts.ddns_update.ConfigManager", FakeConfigManager
             ), patch("scripts.ddns_update.get_public_ip", return_value=public_ip), patch(
                 "scripts.ddns_update.update_duckdns", return_value=duckdns_result
-            ), patch(
-                "scripts.ddns_update.update_cloudflare", return_value=cloudflare_result
-            ):
+            ), patch("scripts.ddns_update.update_cloudflare", return_value=cloudflare_result):
                 exit_code = ddns_update.main()
 
-            status_file = runtime.data_dir / "ddns_status.json"
+            status_file = runtime.volatile_dir / "ddns_status.json"
             status_data = json.loads(status_file.read_text()) if status_file.exists() else None
 
         return exit_code, status_data, config_instances[0]
 
     def test_get_cloudflare_record_returns_proxy_state(self):
+        # Cloudflare's provider API uses a top-level success flag. This fixture
+        # is not a SimpleSaferServer API response envelope.
         payload = {
             "success": True,
             "result": [
@@ -107,7 +112,9 @@ class CloudflareDdnsTests(unittest.TestCase):
             ],
         }
 
-        with patch("scripts.ddns_update.urllib.request.urlopen", return_value=FakeResponse(payload)):
+        with patch(
+            "scripts.ddns_update.urllib.request.urlopen", return_value=FakeResponse(payload)
+        ):
             self.assertEqual(
                 ddns_update.get_cloudflare_record("zone-123", "token", "server.example.com"),
                 ("record-123", "203.0.113.10", True),
@@ -136,6 +143,8 @@ class CloudflareDdnsTests(unittest.TestCase):
         def fake_urlopen(request, timeout):
             # Keep the request so the test can prove the proxy-only change reaches Cloudflare.
             captured_requests.append(request)
+            # Cloudflare's provider API uses a top-level success flag. This is
+            # not a SimpleSaferServer API response envelope.
             return FakeResponse({"success": True})
 
         with patch(
@@ -211,6 +220,21 @@ class CloudflareDdnsTests(unittest.TestCase):
 
         self.assertEqual(status_data["duckdns"]["message"], "API returned: KO")
         self.assertEqual(config.alerts, [])
+
+    def test_main_ignores_non_mapping_status_json(self):
+        exit_code, status_data, _config = self.run_main_with_config(
+            {
+                ("ddns", "duckdns_enabled"): "true",
+                ("ddns", "duckdns_domain"): "home",
+                ("ddns", "cloudflare_enabled"): "false",
+            },
+            secrets={"duckdns_token": "token"},
+            initial_status="oops",
+        )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(status_data["ipv4"], "203.0.113.10")
+        self.assertEqual(status_data["duckdns"]["status"], "Success")
 
     def test_main_alerts_when_cloudflare_error_message_changes(self):
         exit_code, status_data, config = self.run_main_with_config(

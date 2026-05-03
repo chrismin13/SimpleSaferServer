@@ -9,21 +9,30 @@ document.addEventListener('DOMContentLoaded', () => {
     return;
   }
 
+  function setupSecretToggles() {
+    document.querySelectorAll('[data-secret-toggle]').forEach((button) => {
+      const input = document.getElementById(button.dataset.secretToggle);
+      if (!input) return;
+      button.addEventListener('click', () => {
+        const visible = input.type === 'text';
+        input.type = visible ? 'password' : 'text';
+        button.setAttribute('aria-label', visible ? 'Show token' : 'Hide token');
+        button.title = visible ? 'Show token' : 'Hide token';
+        const icon = button.querySelector('i');
+        if (icon) icon.className = visible ? 'fas fa-eye' : 'fas fa-eye-slash';
+      });
+    });
+  }
+
   // Load config and status
   async function loadData() {
     try {
-      const response = await fetch('/api/ddns/config');
-      const data = await response.json();
-
-      if (response.ok && data.success) {
-        populateForm(data.config);
-        updateStatusTiles(data.status, data.config, data);
-      } else {
-        showAlert(data.message || data.error || 'Failed to load DDNS configuration', 'error');
-      }
+      const { data } = await window.ApiClient.fetchJson('/api/ddns/config');
+      populateForm(data.config);
+      updateStatusTiles(data.status, data.config, data);
     } catch (error) {
       console.error('Error fetching DDNS config:', error);
-      showAlert('Connection error while loading DDNS configuration.', 'error');
+      showAlert(error.message || 'Connection error while loading DDNS configuration.', 'error');
     }
   }
 
@@ -33,14 +42,14 @@ document.addEventListener('DOMContentLoaded', () => {
     if (config.duckdns) {
       document.getElementById('duckdnsEnabled').checked = config.duckdns.enabled;
       document.getElementById('duckdnsDomain').value = config.duckdns.domain || '';
-      document.getElementById('duckdnsToken').value = config.duckdns.token_present ? '********' : '';
+      document.getElementById('duckdnsToken').value = config.duckdns.token || '';
     }
 
     if (config.cloudflare) {
       document.getElementById('cloudflareEnabled').checked = config.cloudflare.enabled;
       document.getElementById('cfZoneId').value = config.cloudflare.zone || '';
       document.getElementById('cfRecordName').value = config.cloudflare.record || '';
-      document.getElementById('cfToken').value = config.cloudflare.token_present ? '********' : '';
+      document.getElementById('cfToken').value = config.cloudflare.token || '';
       document.getElementById('cfProxyStatus').checked = config.cloudflare.proxy;
     }
   }
@@ -59,7 +68,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const duckEnabled = config?.duckdns?.enabled;
     const duckBadge = document.getElementById('duckdns-status-badge');
     const duckStatus = status?.duckdns;
-    
+
     if (!duckEnabled) {
       duckBadge.textContent = 'Disabled';
       duckBadge.className = 'badge badge-neutral';
@@ -74,6 +83,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
       duckBadge.textContent = 'Pending';
       duckBadge.className = 'badge badge-warning';
+      document.getElementById('duckdns-message').textContent = '';
       document.getElementById('duckdns-message').title = '';
     }
     document.getElementById('duckdns-last-sync').textContent = formatTime(status?.last_check);
@@ -99,6 +109,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
       cfBadge.textContent = 'Pending';
       cfBadge.className = 'badge badge-warning';
+      document.getElementById('cf-message').textContent = '';
       document.getElementById('cf-message').title = '';
     }
     document.getElementById('cf-last-sync').textContent = formatTime(status?.last_check);
@@ -148,34 +159,30 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     };
 
-    if (duckdnsToken && duckdnsToken !== '********') {
+    // Blank token fields mean "keep the current token"; leaving these
+    // properties undefined prevents the server from storing an empty token.
+    if (duckdnsToken) {
       payload.duckdns.token = duckdnsToken;
     }
-    if (cfToken && cfToken !== '********') {
+    if (cfToken) {
       payload.cloudflare.token = cfToken;
     }
 
     try {
-      const response = await fetch('/api/ddns/config', {
+      const { message } = await window.ApiClient.fetchJson('/api/ddns/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      const data = await response.json();
 
-      if (data.success) {
-        window.AsyncButtonState.success(saveBtn);
-        showAlert(data.message, 'success');
-        // Refresh to show newly triggered sync
-        setTimeout(loadData, 2000);
-      } else {
-        window.AsyncButtonState.error(saveBtn);
-        showAlert(data.message || data.error || 'Failed to save configuration', 'error');
-      }
+      window.AsyncButtonState.success(saveBtn);
+      showAlert(message || 'DDNS configuration saved.', 'success');
+      // Refresh to show newly triggered sync
+      setTimeout(loadData, 2000);
     } catch (error) {
       console.error('Error saving:', error);
       window.AsyncButtonState.error(saveBtn);
-      showAlert('Connection error while saving.', 'error');
+      showAlert(error.message || 'Connection error while saving.', 'error');
     }
   });
 
@@ -199,28 +206,17 @@ document.addEventListener('DOMContentLoaded', () => {
       runBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running...';
 
       try {
-        const response = await fetch('/api/ddns/run', {
+        const { message } = await window.ApiClient.fetchJson('/api/ddns/run', {
           method: 'POST',
           headers: { 'Accept': 'application/json' }
         });
 
-        let json = null;
-        try {
-          json = await response.json();
-        } catch (_) {
-          json = null;
-        }
-
-        if (json && json.success) {
-          showAlert('DDNS sync started successfully.', 'success');
-        } else {
-          showAlert(json?.message || 'Failed to start DDNS sync.', 'error');
-        }
+        showAlert(message || 'DDNS sync started successfully.', 'success');
 
         setTimeout(loadData, 3000);
       } catch (err) {
         console.error('Error starting DDNS sync:', err);
-        showAlert('Failed to start DDNS sync.', 'error');
+        showAlert(err.message || 'Failed to start DDNS sync.', 'error');
         setTimeout(loadData, 2000);
       } finally {
         runBtn.disabled = false;
@@ -230,5 +226,6 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Init
+  setupSecretToggles();
   loadData();
 });

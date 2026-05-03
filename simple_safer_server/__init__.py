@@ -1,0 +1,1 @@
+"""SimpleSaferServer application package."""

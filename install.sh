@@ -12,10 +12,183 @@ echo -e "${BLUE}==============================================="
 echo -e "   SimpleSaferServer Installer"
 echo -e "===============================================${NC}\n"
 
+UNSUPPORTED_OS_OK="${SSS_UNSUPPORTED_OS_OK:-0}"
+PREFLIGHT_ONLY="${SSS_INSTALLER_PREFLIGHT_ONLY:-0}"
+OS_RELEASE_PATH="${SSS_OS_RELEASE_PATH:-}"
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --unsupported-os-ok)
+            UNSUPPORTED_OS_OK=1
+            ;;
+        *)
+            echo -e "${RED}ERROR:${NC} Unknown installer option: $1"
+            exit 1
+            ;;
+    esac
+    shift
+done
+
+installer_command_available() {
+    local command_name="$1"
+    local fake_commands=",${SSS_INSTALLER_TEST_COMMANDS:-},"
+    local missing_commands=",${SSS_INSTALLER_TEST_MISSING_COMMANDS:-},"
+
+    if [ "$PREFLIGHT_ONLY" = "1" ] && [ "${fake_commands}" != ",," ]; then
+        case "$fake_commands" in
+            *,"$command_name",*) return 0 ;;
+        esac
+        return 1
+    fi
+
+    if [ "$PREFLIGHT_ONLY" = "1" ] && [ "${missing_commands}" != ",," ]; then
+        case "$missing_commands" in
+            *,"$command_name",*) return 1 ;;
+        esac
+    fi
+
+    command -v "$command_name" >/dev/null 2>&1
+}
+
+installer_systemd_available() {
+    if [ "$PREFLIGHT_ONLY" = "1" ] && [ "${SSS_INSTALLER_TEST_SYSTEMD:-0}" = "1" ]; then
+        return 0
+    fi
+    # Normal Debian/Ubuntu server installs are systemd-booted. This catches
+    # chroots and minimal containers where systemctl exists but service setup
+    # would fail later with a much less useful error.
+    [ -d /run/systemd/system ]
+}
+
+os_release_file() {
+    if [ -n "$OS_RELEASE_PATH" ]; then
+        printf '%s\n' "$OS_RELEASE_PATH"
+        return 0
+    fi
+    if [ -r /etc/os-release ]; then
+        printf '%s\n' /etc/os-release
+        return 0
+    fi
+    if [ -r /usr/lib/os-release ]; then
+        printf '%s\n' /usr/lib/os-release
+        return 0
+    fi
+    return 1
+}
+
+os_release_value() {
+    local file="$1"
+    local key="$2"
+    local line=""
+    line=$(grep -E "^[[:space:]]*${key}=" "$file" 2>/dev/null | tail -n 1 || true)
+    line=${line#"${line%%[![:space:]]*}"}
+    line=${line#*=}
+    line=${line%\"}
+    line=${line#\"}
+    line=${line%\'}
+    line=${line#\'}
+    printf '%s\n' "$line"
+}
+
+contains_os_family() {
+    local value=" $1 "
+    local family="$2"
+    case "$value" in
+        *" $family "*) return 0 ;;
+    esac
+    return 1
+}
+
+run_installer_preflight() {
+    local release_file=""
+    local os_id=""
+    local os_like=""
+    local pretty_name=""
+    local version_id=""
+    local missing_tools=""
+    local is_debian_family=0
+    local is_direct_supported_family=0
+
+    echo -e "${YELLOW}Preflight: Checking install platform...${NC}"
+
+    if ! installer_command_available apt-get; then
+        missing_tools="${missing_tools} apt-get"
+    fi
+    if ! installer_command_available dpkg; then
+        missing_tools="${missing_tools} dpkg"
+    fi
+    if ! installer_command_available systemctl; then
+        missing_tools="${missing_tools} systemctl"
+    fi
+
+    if [ -n "$missing_tools" ]; then
+        echo -e "${RED}ERROR:${NC} Missing required host tools:${missing_tools}"
+        echo -e "SimpleSaferServer installs Debian packages and systemd services, so this installer needs apt-get, dpkg, and systemctl."
+        exit 1
+    fi
+    if ! installer_systemd_available; then
+        echo -e "${RED}ERROR:${NC} systemctl is installed, but systemd does not appear to be running as the host init system."
+        echo -e "This usually means the installer is running inside a chroot, build container, or other non-booted environment. Run it on the target Debian/Ubuntu server instead."
+        exit 1
+    fi
+
+    if release_file=$(os_release_file); then
+        os_id=$(os_release_value "$release_file" ID | tr '[:upper:]' '[:lower:]')
+        os_like=$(os_release_value "$release_file" ID_LIKE | tr '[:upper:]' '[:lower:]')
+        pretty_name=$(os_release_value "$release_file" PRETTY_NAME)
+        version_id=$(os_release_value "$release_file" VERSION_ID)
+    else
+        echo -e "${YELLOW}Could not read /etc/os-release or /usr/lib/os-release.${NC}"
+        echo -e "${YELLOW}Continuing because the required Debian package and systemd tools are present.${NC}"
+        echo
+        return 0
+    fi
+
+    case "$os_id" in
+        debian|ubuntu)
+            is_debian_family=1
+            is_direct_supported_family=1
+            ;;
+        *)
+            if contains_os_family "$os_like" debian || contains_os_family "$os_like" ubuntu; then
+                is_debian_family=1
+            fi
+            ;;
+    esac
+
+    if [ "$is_debian_family" -ne 1 ]; then
+        if [ "$UNSUPPORTED_OS_OK" = "1" ]; then
+            echo -e "${YELLOW}Unsupported OS family detected (${pretty_name:-$os_id}); continuing because --unsupported-os-ok was set.${NC}"
+        else
+            echo -e "${RED}ERROR:${NC} Unsupported OS family detected: ${pretty_name:-$os_id}"
+            echo -e "SimpleSaferServer expects a Debian/Ubuntu-style APT and systemd host."
+            echo -e "Use --unsupported-os-ok only if this system intentionally provides compatible APT and systemd behavior."
+            exit 1
+        fi
+    elif [ "$is_direct_supported_family" -eq 1 ]; then
+        echo -e "${GREEN}✔ Detected ${pretty_name:-$os_id $version_id}.${NC}"
+        case "$os_id:$version_id" in
+            debian:10*|ubuntu:20.04*)
+                echo -e "${YELLOW}This is a legacy compatibility platform. The installer will use older Python dependencies if the installed Python runtime requires them.${NC}"
+                ;;
+        esac
+    else
+        echo -e "${YELLOW}Detected Debian/Ubuntu-family derivative: ${pretty_name:-$os_id $version_id}.${NC}"
+        echo -e "${YELLOW}Continuing because APT and systemd are available; derivative package differences may still cause apt-get to fail later.${NC}"
+    fi
+
+    echo -e "${GREEN}✔ Install platform preflight passed.${NC}\n"
+}
+
 # Check for root
-if [ "$EUID" -ne 0 ]; then
+if [ "$EUID" -ne 0 ] && [ "$PREFLIGHT_ONLY" != "1" ]; then
   echo -e "${RED}ERROR:${NC} This script must be run as root. Please use sudo or run as root user."
   exit 1
+fi
+
+run_installer_preflight
+if [ "$PREFLIGHT_ONLY" = "1" ]; then
+    exit 0
 fi
 
 # Determine if we are in a SimpleSaferServer repo
@@ -49,6 +222,27 @@ VENV_DIR="$APP_DIR/venv"
 SERVICE_FILE="/etc/systemd/system/simple_safer_server_web.service"
 HDSENTINEL_BIN="/usr/local/bin/hdsentinel"
 HDSENTINEL_ASSET_DIR="$SRC_DIR/third_party/hdsentinel"
+REQUIREMENTS_FILE="requirements.txt"
+PIP_UPGRADE_SPEC=(pip wheel)
+
+python_runtime_version() {
+    python3 - <<'PY'
+import sys
+
+print("{}.{}".format(sys.version_info.major, sys.version_info.minor))
+PY
+}
+
+python_requires_legacy_requirements() {
+    python3 - <<'PY'
+import sys
+
+# Flask 3.1 and several audited dependency fixes require Python 3.9+.
+# Choose by interpreter version so Ubuntu 20.04/Python 3.8 and similar
+# platforms do not attempt to install the modern security baseline.
+raise SystemExit(0 if sys.version_info < (3, 9) else 1)
+PY
+}
 
 detect_hdsentinel_arch() {
     local arch=""
@@ -158,21 +352,40 @@ echo -e "${YELLOW}Step 1: Installing system and Python dependencies...${NC}"
 apt-get update
 # Preseed AppArmor prompt for msmtp only to ensure non-interactive install
 echo "msmtp msmtp/apply_apparmor boolean true" | debconf-set-selections
-DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-pip python3-venv python3-flask python3-psutil python3-cryptography smartmontools samba msmtp curl unzip rsync ntfs-3g
+DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-pip python3-venv python3-flask python3-psutil python3-cryptography smartmontools samba msmtp curl unzip rsync fdisk ntfs-3g
 
 echo -e "${GREEN}✔ System and Python dependencies installed.${NC}\n"
+
+PYTHON_RUNTIME_VERSION="$(python_runtime_version)"
+if python_requires_legacy_requirements; then
+    REQUIREMENTS_FILE="requirements-legacy-py37.txt"
+    PIP_UPGRADE_SPEC=("pip<24.1" wheel)
+    echo -e "${YELLOW}Python ${PYTHON_RUNTIME_VERSION} detected. Installing the legacy Python dependency set for runtimes older than 3.9.${NC}"
+    echo -e "${YELLOW}Security fixes for some Python packages require newer Python releases; use Debian 13+ or another Python 3.9+ platform for the strict security-supported baseline.${NC}\n"
+fi
 
 # 2. Install rclone using the official install script
 #    The apt version of rclone is missing support for many cloud services (e.g., MEGA, Google Drive, etc).
 #    The official script always installs the latest version with all backends.
-#    We use 'sudo sh -c' to isolate the install script's exit so it never terminates this script.
+#    This installer already runs as root, so avoid depending on sudo being present
+#    on minimal Debian servers.
 echo -e "${YELLOW}Step 2: Installing rclone (latest, all cloud services supported)...${NC}"
-sudo -v
 TMPFILE=$(mktemp)
-curl -s https://rclone.org/install.sh -o "$TMPFILE"
-sudo sh -c "bash $TMPFILE || true"
+# Cloud backup is part of the supported setup path, so a missing rclone should
+# stop installation instead of producing a partially capable server.
+if curl -fS https://rclone.org/install.sh -o "$TMPFILE" && bash "$TMPFILE"; then
+  echo -e "${GREEN}✔ rclone installed.${NC}\n"
+else
+  echo -e "${RED}ERROR: Failed to install rclone.${NC}"
+  echo -e "${RED}Cloud backup requires rclone, so SimpleSaferServer cannot complete installation safely.${NC}"
+  echo -e "${YELLOW}Remediation:${NC}"
+  echo -e "  1. Check network access to https://rclone.org/install.sh"
+  echo -e "  2. Install rclone manually if needed: https://rclone.org/install/"
+  echo -e "  3. Rerun this installer."
+  rm -f "$TMPFILE"
+  exit 1
+fi
 rm -f "$TMPFILE"
-echo -e "${GREEN}✔ rclone installed.${NC}\n"
 
 # 3. Install HDSentinel for supported architectures
 echo -e "${YELLOW}Step 3: Installing HDSentinel...${NC}"
@@ -193,11 +406,8 @@ echo -e "${GREEN}✔ Static assets and templates copied.${NC}\n"
 # 6. Create the dedicated app virtualenv and install Python packages.
 echo -e "${YELLOW}Step 6: Setting up Python virtualenv...${NC}"
 python3 -m venv --system-site-packages "$VENV_DIR"
-"$VENV_DIR/bin/pip" install --upgrade pip wheel
-"$VENV_DIR/bin/pip" install "Flask-SocketIO==5.4.1"
-if ! "$VENV_DIR/bin/pip" install -r "$APP_DIR/requirements-ml.txt"; then
-  echo -e "${YELLOW}ML package installation failed. Continuing without the optional SMART prediction stack.${NC}"
-fi
+"$VENV_DIR/bin/pip" install --upgrade "${PIP_UPGRADE_SPEC[@]}"
+"$VENV_DIR/bin/pip" install -r "$REQUIREMENTS_FILE"
 echo -e "${GREEN}✔ Python virtualenv ready at $VENV_DIR.${NC}\n"
 
 # 7. Copy scripts to /opt/SimpleSaferServer/scripts and /usr/local/bin
@@ -231,13 +441,14 @@ echo -e "${YELLOW}Step 10: Refreshing procedural background services...${NC}"
 if "$VENV_DIR/bin/python3" -c "
 import sys
 sys.path.insert(0, '$APP_DIR')
-from config_manager import ConfigManager
-from runtime import get_runtime
-from system_utils import SystemUtils
+from simple_safer_server.services.config_manager import ConfigManager
+from simple_safer_server.services.runtime import get_runtime
+from simple_safer_server.services.system_utils import SystemUtils
 
 rt = get_runtime()
 config = ConfigManager(runtime=rt).get_all_config()
-setup_complete = config.get('system', {}).get('setup_complete', 'false').lower() == 'true'
+setup_complete_raw = config.get('system', {}).get('setup_complete', 'false')
+setup_complete = setup_complete_raw is True or str(setup_complete_raw).lower() == 'true'
 # install_systemd_services_and_timers catches exceptions and returns (success, error)
 # rather than raising, so we must check the tuple explicitly.
 success, error = SystemUtils(runtime=rt).install_systemd_services_and_timers(

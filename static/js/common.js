@@ -78,6 +78,73 @@ document.addEventListener('click', (e) => {
   }
 });
 
+/* ── Numeric Inputs ─────────────────────────────────────────── */
+document.addEventListener('input', (e) => {
+  const input = e.target.closest('input[inputmode="numeric"][pattern="[0-9]*"]');
+  if (!input) return;
+
+  const numericValue = input.value.replace(/\D/g, '');
+  if (input.value === numericValue) return;
+
+  // Numeric text inputs give us consistent integer-only display behavior across
+  // browsers; native number inputs can keep invalid text visible in Firefox.
+  input.value = numericValue;
+});
+
+/* ── API Client ─────────────────────────────────────────────── */
+class ApiProblemError extends Error {
+  constructor(problem, fallbackMessage) {
+    const message = problem && problem.detail ? problem.detail : fallbackMessage;
+    super(message || 'Request failed.');
+    this.name = 'ApiProblemError';
+    this.problem = problem || null;
+    this.status = problem && problem.status ? problem.status : 0;
+    this.title = problem && problem.title ? problem.title : 'Request failed';
+    this.type = problem && problem.type ? problem.type : 'about:blank';
+    if (problem && typeof problem === 'object') {
+      Object.keys(problem).forEach((key) => {
+        if (!Object.prototype.hasOwnProperty.call(this, key)) {
+          this[key] = problem[key];
+        }
+      });
+    }
+  }
+}
+
+window.ApiProblemError = ApiProblemError;
+
+window.ApiClient = {
+  async fetchJson(url, options = {}) {
+    const response = await fetch(url, options);
+    const text = await response.text();
+    let payload = {};
+
+    if (text) {
+      try {
+        payload = JSON.parse(text);
+      } catch (error) {
+        throw new ApiProblemError(null, `Unexpected response from server (${response.status})`);
+      }
+    }
+
+    if (!response.ok) {
+      throw new ApiProblemError(payload, payload.detail || payload.error || payload.message);
+    }
+
+    if (payload && Object.prototype.hasOwnProperty.call(payload, 'data')) {
+      return {
+        data: payload.data,
+        message: payload.message || ''
+      };
+    }
+
+    return {
+      data: payload,
+      message: payload && payload.message ? payload.message : ''
+    };
+  }
+};
+
 
 /* ── Collapse System ────────────────────────────────────────── */
 document.addEventListener('click', (e) => {
@@ -525,7 +592,7 @@ window.parseServerDateTime = function parseServerDateTime(value) {
 };
 
 window.formatRelativeTimestamp = function formatRelativeTimestamp(value, options = {}) {
-  const { fallback = '—', futurePrefix = true } = options;
+  const { fallback = '—', futurePrefix = true, compact = false } = options;
   const parsed = window.parseServerDateTime(value);
   if (!parsed) return value || fallback;
 
@@ -534,6 +601,9 @@ window.formatRelativeTimestamp = function formatRelativeTimestamp(value, options
   const totalMinutes = Math.max(0, Math.floor(Math.abs(diffMs) / 60000));
 
   if (Math.abs(diffMs) < 60000) {
+    if (compact) {
+      return isFuture && futurePrefix ? 'in <1m' : (isFuture ? '<1m' : 'Just now');
+    }
     if (isFuture) {
       return futurePrefix ? 'in a few seconds' : 'a few seconds';
     }
@@ -560,6 +630,11 @@ window.formatRelativeTimestamp = function formatRelativeTimestamp(value, options
 
   if (parts.length === 0) {
     parts.push('0m');
+  }
+
+  if (compact) {
+    const compactPart = parts[0] || '0m';
+    return isFuture ? (futurePrefix ? `in ${compactPart}` : compactPart) : `${compactPart} ago`;
   }
 
   return isFuture

@@ -1,8 +1,14 @@
+import ast
+import unittest
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from flask import Flask
 
-from user_manager import admin_required, api_admin_required
+from simple_safer_server.services.user_manager import admin_required, api_admin_required
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+SYSTEM_UPDATES_SOURCE = REPO_ROOT / 'simple_safer_server' / 'routes' / 'system_updates.py'
 
 
 def build_test_app():
@@ -21,7 +27,7 @@ def build_test_app():
     @app.route('/api/protected')
     @api_admin_required
     def api_protected():
-        return {'success': True}
+        return {'data': {}}
 
     return app
 
@@ -41,17 +47,18 @@ def test_admin_required_clears_stale_non_admin_web_session():
     user_manager = MagicMock()
     user_manager.is_admin.return_value = False
 
-    with patch('user_manager.UserManager', return_value=user_manager):
-        with app.test_client() as client:
-            with client.session_transaction() as session:
-                session['username'] = 'operator'
+    with patch(
+        'simple_safer_server.services.user_manager.UserManager', return_value=user_manager
+    ), app.test_client() as client:
+        with client.session_transaction() as session:
+            session['username'] = 'operator'
 
-            response = client.get('/page')
+        response = client.get('/page')
 
-            # A demoted account can still have a signed cookie from before the
-            # role change, so the decorator has to clear that stale Web UI state.
-            with client.session_transaction() as session:
-                assert 'username' not in session
+        # A demoted account can still have a signed cookie from before the
+        # role change, so the decorator has to clear that stale Web UI state.
+        with client.session_transaction() as session:
+            assert 'username' not in session
 
     assert response.status_code == 302
     assert response.headers['Location'].endswith('/login')
@@ -65,7 +72,15 @@ def test_api_admin_required_returns_json_for_anonymous_users():
         response = client.get('/api/protected')
 
     assert response.status_code == 401
-    assert response.get_json() == {'success': False, 'error': 'Please log in again.'}
+    assert response.get_json() == {
+        'type': (
+            'https://github.com/chrismin13/SimpleSaferServer/blob/main/'
+            'docs/api_responses.md#api-login-required'
+        ),
+        'title': 'Unauthorized',
+        'status': 401,
+        'detail': 'Please log in again.',
+    }
 
 
 def test_api_admin_required_clears_stale_non_admin_api_session():
@@ -73,18 +88,27 @@ def test_api_admin_required_clears_stale_non_admin_api_session():
     user_manager = MagicMock()
     user_manager.is_admin.return_value = False
 
-    with patch('user_manager.UserManager', return_value=user_manager):
-        with app.test_client() as client:
-            with client.session_transaction() as session:
-                session['username'] = 'operator'
+    with patch(
+        'simple_safer_server.services.user_manager.UserManager', return_value=user_manager
+    ), app.test_client() as client:
+        with client.session_transaction() as session:
+            session['username'] = 'operator'
 
-            response = client.get('/api/protected')
+        response = client.get('/api/protected')
 
-            with client.session_transaction() as session:
-                assert 'username' not in session
+        with client.session_transaction() as session:
+            assert 'username' not in session
 
     assert response.status_code == 403
-    assert response.get_json() == {'success': False, 'error': 'Admin privileges required.'}
+    assert response.get_json() == {
+        'type': (
+            'https://github.com/chrismin13/SimpleSaferServer/blob/main/'
+            'docs/api_responses.md#api-admin-required'
+        ),
+        'title': 'Forbidden',
+        'status': 403,
+        'detail': 'Admin privileges required.',
+    }
     user_manager.is_admin.assert_called_once_with('operator')
 
 
@@ -93,13 +117,61 @@ def test_api_admin_required_allows_admin_sessions():
     user_manager = MagicMock()
     user_manager.is_admin.return_value = True
 
-    with patch('user_manager.UserManager', return_value=user_manager):
-        with app.test_client() as client:
-            with client.session_transaction() as session:
-                session['username'] = 'admin'
+    with patch(
+        'simple_safer_server.services.user_manager.UserManager', return_value=user_manager
+    ), app.test_client() as client:
+        with client.session_transaction() as session:
+            session['username'] = 'admin'
 
-            response = client.get('/api/protected')
+        response = client.get('/api/protected')
 
     assert response.status_code == 200
-    assert response.get_json() == {'success': True}
+    assert response.get_json() == {'data': {}}
     user_manager.is_admin.assert_called_once_with('admin')
+
+
+def _decorator_name(decorator):
+    if isinstance(decorator, ast.Name):
+        return decorator.id
+    if isinstance(decorator, ast.Call) and isinstance(decorator.func, ast.Name):
+        return decorator.func.id
+    return None
+
+
+class AppRouteAuthorizationTests(unittest.TestCase):
+    def test_system_update_api_routes_use_json_admin_guard(self):
+        tree = ast.parse(SYSTEM_UPDATES_SOURCE.read_text())
+        routes = {}
+
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.FunctionDef):
+                continue
+            route_paths = []
+            guard_names = set()
+            for decorator in node.decorator_list:
+                if isinstance(decorator, ast.Call) and isinstance(decorator.func, ast.Attribute):
+                    if decorator.func.attr == 'route' and decorator.args:
+                        route_arg = decorator.args[0]
+                        if isinstance(route_arg, ast.Constant):
+                            route_paths.append(route_arg.value)
+                        elif isinstance(route_arg, ast.Str):
+                            route_paths.append(route_arg.s)
+                else:
+                    name = _decorator_name(decorator)
+                    if name:
+                        guard_names.add(name)
+            if route_paths:
+                routes[node.name] = guard_names
+
+        # Handler names are stable after blueprint registration; literal paths can
+        # pick up prefixes elsewhere and make this guard check fail for the wrong reason.
+        system_update_api_routes = {
+            function_name: guards
+            for function_name, guards in routes.items()
+            if function_name.startswith('api_')
+        }
+
+        self.assertTrue(system_update_api_routes)
+        self.assertTrue(
+            all('api_admin_required' in guards for guards in system_update_api_routes.values())
+        )

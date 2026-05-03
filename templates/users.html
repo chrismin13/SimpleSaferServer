@@ -117,7 +117,13 @@ function showError(message) {
 
 function showModalError(modalId, message) {
   const errorDiv = document.getElementById(modalId);
-  errorDiv.innerHTML = `<i class="fas fa-circle-exclamation"></i><span>${message}</span>`;
+  errorDiv.textContent = '';
+  const icon = document.createElement('i');
+  icon.className = 'fas fa-circle-exclamation';
+  icon.setAttribute('aria-hidden', 'true');
+  const text = document.createElement('span');
+  text.textContent = message;
+  errorDiv.append(icon, text);
   errorDiv.classList.add('visible');
 }
 
@@ -137,25 +143,18 @@ function validatePassword(password) {
 
 async function loadUsers() {
   try {
-    const response = await fetch('/api/users');
-    const data = await response.json();
-    if (data.success) { currentUsers = data.users; renderUsersTable(); }
-    else showError('Failed to load users: ' + (data.error || 'Unknown error'));
-  } catch (error) { showError('Failed to load users'); }
+    const { data } = await window.ApiClient.fetchJson('/api/users');
+    currentUsers = data.users;
+    renderUsersTable();
+  } catch (error) { showError(error.message || 'Failed to load users'); }
 }
 
 async function addUser(username, password, isAdmin) {
-  try {
-    const response = await fetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password, is_admin: isAdmin }) });
-    return await response.json();
-  } catch (error) { return { success: false, error: 'Network error' }; }
+  return window.ApiClient.fetchJson('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password, is_admin: isAdmin }) });
 }
 
 async function deleteUserAPI(username) {
-  try {
-    const response = await fetch(`/api/users/${username}`, { method: 'DELETE' });
-    return await response.json();
-  } catch (error) { return { success: false, error: 'Network error' }; }
+  return window.ApiClient.fetchJson(`/api/users/${username}`, { method: 'DELETE' });
 }
 
 function getUserRowActions(user) {
@@ -229,10 +228,7 @@ function openEditUserModal(username) {
 }
 
 async function editUserAPI(username, password, isAdmin) {
-  try {
-    const response = await fetch(`/api/users/${username}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password, is_admin: isAdmin }) });
-    return await response.json();
-  } catch (error) { return { success: false, error: 'Network error' }; }
+  return window.ApiClient.fetchJson(`/api/users/${username}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password, is_admin: isAdmin }) });
 }
 
 async function requestDeleteUser(username, button = null) {
@@ -245,19 +241,14 @@ async function requestDeleteUser(username, button = null) {
   });
   if (!confirmed) return;
   window.AsyncButtonState.start(button);
-  deleteUserAPI(username).then(data => {
-    if (data.success) {
-      window.AsyncButtonState.success(button);
-    } else {
-      window.AsyncButtonState.error(button);
-    }
+  deleteUserAPI(username).then(({ message }) => {
+    window.AsyncButtonState.success(button);
     loadUsers();
-    if (data.success) showSuccess(`User "${username}" deleted successfully`);
-    else showError('Failed to delete user: ' + (data.error || 'Unknown error'));
-  }).catch(() => {
+    showSuccess(message || `User "${username}" deleted successfully`);
+  }).catch((error) => {
     window.AsyncButtonState.error(button);
     loadUsers();
-    showError('Network error');
+    showError(error.message || 'Network error');
   });
 }
 
@@ -276,18 +267,17 @@ document.addEventListener('DOMContentLoaded', function() {
     if (currentUsers.some(u => u.username === username)) { showModalError('addUserError', 'Username already exists'); return; }
     const submitButton = document.querySelector('#addUserModal .modal-footer .btn-primary');
     window.AsyncButtonState.start(submitButton);
-    const result = await addUser(username, password, isAdmin);
-    if (result.success) {
+    try {
+      const result = await addUser(username, password, isAdmin);
       window.AsyncButtonState.success(submitButton);
-    } else {
-      window.AsyncButtonState.error(submitButton);
-    }
-    if (result.success) {
-      showSuccess(`User "${username}" added successfully`);
+      showSuccess(result.message || `User "${username}" added successfully`);
       document.getElementById('addUserForm').reset();
       BunkerModal.hide('addUserModal');
       loadUsers();
-    } else { showModalError('addUserError', result.error || 'Failed to add user'); }
+    } catch (error) {
+      window.AsyncButtonState.error(submitButton);
+      showModalError('addUserError', error.message || 'Failed to add user');
+    }
   });
 
   document.getElementById('editUserForm').addEventListener('submit', async function(e) {
@@ -298,17 +288,16 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('editPassword').classList.remove('is-invalid');
     const submitButton = document.querySelector('#editUserModal .modal-footer .btn-primary');
     window.AsyncButtonState.start(submitButton);
-    const result = await editUserAPI(editingUsername, password || null, isAdmin);
-    if (result.success) {
+    try {
+      const result = await editUserAPI(editingUsername, password || null, isAdmin);
       window.AsyncButtonState.success(submitButton);
-    } else {
-      window.AsyncButtonState.error(submitButton);
-    }
-    if (result.success) {
-      showSuccess(`User "${editingUsername}" updated successfully`);
+      showSuccess(result.message || `User "${editingUsername}" updated successfully`);
       BunkerModal.hide('editUserModal');
       loadUsers();
-    } else { showModalError('editUserError', result.error || 'Failed to update user'); }
+    } catch (error) {
+      window.AsyncButtonState.error(submitButton);
+      showModalError('editUserError', error.message || 'Failed to update user');
+    }
   });
 
   ['addUsername', 'addPassword'].forEach(id => {

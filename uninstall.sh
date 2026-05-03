@@ -11,11 +11,14 @@ NC='\033[0m' # No Color
 
 APP_DIR="/opt/SimpleSaferServer"
 CONFIG_DIR="/etc/SimpleSaferServer"
+CONFIG_FILE="$CONFIG_DIR/config.conf"
 USERS_FILE="$CONFIG_DIR/users.json"
 DATA_DIR="/var/lib/SimpleSaferServer"
+VOLATILE_DIR="/run/SimpleSaferServer"
 LOG_DIR="/var/log/SimpleSaferServer"
 SYSTEMD_DIR="/etc/systemd/system"
 SMB_CONF="/etc/samba/smb.conf"
+APT_AUTO_UPGRADES_CONF="/etc/apt/apt.conf.d/20auto-upgrades"
 FSTAB_MARKER="SimpleSaferServer managed backup drive"
 LEGACY_FSTAB_MARKER="SimpleSaferServer"
 MANAGED_SHARE_BEGIN_PREFIX="# BEGIN SimpleSaferServer share: "
@@ -25,7 +28,6 @@ SCRIPT_FILES=(
   check_health.sh
   check_health.py
   backup_cloud.sh
-  predict_health.py
   log_alert.py
   import_legacy.py
   ddns_update.sh
@@ -54,15 +56,20 @@ make_atomic_temp_file() {
     mktemp "${target_dir}/.${target_name}.XXXXXX"
 }
 
+require_python3() {
+    local reason="$1"
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo "ERROR: python3 is required to $reason during uninstall." >&2
+        return 1
+    fi
+}
+
 collect_samba_users() {
     if [ ! -f "$USERS_FILE" ]; then
         return 0
     fi
 
-    if ! command -v python3 >/dev/null 2>&1; then
-        echo "ERROR: python3 is required to read $USERS_FILE during uninstall." >&2
-        return 1
-    fi
+    require_python3 "read $USERS_FILE" || return 1
 
     python3 - "$USERS_FILE" <<'PY'
 import json
@@ -86,6 +93,44 @@ elif isinstance(data, list):
             username = item.get("username")
             if isinstance(username, str) and username.strip():
                 print(username)
+PY
+}
+
+apt_updates_were_managed() {
+    if [ ! -f "$CONFIG_FILE" ]; then
+        return 1
+    fi
+
+    require_python3 "read $CONFIG_FILE" || return 1
+
+    python3 - "$CONFIG_FILE" <<'PY'
+import configparser
+import sys
+
+config = configparser.ConfigParser()
+config.read(sys.argv[1])
+if config.getboolean("apt_updates", "managed", fallback=False):
+    raise SystemExit(0)
+raise SystemExit(1)
+PY
+}
+
+livepatch_was_managed() {
+    if [ ! -f "$CONFIG_FILE" ]; then
+        return 1
+    fi
+
+    require_python3 "read $CONFIG_FILE" || return 1
+
+    python3 - "$CONFIG_FILE" <<'PY'
+import configparser
+import sys
+
+config = configparser.ConfigParser()
+config.read(sys.argv[1])
+if config.getboolean("system_updates", "livepatch_managed", fallback=False):
+    raise SystemExit(0)
+raise SystemExit(1)
 PY
 }
 
@@ -125,27 +170,28 @@ remove_managed_fstab_entries() {
 
     echo "Removing SimpleSaferServer-managed /etc/fstab entries..."
     backup_file_if_present "$original" "uninstall_backup"
+    require_python3 "remove managed fstab entries" || return 1
 
-    if ! awk -v marker="$FSTAB_MARKER" -v legacy="$LEGACY_FSTAB_MARKER" '
-    function trim(value) {
-        gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
-        return value
-    }
+    if ! python3 - "$original" "$updated" "$FSTAB_MARKER" "$LEGACY_FSTAB_MARKER" <<'PY'
+import sys
 
-    {
-        if ($0 ~ /^[[:space:]]*#/ || index($0, "#") == 0) {
-            print
-            next
-        }
+original, updated, marker, legacy = sys.argv[1:]
+with open(original, "r", encoding="utf-8") as handle:
+    lines = handle.readlines()
 
-        comment = trim(substr($0, index($0, "#") + 1))
-        if (comment == marker || comment == legacy) {
-            next
-        }
+with open(updated, "w", encoding="utf-8") as handle:
+    for line in lines:
+        stripped = line.lstrip()
+        if stripped.startswith("#") or "#" not in line:
+            handle.write(line)
+            continue
 
-        print
-    }
-    ' "$original" > "$updated"; then
+        comment = line.split("#", 1)[1].strip()
+        if comment in {marker, legacy}:
+            continue
+        handle.write(line)
+PY
+    then
         rm -f "$updated"
         echo "ERROR: Failed to rebuild $original while removing SimpleSaferServer-managed entries."
         return 1
@@ -182,61 +228,46 @@ cleanup_managed_smb_shares() {
 
     echo "Removing SimpleSaferServer-managed Samba shares..."
     backup_file_if_present "$SMB_CONF" "uninstall_backup"
+    require_python3 "remove managed Samba shares" || return 1
 
-    if ! awk -v begin_prefix="$MANAGED_SHARE_BEGIN_PREFIX" -v end_prefix="$MANAGED_SHARE_END_PREFIX" '
-    BEGIN {
-        in_managed_share = 0
+    if ! python3 - "$SMB_CONF" "$cleaned" "$MANAGED_SHARE_BEGIN_PREFIX" "$MANAGED_SHARE_END_PREFIX" <<'PY'
+import sys
+
+source, cleaned, begin_prefix, end_prefix = sys.argv[1:]
+with open(source, "r", encoding="utf-8") as handle:
+    lines = handle.readlines()
+
+output = []
+in_managed_share = False
+current_share_name = ""
+
+for line in lines:
+    stripped = line.lstrip()
+    if stripped.startswith(begin_prefix):
+        share_name = stripped[len(begin_prefix):].strip()
+        if in_managed_share or not share_name:
+            raise SystemExit(1)
+        in_managed_share = True
+        current_share_name = share_name
+        continue
+
+    if stripped.startswith(end_prefix):
+        share_name = stripped[len(end_prefix):].strip()
+        if not in_managed_share or not share_name or share_name != current_share_name:
+            raise SystemExit(1)
+        in_managed_share = False
         current_share_name = ""
-        bad = 0
-    }
+        continue
 
-    {
-        line = $0
-        sub(/^[[:space:]]+/, "", line)
+    if not in_managed_share:
+        output.append(line)
 
-        if (index(line, begin_prefix) == 1) {
-            share_name = substr(line, length(begin_prefix) + 1)
-            gsub(/^[[:space:]]+|[[:space:]]+$/, "", share_name)
+if in_managed_share:
+    raise SystemExit(1)
 
-            if (in_managed_share || share_name == "") {
-                bad = 1
-                exit 1
-            }
-
-            in_managed_share = 1
-            current_share_name = share_name
-            next
-        }
-
-        if (index(line, end_prefix) == 1) {
-            share_name = substr(line, length(end_prefix) + 1)
-            gsub(/^[[:space:]]+|[[:space:]]+$/, "", share_name)
-
-            if (!in_managed_share || share_name == "" || share_name != current_share_name) {
-                bad = 1
-                exit 1
-            }
-
-            in_managed_share = 0
-            current_share_name = ""
-            next
-        }
-
-        if (!in_managed_share) {
-            print
-        }
-    }
-
-    END {
-        if (in_managed_share) {
-            bad = 1
-        }
-
-        if (bad) {
-            exit 1
-        }
-    }
-    ' "$SMB_CONF" > "$cleaned"
+with open(cleaned, "w", encoding="utf-8") as handle:
+    handle.writelines(output)
+PY
     then
         rm -f "$cleaned"
         echo "ERROR: Refusing to rewrite $SMB_CONF because the SimpleSaferServer share markers are malformed."
@@ -277,6 +308,17 @@ main() {
     fi
 
     echo "Starting SimpleSaferServer uninstallation..."
+
+    # Read this before CONFIG_DIR is removed so the final report can tell the
+    # admin about OS-level apt settings that intentionally survive uninstall.
+    local apt_updates_managed="false"
+    if apt_updates_were_managed; then
+        apt_updates_managed="true"
+    fi
+    local livepatch_managed="false"
+    if livepatch_was_managed; then
+        livepatch_managed="true"
+    fi
 
     echo "Stopping and disabling systemd units..."
     for svc in check_mount check_health backup_cloud ddns_update; do
@@ -327,6 +369,7 @@ main() {
     rm -rf "$APP_DIR"
     rm -rf "$CONFIG_DIR"
     rm -rf "$DATA_DIR"
+    rm -rf "$VOLATILE_DIR"
     rm -rf "$LOG_DIR"
 
     echo "Removing SimpleSaferServer rclone configuration if present..."
@@ -346,6 +389,15 @@ main() {
     echo "Samba user accounts created from SimpleSaferServer users were removed."
     echo "Marker-wrapped SimpleSaferServer-managed Samba share blocks were removed from $SMB_CONF."
     echo "Unmanaged or legacy untagged Samba share blocks were left untouched."
+    if [ "$apt_updates_managed" = "true" ]; then
+        echo "SimpleSaferServer had managed apt periodic settings in $APT_AUTO_UPGRADES_CONF."
+        echo "That file was left in place. Review it manually if you want to disable automatic apt updates."
+    fi
+    if [ "$livepatch_managed" = "true" ]; then
+        echo "SimpleSaferServer enabled Ubuntu Livepatch through Ubuntu Pro integration."
+        echo "Ubuntu Pro and Livepatch state were left in place."
+        echo "Review or disable them manually if you do not want them after uninstall."
+    fi
 }
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then

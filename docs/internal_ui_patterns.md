@@ -28,6 +28,8 @@ Rules:
 - In modals, prefer a compact footer status line for modal-level errors instead of inserting a full alert above the fields.
 - Keep button rows and action bars in a stable position across empty, loading, success, and error states.
 - Treat layout shift as a bug. The UI should not move around as the user clicks through normal flows unless movement is necessary for the task itself.
+- Keep short, related values in compact horizontal groups when they belong to the same status.
+  Add vertical space only when it improves comprehension or the available width requires wrapping.
 
 Current examples:
 

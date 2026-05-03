@@ -5,6 +5,9 @@
 SSS_MODE = "fake"
 SSS_SKIP_LOGIN = "true"
 SSS_DATA_DIR = "/data"
+# Gunicorn's threaded worker handles concurrent dashboard/API requests without
+# Eventlet. Tune this for the host size instead of changing start commands.
+WEB_THREADS = "4"
 
 [phases.setup]
 nixPkgs = ["python311", "rclone", "msmtp", "smartmontools"]
@@ -13,4 +16,4 @@ nixPkgs = ["python311", "rclone", "msmtp", "smartmontools"]
 cmds = ["python -m venv .venv", ".venv/bin/pip install -r requirements.txt"]
 
 [start]
-cmd = ".venv/bin/gunicorn --worker-class eventlet -w 1 --bind 0.0.0.0:$PORT app:app"
+cmd = ".venv/bin/gunicorn --worker-class gthread --threads ${WEB_THREADS:-4} -w 1 --bind 0.0.0.0:$PORT simple_safer_server.wsgi:app"

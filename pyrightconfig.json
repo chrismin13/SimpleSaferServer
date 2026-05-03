@@ -1,0 +1,18 @@
+{
+  "pythonVersion": "3.7",
+  "include": [
+    "."
+  ],
+  "exclude": [
+    ".dev-data",
+    ".git",
+    ".venv",
+    "__pycache__",
+    "harddrive_model",
+    "third_party"
+  ],
+  "typeCheckingMode": "basic",
+  "venvPath": ".",
+  "venv": ".venv",
+  "reportMissingImports": "warning"
+}

@@ -119,7 +119,8 @@
             <button class="copy-btn" onclick="copyCmd('install-cmd', this)"><i class="fa-regular fa-copy"></i> Copy</button>
         </div>
         <div class="note">
-            <i class="fa-solid fa-circle-info"></i> <strong>Note:</strong> Run as <code>root</code> or with <code>sudo</code> on a clean Debian-based system.<br>
+            <i class="fa-solid fa-circle-info"></i> <strong>Note:</strong> Run as <code>root</code> or with <code>sudo</code> on a clean Debian or Ubuntu based system.<br>
+            The installer checks for APT, dpkg, systemd, and Debian/Ubuntu OS-family metadata before installing packages. Derivatives continue with a warning when they expose Debian/Ubuntu ancestry.<br>
             The script will install all dependencies, set up the service, and print your Web UI address.<br>
             The management Web UI is admin-only, and the first account created during setup becomes the initial administrator.
         </div>
@@ -129,18 +130,24 @@
         <ul class="doc-list list-unstyled">
             <li><i class="fa-brands fa-github"></i> <a href="https://github.com/chrismin13/SimpleSaferServer" target="_blank">GitHub Repository</a></li>
             <li><i class="fa-solid fa-user-shield"></i> <a href="https://github.com/chrismin13/SimpleSaferServer/blob/main/docs/access.md" target="_blank">Access &amp; Permissions</a></li>
+            <li><i class="fa-solid fa-flask"></i> <a href="https://github.com/chrismin13/SimpleSaferServer/blob/main/docs/fake_mode.md" target="_blank">Fake Mode</a></li>
             <li><i class="fa-solid fa-train-subway"></i> <a href="https://github.com/chrismin13/SimpleSaferServer/blob/main/docs/railway.md" target="_blank">Railway Deployment Notes</a></li>
             <li><i class="fa-solid fa-gear"></i> <a href="https://github.com/chrismin13/SimpleSaferServer/blob/main/docs/setup.md" target="_blank">Setup Guide</a></li>
             <li><i class="fa-solid fa-right-to-bracket"></i> <a href="https://github.com/chrismin13/SimpleSaferServer/blob/main/docs/login.md" target="_blank">Login &amp; User Management</a></li>
             <li><i class="fa-solid fa-gauge-high"></i> <a href="https://github.com/chrismin13/SimpleSaferServer/blob/main/docs/dashboard.md" target="_blank">Dashboard</a></li>
             <li><i class="fa-solid fa-hard-drive"></i> <a href="https://github.com/chrismin13/SimpleSaferServer/blob/main/docs/drive_health.md" target="_blank">Drive Health</a></li>
             <li><i class="fa-solid fa-cloud-arrow-up"></i> <a href="https://github.com/chrismin13/SimpleSaferServer/blob/main/docs/cloud_backup.md" target="_blank">Cloud Backup</a></li>
+            <li><i class="fa-solid fa-download"></i> <a href="https://github.com/chrismin13/SimpleSaferServer/blob/main/docs/system_updates.md" target="_blank">System Updates</a></li>
             <li><i class="fa-solid fa-globe"></i> <a href="https://github.com/chrismin13/SimpleSaferServer/blob/main/docs/ddns.md" target="_blank">Dynamic DNS</a></li>
             <li><i class="fa-solid fa-network-wired"></i> <a href="https://github.com/chrismin13/SimpleSaferServer/blob/main/docs/network_file_sharing.md" target="_blank">Network File Sharing</a></li>
             <li><i class="fa-solid fa-users"></i> <a href="https://github.com/chrismin13/SimpleSaferServer/blob/main/docs/users.md" target="_blank">Users</a></li>
             <li><i class="fa-solid fa-bell"></i> <a href="https://github.com/chrismin13/SimpleSaferServer/blob/main/docs/alerts.md" target="_blank">Alerts</a></li>
             <li><i class="fa-solid fa-list-check"></i> <a href="https://github.com/chrismin13/SimpleSaferServer/blob/main/docs/task_detail.md" target="_blank">Task Details</a></li>
+            <li><i class="fa-solid fa-terminal"></i> <a href="https://github.com/chrismin13/SimpleSaferServer/blob/main/docs/install.md" target="_blank">Installation Guide</a></li>
             <li><i class="fa-solid fa-screwdriver-wrench"></i> <a href="https://github.com/chrismin13/SimpleSaferServer/blob/main/docs/manual_install.md" target="_blank">Manual Installation Guide</a></li>
+            <li><i class="fa-solid fa-trash"></i> <a href="https://github.com/chrismin13/SimpleSaferServer/blob/main/docs/uninstall.md" target="_blank">Uninstallation Guide</a></li>
+            <li><i class="fa-solid fa-code-branch"></i> <a href="https://github.com/chrismin13/SimpleSaferServer/blob/main/docs/api_responses.md" target="_blank">API Responses</a></li>
+            <li><i class="fa-solid fa-code"></i> <a href="https://github.com/chrismin13/SimpleSaferServer/blob/main/docs/development.md" target="_blank">Development &amp; Coding Conventions</a></li>
         </ul>
         <hr>
         <h2 class="mb-3"><i class="fa-solid fa-trash"></i> Uninstallation</h2>

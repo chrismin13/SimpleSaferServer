@@ -5,7 +5,6 @@ import textwrap
 import unittest
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 UNINSTALL_SCRIPT = REPO_ROOT / "uninstall.sh"
 
@@ -33,7 +32,9 @@ class UninstallScriptTests(unittest.TestCase):
     def test_collect_samba_users_reads_current_users_json_shape(self):
         with tempfile.TemporaryDirectory() as tempdir:
             users_path = Path(tempdir) / "users.json"
-            users_path.write_text(json.dumps({"alice": {"is_admin": True}, "bob": {"is_admin": False}}))
+            users_path.write_text(
+                json.dumps({"alice": {"is_admin": True}, "bob": {"is_admin": False}})
+            )
 
             output = self.run_bash(
                 textwrap.dedent(
@@ -58,6 +59,163 @@ class UninstallScriptTests(unittest.TestCase):
                     source "{UNINSTALL_SCRIPT}"
                     USERS_FILE="{users_path}"
                     collect_samba_users
+                    """
+                )
+            )
+
+        self.assertNotEqual(result.returncode, 0)
+
+    def test_apt_updates_were_managed_detects_managed_config(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            config_path = Path(tempdir) / "config.conf"
+            config_path.write_text(
+                textwrap.dedent(
+                    """\
+                    [apt_updates]
+                    managed = true
+                    """
+                )
+            )
+
+            self.run_bash(
+                textwrap.dedent(
+                    f"""\
+                    source "{UNINSTALL_SCRIPT}"
+                    CONFIG_FILE="{config_path}"
+                    apt_updates_were_managed
+                    """
+                )
+            )
+
+    def test_apt_updates_were_managed_ignores_unmanaged_config(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            config_path = Path(tempdir) / "config.conf"
+            config_path.write_text(
+                textwrap.dedent(
+                    """\
+                    [apt_updates]
+                    managed = false
+                    """
+                )
+            )
+
+            result = self.run_bash_raw(
+                textwrap.dedent(
+                    f"""\
+                    source "{UNINSTALL_SCRIPT}"
+                    CONFIG_FILE="{config_path}"
+                    apt_updates_were_managed
+                    """
+                )
+            )
+
+        self.assertNotEqual(result.returncode, 0)
+
+    def test_apt_updates_were_managed_ignores_other_sections(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            config_path = Path(tempdir) / "config.conf"
+            config_path.write_text(
+                textwrap.dedent(
+                    """\
+                    [other]
+                    managed = true
+
+                    [apt_updates]
+                    update_package_lists = true
+                    """
+                )
+            )
+
+            result = self.run_bash_raw(
+                textwrap.dedent(
+                    f"""\
+                    source "{UNINSTALL_SCRIPT}"
+                    CONFIG_FILE="{config_path}"
+                    apt_updates_were_managed
+                    """
+                )
+            )
+
+        self.assertNotEqual(result.returncode, 0)
+
+    def test_livepatch_was_managed_detects_managed_config(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            config_path = Path(tempdir) / "config.conf"
+            config_path.write_text(
+                textwrap.dedent(
+                    """\
+                    [system_updates]
+                    livepatch_managed = true
+                    """
+                )
+            )
+
+            self.run_bash(
+                textwrap.dedent(
+                    f"""\
+                    source "{UNINSTALL_SCRIPT}"
+                    CONFIG_FILE="{config_path}"
+                    livepatch_was_managed
+                    """
+                )
+            )
+
+    def test_livepatch_was_managed_ignores_missing_or_false_config(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            missing_path = Path(tempdir) / "missing.conf"
+            false_path = Path(tempdir) / "config.conf"
+            false_path.write_text(
+                textwrap.dedent(
+                    """\
+                    [system_updates]
+                    livepatch_managed = false
+                    """
+                )
+            )
+
+            missing_result = self.run_bash_raw(
+                textwrap.dedent(
+                    f"""\
+                    source "{UNINSTALL_SCRIPT}"
+                    CONFIG_FILE="{missing_path}"
+                    livepatch_was_managed
+                    """
+                )
+            )
+            false_result = self.run_bash_raw(
+                textwrap.dedent(
+                    f"""\
+                    source "{UNINSTALL_SCRIPT}"
+                    CONFIG_FILE="{false_path}"
+                    livepatch_was_managed
+                    """
+                )
+            )
+
+        self.assertNotEqual(missing_result.returncode, 0)
+        self.assertNotEqual(false_result.returncode, 0)
+
+    def test_livepatch_was_managed_ignores_other_managed_sections(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            config_path = Path(tempdir) / "config.conf"
+            config_path.write_text(
+                textwrap.dedent(
+                    """\
+                    [apt_updates]
+                    managed = true
+
+                    [other]
+                    livepatch_managed = true
+                    """
+                )
+            )
+
+            result = self.run_bash_raw(
+                textwrap.dedent(
+                    f"""\
+                    source "{UNINSTALL_SCRIPT}"
+                    CONFIG_FILE="{config_path}"
+                    livepatch_was_managed
                     """
                 )
             )

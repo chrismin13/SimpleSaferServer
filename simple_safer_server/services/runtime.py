@@ -1,0 +1,399 @@
+import os
+import secrets
+import tempfile
+import threading
+import time
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Any, ClassVar, Dict, List, Optional
+
+from simple_safer_server.services.file_persistence import atomic_write_json, read_json
+
+
+@dataclass(frozen=True)
+class Runtime:
+    mode: str
+    skip_login: bool
+    repo_root: Path
+    data_dir: Path
+    volatile_dir: Path
+    config_dir: Path
+    logs_dir: Path
+    tasks_log_dir: Path
+    rclone_config_dir: Path
+    samba_dir: Path
+    samba_backup_dir: Path
+    systemd_dir: Path
+    bin_dir: Path
+    backup_drive_dir: Path
+    cloud_target_dir: Path
+    model_dir: Path
+    telemetry_path: Path
+    msmtp_config_path: Path
+    state_path: Path
+
+    @property
+    def is_fake(self) -> bool:
+        return self.mode == "fake"
+
+    @property
+    def default_mount_point(self) -> str:
+        if self.is_fake:
+            return str(self.backup_drive_dir)
+        return "/media/backup"
+
+
+class FakeState:
+    TASK_NAMES: ClassVar[List[str]] = ["Check Mount", "Drive Health Check", "Cloud Backup"]
+    TASK_SERVICE_NAMES: ClassVar[Dict[str, str]] = {
+        "Check Mount": "check_mount.service",
+        "Drive Health Check": "check_health.service",
+        "Cloud Backup": "backup_cloud.service",
+    }
+
+    def __init__(self, runtime: Runtime):
+        self.runtime = runtime
+        self._lock = threading.RLock()
+        self._ensure_layout()
+
+    def _ensure_layout(self) -> None:
+        self.runtime.data_dir.mkdir(parents=True, exist_ok=True)
+        self.runtime.config_dir.mkdir(parents=True, exist_ok=True)
+        self.runtime.logs_dir.mkdir(parents=True, exist_ok=True)
+        self.runtime.tasks_log_dir.mkdir(parents=True, exist_ok=True)
+        self.runtime.rclone_config_dir.mkdir(parents=True, exist_ok=True)
+        self.runtime.samba_dir.mkdir(parents=True, exist_ok=True)
+        self.runtime.samba_backup_dir.mkdir(parents=True, exist_ok=True)
+        self.runtime.systemd_dir.mkdir(parents=True, exist_ok=True)
+        self.runtime.bin_dir.mkdir(parents=True, exist_ok=True)
+        self.runtime.backup_drive_dir.mkdir(parents=True, exist_ok=True)
+        self.runtime.cloud_target_dir.mkdir(parents=True, exist_ok=True)
+        self.runtime.volatile_dir.mkdir(parents=True, exist_ok=True)
+        if not self.runtime.state_path.exists():
+            self.save(self.default_state())
+
+    def default_state(self) -> Dict[str, Any]:
+        return {
+            "mounted": False,
+            "mount_point": str(self.runtime.backup_drive_dir),
+            "selected_drive": "/dev/fakebackup1",
+            "uuid": "FAKE-UUID-0001",
+            "usb_id": "FAKE:0001",
+            "smb_services": {"smbd": "active", "nmbd": "active"},
+            "tasks": {
+                task_name: {
+                    "status": "Not Run Yet",
+                    "last_run": "",
+                    "last_run_duration": "-",
+                    "log": "",
+                }
+                for task_name in self.TASK_NAMES
+            },
+        }
+
+    def load(self) -> Dict[str, Any]:
+        try:
+            return read_json(self.runtime.state_path, self.default_state())
+        except Exception:
+            state = self.default_state()
+            self.save(state)
+            return state
+
+    def _write_state(self, state: Dict[str, Any]) -> None:
+        """Write state atomically via a unique temp file and rename to avoid partial writes."""
+        atomic_write_json(self.runtime.state_path, state, mode=0o644)
+
+    def save(self, state: Dict[str, Any]) -> None:
+        with self._lock:
+            self._write_state(state)
+
+    def get_virtual_drives(self) -> List[Dict[str, Any]]:
+        state = self.load()
+        mount_point = state.get("mount_point", str(self.runtime.backup_drive_dir))
+        partition_mount = mount_point if state.get("mounted") else ""
+        return [
+            {
+                "path": "/dev/fakebackup",
+                "model": "Fake Developer Backup Drive",
+                "size": "Local Folder",
+                "type": "usb",
+                "partitions": [
+                    {
+                        "path": state.get("selected_drive", "/dev/fakebackup1"),
+                        "type": "ntfs",
+                        "label": "DEV_BACKUP",
+                        "size": "Local Folder",
+                        "mountpoint": partition_mount,
+                    }
+                ],
+            }
+        ]
+
+    def set_mount(
+        self, mounted: bool, mount_point: Optional[str] = None, drive: Optional[str] = None
+    ) -> None:
+        with self._lock:
+            state = self.load()
+            state["mounted"] = mounted
+            if mount_point:
+                state["mount_point"] = mount_point
+            if drive:
+                state["selected_drive"] = drive
+            self.save(state)
+
+    def is_mounted(self, mount_point: Optional[str] = None) -> bool:
+        state = self.load()
+        if mount_point and state.get("mount_point") != mount_point:
+            return False
+        return bool(state.get("mounted"))
+
+    def set_smb_services(self, smbd: str, nmbd: str) -> None:
+        with self._lock:
+            state = self.load()
+            state["smb_services"] = {"smbd": smbd, "nmbd": nmbd}
+            self.save(state)
+
+    def get_smb_services(self) -> Dict[str, str]:
+        return self.load().get("smb_services", {"smbd": "active", "nmbd": "active"})
+
+    def set_task_state(
+        self,
+        task_name: str,
+        *,
+        status: Optional[str] = None,
+        last_run: Optional[str] = None,
+        last_run_duration: Optional[str] = None,
+        log: Optional[str] = None,
+    ) -> None:
+        with self._lock:
+            state = self.load()
+            task_state = state.setdefault("tasks", {}).setdefault(task_name, {})
+            if status is not None:
+                task_state["status"] = status
+            if last_run is not None:
+                task_state["last_run"] = last_run
+            if last_run_duration is not None:
+                task_state["last_run_duration"] = last_run_duration
+            if log is not None:
+                task_state["log"] = log
+            self.save(state)
+
+    def append_task_log(self, task_name: str, message: str) -> None:
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with self._lock:
+            state = self.load()
+            task_state = state.setdefault("tasks", {}).setdefault(task_name, {})
+            current = task_state.get("log", "")
+            task_state["log"] = f"{current}{now} {message}\n"
+            self.save(state)
+            log_path = self.runtime.tasks_log_dir / f"{task_name.lower().replace(' ', '_')}.log"
+            log_path.write_text(task_state["log"])
+
+    def get_task_log(self, task_name: str) -> str:
+        state = self.load()
+        task_state = state.setdefault("tasks", {}).setdefault(task_name, {})
+        return task_state.get("log", "") or "No logs yet."
+
+    def get_task_state(self, task_name: str) -> Dict[str, Any]:
+        state = self.load()
+        return state.setdefault("tasks", {}).setdefault(
+            task_name,
+            {"status": "Not Run Yet", "last_run": "", "last_run_duration": "-", "log": ""},
+        )
+
+    def get_next_run(self, task_name: str, backup_time: str) -> str:
+        try:
+            backup_hour, backup_minute = [int(part) for part in backup_time.split(":", 1)]
+        except Exception:
+            backup_hour, backup_minute = 3, 0
+
+        offsets = {
+            "Check Mount": -2,
+            "Drive Health Check": -1,
+            "Cloud Backup": 0,
+        }
+        offset = offsets.get(task_name, 0)
+        now = datetime.now()
+        next_run = now.replace(hour=backup_hour, minute=backup_minute, second=0, microsecond=0)
+        if next_run <= now:
+            next_run += timedelta(days=1)
+        next_run += timedelta(minutes=offset)
+        if next_run <= now:
+            next_run += timedelta(days=1)
+        return next_run.strftime("%Y-%m-%d %H:%M:%S")
+
+
+_runtime: Optional[Runtime] = None
+_fake_state: Optional[FakeState] = None
+
+
+def _repo_root() -> Path:
+    # runtime.py lives under simple_safer_server/services, so walk back to the
+    # repository root before attaching .dev-data. That keeps fake-mode state in
+    # the same location even if this module moves within the package tree.
+    return Path(__file__).resolve().parents[2]
+
+
+def resolve_fake_data_dir(repo_root: Optional[Path] = None) -> Path:
+    """Resolve the writable state directory for fake mode."""
+    repo_root = repo_root or _repo_root()
+    configured_data_dir = os.environ.get("SSS_DATA_DIR", "").strip()
+    railway_volume_mount = os.environ.get("RAILWAY_VOLUME_MOUNT_PATH", "").strip()
+
+    # Railway only injects RAILWAY_VOLUME_MOUNT_PATH when a real persistent
+    # volume is attached. If SSS_DATA_DIR still points at the repo's default
+    # /data path, prefer the mounted location so deploys keep the same config
+    # even if the volume was attached somewhere else in the service settings.
+    if railway_volume_mount and (not configured_data_dir or configured_data_dir == "/data"):
+        return Path(railway_volume_mount).resolve()
+
+    if configured_data_dir:
+        return Path(configured_data_dir).resolve()
+
+    return (repo_root / ".dev-data").resolve()
+
+
+def resolve_volatile_dir(data_dir: Path, *, is_fake: bool) -> Path:
+    """Resolve state that can disappear on restart without losing configuration."""
+    configured_volatile_dir = os.environ.get("SSS_VOLATILE_DIR", "").strip()
+    if configured_volatile_dir:
+        return Path(configured_volatile_dir).resolve()
+    if is_fake:
+        return data_dir / "run"
+    return Path("/run/SimpleSaferServer")
+
+
+def _read_persisted_text_secret(secret_path: Path) -> Optional[str]:
+    """Read a secret file after forcing the expected restrictive mode."""
+    try:
+        # Keep the permissions tight even if an older deploy or manual edit
+        # left this file more open than the app expects.
+        secret_path.chmod(0o600)
+        existing_secret = secret_path.read_text().strip()
+    except FileNotFoundError:
+        return None
+
+    return existing_secret or None
+
+
+def load_or_create_text_secret(secret_path: Path) -> str:
+    """Load a persisted secret, or create one once if it does not exist yet."""
+    secret_path.parent.mkdir(parents=True, exist_ok=True)
+
+    existing_secret = _read_persisted_text_secret(secret_path)
+    if existing_secret:
+        return existing_secret
+
+    # Persisting this once avoids the easy-to-miss deploy problem where Flask
+    # session cookies become invalid simply because the process restarted.
+    secret_value = secrets.token_urlsafe(48)
+    try:
+        secret_fd = os.open(secret_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError as err:
+        # Another worker won the creation race after our first read. Give that
+        # process a short window to finish writing so every worker converges on
+        # the same persisted secret instead of tripping over a transient empty file.
+        for _ in range(5):
+            existing_secret = _read_persisted_text_secret(secret_path)
+            if existing_secret:
+                return existing_secret
+            time.sleep(0.05)
+        raise RuntimeError(f"Secret file exists but is empty: {secret_path}") from err
+
+    with os.fdopen(secret_fd, "w", encoding="utf-8") as secret_file:
+        # fchmod closes the gap where umask could otherwise leave the new file
+        # more permissive than intended on some systems.
+        os.fchmod(secret_file.fileno(), 0o600)
+        secret_file.write(secret_value)
+
+    return secret_value
+
+
+def get_flask_secret_key(runtime: Optional[Runtime] = None) -> str:
+    """Return the Flask session secret, preferring an explicit env var first."""
+    env_secret = os.environ.get("FLASK_SECRET_KEY", "").strip()
+    if env_secret:
+        return env_secret
+
+    runtime = runtime or get_runtime()
+    return load_or_create_text_secret(runtime.config_dir / ".flask-secret-key")
+
+
+def get_runtime() -> Runtime:
+    global _runtime
+    if _runtime is not None:
+        return _runtime
+
+    repo_root = _repo_root()
+    mode = os.environ.get("SSS_MODE", "real").strip().lower() or "real"
+
+    if mode == "fake":
+        data_dir = resolve_fake_data_dir(repo_root)
+        volatile_dir = resolve_volatile_dir(data_dir, is_fake=True)
+        skip_login = os.environ.get("SSS_SKIP_LOGIN", "false").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+        _runtime = Runtime(
+            mode="fake",
+            skip_login=skip_login,
+            repo_root=repo_root,
+            data_dir=data_dir,
+            volatile_dir=volatile_dir,
+            config_dir=data_dir / "config",
+            logs_dir=data_dir / "logs",
+            tasks_log_dir=data_dir / "logs" / "tasks",
+            rclone_config_dir=data_dir / "rclone",
+            samba_dir=data_dir / "samba",
+            samba_backup_dir=data_dir / "samba" / "backups",
+            systemd_dir=data_dir / "systemd",
+            bin_dir=data_dir / "bin",
+            backup_drive_dir=data_dir / "backup-drive",
+            cloud_target_dir=data_dir / "cloud-target",
+            model_dir=repo_root / "harddrive_model",
+            telemetry_path=data_dir / "telemetry.csv",
+            msmtp_config_path=data_dir / "msmtprc",
+            state_path=data_dir / "state.json",
+        )
+        # Fake-mode status files live under volatile_dir; create it with the
+        # runtime so service code can write status before FakeState is loaded.
+        _runtime.volatile_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        data_dir = Path("/opt/SimpleSaferServer")
+        _runtime = Runtime(
+            mode="real",
+            skip_login=False,
+            repo_root=repo_root,
+            data_dir=data_dir,
+            volatile_dir=resolve_volatile_dir(data_dir, is_fake=False),
+            config_dir=Path("/etc/SimpleSaferServer"),
+            logs_dir=Path("/var/log/SimpleSaferServer"),
+            tasks_log_dir=Path("/var/log/SimpleSaferServer"),
+            rclone_config_dir=Path.home() / ".config" / "rclone",
+            samba_dir=Path("/etc/samba"),
+            samba_backup_dir=Path("/etc/samba/backups"),
+            systemd_dir=Path("/etc/systemd/system"),
+            bin_dir=Path("/usr/local/bin"),
+            backup_drive_dir=Path("/media/backup"),
+            cloud_target_dir=Path("/media/backup"),
+            model_dir=Path("/opt/SimpleSaferServer/harddrive_model"),
+            telemetry_path=repo_root / "telemetry.csv",
+            msmtp_config_path=Path("/etc/msmtprc"),
+            state_path=Path(tempfile.gettempdir()) / "simple_safer_server_unused_state.json",
+        )
+
+    if _runtime.is_fake:
+        get_fake_state()
+
+    return _runtime
+
+
+def get_fake_state(runtime: Optional[Runtime] = None) -> FakeState:
+    global _fake_state
+    runtime = runtime or get_runtime()
+    if _fake_state is None or _fake_state.runtime != runtime:
+        _fake_state = FakeState(runtime)
+    return _fake_state

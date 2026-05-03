@@ -414,7 +414,7 @@
 
         if (response.status === 404) {
           const data = await response.json().catch(() => ({}));
-          throw new Error(data.error || 'Telemetry has not been generated yet. Run a health check first.');
+          throw new Error(data.detail || 'Telemetry has not been generated yet. Run a health check first.');
         }
 
         if (!response.ok) {
@@ -495,22 +495,6 @@
       currentDriveSetupErrorDetails = '';
     }
 
-    async function parseDriveSetupResponse(response) {
-      const contentType = response.headers.get('content-type') || '';
-      if (!contentType.includes('application/json')) {
-        if (response.status === 401 || response.status === 403 || response.redirected) {
-          throw new Error('Your session expired or you are not authorized to perform this action. Please log in again.');
-        }
-        throw new Error('The server returned an unexpected response.');
-      }
-
-      const data = await response.json();
-      if ((response.status === 401 || response.status === 403) && !data.success) {
-        throw new Error(data.error || 'You are not authorized to perform this action.');
-      }
-      return data;
-    }
-
     function populateDriveSelect(drives) {
       driveSelect.innerHTML = '';
       const placeholder = document.createElement('option');
@@ -547,13 +531,7 @@ Note: SMB access will briefly disconnect while unmounting.`;
       setDriveSetupStatus('Scanning connected drives…', 'info');
       if (window.AsyncButtonState && scanBtn) window.AsyncButtonState.start(scanBtn);
       try {
-        const response = await fetch('/api/backup_drive/drives');
-        const data = await parseDriveSetupResponse(response);
-        if (!data.success) {
-          const error = new Error(data.error || 'Failed to scan connected drives.');
-          error.details = data.details || '';
-          throw error;
-        }
+        const { data } = await window.ApiClient.fetchJson('/api/backup_drive/drives');
         populateDriveSelect(data.drives || []);
         setDriveSetupStatus('Drive scan complete.', 'success');
         if (window.AsyncButtonState && scanBtn) window.AsyncButtonState.success(scanBtn);
@@ -583,18 +561,12 @@ Note: SMB access will briefly disconnect while unmounting.`;
       setDriveSetupStatus('Unmounting selected drive…', 'info');
       if (window.AsyncButtonState && unmountBtn) window.AsyncButtonState.start(unmountBtn);
       try {
-        const response = await fetch('/api/backup_drive/unmount', {
+        const { message } = await window.ApiClient.fetchJson('/api/backup_drive/unmount', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ partition: driveSelect.value })
         });
-        const data = await parseDriveSetupResponse(response);
-        if (!data.success) {
-          const error = new Error(data.error || 'Failed to unmount the selected drive.');
-          error.details = data.details || '';
-          throw error;
-        }
-        setDriveSetupStatus(data.message || 'Drive unmounted successfully.', 'success');
+        setDriveSetupStatus(message || 'Drive unmounted successfully.', 'success');
         if (window.AsyncButtonState && unmountBtn) window.AsyncButtonState.success(unmountBtn);
       } catch (error) {
         showDriveSetupError(error.message || 'Failed to unmount the selected drive.', error.details);
@@ -616,7 +588,7 @@ Note: SMB access will briefly disconnect while unmounting.`;
       setDriveSetupStatus('Applying backup drive setup…', 'info');
       if (window.AsyncButtonState && applyBtn) window.AsyncButtonState.start(applyBtn);
       try {
-        const response = await fetch('/api/backup_drive/configure', {
+        const { data } = await window.ApiClient.fetchJson('/api/backup_drive/configure', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -624,12 +596,6 @@ Note: SMB access will briefly disconnect while unmounting.`;
             mount_point: mountPointInput.value.trim()
           })
         });
-        const data = await parseDriveSetupResponse(response);
-        if (!data.success) {
-          const error = new Error(data.error || 'Failed to apply backup drive setup.');
-          error.details = data.details || '';
-          throw error;
-        }
         const result = data.result || {};
         setDriveSetupStatus(result.message || 'Backup drive setup updated successfully.', 'success');
         if (configuredMountPointValue) configuredMountPointValue.textContent = result.mount_point || mountPointInput.value.trim();

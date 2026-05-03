@@ -17,6 +17,15 @@ SimpleSaferServer separates management access from file-share access.
 - `401` means the browser does not have a valid management session.
 - `403` means the session exists but the account is not currently an administrator.
 
+## Admin Trust Model
+
+SimpleSaferServer is a root-run local management tool. Administrators are trusted operators with
+server-level access, so credential editor screens may show stored credentials and credential-bearing
+configuration when that is useful for inspection or edits.
+
+The app should still avoid accidental credential spread. Do not put secrets in broad status
+responses, unrelated UI, logs, process arguments, or world-readable files.
+
 ## Non-Admin Accounts
 
 - Non-admin accounts can exist for file sharing and related system access.
@@ -26,7 +35,7 @@ SimpleSaferServer separates management access from file-share access.
 ## Why This Matters
 
 - The web UI can change backup settings, schedules, alerts, cloud destinations, and managed storage configuration.
-- Some actions also trigger privileged system changes such as service restarts, Samba updates, and managed `/etc/fstab` changes.
+- Some actions also trigger privileged system changes such as service restarts, Samba updates, apt package operations, Livepatch setup, and managed `/etc/fstab` changes.
 - Keeping the management interface admin-only avoids mixing day-to-day file access with system administration privileges.
 
 ## Related Documentation
@@ -34,3 +43,5 @@ SimpleSaferServer separates management access from file-share access.
 - [Setup Wizard](setup.md)
 - [Login Page](login.md)
 - [Users](users.md)
+- [System Updates](system_updates.md)
+- [Fake Mode](fake_mode.md)

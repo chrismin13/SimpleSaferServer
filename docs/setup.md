@@ -31,14 +31,14 @@ This step is disk-oriented.
 - The unmount button unmounts every currently mounted partition that belongs to the selected disk.
 - That unmount action only clears live mounts so the format step can proceed safely.
 - It does not clear the saved backup-drive config and it does not remove the SimpleSaferServer-managed `/etc/fstab` entry.
-- The format button creates a single partition if needed and formats that partition as NTFS.
+- The format button removes the existing drive layout, creates one large backup partition, and formats that partition as NTFS.
 - Formatting erases all existing data on the selected disk.
 
 Why it works this way:
 
 - Formatting is a whole-disk preparation step.
 - Desktop automounters often mount child partitions such as `/dev/sdb1`, so the wizard checks for mounted child partitions before allowing formatting.
-- This is a simple destructive preparation flow. It is not a partition resizer and it does not try to preserve or rearrange an existing multi-partition layout.
+- This is a simple destructive preparation flow. It does not try to preserve or rearrange an existing multi-partition layout.
 
 ## Step 3: Drive Mount
 
@@ -95,14 +95,19 @@ Advanced mode:
 
 - Enter the destination alert email address.
 - Enter the From address used by the SMTP provider.
-- Enter SMTP host, port, username, and password.
+- Enter SMTP host, TCP port (1-65535), username, and password.
 
 ## Step 6: Schedule
 
-- Set the backup time.
+- Set the backup time. The setup wizard saves two-digit 24-hour `HH:MM` values such as `03:00`
+  or `23:30`.
 - Optionally set a bandwidth limit.
 - Save to complete setup.
 - Completing setup installs and activates the recurring systemd timers for mount checks, drive-health checks, cloud backups, and DDNS updates.
+- The cloud backup timer stays on the configured time. The generated mount check runs 4 minutes
+  before backup, and the generated drive-health check runs 2 minutes before backup. This spacing
+  gives the mount check time to finish before health probes the drive, even with systemd's small
+  randomized delay.
 - The installer may generate those unit files earlier, but it keeps the timers inactive while `system.setup_complete` is false so persistent timers cannot run with placeholder setup values.
 
 ## Later Changes

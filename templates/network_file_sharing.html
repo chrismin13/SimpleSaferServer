@@ -381,10 +381,8 @@ function loadFolderPicker(path) {
   clearFolderPickerError();
   dirsEl.innerHTML = '<span class="spinner"></span>';
 
-  fetch(`/api/list_dirs?path=${encodeURIComponent(normalizedPath)}`)
-    .then(r => r.json())
-    .then(data => {
-      if (data.error) throw new Error(data.error);
+  window.ApiClient.fetchJson(`/api/list_dirs?path=${encodeURIComponent(normalizedPath)}`)
+    .then(({ data }) => {
       window.renderPathBreadcrumbs(pathEl, data.path, loadFolderPicker);
       dirsEl.innerHTML = '';
 
@@ -428,10 +426,8 @@ function clearFolderPickerError() {
 }
 
 function loadShares() {
-  fetch('/api/smb/shares')
-    .then(r => r.json())
-    .then(data => {
-      if (data.error) { showAlert('Error loading shares: ' + data.error, 'danger'); return; }
+  window.ApiClient.fetchJson('/api/smb/shares')
+    .then(({ data }) => {
       shares = data.shares;
       unmanagedShareNames = data.unmanaged_share_names || [];
       renderUnmanagedShareState(
@@ -474,13 +470,10 @@ function renderUnmanagedShareState(hasUnmanagedShares, count, names) {
 }
 
 function loadUsers() {
-  fetch('/api/users')
-    .then(r => r.json())
-    .then(data => {
-      if (data.success) {
-        allUsers = data.users;
-        populateUserSelects();
-      }
+  window.ApiClient.fetchJson('/api/users')
+    .then(({ data }) => {
+      allUsers = data.users;
+      populateUserSelects();
     })
     .catch(e => console.error('Error loading users:', e));
 }
@@ -624,13 +617,16 @@ function addShare() {
   const selectedUsers = Array.from(document.querySelectorAll('#shareUsersCheckboxes input[type="checkbox"]:checked')).map(c => c.value);
   window.AsyncButtonState.start(saveBtn);
 
-  fetch('/api/smb/shares', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, path, comment, writable, valid_users: selectedUsers }) })
-    .then(r => r.json())
-    .then(data => {
-      if (data.error) { window.AsyncButtonState.error(saveBtn); showModalError('addShareModal', data.error); }
-      else { window.AsyncButtonState.success(saveBtn); showAlert('Share added successfully', 'success'); BunkerModal.hide('addShareModal'); form.reset(); document.getElementById('shareWritable').checked = true; loadShares(); }
+  window.ApiClient.fetchJson('/api/smb/shares', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, path, comment, writable, valid_users: selectedUsers }) })
+    .then(({ message }) => {
+      window.AsyncButtonState.success(saveBtn);
+      showAlert(message || 'Share added successfully', 'success');
+      BunkerModal.hide('addShareModal');
+      form.reset();
+      document.getElementById('shareWritable').checked = true;
+      loadShares();
     })
-    .catch(() => { window.AsyncButtonState.error(saveBtn); showAlert('Failed to add share', 'danger'); });
+    .catch((error) => { window.AsyncButtonState.error(saveBtn); showModalError('addShareModal', error.message || 'Failed to add share'); });
 }
 
 function editShare(shareName) {
@@ -662,13 +658,14 @@ function updateShare() {
   const selectedUsers = Array.from(document.querySelectorAll('#editShareUsersCheckboxes input[type="checkbox"]:checked')).map(c => c.value);
   window.AsyncButtonState.start(updateBtn);
 
-  fetch(`/api/smb/shares/${encodeURIComponent(originalName)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, path, comment, writable, valid_users: selectedUsers }) })
-    .then(r => r.json())
-    .then(data => {
-      if (data.error) { window.AsyncButtonState.error(updateBtn); showModalError('editShareModal', data.error); }
-      else { window.AsyncButtonState.success(updateBtn); showAlert('Share updated successfully', 'success'); BunkerModal.hide('editShareModal'); loadShares(); }
+  window.ApiClient.fetchJson(`/api/smb/shares/${encodeURIComponent(originalName)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, path, comment, writable, valid_users: selectedUsers }) })
+    .then(({ message }) => {
+      window.AsyncButtonState.success(updateBtn);
+      showAlert(message || 'Share updated successfully', 'success');
+      BunkerModal.hide('editShareModal');
+      loadShares();
     })
-    .catch(() => { window.AsyncButtonState.error(updateBtn); showAlert('Failed to update share', 'danger'); });
+    .catch((error) => { window.AsyncButtonState.error(updateBtn); showModalError('editShareModal', error.message || 'Failed to update share'); });
 }
 
 function confirmDeleteShare(shareName) {
@@ -682,20 +679,20 @@ function deleteShare() {
   const deleteBtn = document.getElementById('confirmDeleteShareBtn');
   window.AsyncButtonState.start(deleteBtn);
 
-  fetch(`/api/smb/shares/${encodeURIComponent(currentDeleteShare)}`, { method: 'DELETE' })
-    .then(r => r.json())
-    .then(data => {
-      if (data.error) { window.AsyncButtonState.error(deleteBtn); showAlert('Error: ' + data.error, 'danger'); }
-      else { window.AsyncButtonState.success(deleteBtn); showAlert('Share deleted', 'success'); BunkerModal.hide('deleteShareModal'); currentDeleteShare = null; loadShares(); }
+  window.ApiClient.fetchJson(`/api/smb/shares/${encodeURIComponent(currentDeleteShare)}`, { method: 'DELETE' })
+    .then(({ message }) => {
+      window.AsyncButtonState.success(deleteBtn);
+      showAlert(message || 'Share deleted', 'success');
+      BunkerModal.hide('deleteShareModal');
+      currentDeleteShare = null;
+      loadShares();
     })
-    .catch(() => { window.AsyncButtonState.error(deleteBtn); showAlert('Failed to delete share', 'danger'); });
+    .catch((error) => { window.AsyncButtonState.error(deleteBtn); showAlert(error.message || 'Failed to delete share', 'danger'); });
 }
 
 function loadSMBStatus() {
-  fetch('/api/smb/status')
-    .then(r => r.json())
-    .then(data => {
-      if (data.error) { updateOverallStatus('error', 'Error', 'Unable to check status'); return; }
+  window.ApiClient.fetchJson('/api/smb/status')
+    .then(({ data }) => {
       const smbdSt = document.getElementById('smbdStatus');
       smbdSt.textContent = data.smbd;
       smbdSt.className = data.smbd === 'active' ? 'badge badge-success' : 'badge badge-danger';
@@ -721,13 +718,13 @@ function updateOverallStatus(status, title, message) {
 function restartSMB() {
   const btn = document.getElementById('restartSMB');
   window.AsyncButtonState.start(btn);
-  fetch('/api/smb/restart', { method: 'POST' })
-    .then(r => r.json())
-    .then(data => {
-      if (data.error) { window.AsyncButtonState.error(btn); showAlert('Error: ' + data.error, 'danger'); }
-      else { window.AsyncButtonState.success(btn); showAlert('Services restarted', 'success'); setTimeout(loadSMBStatus, 2000); }
+  window.ApiClient.fetchJson('/api/smb/restart', { method: 'POST' })
+    .then(({ message }) => {
+      window.AsyncButtonState.success(btn);
+      showAlert(message || 'Services restarted', 'success');
+      setTimeout(loadSMBStatus, 2000);
     })
-    .catch(() => { window.AsyncButtonState.error(btn); showAlert('Failed to restart', 'danger'); });
+    .catch((error) => { window.AsyncButtonState.error(btn); showAlert(error.message || 'Failed to restart', 'danger'); });
 }
 
 function showModalError(modalId, message) {

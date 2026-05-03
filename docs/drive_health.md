@@ -10,6 +10,7 @@ It combines:
 ## Features
 
 - Run a manual health refresh from the page.
+- Refresh the Dashboard Drive Health tile explicitly when you want a live probe from the overview.
 - View the SMART prediction result and probability.
 - View missing SMART attributes that fell back to defaults.
 - View the HDSentinel device snapshot.
@@ -30,6 +31,21 @@ The SMART prediction path uses `smartctl` JSON output when the installed
 
 That split is easy to forget later because both cases may surface during the
 same troubleshooting session, but they need different remediation.
+
+## Dashboard Summary
+
+The Dashboard Drive Health tile reads only the latest summary stored in the running Flask process.
+It does not read SMART data, run HDSentinel, or load any dashboard-specific health file during a
+normal Dashboard refresh.
+
+- On web app startup, the summary is `No check yet`.
+- `GET /api/drive_health/summary` returns the RAM summary only.
+- `POST /api/drive_health/refresh` runs a live SMART/HDSentinel probe, updates RAM, and returns the
+  new summary.
+- Timeout and unavailable-drive results stay neutral on the Dashboard because sleeping USB drives,
+  docks, and adapters can need an explicit second check after spin-up.
+- The app does not persist Dashboard health summaries. Existing SMART telemetry and HDSentinel
+  monitor state keep their own documented storage behavior.
 
 ## Re-running Backup Drive Setup
 

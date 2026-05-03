@@ -13,7 +13,7 @@
       <span class="badge badge-neutral" id="mount-status-badge">Checking…</span>
     </div>
     <div class="status-tile-value" id="storage-used">—</div>
-    <div class="d-flex items-center gap-3">
+    <div class="d-flex items-center gap-3{% if mount_info and not mount_info.disk_available %} d-none{% endif %}" id="storage-meter">
       <div class="progress-bar-container flex-1">
         <div class="progress-bar-fill" id="storage-bar" style="width: 0%"></div>
       </div>
@@ -29,7 +29,13 @@
       <span class="badge badge-neutral" id="health-status-badge">Checking…</span>
     </div>
     <div class="status-tile-value" id="health-status">—</div>
-    <div class="status-tile-detail" id="health-detail">—</div>
+    <div class="status-tile-detail status-tile-detail-compact" id="health-detail">—</div>
+    <div class="d-flex justify-between items-center gap-3 mt-3">
+      <span class="status-tile-detail" id="health-checked-at">No check yet</span>
+      <button type="button" class="btn btn-secondary btn-sm" id="health-refresh-button">
+        <i class="fas fa-rotate-right me-1"></i> Refresh
+      </button>
+    </div>
   </div>
 
   <!-- Cloud Backup -->
@@ -129,13 +135,13 @@
   <div class="d-flex gap-3 flex-wrap">
     <div id="drive-action-slot">
       {% if mount_info and mount_info.is_mounted %}
-      <form method="post" action="{{ url_for('unmount') }}" class="d-inline dashboard-action-form" data-success-action="refresh-drive-ui" data-dashboard-unmount="true">
+      <form method="post" action="{{ url_for('storage_routes.unmount') }}" class="d-inline dashboard-action-form" data-success-action="refresh-drive-ui" data-dashboard-unmount="true">
         <button type="submit" class="btn btn-warning btn-sm">
           <i class="fas fa-eject me-1"></i> Unmount Drive
         </button>
       </form>
       {% else %}
-      <form method="post" action="{{ url_for('dashboard_mount_drive') }}" class="d-inline dashboard-action-form" data-success-action="refresh-drive-ui">
+      <form method="post" action="{{ url_for('storage_routes.dashboard_mount_drive') }}" class="d-inline dashboard-action-form" data-success-action="refresh-drive-ui">
         <button type="submit" class="btn btn-secondary btn-sm"
           data-confirm="Are you sure you want to mount the backup drive?"
           data-confirm-title="Mount Drive"
@@ -146,7 +152,7 @@
       </form>
       {% endif %}
     </div>
-    <form method="post" action="{{ url_for('restart') }}" class="d-inline dashboard-action-form">
+    <form method="post" action="{{ url_for('storage_routes.restart') }}" class="d-inline dashboard-action-form">
       <button type="submit" class="btn btn-secondary btn-sm"
         data-confirm="Are you sure you want to restart the system?"
         data-confirm-title="Restart System"
@@ -155,7 +161,7 @@
         <i class="fas fa-rotate-right me-1"></i> Restart
       </button>
     </form>
-    <form method="post" action="{{ url_for('shutdown') }}" class="d-inline dashboard-action-form">
+    <form method="post" action="{{ url_for('storage_routes.shutdown') }}" class="d-inline dashboard-action-form">
       <button type="submit" class="btn btn-danger btn-sm"
         data-confirm="Are you sure you want to shut down the system?"
         data-confirm-title="Shutdown System"
@@ -183,6 +189,7 @@ document.addEventListener('DOMContentLoaded', function() {
   const tasksBody = document.getElementById('tasks-body');
   const taskContextMenu = document.getElementById('taskContextMenu');
   const driveActionSlot = document.getElementById('drive-action-slot');
+  const healthRefreshButton = document.getElementById('health-refresh-button');
   const taskScheduleByName = new Map();
   let activeContextTaskName = null;
 
@@ -347,11 +354,7 @@ Remove the drive now if you do not want it mounted again.`;
   async function updateTaskSchedule() {
     try {
       hideTaskContextMenu();
-      const response = await fetch('/api/tasks/schedule');
-      const data = await response.json();
-      if (!response.ok || data.error) {
-        throw new Error(data.error || 'Could not refresh task schedule.');
-      }
+      const { data } = await window.ApiClient.fetchJson('/api/tasks/schedule');
 
       rememberTaskSchedule(data.tasks);
       tasksBody.innerHTML = '';
@@ -367,12 +370,12 @@ Remove the drive now if you do not want it mounted again.`;
     if (!driveActionSlot) return;
 
     driveActionSlot.innerHTML = isMounted
-      ? `<form method="post" action="{{ url_for('unmount') }}" class="d-inline dashboard-action-form" data-success-action="refresh-drive-ui" data-dashboard-unmount="true">
+      ? `<form method="post" action="{{ url_for('storage_routes.unmount') }}" class="d-inline dashboard-action-form" data-success-action="refresh-drive-ui" data-dashboard-unmount="true">
           <button type="submit" class="btn btn-warning btn-sm">
             <i class="fas fa-eject me-1"></i> Unmount Drive
           </button>
         </form>`
-      : `<form method="post" action="{{ url_for('dashboard_mount_drive') }}" class="d-inline dashboard-action-form" data-success-action="refresh-drive-ui">
+      : `<form method="post" action="{{ url_for('storage_routes.dashboard_mount_drive') }}" class="d-inline dashboard-action-form" data-success-action="refresh-drive-ui">
           <button type="submit" class="btn btn-secondary btn-sm"
             data-confirm="Are you sure you want to mount the backup drive?"
             data-confirm-title="Mount Drive"
@@ -394,15 +397,11 @@ Remove the drive now if you do not want it mounted again.`;
   }
 
   async function runTaskAction(taskName, action) {
-    const response = await fetch(`/task/${encodeURIComponent(taskName)}/${action}`, {
+    const { message } = await window.ApiClient.fetchJson(`/task/${encodeURIComponent(taskName)}/${action}`, {
       method: 'POST',
       headers: { 'Accept': 'application/json' }
     });
-    const data = await response.json();
-    if (!response.ok || data.success === false) {
-      throw new Error(data.message || 'Task action failed.');
-    }
-    showAlert(data.message || 'Task updated.', 'success');
+    showAlert(message || 'Task updated.', 'success');
     updateTaskSchedule();
     setTimeout(updateTaskSchedule, 1500);
   }
@@ -436,20 +435,15 @@ Remove the drive now if you do not want it mounted again.`;
         }
 
         try {
-          const response = await fetch(form.action, {
+          const { message } = await window.ApiClient.fetchJson(form.action, {
             method: form.method || 'POST',
             headers: { 'Accept': 'application/json' }
           });
-          const data = await response.json();
-
-          if (!response.ok || data.success === false) {
-            throw new Error(data.message || data.error || 'Action failed.');
-          }
 
           if (submitButton) {
             window.AsyncButtonState.success(submitButton);
           }
-          showAlert(data.message || 'Action completed successfully.', 'success');
+          showAlert(message || 'Action completed successfully.', 'success');
           if (form.dataset.successAction === 'refresh-drive-ui') {
             window.setTimeout(refreshDriveUi, 150);
           }
@@ -465,27 +459,29 @@ Remove the drive now if you do not want it mounted again.`;
 
   // --- Storage status ---
   function updateStorage() {
-    fetch('/api/storage/status')
-      .then(r => r.json())
-      .then(data => {
+    window.ApiClient.fetchJson('/api/storage/status')
+      .then(({ data }) => {
         renderDriveActionForm(Boolean(data.mounted));
         const badge = document.getElementById('mount-status-badge');
         const val = document.getElementById('storage-used');
         const bar = document.getElementById('storage-bar');
         const pct = document.getElementById('storage-percent');
         const detail = document.getElementById('storage-detail');
+        const meter = document.getElementById('storage-meter');
 
         if (data.mounted) {
           badge.className = 'badge badge-success';
           badge.textContent = 'Mounted';
-          if (data.total_storage != null) {
+          if (data.disk_available) {
             const usedPct = parseFloat(data.storage_usage || '0') || 0;
+            meter.classList.remove('d-none');
             val.textContent = data.used_storage + ' GB';
             pct.textContent = usedPct + '%';
             bar.style.width = usedPct + '%';
             bar.className = 'progress-bar-fill' + (usedPct > 90 ? ' danger' : usedPct > 70 ? ' warning' : ' success');
             detail.textContent = data.used_storage + ' / ' + data.total_storage + ' GB used';
           } else {
+            meter.classList.add('d-none');
             val.textContent = 'Mounted';
             pct.textContent = '—';
             detail.textContent = 'No storage info available';
@@ -495,6 +491,7 @@ Remove the drive now if you do not want it mounted again.`;
           badge.textContent = 'Not Mounted';
           val.textContent = 'Not Mounted';
           pct.textContent = '—';
+          meter.classList.add('d-none');
           bar.style.width = '0%';
           detail.textContent = data.mount_point || 'Drive is not mounted';
         }
@@ -506,58 +503,134 @@ Remove the drive now if you do not want it mounted again.`;
   }
 
   // --- Drive health status ---
+  function formatHealthCheckedAt(value) {
+    if (!value) {
+      return 'No check yet';
+    }
+    return window.formatRelativeTimestamp(value, { fallback: value, compact: true });
+  }
+
+  function renderHealthSummary(data) {
+    const badge = document.getElementById('health-status-badge');
+    const val = document.getElementById('health-status');
+    const detail = document.getElementById('health-detail');
+    const checkedAt = document.getElementById('health-checked-at');
+    const probability = typeof data.probability === 'number'
+      ? 'Risk ' + (data.probability * 100).toFixed(1) + '%'
+      : '';
+    const temperature = data.temperature != null ? 'Temp ' + data.temperature + '°C' : '';
+    const metrics = [probability, temperature].filter(Boolean);
+
+    checkedAt.textContent = formatHealthCheckedAt(data.checked_at);
+    checkedAt.title = data.checked_at || 'No check yet';
+
+    const renderDetailText = (message) => {
+      detail.textContent = '';
+      detail.classList.remove('status-tile-metrics');
+      detail.textContent = message;
+      detail.title = message;
+    };
+
+    const renderMetricRow = (lines, fallback) => {
+      detail.textContent = '';
+      detail.classList.remove('status-tile-metrics');
+      if (!lines.length) {
+        renderDetailText(fallback);
+        return;
+      }
+      detail.classList.add('status-tile-metrics');
+      detail.title = lines.join(' | ');
+      lines.forEach((line, index) => {
+        if (index) {
+          const separator = document.createElement('span');
+          separator.className = 'status-tile-metric-separator';
+          separator.setAttribute('aria-hidden', 'true');
+          separator.textContent = '|';
+          detail.appendChild(separator);
+        }
+        const metric = document.createElement('span');
+        metric.className = 'status-tile-metric';
+        metric.textContent = line;
+        detail.appendChild(metric);
+      });
+    };
+
+    if (!data.checked_at) {
+      badge.className = 'badge badge-neutral';
+      badge.textContent = 'Not Checked';
+      val.textContent = 'No check yet';
+      renderDetailText('Refresh to check');
+      return;
+    }
+
+    if (data.status === 'good') {
+      badge.className = 'badge badge-success';
+      badge.textContent = 'Healthy';
+      val.textContent = 'No Issues';
+      // Keep volatile summary metrics on one row so the overview tile does not
+      // grow vertically when both SMART risk and temperature are present.
+      renderMetricRow(metrics, data.detail || 'Checked');
+      return;
+    }
+
+    if (data.status === 'warning') {
+      badge.className = 'badge badge-danger';
+      badge.textContent = 'Warning';
+      val.textContent = 'Needs Attention';
+      renderMetricRow(metrics, data.detail || 'Warning');
+      return;
+    }
+
+    badge.className = 'badge badge-neutral';
+    badge.textContent = 'Unknown';
+    val.textContent = 'No Data';
+    renderDetailText(data.detail || 'Health data is not available');
+  }
+
   function updateHealth() {
-    fetch('/api/drive_health/summary')
-      .then(r => r.json())
-      .then(data => {
-        const badge = document.getElementById('health-status-badge');
-        const val = document.getElementById('health-status');
-        const detail = document.getElementById('health-detail');
-
-        if (data.status === 'unknown') {
-          badge.className = 'badge badge-neutral';
-          badge.textContent = 'Unknown';
-          val.textContent = 'No Data';
-          detail.textContent = 'Health data is not available yet';
-          return;
-        }
-
-        if (data.status === 'good') {
-          badge.className = 'badge badge-success';
-          badge.textContent = 'Healthy';
-          val.textContent = 'No Issues';
-          detail.textContent = 'Failure probability: ' + (data.probability * 100).toFixed(1) + '%';
-        } else {
-          badge.className = 'badge badge-danger';
-          badge.textContent = 'Warning';
-          val.textContent = 'Failure Predicted';
-          detail.textContent = 'Failure probability: ' + (data.probability * 100).toFixed(1) + '%';
-        }
-      })
+    window.ApiClient.fetchJson('/api/drive_health/summary')
+      .then(({ data }) => renderHealthSummary(data))
       .catch(() => {
         document.getElementById('health-status-badge').className = 'badge badge-neutral';
         document.getElementById('health-status-badge').textContent = 'Unavailable';
         document.getElementById('health-status').textContent = '—';
+        document.getElementById('health-detail').textContent = 'Health data unavailable';
+        document.getElementById('health-checked-at').textContent = 'No check yet';
+        document.getElementById('health-checked-at').title = 'No check yet';
       });
+  }
+
+  async function refreshHealth() {
+    if (healthRefreshButton) {
+      window.AsyncButtonState.start(healthRefreshButton);
+    }
+    try {
+      const { data } = await window.ApiClient.fetchJson('/api/drive_health/refresh', {
+        method: 'POST',
+        headers: { 'Accept': 'application/json' }
+      });
+      renderHealthSummary(data);
+      if (healthRefreshButton) {
+        window.AsyncButtonState.success(healthRefreshButton);
+      }
+      showAlert('Drive health refreshed.', 'success');
+    } catch (error) {
+      if (healthRefreshButton) {
+        window.AsyncButtonState.error(healthRefreshButton);
+      }
+      showAlert(error.message || 'Drive health refresh failed.', 'danger');
+    }
   }
 
   // --- Cloud backup status ---
   function updateBackup() {
-    fetch('/api/cloud_backup/status')
-      .then(r => r.json())
-      .then(data => {
+    window.ApiClient.fetchJson('/api/cloud_backup/status')
+      .then(({ data }) => {
         const badge = document.getElementById('backup-status-badge');
         const val = document.getElementById('backup-last-run');
         const detail = document.getElementById('backup-detail');
 
-        if (!data.success) {
-          badge.className = 'badge badge-neutral';
-          badge.textContent = 'Unknown';
-          val.textContent = '—';
-          return;
-        }
-
-        const s = data.status;
+        const s = data;
         if (s.status === 'Success') {
           badge.className = 'badge badge-success';
           badge.textContent = 'OK';
@@ -585,20 +658,11 @@ Remove the drive now if you do not want it mounted again.`;
 
   // --- SMB / sharing status ---
   function updateSharing() {
-    fetch('/api/smb/status')
-      .then(r => r.json())
-      .then(data => {
+    window.ApiClient.fetchJson('/api/smb/status')
+      .then(({ data }) => {
         const badge = document.getElementById('sharing-status-badge');
         const val = document.getElementById('sharing-status');
         const detail = document.getElementById('sharing-detail');
-
-        if (data.error) {
-          badge.className = 'badge badge-danger';
-          badge.textContent = 'Error';
-          val.textContent = 'Unavailable';
-          detail.textContent = data.error;
-          return;
-        }
 
         if (data.smbd === 'active' && data.nmbd === 'active') {
           badge.className = 'badge badge-success';
@@ -625,9 +689,8 @@ Remove the drive now if you do not want it mounted again.`;
 
   // --- System resources ---
   function updateResources() {
-    fetch('/api/system/resources')
-      .then(r => r.json())
-      .then(data => {
+    window.ApiClient.fetchJson('/api/system/resources')
+      .then(({ data }) => {
         const cpuPct = document.getElementById('cpu-percent');
         const cpuBar = document.getElementById('cpu-bar');
         const ramPct = document.getElementById('ram-percent');
@@ -653,6 +716,9 @@ Remove the drive now if you do not want it mounted again.`;
   bindInteractiveRows();
   applyRelativeTaskTimes();
   bindDashboardActionForms();
+  if (healthRefreshButton) {
+    healthRefreshButton.addEventListener('click', refreshHealth);
+  }
 
   taskContextMenu.querySelectorAll('[data-task-action]').forEach((button) => {
     button.addEventListener('click', async () => {

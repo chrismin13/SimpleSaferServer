@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+"""Import bundles produced by https://github.com/chrismin13/SimpleSaferServer-old."""
+
 import argparse
 import logging
 import sys
@@ -8,19 +10,37 @@ from pathlib import Path
 
 def _add_app_to_path():
     script_path = Path(__file__).resolve()
+    # Prefer the checkout path for development, then the installed /opt path used
+    # by production installs that run this script from /usr/local/bin.
     candidates = [
         script_path.parents[1],
         Path("/opt/SimpleSaferServer"),
     ]
     for candidate in candidates:
-        if (candidate / "legacy_migration.py").exists():
+        # A directory check avoids treating a stray file as the application package.
+        if (candidate / "simple_safer_server").is_dir():
+            # The legacy importer lives in the app package, so sys.path must be
+            # patched before the intentionally delayed import below.
             sys.path.insert(0, str(candidate))
             return
 
 
-_add_app_to_path()
+try:
+    from simple_safer_server.legacy.migration import MigrationError, import_legacy_bundle
+except ImportError:
+    _add_app_to_path()
+    try:
+        # Retry from the checkout or /opt application path for script-style installs.
+        from simple_safer_server.legacy.migration import MigrationError, import_legacy_bundle
+    except ImportError:
+        print(
+            "WARNING: could not import simple_safer_server.legacy.migration; "
+            "check the working directory or install location.",
+            file=sys.stderr,
+        )
+        raise
 
-from legacy_migration import MigrationError, import_legacy_bundle  # noqa: E402
+# The imports above are intentionally delayed so installed packages can load without sys.path edits.
 
 
 def parse_args() -> argparse.Namespace:
@@ -50,6 +70,8 @@ def main() -> int:
     args = parse_args()
 
     if not args.admin_password_stdin:
+        # The import command is often run from shell history; stdin keeps the
+        # temporary admin password out of argv and process listings.
         raise MigrationError("For safety, --admin-password-stdin is required.")
 
     admin_password = sys.stdin.readline().rstrip("\r\n")
@@ -73,7 +95,8 @@ def main() -> int:
 
 if __name__ == "__main__":
     try:
+        # Propagate main()'s return code as the process exit status.
         raise SystemExit(main())
     except MigrationError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
-        raise SystemExit(1)
+        raise SystemExit(1) from exc

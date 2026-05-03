@@ -38,8 +38,8 @@
       </div>
       <div class="form-group">
         <label class="form-label">Port</label>
-        <input type="number" id="smtpPort" class="form-control" placeholder="587">
-        <div class="invalid-feedback">SMTP port is required.</div>
+        <input type="text" id="smtpPort" class="form-control" placeholder="587" inputmode="numeric" pattern="[0-9]*">
+        <div class="invalid-feedback">SMTP port must be a number between 1 and 65535.</div>
       </div>
     </div>
     <div class="form-row mb-4">
@@ -50,7 +50,12 @@
       </div>
       <div class="form-group">
         <label class="form-label">Password</label>
-        <input type="password" id="smtpPassword" class="form-control" placeholder="Leave blank to keep current password" autocomplete="new-password">
+        <div class="input-group">
+          <input type="password" id="smtpPassword" class="form-control" autocomplete="new-password">
+          <button type="button" class="btn btn-secondary secret-toggle" data-secret-toggle="smtpPassword" aria-label="Show SMTP password" title="Show password">
+            <i class="fas fa-eye"></i>
+          </button>
+        </div>
         <div class="invalid-feedback">SMTP password is required when no password is currently stored.</div>
       </div>
     </div>
@@ -148,6 +153,7 @@
 let currentAlertId = null;
 
 document.addEventListener('DOMContentLoaded', function() {
+  setupSecretToggles();
   loadEmailConfig();
   loadAlerts();
 
@@ -181,38 +187,45 @@ document.addEventListener('DOMContentLoaded', function() {
       btn.disabled = true;
       btn.innerHTML = '<span class="spinner"></span>';
 
-      fetch('/api/alerts/generate-test', { method: 'POST' })
-        .then(r => r.json())
-        .then(data => {
+      window.ApiClient.fetchJson('/api/alerts/generate-test', { method: 'POST' })
+        .then(() => {
           btn.disabled = false;
           btn.innerHTML = originalHtml;
-          if (data.success) {
-            loadAlerts();
-          } else {
-            showAlert(data.error || 'Failed to generate test alerts', 'danger');
-          }
+          loadAlerts();
         })
-        .catch(() => {
+        .catch((error) => {
           btn.disabled = false;
           btn.innerHTML = originalHtml;
-          showAlert('Network error while generating test alerts', 'danger');
+          showAlert(error.message || 'Network error while generating test alerts', 'danger');
         });
     });
   }
 });
 
+function setupSecretToggles() {
+  document.querySelectorAll('[data-secret-toggle]').forEach((button) => {
+    const input = document.getElementById(button.dataset.secretToggle);
+    if (!input) return;
+    button.addEventListener('click', () => {
+      const visible = input.type === 'text';
+      input.type = visible ? 'password' : 'text';
+      button.setAttribute('aria-label', visible ? 'Show password' : 'Hide password');
+      button.title = visible ? 'Show password' : 'Hide password';
+      const icon = button.querySelector('i');
+      if (icon) icon.className = visible ? 'fas fa-eye' : 'fas fa-eye-slash';
+    });
+  });
+}
+
 function loadEmailConfig() {
-  fetch('/api/alerts/email-config')
-    .then(r => r.json())
-    .then(data => {
-      if (data.success) {
-        document.getElementById('emailAddress').value = data.config.email_address || '';
-        document.getElementById('fromAddress').value = data.config.from_address || '';
-        document.getElementById('smtpServer').value = data.config.smtp_server || '';
-        document.getElementById('smtpPort').value = data.config.smtp_port || '';
-        document.getElementById('smtpUsername').value = data.config.smtp_username || '';
-        document.getElementById('smtpPassword').value = '';
-      }
+  window.ApiClient.fetchJson('/api/alerts/email-config')
+    .then(({ data }) => {
+      document.getElementById('emailAddress').value = data.config.email_address || '';
+      document.getElementById('fromAddress').value = data.config.from_address || '';
+      document.getElementById('smtpServer').value = data.config.smtp_server || '';
+      document.getElementById('smtpPort').value = data.config.smtp_port || '';
+      document.getElementById('smtpUsername').value = data.config.smtp_username || '';
+      document.getElementById('smtpPassword').value = data.config.smtp_password || '';
     })
     .catch(e => console.error('Error loading email config:', e));
 }
@@ -235,29 +248,23 @@ function saveEmailConfig() {
   }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailAddress)) { showEmailError('Please enter a valid email address'); return; }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fromAddress)) { showEmailError('Please enter a valid from address'); return; }
-  const portNum = parseInt(smtpPort);
+  if (!/^\d+$/.test(smtpPort)) { showEmailError('SMTP port must contain only digits'); return; }
+  const portNum = parseInt(smtpPort, 10);
   if (isNaN(portNum) || portNum < 1 || portNum > 65535) { showEmailError('SMTP port must be between 1 and 65535'); return; }
 
   const saveBtn = document.getElementById('saveEmailBtn');
   window.AsyncButtonState.start(saveBtn);
 
-  fetch('/api/alerts/email-config', {
+  window.ApiClient.fetchJson('/api/alerts/email-config', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email_address: emailAddress, from_address: fromAddress, smtp_server: smtpServer, smtp_port: smtpPort, smtp_username: smtpUsername, smtp_password: smtpPassword })
   })
-    .then(r => r.json())
-    .then(data => {
-      if (data.success) {
-        window.AsyncButtonState.success(saveBtn);
-        showAlert('Email configuration saved successfully', 'success');
-        document.getElementById('smtpPassword').value = '';
-      } else {
-        window.AsyncButtonState.error(saveBtn);
-        showEmailError(data.error || 'Failed to save email configuration');
-      }
+    .then(() => {
+      window.AsyncButtonState.success(saveBtn);
+      showAlert('Email configuration saved successfully', 'success');
     })
-    .catch(() => { window.AsyncButtonState.error(saveBtn); showEmailError('An error occurred while saving'); });
+    .catch((error) => { window.AsyncButtonState.error(saveBtn); showEmailError(error.message || 'An error occurred while saving'); });
 }
 
 function showEmailError(message) {
@@ -272,22 +279,16 @@ function loadAlerts() {
   noAlerts.classList.add('d-none');
   alertsList.classList.add('d-none');
 
-  fetch('/api/alerts')
-    .then(r => r.json())
-    .then(data => {
+  window.ApiClient.fetchJson('/api/alerts')
+    .then(({ data }) => {
       loading.classList.add('d-none');
-      if (data.success) {
-        if (data.alerts.length === 0) { noAlerts.classList.remove('d-none'); }
-        else { displayAlerts(data.alerts); alertsList.classList.remove('d-none'); }
-      } else {
-        noAlerts.classList.remove('d-none');
-        showAlert(data.error || 'Failed to load alerts. Please try again.', 'danger');
-      }
+      if (data.alerts.length === 0) { noAlerts.classList.remove('d-none'); }
+      else { displayAlerts(data.alerts); alertsList.classList.remove('d-none'); }
     })
-    .catch(() => {
+    .catch((error) => {
       loading.classList.add('d-none');
       noAlerts.classList.remove('d-none');
-      showAlert('Could not load alerts due to a network error.', 'danger');
+      showAlert(error.message || 'Could not load alerts due to a network error.', 'danger');
     });
 }
 
@@ -312,6 +313,19 @@ function displayAlerts(alerts) {
   tbody.innerHTML = '';
   alerts.slice().reverse().forEach(alert => {
     const row = document.createElement('tr');
+    row.className = 'clickable-row';
+    row.tabIndex = 0;
+    row.setAttribute('role', 'button');
+    row.setAttribute('aria-label', `Open ${alert.title} alert details`);
+    row.addEventListener('click', function () {
+      showAlertDetail(alert.id);
+    });
+    row.addEventListener('keydown', function (event) {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        showAlertDetail(alert.id);
+      }
+    });
     if (!alert.read) row.style.background = 'var(--accent-subtle)';
     const time = new Date(alert.timestamp).toLocaleString();
     const statusBadge = alert.read
@@ -328,17 +342,10 @@ function displayAlerts(alerts) {
     const tdType = document.createElement('td');
     tdType.innerHTML = getTypeBadge(alert.type);
 
-    // Title cell with clickable link (text only)
+    // The row owns the detail action so every alert cell behaves like the task list rows.
     const tdTitle = document.createElement('td');
-    const titleLink = document.createElement('a');
-    titleLink.href = '#';
-    titleLink.className = 'fw-medium';
-    titleLink.textContent = alert.title;
-    titleLink.addEventListener('click', function (event) {
-      event.preventDefault();
-      showAlertDetail(alert.id);
-    });
-    tdTitle.appendChild(titleLink);
+    tdTitle.className = 'fw-medium';
+    tdTitle.textContent = alert.title;
 
     // Message cell (text only, truncated)
     const tdMessage = document.createElement('td');
@@ -368,31 +375,29 @@ function displayAlerts(alerts) {
 }
 
 function showAlertDetail(alertId) {
-  fetch(`/api/alerts/${alertId}`)
-    .then(r => r.json())
-    .then(data => {
-      if (data.success) {
-        const alert = data.alert;
-        currentAlertId = alert.id;
-        document.getElementById('alertDetailTitle').textContent = alert.title;
-        document.getElementById('alertDetailTime').textContent = new Date(alert.timestamp).toLocaleString();
-        document.getElementById('alertDetailSource').textContent = alert.source;
-        document.getElementById('alertDetailType').innerHTML = getTypeBadge(alert.type);
-        document.getElementById('alertDetailStatus').innerHTML = alert.read
-          ? '<span class="badge badge-neutral">Read</span>'
-          : '<span class="badge badge-accent">New</span>';
-        document.getElementById('alertDetailMessage').textContent = alert.message;
-        document.getElementById('markAsReadBtn').style.display = alert.read ? 'none' : '';
-        BunkerModal.show('alertDetailModal');
-      }
-    });
+  window.ApiClient.fetchJson(`/api/alerts/${alertId}`)
+    .then(({ data }) => {
+      const alert = data.alert;
+      currentAlertId = alert.id;
+      document.getElementById('alertDetailTitle').textContent = alert.title;
+      document.getElementById('alertDetailTime').textContent = new Date(alert.timestamp).toLocaleString();
+      document.getElementById('alertDetailSource').textContent = alert.source;
+      document.getElementById('alertDetailType').innerHTML = getTypeBadge(alert.type);
+      document.getElementById('alertDetailStatus').innerHTML = alert.read
+        ? '<span class="badge badge-neutral">Read</span>'
+        : '<span class="badge badge-accent">New</span>';
+      document.getElementById('alertDetailMessage').textContent = alert.message;
+      document.getElementById('markAsReadBtn').style.display = alert.read ? 'none' : '';
+      BunkerModal.show('alertDetailModal');
+    })
+    .catch((error) => showAlert(error.message || 'Failed to load alert.', 'danger'));
 }
 
 document.getElementById('markAsReadBtn').addEventListener('click', function() {
   if (currentAlertId) {
-    fetch(`/api/alerts/${currentAlertId}/mark-read`, { method: 'POST' })
-      .then(r => r.json())
-      .then(data => { if (data.success) { BunkerModal.hide('alertDetailModal'); loadAlerts(); } });
+    window.ApiClient.fetchJson(`/api/alerts/${currentAlertId}/mark-read`, { method: 'POST' })
+      .then(() => { BunkerModal.hide('alertDetailModal'); loadAlerts(); })
+      .catch((error) => showAlert(error.message || 'Failed to mark alert read.', 'danger'));
   }
 });
 
@@ -402,27 +407,23 @@ document.getElementById('clearAlertsBtn').addEventListener('click', function() {
   // Handled by data-confirm attribute
   const btn = this;
   btn.disabled = true;
-  fetch('/api/alerts/clear', { method: 'POST' })
-    .then(r => r.json())
-    .then(data => {
+  window.ApiClient.fetchJson('/api/alerts/clear', { method: 'POST' })
+    .then(() => {
       btn.disabled = false;
-      if (data.success) loadAlerts();
-      else showAlert(data.error || 'Failed to clear alerts.', 'danger');
+      loadAlerts();
     })
-    .catch(() => { btn.disabled = false; showAlert('Network error while clearing alerts.', 'danger'); });
+    .catch((error) => { btn.disabled = false; showAlert(error.message || 'Network error while clearing alerts.', 'danger'); });
 });
 
 document.getElementById('markAllReadBtn').addEventListener('click', function() {
   const btn = this;
   btn.disabled = true;
-  fetch('/api/alerts/mark-all-read', { method: 'POST' })
-    .then(r => r.json())
-    .then(data => {
+  window.ApiClient.fetchJson('/api/alerts/mark-all-read', { method: 'POST' })
+    .then(() => {
       btn.disabled = false;
-      if (data.success) loadAlerts();
-      else showAlert(data.error || 'Failed to mark alerts as read.', 'danger');
+      loadAlerts();
     })
-    .catch(() => { btn.disabled = false; showAlert('Network error while marking alerts as read.', 'danger'); });
+    .catch((error) => { btn.disabled = false; showAlert(error.message || 'Network error while marking alerts as read.', 'danger'); });
 });
 </script>
 {% endblock %}

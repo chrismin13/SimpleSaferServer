@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 
-import sys
 import json
 import logging
-import os
-import urllib.request
+import sys
 import urllib.error
-from urllib.parse import quote
+import urllib.request
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import quote
+
 
 def _add_app_to_path():
     script_path = Path(__file__).resolve()
@@ -17,26 +17,27 @@ def _add_app_to_path():
         Path('/opt/SimpleSaferServer'),
     ]
     for candidate in candidates:
-        if (candidate / 'drive_health.py').exists():
+        if (candidate / 'simple_safer_server').exists():
             sys.path.insert(0, str(candidate))
             return
 
+
 _add_app_to_path()
 
-from config_manager import ConfigManager
-from runtime import get_runtime
+from simple_safer_server.services.config_manager import ConfigManager  # noqa: E402
+from simple_safer_server.services.file_persistence import atomic_write_json  # noqa: E402
+from simple_safer_server.services.runtime import get_runtime  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger('DDNSUpdater')
 
+
 def get_public_ip():
-    services = [
-        "https://api.ipify.org",
-        "https://ipv4.icanhazip.com"
-    ]
+    services = ["https://api.ipify.org", "https://ipv4.icanhazip.com"]
     for url in services:
         try:
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            # Public-IP providers are fixed HTTPS endpoints.
             with urllib.request.urlopen(req, timeout=5) as response:
                 ip = response.read().decode('utf-8').strip()
                 if ip:
@@ -45,6 +46,7 @@ def get_public_ip():
             logger.debug(f"Failed to fetch IP from {url}. Error: {e}")
             continue
     return None
+
 
 def update_duckdns(domain, token, ipv4):
     logger.info(f"Updating DuckDNS domain '{domain}' with IP {ipv4 if ipv4 else 'auto'}...")
@@ -56,6 +58,7 @@ def update_duckdns(domain, token, ipv4):
         url += f"&ip={encoded_ipv4}"
 
     try:
+        # DuckDNS API URL is fixed HTTPS.
         with urllib.request.urlopen(url, timeout=10) as response:
             result = response.read().decode('utf-8').strip()
             if result == "OK":
@@ -67,14 +70,15 @@ def update_duckdns(domain, token, ipv4):
     except Exception as e:
         return False, str(e)
 
+
 def get_cloudflare_record(zone_id, token, record_name):
     encoded_record_name = quote(record_name)
     url = f"https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records?type=A&name={encoded_record_name}"
-    req = urllib.request.Request(url, headers={
-        'Authorization': f'Bearer {token}',
-        'Content-Type': 'application/json'
-    })
+    req = urllib.request.Request(
+        url, headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
+    )
     try:
+        # Cloudflare API URL is fixed HTTPS.
         with urllib.request.urlopen(req, timeout=10) as response:
             data = json.loads(response.read().decode('utf-8'))
             if data.get('success'):
@@ -90,10 +94,13 @@ def get_cloudflare_record(zone_id, token, record_name):
         raise
     return None, None, None
 
+
 def update_cloudflare(zone_id, token, record_name, ip, proxy):
     logger.info(f"Updating Cloudflare record '{record_name}' in zone '{zone_id}' with IP {ip}...")
     try:
-        record_id, existing_ip, existing_proxied = get_cloudflare_record(zone_id, token, record_name)
+        record_id, existing_ip, existing_proxied = get_cloudflare_record(
+            zone_id, token, record_name
+        )
         if not record_id:
             return False, "Record does not exist."
 
@@ -102,18 +109,23 @@ def update_cloudflare(zone_id, token, record_name, ip, proxy):
             return True, "Record already current."
 
         url = f"https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records/{record_id}"
-        payload = json.dumps({
-            "type": "A",
-            "name": record_name,
-            "content": ip,
-            # Cloudflare requires TTL=1 while proxied records use their automatic TTL.
-            "proxied": desired_proxied,
-            "ttl": 1 if desired_proxied else 3600
-        }).encode('utf-8')
-        req = urllib.request.Request(url, data=payload, headers={
-            'Authorization': f'Bearer {token}',
-            'Content-Type': 'application/json'
-        }, method='PUT')  # Cloudflare v4 API requires PUT (not PATCH) to update a DNS record
+        payload = json.dumps(
+            {
+                "type": "A",
+                "name": record_name,
+                "content": ip,
+                # Cloudflare requires TTL=1 while proxied records use their automatic TTL.
+                "proxied": desired_proxied,
+                "ttl": 1 if desired_proxied else 3600,
+            }
+        ).encode('utf-8')
+        req = urllib.request.Request(
+            url,
+            data=payload,
+            headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'},
+            method='PUT',
+        )  # Cloudflare v4 API requires PUT (not PATCH) to update a DNS record
+        # Cloudflare API URL is fixed HTTPS.
         with urllib.request.urlopen(req, timeout=10) as response:
             data = json.loads(response.read().decode('utf-8'))
             if data.get('success'):
@@ -133,6 +145,7 @@ def update_cloudflare(zone_id, token, record_name, ip, proxy):
     except Exception as e:
         return False, str(e)
 
+
 def main():
     runtime = get_runtime()
     config = ConfigManager(runtime=runtime)
@@ -144,11 +157,11 @@ def main():
         logger.info("No DDNS services enabled.")
         return 0
 
-    status_file = runtime.data_dir / 'ddns_status.json'
+    status_file = runtime.volatile_dir / 'ddns_status.json'
     try:
-        if status_file.exists():
-            status_data = json.loads(status_file.read_text())
-        else:
+        status_data = json.loads(status_file.read_text()) if status_file.exists() else {}
+        if not isinstance(status_data, dict):
+            # Volatile status can be recreated; ignore valid JSON that is not the mapping shape we update.
             status_data = {}
     except Exception:
         status_data = {}
@@ -157,7 +170,9 @@ def main():
     if ipv4:
         status_data['ipv4'] = ipv4
     else:
-        logger.warning("Could not fetch IPv4. Falling back to duckdns auto-detect for DuckDNS, but Cloudflare will fail.")
+        logger.warning(
+            "Could not fetch IPv4. Falling back to duckdns auto-detect for DuckDNS, but Cloudflare will fail."
+        )
 
     status_data['last_check'] = datetime.now().isoformat()
     provider_failures = []
@@ -178,9 +193,10 @@ def main():
                 provider_failures.append(f"DuckDNS: {msg}")
 
             # Alert once per unique error message to avoid alert spam.
-            if not success and "Connection" not in msg:
-                if previous_duckdns_message != msg:
-                    config.log_alert("DuckDNS DDNS Update Failed", f"Domain {domain}: {msg}", alert_type="error")
+            if not success and "Connection" not in msg and previous_duckdns_message != msg:
+                config.log_alert(
+                    "DuckDNS DDNS Update Failed", f"Domain {domain}: {msg}", alert_type="error"
+                )
         else:
             duckdns_new_status['status'] = 'Configuration Missing'
             duckdns_new_status['message'] = 'Domain or Token is missing.'
@@ -206,9 +222,12 @@ def main():
                 if not success:
                     provider_failures.append(f"Cloudflare: {msg}")
                 # Alert once per unique error message to avoid alert spam.
-                if not success and "Connection" not in msg:
-                    if previous_cf_message != msg:
-                        config.log_alert("Cloudflare DDNS Update Failed", f"Record {record}: {msg}", alert_type="error")
+                if not success and "Connection" not in msg and previous_cf_message != msg:
+                    config.log_alert(
+                        "Cloudflare DDNS Update Failed",
+                        f"Record {record}: {msg}",
+                        alert_type="error",
+                    )
             else:
                 cf_new_status['status'] = 'Error'
                 cf_new_status['message'] = 'Failed to fetch public IP required for Cloudflare.'
@@ -223,13 +242,9 @@ def main():
     status_data['duckdns'] = duckdns_new_status
     status_data['cloudflare'] = cf_new_status
 
-    status_file.parent.mkdir(parents=True, exist_ok=True)
     # Write atomically: write to a temp file in the same directory then rename, so
     # concurrent reads by the web API never see a partial/empty file.
-    tmp_file = status_file.with_suffix('.tmp')
-    tmp_file.write_text(json.dumps(status_data, indent=2))
-    tmp_file.chmod(0o644)
-    os.replace(tmp_file, status_file)
+    atomic_write_json(status_file, status_data, mode=0o644, durable=False)
 
     if provider_failures:
         # The status file is still the source of provider details; the exit code
@@ -237,6 +252,7 @@ def main():
         logger.error("DDNS provider update failed: %s", "; ".join(provider_failures))
         return 1
     return 0
+
 
 if __name__ == '__main__':
     try:

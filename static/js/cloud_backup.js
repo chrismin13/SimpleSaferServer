@@ -20,11 +20,9 @@ function loadStatus() {
   lastRun.textContent = '-';
   nextRun.textContent = '-';
   lastDuration.textContent = '-';
-  fetch('/api/cloud_backup/status')
-    .then(r => r.json())
-    .then(data => {
-      if (!data.success) throw new Error(data.error || 'Failed to load status');
-      const s = data.status;
+  window.ApiClient.fetchJson('/api/cloud_backup/status')
+    .then(({ data }) => {
+      const s = data;
       statusBadge.innerHTML = renderStatusBadge(s.status);
       lastRun.textContent = window.formatRelativeTimestamp(s.last_run, { fallback: '-' });
       lastRun.title = s.last_run || '';
@@ -42,15 +40,13 @@ function runBackupNow() {
   const runBtn = document.getElementById('cloud-backup-run-btn');
   window.AsyncButtonState.start(runBtn);
 
-  fetch('/api/cloud_backup/run', {
+  window.ApiClient.fetchJson('/api/cloud_backup/run', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' }
   })
-    .then(r => r.json())
-    .then(data => {
-      if (!data.success) throw new Error(data.error || 'Failed to start backup');
+    .then(({ message }) => {
       window.AsyncButtonState.success(runBtn);
-      showAlert(data.message || 'Cloud backup started.', 'success');
+      showAlert(message || 'Cloud backup started.', 'success');
       loadStatus();
     })
     .catch(e => {
@@ -113,11 +109,9 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   function loadSchedule() {
-    fetch('/api/cloud_backup/config')
-      .then(r => r.json())
-      .then(data => {
-        if (!data.success) throw new Error(data.error || 'Failed to load schedule');
-        fillScheduleForm(data.config);
+    window.ApiClient.fetchJson('/api/cloud_backup/config')
+      .then(({ data }) => {
+        fillScheduleForm(data);
       })
       .catch(e => {
         showAlert(e.message || 'Could not load schedule.', 'danger');
@@ -134,7 +128,7 @@ document.addEventListener('DOMContentLoaded', function () {
       return;
     }
     window.AsyncButtonState.start(scheduleSaveBtn);
-    fetch('/api/cloud_backup/schedule', {
+    window.ApiClient.fetchJson('/api/cloud_backup/schedule', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -142,9 +136,7 @@ document.addEventListener('DOMContentLoaded', function () {
         bandwidth_limit: bandwidthLimit.value.trim()
       })
     })
-      .then(r => r.json())
-      .then(data => {
-        if (!data.success) throw new Error(data.error || 'Failed to save backup settings');
+      .then(() => {
         window.AsyncButtonState.success(scheduleSaveBtn);
         showAlert('Backup settings saved successfully!', 'success');
         loadSchedule();
@@ -251,23 +243,14 @@ document.addEventListener('DOMContentLoaded', function () {
       megaPassword.classList.remove('is-invalid');
     }
     window.AsyncButtonState.start(megaSaveCredsBtn);
-    fetch('/api/cloud_backup/mega/validate', {
+    window.ApiClient.fetchJson('/api/cloud_backup/mega/validate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password })
     })
-      .then(r => r.json())
-      .then(data => {
-        if (data.success) {
-          window.AsyncButtonState.success(megaSaveCredsBtn);
-          setMegaCredsLocked(true, email, true);
-        } else {
-          window.AsyncButtonState.error(megaSaveCredsBtn);
-          megaCredStatus.textContent = data.error || 'Could not validate credentials.';
-          megaCredStatus.classList.remove('d-none');
-          megaCredStatus.className = 'alert alert-danger mt-2';
-          megaCredStatus.style.fontSize = 'var(--text-sm)';
-        }
+      .then(() => {
+        window.AsyncButtonState.success(megaSaveCredsBtn);
+        setMegaCredsLocked(true, email, true);
       })
       .catch(e => {
         window.AsyncButtonState.error(megaSaveCredsBtn);
@@ -318,11 +301,9 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   function loadConfig() {
-    fetch('/api/cloud_backup/config')
-      .then(r => r.json())
-      .then(data => {
-        if (!data.success) throw new Error(data.error || 'Failed to load settings');
-        fillConfigForm(data.config);
+    window.ApiClient.fetchJson('/api/cloud_backup/config')
+      .then(({ data }) => {
+        fillConfigForm(data);
       })
       .catch(e => {
         showAlert(e.message || 'Could not load backup settings.', 'danger');
@@ -367,18 +348,16 @@ document.addEventListener('DOMContentLoaded', function () {
       return;
     }
     window.AsyncButtonState.start(saveBtn);
-    fetch('/api/cloud_backup/config', {
+    window.ApiClient.fetchJson('/api/cloud_backup/config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
     })
-      .then(r => r.json())
-      .then(data => {
-        if (!data.success) throw new Error(data.error || 'Failed to save settings');
+      .then(() => {
         window.AsyncButtonState.success(saveBtn);
         showAlert('Cloud backup settings saved successfully!', 'success');
-        if (data.config && data.config.cloud_mode === 'mega') {
-          setMegaCredsLocked(true, data.config.mega_email, true);
+        if (data.cloud_mode === 'mega') {
+          setMegaCredsLocked(true, data.mega_email, true);
         }
       })
       .catch(e => {
