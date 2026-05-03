@@ -146,6 +146,12 @@ def api_system_updates_livepatch_setup():
         data = json_request_data()
         status = _manager().setup_livepatch(data.get("token", ""))
         return json_data({"livepatch": status})
+    except ValidationProblem as exc:
+        return json_problem(exc)
+    except ValueError as exc:
+        # Livepatch setup has operator-facing validation before it reaches
+        # privileged commands; keep those failures as 400 Problem Details.
+        return json_problem(ValidationProblem(str(exc)))
     except CalledProcessError:
         current_app.logger.exception("Could not set up Livepatch")
         return json_problem(
