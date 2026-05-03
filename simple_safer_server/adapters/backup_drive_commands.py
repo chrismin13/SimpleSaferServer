@@ -3,6 +3,9 @@ from typing import Optional
 
 from simple_safer_server.adapters.command_runner import CommandRunner
 
+BACKUP_DRIVE_COMMAND_TIMEOUT_SECONDS = 30
+BACKUP_DRIVE_MOUNT_TIMEOUT_SECONDS = 120
+
 
 class BackupDriveCommandAdapter:
     """Wraps commands used while detaching the managed backup drive."""
@@ -15,13 +18,25 @@ class BackupDriveCommandAdapter:
     # permissions changed mid-flow, or a remote mount disappeared. Failures are
     # surfaced by the surrounding backup/restore checks instead of raising here.
     def close_smb_share(self, mount_point: str) -> None:
-        self._command_runner.run(["smbcontrol", "all", "close-share", mount_point], check=False)
+        self._command_runner.run(
+            ["smbcontrol", "all", "close-share", mount_point],
+            check=False,
+            timeout=BACKUP_DRIVE_COMMAND_TIMEOUT_SECONDS,
+        )
 
     def stop_unit(self, unit_name: str) -> None:
-        self._command_runner.run(["systemctl", "stop", unit_name], check=False)
+        self._command_runner.run(
+            ["systemctl", "stop", unit_name],
+            check=False,
+            timeout=BACKUP_DRIVE_COMMAND_TIMEOUT_SECONDS,
+        )
 
     def start_unit(self, unit_name: str) -> None:
-        self._command_runner.run(["systemctl", "start", unit_name], check=False)
+        self._command_runner.run(
+            ["systemctl", "start", unit_name],
+            check=False,
+            timeout=BACKUP_DRIVE_COMMAND_TIMEOUT_SECONDS,
+        )
 
     def unmount(self, mount_point: str):
         return self._command_runner.run(
@@ -29,6 +44,7 @@ class BackupDriveCommandAdapter:
             capture_output=True,
             text=True,
             check=False,
+            timeout=BACKUP_DRIVE_MOUNT_TIMEOUT_SECONDS,
         )
 
     def unmount_partition(self, device: str):
@@ -37,6 +53,7 @@ class BackupDriveCommandAdapter:
             capture_output=True,
             text=True,
             check=False,
+            timeout=BACKUP_DRIVE_MOUNT_TIMEOUT_SECONDS,
         )
 
     def mount_ntfs(self, partition: str, mount_point: str):
@@ -46,10 +63,15 @@ class BackupDriveCommandAdapter:
             ["ntfs-3g", partition, mount_point, "-o", f"rw,uid={uid},gid={gid}"],
             capture_output=True,
             text=True,
+            timeout=BACKUP_DRIVE_MOUNT_TIMEOUT_SECONDS,
         )
 
     def cleanup_unmount(self, device: str) -> None:
-        self._command_runner.run(["umount", device], check=False)
+        self._command_runner.run(
+            ["umount", device],
+            check=False,
+            timeout=BACKUP_DRIVE_MOUNT_TIMEOUT_SECONDS,
+        )
 
     def find_device_by_uuid(self, uuid: str) -> str:
         # result.stdout.strip() is the contract here: blkid returns an empty
@@ -58,21 +80,32 @@ class BackupDriveCommandAdapter:
             ["blkid", "-t", f"UUID={uuid}", "-o", "device"],
             capture_output=True,
             text=True,
+            timeout=BACKUP_DRIVE_COMMAND_TIMEOUT_SECONDS,
         )
         return result.stdout.strip()
 
     def power_down_device(self, device: str) -> None:
-        self._command_runner.run(["hdparm", "-y", device], check=False)
+        self._command_runner.run(
+            ["hdparm", "-y", device],
+            check=False,
+            timeout=BACKUP_DRIVE_COMMAND_TIMEOUT_SECONDS,
+        )
 
     def blkid_filesystem_type(self, device: str):
         return self._command_runner.run(
             ["blkid", "-o", "value", "-s", "TYPE", device],
             capture_output=True,
             text=True,
+            timeout=BACKUP_DRIVE_COMMAND_TIMEOUT_SECONDS,
         )
 
     def current_mounts(self):
-        return self._command_runner.run(["mount"], capture_output=True, text=True)
+        return self._command_runner.run(
+            ["mount"],
+            capture_output=True,
+            text=True,
+            timeout=BACKUP_DRIVE_COMMAND_TIMEOUT_SECONDS,
+        )
 
     def lsblk_devices_json(self):
         return self._command_runner.run(
@@ -84,11 +117,15 @@ class BackupDriveCommandAdapter:
             ],
             capture_output=True,
             text=True,
+            timeout=BACKUP_DRIVE_COMMAND_TIMEOUT_SECONDS,
         )
 
     def system_drive(self):
         return self._command_runner.run(
-            ["findmnt", "-n", "-o", "SOURCE", "/"], capture_output=True, text=True
+            ["findmnt", "-n", "-o", "SOURCE", "/"],
+            capture_output=True,
+            text=True,
+            timeout=BACKUP_DRIVE_COMMAND_TIMEOUT_SECONDS,
         )
 
     def partition_filesystem_type(self, drive: str):
@@ -96,6 +133,7 @@ class BackupDriveCommandAdapter:
             ["lsblk", "-no", "FSTYPE", drive],
             capture_output=True,
             text=True,
+            timeout=BACKUP_DRIVE_COMMAND_TIMEOUT_SECONDS,
         )
 
     def reload_systemd_mount_units(self):
@@ -103,6 +141,7 @@ class BackupDriveCommandAdapter:
             ["systemctl", "daemon-reload"],
             capture_output=True,
             text=True,
+            timeout=BACKUP_DRIVE_COMMAND_TIMEOUT_SECONDS,
         )
 
     def drive_uuid(self, drive: str):
@@ -110,4 +149,5 @@ class BackupDriveCommandAdapter:
             ["blkid", "-s", "UUID", "-o", "value", drive],
             capture_output=True,
             text=True,
+            timeout=BACKUP_DRIVE_COMMAND_TIMEOUT_SECONDS,
         )

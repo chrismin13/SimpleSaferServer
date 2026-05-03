@@ -12,6 +12,7 @@ from simple_safer_server.adapters.command_runner import (
 BLKID_TIMEOUT_SECONDS = 15
 HDSENTINEL_TIMEOUT_SECONDS = 45
 SMARTCTL_TIMEOUT_SECONDS = 60
+ALERT_EMAIL_TIMEOUT_SECONDS = 30
 
 
 class DriveHealthCommandAdapter:
@@ -58,6 +59,7 @@ class DriveHealthCommandAdapter:
             input=email_body,
             text=True,
             check=True,
+            timeout=ALERT_EMAIL_TIMEOUT_SECONDS,
         )
 
 

@@ -2328,6 +2328,7 @@ pre code {
   }
 
   .system-updates-summary-item + .system-updates-summary-item {
+    border-left: 0;
     border-top: 1px solid var(--border-subtle);
   }
 

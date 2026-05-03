@@ -13,6 +13,9 @@ from simple_safer_server.adapters.command_runner import (
 )
 from simple_safer_server.services.file_persistence import atomic_write_text
 
+SYSTEM_UPDATES_SUPPORT_TIMEOUT_SECONDS = 60
+SYSTEM_UPDATES_PRO_ATTACH_TIMEOUT_SECONDS = 300
+
 
 class SystemUpdatesCommandAdapter:
     """Wraps package-manager support commands outside the long-running apt worker."""
@@ -30,6 +33,7 @@ class SystemUpdatesCommandAdapter:
             [fuser_binary, str(path)],
             stdout=DEVNULL,
             stderr=DEVNULL,
+            timeout=SYSTEM_UPDATES_SUPPORT_TIMEOUT_SECONDS,
         )
         return result.returncode == 0
 
@@ -43,6 +47,7 @@ class SystemUpdatesCommandAdapter:
             check=True,
             capture_output=True,
             text=True,
+            timeout=SYSTEM_UPDATES_SUPPORT_TIMEOUT_SECONDS,
         )
 
     def start_apt_operation(self, command, env):
@@ -85,6 +90,7 @@ class SystemUpdatesCommandAdapter:
             capture_output=True,
             text=True,
             check=False,
+            timeout=SYSTEM_UPDATES_SUPPORT_TIMEOUT_SECONDS,
         )
 
     def livepatch_status_text(self, binary: str):
@@ -93,6 +99,7 @@ class SystemUpdatesCommandAdapter:
             capture_output=True,
             text=True,
             check=False,
+            timeout=SYSTEM_UPDATES_SUPPORT_TIMEOUT_SECONDS,
         )
 
     def pro_attach(self, pro_binary: str, attach_config_path: Path):
@@ -101,6 +108,7 @@ class SystemUpdatesCommandAdapter:
             check=False,
             capture_output=True,
             text=True,
+            timeout=SYSTEM_UPDATES_PRO_ATTACH_TIMEOUT_SECONDS,
         )
 
     def pro_enable_livepatch(self, pro_binary: str):
@@ -109,4 +117,5 @@ class SystemUpdatesCommandAdapter:
             check=True,
             capture_output=True,
             text=True,
+            timeout=SYSTEM_UPDATES_SUPPORT_TIMEOUT_SECONDS,
         )

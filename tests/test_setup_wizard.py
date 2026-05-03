@@ -309,6 +309,7 @@ class SetupWizardTests(unittest.TestCase):
 
         self.assertTrue(ok)
         self.assertIsNone(err)
+        user_manager.reload_users.assert_called_once_with()
         smb_manager.ensure_default_backup_share.assert_called_once_with('/media/backup', 'admin')
 
     def test_setup_smb_share_surfaces_unmanaged_backup_guidance(self):
@@ -331,6 +332,7 @@ class SetupWizardTests(unittest.TestCase):
 
         self.assertFalse(ok)
         self.assertIn(SMB_DOCS_URL, err)
+        user_manager.reload_users.assert_called_once_with()
 
     # ------------------------------------------------------------------
     # format_drive — disk path validation, partprobe, and partition poll
@@ -398,6 +400,7 @@ class SetupWizardTests(unittest.TestCase):
                     )
 
         self.assertEqual(response.status_code, 200)
+        user_manager.reload_users.assert_called_once_with()
         config_manager.set_value.assert_called_once_with('system', 'server_name', 'simple-safer')
 
     def test_setup_system_info_rejects_username_that_does_not_match_created_admin(self):
@@ -416,6 +419,7 @@ class SetupWizardTests(unittest.TestCase):
                     )
 
         self.assertEqual(response.status_code, 400)
+        user_manager.reload_users.assert_called_once_with()
         self.assertProblemDetail(
             response, 'Username must match the admin account created during setup'
         )

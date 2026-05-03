@@ -160,6 +160,9 @@ def main():
     status_file = runtime.volatile_dir / 'ddns_status.json'
     try:
         status_data = json.loads(status_file.read_text()) if status_file.exists() else {}
+        if not isinstance(status_data, dict):
+            # Volatile status can be recreated; ignore valid JSON that is not the mapping shape we update.
+            status_data = {}
     except Exception:
         status_data = {}
 

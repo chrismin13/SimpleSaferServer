@@ -3,6 +3,8 @@ from typing import Optional
 
 from simple_safer_server.adapters.command_runner import DEVNULL, CommandRunner
 
+SYSTEMD_COMMAND_TIMEOUT_SECONDS = 30
+
 
 class SystemdAdapter:
     """Wraps systemd and journalctl commands used by scheduled task views."""
@@ -16,6 +18,7 @@ class SystemdAdapter:
             capture_output=True,
             text=True,
             check=True,
+            timeout=SYSTEMD_COMMAND_TIMEOUT_SECONDS,
         )
         return result.stdout
 
@@ -25,6 +28,7 @@ class SystemdAdapter:
             stdout=DEVNULL,
             stderr=DEVNULL,
             check=True,
+            timeout=SYSTEMD_COMMAND_TIMEOUT_SECONDS,
         )
 
     def stop_unit(self, unit_name: str) -> None:
@@ -33,6 +37,7 @@ class SystemdAdapter:
             stdout=DEVNULL,
             stderr=DEVNULL,
             check=True,
+            timeout=SYSTEMD_COMMAND_TIMEOUT_SECONDS,
         )
 
     def show_property(self, unit_name: str, property_name: str) -> str:
@@ -41,6 +46,7 @@ class SystemdAdapter:
             capture_output=True,
             text=True,
             check=True,
+            timeout=SYSTEMD_COMMAND_TIMEOUT_SECONDS,
         )
         return result.stdout.strip()
 
@@ -52,6 +58,7 @@ class SystemdAdapter:
             capture_output=True,
             text=True,
             check=True,
+            timeout=SYSTEMD_COMMAND_TIMEOUT_SECONDS,
         )
         return result.stdout
 
@@ -61,6 +68,7 @@ class SystemdAdapter:
             capture_output=True,
             text=True,
             check=False,
+            timeout=SYSTEMD_COMMAND_TIMEOUT_SECONDS,
         )
         return result.stdout.strip()
 

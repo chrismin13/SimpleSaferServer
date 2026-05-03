@@ -2,7 +2,7 @@ import unittest
 from types import SimpleNamespace
 
 from simple_safer_server.adapters.command_runner import CommandRunner
-from simple_safer_server.adapters.smb_commands import SmbCommandAdapter
+from simple_safer_server.adapters.smb_commands import SMB_COMMAND_TIMEOUT_SECONDS, SmbCommandAdapter
 
 
 class RecordingRunner(CommandRunner):
@@ -23,7 +23,12 @@ class SmbCommandAdapterTests(unittest.TestCase):
 
         self.assertEqual(
             runner.calls,
-            [(["cp", "/etc/samba/smb.conf", "/tmp/smb.conf.backup"], {"check": True})],
+            [
+                (
+                    ["cp", "/etc/samba/smb.conf", "/tmp/smb.conf.backup"],
+                    {"check": True, "timeout": SMB_COMMAND_TIMEOUT_SECONDS},
+                )
+            ],
         )
 
     def test_restart_unit_uses_root_direct_command(self):
@@ -34,7 +39,12 @@ class SmbCommandAdapterTests(unittest.TestCase):
 
         self.assertEqual(
             runner.calls,
-            [(["systemctl", "restart", "smbd"], {"check": True})],
+            [
+                (
+                    ["systemctl", "restart", "smbd"],
+                    {"check": True, "timeout": SMB_COMMAND_TIMEOUT_SECONDS},
+                )
+            ],
         )
 
 

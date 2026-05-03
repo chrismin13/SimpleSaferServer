@@ -9,6 +9,8 @@ from simple_safer_server.services.file_persistence import atomic_write_text
 from simple_safer_server.services.runtime import get_fake_state, get_runtime
 from simple_safer_server.services.schedule_time import systemd_schedule_time
 
+SYSTEM_COMMAND_TIMEOUT_SECONDS = 30
+
 
 def _time_before(hour, minute, *, minutes_before):
     total_minutes = ((hour * 60) + minute - minutes_before) % (24 * 60)
@@ -25,7 +27,13 @@ class SystemUtils:
     def run_command(self, command, check=True):
         """Run a system command and return the result"""
         try:
-            result = self.command_runner.run(command, check=check, capture_output=True, text=True)
+            result = self.command_runner.run(
+                command,
+                check=check,
+                capture_output=True,
+                text=True,
+                timeout=SYSTEM_COMMAND_TIMEOUT_SECONDS,
+            )
             return result.stdout.strip()
         except CalledProcessError as e:
             self.logger.error(f"Command failed: {e.stderr}")

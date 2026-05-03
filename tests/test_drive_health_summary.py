@@ -1,6 +1,10 @@
 import os
+import subprocess
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 from unittest.mock import patch
+
+from flask import Flask
 
 from simple_safer_server.services import runtime
 from simple_safer_server.services.drive_health import DriveHealthSummaryService
@@ -70,6 +74,42 @@ def test_drive_health_summary_get_does_not_probe_drive():
         assert response.get_json()["data"]["detail"] == "No check yet"
     finally:
         cleanup()
+
+
+def test_drive_health_page_renders_warning_when_smartctl_support_check_fails():
+    from simple_safer_server.routes import drive_health as route_module
+
+    services = SimpleNamespace(
+        runtime=SimpleNamespace(is_fake=False, default_mount_point="/media/backup"),
+        config_manager=SimpleNamespace(get_value=lambda _section, _key, default="": default),
+        system_utils=SimpleNamespace(),
+    )
+    app = Flask(__name__)
+
+    with app.test_request_context("/drives"):
+        with patch("simple_safer_server.routes.drive_health._get_services", return_value=services):
+            with patch(
+                "simple_safer_server.routes.drive_health.get_hdsentinel_settings",
+                return_value={"enabled": False, "health_change_alert": False},
+            ):
+                with patch(
+                    "simple_safer_server.routes.drive_health.get_hdsentinel_display_snapshot",
+                    return_value=None,
+                ):
+                    with patch(
+                        "simple_safer_server.routes.drive_health.get_smartctl_json_support",
+                        side_effect=subprocess.TimeoutExpired(["smartctl", "-h"], 60),
+                    ):
+                        with patch(
+                            "simple_safer_server.routes.drive_health.render_template",
+                            return_value="rendered",
+                        ) as mock_render:
+                            response = route_module.drives.__wrapped__()
+
+    assert response == "rendered"
+    warning = mock_render.call_args.kwargs["smart_support_warning"]
+    assert "Could not check smartctl JSON support:" in warning
+    assert "timed out" in warning
 
 
 def test_drive_health_refresh_probes_and_updates_ram_summary():

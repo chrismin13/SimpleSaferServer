@@ -73,6 +73,16 @@ def test_log_alert_script_and_config_manager_share_alert_store(tmp_path, monkeyp
     assert [alert["title"] for alert in alerts] == ["Script alert", "App alert"]
 
 
+def test_log_alert_tightens_config_dir_permissions(tmp_path, monkeypatch):
+    module = _load_log_alert_module()
+    config_dir = tmp_path / "config"
+    monkeypatch.setenv("SSS_CONFIG_DIR", str(config_dir))
+
+    assert module.log_alert("Script alert", "message")
+
+    assert config_dir.stat().st_mode & 0o777 == 0o700
+
+
 def test_log_alert_initialization_does_not_overwrite_concurrent_append(tmp_path):
     script_path = Path(__file__).resolve().parents[1] / "scripts" / "log_alert.py"
     processes = [

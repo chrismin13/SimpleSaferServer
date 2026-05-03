@@ -1,3 +1,4 @@
+import subprocess
 from datetime import datetime
 from typing import Any
 
@@ -58,9 +59,14 @@ def drives():
 
     smart_support_warning = None
     if not services.runtime.is_fake:
-        smartctl_json_supported, smartctl_json_error = get_smartctl_json_support()
-        if not smartctl_json_supported:
-            smart_support_warning = smartctl_json_error
+        try:
+            smartctl_json_supported, smartctl_json_error = get_smartctl_json_support()
+            if not smartctl_json_supported:
+                smart_support_warning = smartctl_json_error
+        except (subprocess.TimeoutExpired, subprocess.CalledProcessError) as exc:
+            smart_support_warning = f"Could not check smartctl JSON support: {exc}"
+        except Exception as exc:
+            smart_support_warning = f"Could not check smartctl JSON support: {exc}"
 
     if request.method == "POST":
         form_action = request.form.get("form_action", "run_health_check")

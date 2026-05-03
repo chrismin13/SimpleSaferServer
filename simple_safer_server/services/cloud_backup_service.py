@@ -29,6 +29,7 @@ class MegaFolderList:
 
 
 BANDWIDTH_LIMIT_RE = re.compile(r"^\d+(?:k|M|G)$", re.IGNORECASE)
+RCLONE_ADMIN_TIMEOUT_SECONDS = 60
 
 
 def normalize_bandwidth_limit(value: Any) -> str:
@@ -140,6 +141,7 @@ class CloudBackupService:
                 ["rclone", "lsjson", f"mega:{path}", "--config", config_path],
                 capture_output=True,
                 text=True,
+                timeout=RCLONE_ADMIN_TIMEOUT_SECONDS,
             )
             if lsjson.returncode != 0:
                 error_msg = lsjson.stderr.strip() if lsjson.stderr else "Unknown rclone error"
@@ -177,6 +179,7 @@ class CloudBackupService:
                 ["rclone", "mkdir", f"mega:{full_path}", "--config", config_path],
                 capture_output=True,
                 text=True,
+                timeout=RCLONE_ADMIN_TIMEOUT_SECONDS,
             )
             if mkdir.returncode != 0:
                 error_msg = mkdir.stderr.strip() if mkdir.stderr else "Unknown rclone error"
@@ -246,6 +249,7 @@ class CloudBackupService:
                 ["rclone", "lsjson", "mega:/", "--config", config_path],
                 capture_output=True,
                 text=True,
+                timeout=RCLONE_ADMIN_TIMEOUT_SECONDS,
             )
             if lsjson.returncode != 0:
                 raise ValidationProblem("Failed to connect to MEGA. Check credentials.")
@@ -329,6 +333,7 @@ class CloudBackupService:
             stdout=PIPE,
             check=True,
             text=True,
+            timeout=RCLONE_ADMIN_TIMEOUT_SECONDS,
         )
         return result.stdout.strip()
 

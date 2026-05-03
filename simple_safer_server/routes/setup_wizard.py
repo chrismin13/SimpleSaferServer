@@ -728,6 +728,9 @@ def setup_smb_share(config):
             )
             return True, None
 
+        # Another setup worker may have just created the admin account; validate
+        # SMB setup against persisted users instead of this module's old cache.
+        user_manager.reload_users()
         if admin_username not in user_manager.users:
             return False, f"Admin user {admin_username} not found in user database"
 
@@ -848,6 +851,7 @@ def setup_system_info():
             configured_username = config_manager.get_value('system', 'username', '')
             # Older setup pages still send username with the server name. Treat
             # it as a consistency check only; /api/setup/user owns persistence.
+            user_manager.reload_users()
             if username != configured_username or username not in user_manager.users:
                 return _validation_problem(
                     'Username must match the admin account created during setup'

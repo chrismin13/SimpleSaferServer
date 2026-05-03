@@ -237,3 +237,7 @@ after workflow or job renames. The current workflow file is `.github/workflows/p
 jobs `python313-security` and `python37-legacy-compat`.
 
 Bandit skips the generic subprocess import/execution rules because SimpleSaferServer is a local admin tool that intentionally calls Debian system utilities. Keep those subprocess calls behind services or adapters, validate user-controlled arguments before shelling out, and document operational assumptions near the code.
+Short `CommandRunner.run(...)` calls must pass an explicit `timeout=` so admin request handlers do
+not block forever on a wedged system command. Long-running supervised work such as apt workers,
+rclone sync, and lifecycle commands such as reboot or poweroff may be deliberately exempted in
+`tests/test_subprocess_timeouts.py`.

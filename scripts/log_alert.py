@@ -33,6 +33,9 @@ def log_alert(title, message, alert_type="info", source="script"):
         alerts_path = config_dir / 'alerts.json'
 
         config_dir.mkdir(parents=True, exist_ok=True)
+        # This directory also holds encrypted secrets, so the alert script must
+        # preserve ConfigManager's private-directory policy when it runs first.
+        config_dir.chmod(0o700)
         store = AlertStore(alerts_path)
         store.initialize()
         store.append_alert(title, message, alert_type=alert_type, source=source)

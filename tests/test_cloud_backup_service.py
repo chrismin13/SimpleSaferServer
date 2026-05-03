@@ -5,7 +5,10 @@ from pathlib import Path
 from subprocess import CalledProcessError
 from tempfile import TemporaryDirectory
 
-from simple_safer_server.services.cloud_backup_service import CloudBackupService
+from simple_safer_server.services.cloud_backup_service import (
+    RCLONE_ADMIN_TIMEOUT_SECONDS,
+    CloudBackupService,
+)
 from simple_safer_server.web.problems import OperationProblem, ValidationProblem
 
 
@@ -255,6 +258,18 @@ class CloudBackupServiceTests(unittest.TestCase):
         self.assertEqual(result.folders, ["Backups"])
         self.assertEqual(command_runner.calls[0][0][:3], ["rclone", "lsjson", "mega:/"])
         self.assertTrue(command_runner.calls[0][1]["capture_output"])
+        self.assertEqual(command_runner.calls[0][1]["timeout"], RCLONE_ADMIN_TIMEOUT_SECONDS)
+
+    def test_create_mega_folder_uses_command_runner_timeout(self):
+        command_runner = FakeCommandRunner()
+        command_runner.queue_result(stdout="")
+        service, config, _system_utils, _runtime = self.make_service(command_runner=command_runner)
+        config.config["backup"] = {"mega_email": "user@example.com", "mega_pass": "obscured"}
+
+        service.create_mega_folder({"path": "/", "folder_name": "Backups"})
+
+        self.assertEqual(command_runner.calls[0][0][:3], ["rclone", "mkdir", "mega:/Backups"])
+        self.assertEqual(command_runner.calls[0][1]["timeout"], RCLONE_ADMIN_TIMEOUT_SECONDS)
 
     def test_validate_mega_uses_command_runner_for_obscure_and_lsjson(self):
         command_runner = FakeCommandRunner()
@@ -267,7 +282,9 @@ class CloudBackupServiceTests(unittest.TestCase):
         self.assertIsNone(result)
         self.assertEqual(command_runner.calls[0][0], ["rclone", "obscure", "-"])
         self.assertEqual(command_runner.calls[0][1]["input"], "secret\n")
+        self.assertEqual(command_runner.calls[0][1]["timeout"], RCLONE_ADMIN_TIMEOUT_SECONDS)
         self.assertEqual(command_runner.calls[1][0][0:3], ["rclone", "lsjson", "mega:/"])
+        self.assertEqual(command_runner.calls[1][1]["timeout"], RCLONE_ADMIN_TIMEOUT_SECONDS)
         self.assertEqual(config.config["backup"]["mega_pass"], "obscured-password")
         rclone_config = system_utils.rclone_config
         self.assertIsNotNone(rclone_config)

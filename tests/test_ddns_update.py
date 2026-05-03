@@ -221,6 +221,21 @@ class CloudflareDdnsTests(unittest.TestCase):
         self.assertEqual(status_data["duckdns"]["message"], "API returned: KO")
         self.assertEqual(config.alerts, [])
 
+    def test_main_ignores_non_mapping_status_json(self):
+        exit_code, status_data, _config = self.run_main_with_config(
+            {
+                ("ddns", "duckdns_enabled"): "true",
+                ("ddns", "duckdns_domain"): "home",
+                ("ddns", "cloudflare_enabled"): "false",
+            },
+            secrets={"duckdns_token": "token"},
+            initial_status="oops",
+        )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(status_data["ipv4"], "203.0.113.10")
+        self.assertEqual(status_data["duckdns"]["status"], "Success")
+
     def test_main_alerts_when_cloudflare_error_message_changes(self):
         exit_code, status_data, config = self.run_main_with_config(
             {
