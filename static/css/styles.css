@@ -496,6 +496,12 @@ body.fake-mode-active .toast-stack {
   color: var(--text-muted);
 }
 
+.status-tile-detail-compact {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .status-tile-metrics {
   display: flex;
   align-items: center;
