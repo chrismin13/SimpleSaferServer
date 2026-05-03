@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from simple_safer_server.adapters.command_runner import CalledProcessError
 from simple_safer_server.adapters.system_updates_commands import SystemUpdatesCommandAdapter
+from simple_safer_server.services.file_persistence import atomic_write_json, atomic_write_text
 from simple_safer_server.services.os_support import (
     DEFAULT_AUTOCLEAN_INTERVAL_DAYS,
     SUPPORT_SOURCES,
@@ -139,16 +140,9 @@ class SystemUpdatesManager:
     def _write_state(self, state: Dict[str, Any]) -> None:
         state_without_log = dict(state)
         state_without_log.pop("log", None)
-        state_json = json.dumps(state_without_log, indent=2)
-        temp_path = self.state_path.with_name(f".{self.state_path.name}.tmp.{os.getpid()}")
-        # Readers poll this file from the UI, so replace it atomically after
-        # fsync instead of exposing half-written JSON during an update.
-        with temp_path.open("w", encoding="utf-8") as temp_file:
-            temp_file.write(state_json)
-            temp_file.flush()
-            os.fsync(temp_file.fileno())
-        temp_path.chmod(0o644)
-        temp_path.replace(self.state_path)
+        # Readers poll this file from the UI, so replace it atomically instead
+        # of exposing half-written JSON during an update.
+        atomic_write_json(self.state_path, state_without_log, mode=0o644, durable=False)
 
     def _update_state(self, **updates) -> Dict[str, Any]:
         with self._lock:
@@ -156,7 +150,12 @@ class SystemUpdatesManager:
             if "log" in updates:
                 # A new apt run starts with an empty append-only log; keeping the
                 # log outside JSON avoids rewriting a growing state file per line.
-                self.state_log_path.write_text(updates.pop("log") or "")
+                atomic_write_text(
+                    self.state_log_path,
+                    updates.pop("log") or "",
+                    mode=0o644,
+                    durable=False,
+                )
             state.update(updates)
             self._write_state(state)
             return state
@@ -671,8 +670,7 @@ class SystemUpdatesManager:
             ]
         )
         temp_path = self.runtime.data_dir / "20auto-upgrades"
-        temp_path.write_text(content)
-        temp_path.chmod(0o644)
+        atomic_write_text(temp_path, content, mode=0o644)
         # The command adapter owns the privileged destination write so this
         # service only needs to stage validated content in app-owned storage.
         with temp_path.open("r") as temp_file:

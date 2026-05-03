@@ -1,4 +1,3 @@
-import json
 import os
 import secrets
 import tempfile
@@ -8,6 +7,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, ClassVar, Dict, List, Optional
+
+from simple_safer_server.services.file_persistence import atomic_write_json, read_json
 
 
 @dataclass(frozen=True)
@@ -93,7 +94,7 @@ class FakeState:
 
     def load(self) -> Dict[str, Any]:
         try:
-            return json.loads(self.runtime.state_path.read_text())
+            return read_json(self.runtime.state_path, self.default_state())
         except Exception:
             state = self.default_state()
             self.save(state)
@@ -101,17 +102,7 @@ class FakeState:
 
     def _write_state(self, state: Dict[str, Any]) -> None:
         """Write state atomically via a unique temp file and rename to avoid partial writes."""
-        with tempfile.NamedTemporaryFile(
-            "w",
-            encoding="utf-8",
-            dir=self.runtime.state_path.parent,
-            prefix=f"{self.runtime.state_path.name}.",
-            suffix=".tmp",
-            delete=False,
-        ) as tmp_file:
-            json.dump(state, tmp_file, indent=2)
-            tmp_path = Path(tmp_file.name)
-        tmp_path.replace(self.runtime.state_path)
+        atomic_write_json(self.runtime.state_path, state, mode=0o644)
 
     def save(self, state: Dict[str, Any]) -> None:
         with self._lock:

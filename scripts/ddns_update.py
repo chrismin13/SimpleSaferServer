@@ -2,9 +2,7 @@
 
 import json
 import logging
-import os
 import sys
-import tempfile
 import urllib.error
 import urllib.request
 from datetime import datetime
@@ -27,6 +25,7 @@ def _add_app_to_path():
 _add_app_to_path()
 
 from simple_safer_server.services.config_manager import ConfigManager  # noqa: E402
+from simple_safer_server.services.file_persistence import atomic_write_json  # noqa: E402
 from simple_safer_server.services.runtime import get_runtime  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -240,20 +239,9 @@ def main():
     status_data['duckdns'] = duckdns_new_status
     status_data['cloudflare'] = cf_new_status
 
-    status_file.parent.mkdir(parents=True, exist_ok=True)
     # Write atomically: write to a temp file in the same directory then rename, so
     # concurrent reads by the web API never see a partial/empty file.
-    with tempfile.NamedTemporaryFile(
-        "w",
-        dir=status_file.parent,
-        prefix=f"{status_file.stem}.",
-        suffix=".tmp",
-        delete=False,
-    ) as tmp_file:
-        json.dump(status_data, tmp_file, indent=2)
-        tmp_path = Path(tmp_file.name)
-    tmp_path.chmod(0o644)
-    os.replace(tmp_path, status_file)
+    atomic_write_json(status_file, status_data, mode=0o644, durable=False)
 
     if provider_failures:
         # The status file is still the source of provider details; the exit code

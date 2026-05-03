@@ -15,6 +15,7 @@ from simple_safer_server.adapters.drive_health_commands import (
     DriveHealthCommandAdapter,
     TimeoutExpired,
 )
+from simple_safer_server.services.file_persistence import atomic_write_json
 from simple_safer_server.services.runtime import get_runtime
 
 try:
@@ -497,18 +498,7 @@ def get_hdsentinel_state_path(runtime=None):
 
 
 def _write_json_atomically(path: Path, payload):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with NamedTemporaryFile(
-        "w",
-        encoding="utf-8",
-        dir=path.parent,
-        prefix=f"{path.name}.",
-        suffix=".tmp",
-        delete=False,
-    ) as tmp_file:
-        json.dump(payload, tmp_file, indent=2)
-        tmp_path = Path(tmp_file.name)
-    tmp_path.replace(path)
+    atomic_write_json(path, payload, mode=0o644)
 
 
 def load_hdsentinel_state(runtime=None):

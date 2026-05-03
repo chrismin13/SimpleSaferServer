@@ -5,6 +5,7 @@ import re
 import shutil
 
 from simple_safer_server.adapters.command_runner import CalledProcessError, CommandRunner
+from simple_safer_server.services.file_persistence import atomic_write_text
 from simple_safer_server.services.runtime import get_fake_state, get_runtime
 
 
@@ -54,8 +55,7 @@ class SystemUtils:
 
             # Write rclone config
             config_path = rclone_dir / 'rclone.conf'
-            config_path.write_text(config)
-            config_path.chmod(0o600)
+            atomic_write_text(config_path, config, mode=0o600)
 
             return True
         except Exception as e:
@@ -80,9 +80,7 @@ password {password}
 account default : simplesaferserver
 """
             path = self.runtime.msmtp_config_path
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(content)
-            path.chmod(0o600)
+            atomic_write_text(path, content, mode=0o600)
             return True
         except Exception as e:
             self.logger.error(f"Error writing msmtp config: {e}")
@@ -227,9 +225,8 @@ account default : simplesaferserver
             config_dir.mkdir(parents=True, exist_ok=True)
             # Write the config file
             config_path = config_dir / 'config.conf'
-            config_path.write_text(config_content)
             # This file contains backup/DDNS credentials and is read by root-owned services.
-            config_path.chmod(0o600)
+            atomic_write_text(config_path, config_content, mode=0o600)
             self.logger.info(f"Created systemd config file: {config_path}")
             return True, None
         except Exception as e:
@@ -373,7 +370,7 @@ WantedBy=timers.target
             # Write all service and timer files
             for filename, content in services.items():
                 file_path = self.runtime.systemd_dir / filename
-                file_path.write_text(content)
+                atomic_write_text(file_path, content, mode=0o644)
                 self.logger.info(f"Created systemd file: {file_path}")
 
             # Reload after writing the units so systemd sees the current generated files even

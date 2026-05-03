@@ -60,6 +60,15 @@ broad status responses, process argv, unrelated UI, and overly broad filesystem 
 Avoid persistent writes unless the data must survive restart or is durable operator history/config.
 Use volatile runtime state for status/cache data that can be rebuilt.
 
+Use `simple_safer_server.services.file_persistence` for app-owned file writes. Small JSON, INI,
+and text state/config files should be written through a same-directory temp file, fsynced when the
+file is durable, and published with `os.replace`. Cross-process read/modify/write state must use a
+stable sidecar lock file; do not lock the target file itself when the writer replaces that target.
+Append-heavy logs should stay append-oriented and use explicit retention or rotation instead of
+rewriting the whole file for every line. System-owned files such as Samba, fstab, apt, and systemd
+configuration still need their domain-specific validation, backup, restart, and rollback behavior;
+use the shared write helpers only where they do not hide those safety checks.
+
 `docs/architecture.md` describes the current package architecture. New code should move toward:
 
 - `simple_safer_server/routes/` for Flask blueprints.

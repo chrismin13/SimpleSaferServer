@@ -1,5 +1,4 @@
 import datetime
-import json
 import logging
 import re
 from functools import wraps
@@ -9,6 +8,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from simple_safer_server.adapters.command_runner import CalledProcessError
 from simple_safer_server.adapters.user_commands import UserCommandAdapter
+from simple_safer_server.services.file_persistence import atomic_write_json, read_json
 from simple_safer_server.services.runtime import get_runtime
 from simple_safer_server.web.api import json_problem
 from simple_safer_server.web.problems import ForbiddenProblem, UnauthorizedProblem
@@ -61,7 +61,7 @@ class UserManager:
         """Load users from the JSON file"""
         if self.users_file.exists():
             try:
-                return json.loads(self.users_file.read_text())
+                return read_json(self.users_file, {})
             except Exception as e:
                 logger.error(f"Error loading users: {e}")
                 return {}
@@ -74,21 +74,9 @@ class UserManager:
     def _save_users(self):
         """Save users to the JSON file"""
         try:
-            # Create directory if it doesn't exist
-            self.users_file.parent.mkdir(parents=True, exist_ok=True)
-
-            # Write to temporary file first
-            temp_file = self.users_file.with_suffix('.tmp')
-            temp_file.write_text(json.dumps(self.users, indent=2))
-
-            # Set secure permissions on temp file
-            temp_file.chmod(0o600)
-
-            # Atomic rename
-            temp_file.rename(self.users_file)
-
-            # Ensure secure permissions
-            self._ensure_secure_permissions()
+            # User records include password hashes and lockout counters, so the
+            # replacement inode must be private before it is published.
+            atomic_write_json(self.users_file, self.users, mode=0o600)
         except Exception as e:
             logger.error(f"Error saving users: {e}")
             raise

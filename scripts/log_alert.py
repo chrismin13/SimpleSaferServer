@@ -4,11 +4,26 @@ Standalone alert logging script for use by bash scripts.
 This script can be called independently of the web UI to log alerts.
 """
 
-import json
 import os
 import sys
-from datetime import datetime
 from pathlib import Path
+
+
+def _add_app_to_path():
+    script_path = Path(__file__).resolve()
+    candidates = [
+        script_path.parents[1],
+        Path('/opt/SimpleSaferServer'),
+    ]
+    for candidate in candidates:
+        if (candidate / 'simple_safer_server').exists():
+            sys.path.insert(0, str(candidate))
+            return
+
+
+_add_app_to_path()
+
+from simple_safer_server.services.alert_store import AlertStore  # noqa: E402
 
 
 def log_alert(title, message, alert_type="info", source="script"):
@@ -17,47 +32,11 @@ def log_alert(title, message, alert_type="info", source="script"):
         config_dir = Path(os.environ.get('SSS_CONFIG_DIR', '/etc/SimpleSaferServer'))
         alerts_path = config_dir / 'alerts.json'
 
-        # Ensure config directory exists
         config_dir.mkdir(parents=True, exist_ok=True)
+        store = AlertStore(alerts_path)
+        store.initialize()
+        store.append_alert(title, message, alert_type=alert_type, source=source)
 
-        # Initialize alerts file if it doesn't exist
-        if not alerts_path.exists():
-            alerts_path.write_text('[]')
-            alerts_path.chmod(0o644)
-
-        # Read existing alerts
-        alerts = json.loads(alerts_path.read_text())
-
-        next_id = (
-            max(
-                (
-                    existing_alert.get('id', 0)
-                    for existing_alert in alerts
-                    if isinstance(existing_alert.get('id'), int)
-                ),
-                default=0,
-            )
-            + 1
-        )
-
-        # IDs stay monotonic even after retention trims old alerts.
-        alert = {
-            'id': next_id,
-            'title': title,
-            'message': message,
-            'type': alert_type,
-            'source': source,
-            'timestamp': datetime.now().isoformat(),
-            'read': False,
-        }
-        alerts.append(alert)
-
-        # Keep only the last 1000 alerts to prevent file from growing too large
-        if len(alerts) > 1000:
-            alerts = alerts[-1000:]
-
-        # Write alerts back to file
-        alerts_path.write_text(json.dumps(alerts, indent=2))
         print(f"Alert logged: {title}")
         return True
 

@@ -11,6 +11,7 @@ from simple_safer_server.adapters.command_runner import (
     CommandRunner,
     TimeoutExpired,
 )
+from simple_safer_server.services.file_persistence import atomic_write_text
 
 
 class SystemUpdatesCommandAdapter:
@@ -76,8 +77,7 @@ class SystemUpdatesCommandAdapter:
         temp_file.seek(0)
         # The web service runs as root, so write the managed apt config
         # directly instead of depending on sudo or shell redirection.
-        self._apt_periodic_path.write_text(temp_file.read())
-        self._apt_periodic_path.chmod(0o644)
+        atomic_write_text(self._apt_periodic_path, temp_file.read(), mode=0o644)
 
     def livepatch_status_json(self, binary: str):
         return self._command_runner.run(

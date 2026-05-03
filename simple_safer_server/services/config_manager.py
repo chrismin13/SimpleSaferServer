@@ -1,18 +1,19 @@
 import configparser
-import fcntl
-import json
+import io
 import logging
 import os
 import stat
-import tempfile
-import threading
-from datetime import datetime
 
 from cryptography.fernet import Fernet
 
+from simple_safer_server.services.alert_store import AlertStore
+from simple_safer_server.services.file_persistence import (
+    atomic_write_json,
+    atomic_write_text,
+    locked_path,
+    read_json,
+)
 from simple_safer_server.services.runtime import get_runtime
-
-_ALERTS_LOCK = threading.RLock()
 
 
 class ConfigManager:
@@ -24,6 +25,7 @@ class ConfigManager:
         self.secrets_lock_path = self.config_dir / '.secrets.lock'
         self.key_path = self.config_dir / '.key'
         self.alerts_path = self.config_dir / 'alerts.json'
+        self.alert_store = AlertStore(self.alerts_path)
         self.config = configparser.ConfigParser()
         self.logger = logging.getLogger(__name__)
 
@@ -73,9 +75,7 @@ class ConfigManager:
 
     def _init_alerts(self):
         """Initialize the alerts storage system"""
-        if not self.alerts_path.exists():
-            self.alerts_path.write_text('[]')
-            self.alerts_path.chmod(0o644)
+        self.alert_store.initialize()
 
     def load_config(self):
         """Load the configuration file"""
@@ -125,10 +125,9 @@ class ConfigManager:
 
     def save_config(self):
         """Save the configuration to file"""
-        with open(self.config_path, 'w') as f:
-            self.config.write(f)
-        # Set proper permissions
-        self.config_path.chmod(0o644)
+        stream = io.StringIO()
+        self.config.write(stream)
+        atomic_write_text(self.config_path, stream.getvalue(), mode=0o644)
 
     def get_value(self, section, key, default=None):
         """Get a configuration value"""
@@ -147,31 +146,14 @@ class ConfigManager:
     def store_secret(self, key, value):
         """Store a sensitive value"""
         try:
-            self.secrets_lock_path.touch(mode=0o600, exist_ok=True)
-            self.secrets_lock_path.chmod(0o600)
-            with open(self.secrets_lock_path, 'w') as lock_file:
-                # Multiple admin requests can update different credentials at
-                # once; lock the whole read/modify/replace sequence so one
-                # request cannot overwrite another request's freshly stored key.
-                fcntl.flock(lock_file, fcntl.LOCK_EX)
-                secrets = json.loads(self.secrets_path.read_text())
+            # Multiple admin requests can update different credentials at once;
+            # lock the whole read/modify/replace sequence so one request cannot
+            # overwrite another request's freshly stored key.
+            with locked_path(self.secrets_lock_path, mode=0o600):
+                secrets = read_json(self.secrets_path, {})
                 encrypted = self.cipher.encrypt(value.encode())
                 secrets[key] = encrypted.decode()
-                temp_path = None
-                try:
-                    with tempfile.NamedTemporaryFile(
-                        'w',
-                        dir=str(self.config_dir),
-                        prefix='.secrets.',
-                        delete=False,
-                    ) as temp_file:
-                        temp_path = temp_file.name
-                        json.dump(secrets, temp_file)
-                    os.chmod(temp_path, 0o600)
-                    os.replace(temp_path, self.secrets_path)
-                finally:
-                    if temp_path and os.path.exists(temp_path):
-                        os.unlink(temp_path)
+                atomic_write_json(self.secrets_path, secrets, mode=0o600)
         except Exception as e:
             self.logger.error(f"Error storing secret: {e}")
             raise
@@ -179,7 +161,7 @@ class ConfigManager:
     def get_secret(self, key, default=None):
         """Retrieve a sensitive value"""
         try:
-            secrets = json.loads(self.secrets_path.read_text())
+            secrets = read_json(self.secrets_path, {})
             if key not in secrets:
                 return default
             encrypted = secrets[key].encode()
@@ -191,36 +173,7 @@ class ConfigManager:
     def log_alert(self, title, message, alert_type="info", source="system"):
         """Log an alert to the alerts file"""
         try:
-            with _ALERTS_LOCK:
-                alerts = self.get_alerts()
-                next_id = (
-                    max(
-                        (
-                            existing_alert.get('id', 0)
-                            for existing_alert in alerts
-                            if isinstance(existing_alert.get('id'), int)
-                        ),
-                        default=0,
-                    )
-                    + 1
-                )
-                alert = {
-                    # IDs stay monotonic even after retention trims old alerts.
-                    'id': next_id,
-                    'title': title,
-                    'message': message,
-                    'type': alert_type,
-                    'source': source,
-                    'timestamp': datetime.now().isoformat(),
-                    'read': False,
-                }
-                alerts.append(alert)
-
-                # Keep only the last 1000 alerts to prevent file from growing too large
-                if len(alerts) > 1000:
-                    alerts = alerts[-1000:]
-
-                self.alerts_path.write_text(json.dumps(alerts, indent=2))
+            self.alert_store.append_alert(title, message, alert_type=alert_type, source=source)
             self.logger.info(f"Alert logged: {title}")
             return True
         except Exception as e:
@@ -230,18 +183,7 @@ class ConfigManager:
     def get_alerts(self, limit=None, unread_only=False):
         """Get alerts from the alerts file"""
         try:
-            if not self.alerts_path.exists():
-                return []
-
-            alerts = json.loads(self.alerts_path.read_text())
-
-            if unread_only:
-                alerts = [alert for alert in alerts if not alert.get('read', False)]
-
-            if limit:
-                alerts = alerts[-limit:]
-
-            return alerts
+            return self.alert_store.list_alerts(limit=limit, unread_only=unread_only)
         except Exception as e:
             self.logger.error(f"Error reading alerts: {e}")
             return []
@@ -249,14 +191,7 @@ class ConfigManager:
     def mark_alert_read(self, alert_id):
         """Mark an alert as read"""
         try:
-            with _ALERTS_LOCK:
-                alerts = self.get_alerts()
-                for alert in alerts:
-                    if alert['id'] == alert_id:
-                        alert['read'] = True
-                        break
-
-                self.alerts_path.write_text(json.dumps(alerts, indent=2))
+            self.alert_store.mark_alert_read(alert_id)
             return True
         except Exception as e:
             self.logger.error(f"Error marking alert as read: {e}")
@@ -265,8 +200,7 @@ class ConfigManager:
     def clear_alerts(self):
         """Clear all alerts"""
         try:
-            with _ALERTS_LOCK:
-                self.alerts_path.write_text('[]')
+            self.alert_store.clear()
             self.logger.info("All alerts cleared")
             return True
         except Exception as e:
@@ -276,11 +210,7 @@ class ConfigManager:
     def mark_all_alerts_read(self):
         """Mark all alerts as read"""
         try:
-            with _ALERTS_LOCK:
-                alerts = self.get_alerts()
-                for alert in alerts:
-                    alert['read'] = True
-                self.alerts_path.write_text(json.dumps(alerts, indent=2))
+            self.alert_store.mark_all_read()
             return True
         except Exception as e:
             self.logger.error(f"Error marking all alerts as read: {e}")
