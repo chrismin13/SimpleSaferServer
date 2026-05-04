@@ -173,6 +173,7 @@ class DriveHealthTests(unittest.TestCase):
             get_value=lambda section, key, default="": {
                 ("backup", "email_address"): "admin@example.com",
                 ("backup", "from_address"): "server@example.com",
+                ("system", "server_name"): "nas-01",
             }.get((section, key), default),
         )
         runtime = SimpleNamespace(is_fake=False)
@@ -193,6 +194,7 @@ class DriveHealthTests(unittest.TestCase):
             source="drive_health",
         )
         mock_send_email.assert_called_once()
+        self.assertIn("Subject: Drive health - nas-01", mock_send_email.call_args[0][2])
 
 
 if __name__ == "__main__":

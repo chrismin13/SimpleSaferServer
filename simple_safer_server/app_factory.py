@@ -23,6 +23,7 @@ from simple_safer_server.routes.alerts import alerts as alerts_routes
 from simple_safer_server.routes.cloud_backup import cloud_backup as cloud_backup_routes
 from simple_safer_server.routes.ddns import ddns as ddns_routes
 from simple_safer_server.routes.drive_health import drive_health as drive_health_routes
+from simple_safer_server.routes.server_identity import server_identity as server_identity_routes
 from simple_safer_server.routes.setup_wizard import setup
 from simple_safer_server.routes.smb import smb as smb_routes
 from simple_safer_server.routes.storage import storage as storage_routes
@@ -36,6 +37,7 @@ from simple_safer_server.services.container import AppServices
 from simple_safer_server.services.ddns_service import DdnsService
 from simple_safer_server.services.drive_health import DriveHealthSummaryService
 from simple_safer_server.services.runtime import get_fake_state, get_flask_secret_key, get_runtime
+from simple_safer_server.services.server_identity import ServerIdentityService
 from simple_safer_server.services.smb_manager import SMB_DOCS_URL, SMBManager
 from simple_safer_server.services.storage_service import StorageService
 from simple_safer_server.services.system_updates import SystemUpdatesManager
@@ -136,6 +138,10 @@ def create_app() -> Tuple[Flask, SocketIO]:
         config_manager=config_manager,
         system_utils=system_utils,
     )
+    server_identity_service = ServerIdentityService(
+        config_manager=config_manager,
+        runtime=runtime,
+    )
     storage_service = StorageService(
         runtime=runtime,
         fake_state=fake_state,
@@ -156,6 +162,7 @@ def create_app() -> Tuple[Flask, SocketIO]:
         ddns_service=ddns_service,
         cloud_backup_service=cloud_backup_service,
         alerts_service=alerts_service,
+        server_identity_service=server_identity_service,
         storage_service=storage_service,
         drive_health_summary_service=drive_health_summary_service,
     )
@@ -166,6 +173,7 @@ def create_app() -> Tuple[Flask, SocketIO]:
     app.register_blueprint(cloud_backup_routes)
     app.register_blueprint(system_updates_routes)
     app.register_blueprint(alerts_routes)
+    app.register_blueprint(server_identity_routes)
     app.register_blueprint(smb_routes)
     app.register_blueprint(users_routes)
     app.register_blueprint(storage_routes)

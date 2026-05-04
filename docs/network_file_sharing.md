@@ -1,6 +1,8 @@
 # Network File Sharing
 
 The Network File Sharing page manages Samba shares and Samba service status.
+It also includes the server name. This is the name you'll use to find this
+server on your network. Scheduled task alert emails include it in the subject.
 
 SimpleSaferServer now distinguishes between two kinds of Samba shares:
 
@@ -16,8 +18,13 @@ That ownership split matters because SimpleSaferServer only edits shares that it
 - **Edit Share**: updates a SimpleSaferServer-managed share
 - **Delete Share**: removes a SimpleSaferServer-managed share
 - **Unmanaged share warning**: appears when SimpleSaferServer detects other non-system Samba shares in `smb.conf`
+- **Server Name**: changes the OS hostname, SimpleSaferServer's stored server name,
+  and the local hostname entry used by the server itself
 - **Restart Services**: restarts `smbd` and `nmbd`
   Restarting Samba disconnects anyone who is currently connected to a share, so active file copies or other SMB activity will drop.
+
+Changing the server name also restarts Samba discovery/services so the new name is
+advertised without rebooting. Connected file-sharing clients may need to reconnect.
 
 If unmanaged shares are detected, the page shows a small warning button with the count.
 That button opens a modal that:

@@ -222,6 +222,61 @@ class UninstallScriptTests(unittest.TestCase):
 
         self.assertNotEqual(result.returncode, 0)
 
+    def test_managed_hostname_summary_reads_hostname_metadata(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            config_path = Path(tempdir) / "config.conf"
+            config_path.write_text(
+                textwrap.dedent(
+                    """\
+                    [system]
+                    hostname_managed = true
+                    original_hostname = oldbox
+                    applied_hostname = newbox
+                    """
+                )
+            )
+
+            output = self.run_bash(
+                textwrap.dedent(
+                    f"""\
+                    source "{UNINSTALL_SCRIPT}"
+                    CONFIG_FILE="{config_path}"
+                    managed_hostname_summary
+                    """
+                )
+            )
+
+        lines = output.strip().splitlines()
+        self.assertIn("original=oldbox", lines)
+        self.assertIn("applied=newbox", lines)
+        self.assertTrue(any(line.startswith("current=") for line in lines))
+
+    def test_managed_hostname_summary_ignores_unmanaged_config(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            config_path = Path(tempdir) / "config.conf"
+            config_path.write_text(
+                textwrap.dedent(
+                    """\
+                    [system]
+                    hostname_managed = false
+                    original_hostname = oldbox
+                    applied_hostname = newbox
+                    """
+                )
+            )
+
+            output = self.run_bash(
+                textwrap.dedent(
+                    f"""\
+                    source "{UNINSTALL_SCRIPT}"
+                    CONFIG_FILE="{config_path}"
+                    managed_hostname_summary
+                    """
+                )
+            )
+
+        self.assertEqual(output, "")
+
     def test_remove_managed_fstab_entries_only_removes_tagged_lines(self):
         with tempfile.TemporaryDirectory() as tempdir:
             fstab_path = Path(tempdir) / "fstab"

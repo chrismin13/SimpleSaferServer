@@ -4,9 +4,8 @@ import stat
 import time
 from datetime import datetime
 from functools import wraps
-from tempfile import NamedTemporaryFile
 
-from flask import Blueprint, redirect, render_template, session
+from flask import Blueprint, current_app, redirect, render_template, session
 
 from simple_safer_server.adapters.command_runner import CalledProcessError, SubprocessError
 from simple_safer_server.adapters.setup_commands import SetupCommandAdapter
@@ -31,6 +30,11 @@ from simple_safer_server.services.schedule_time import (
     ScheduleTimeError,
     normalize_ui_schedule_time,
 )
+from simple_safer_server.services.server_identity import (
+    SERVER_NAME_HELP_TEXT,
+    ServerIdentityError,
+    ServerIdentityService,
+)
 from simple_safer_server.services.smb_manager import SMBManager
 from simple_safer_server.services.system_utils import SystemUtils
 from simple_safer_server.services.user_manager import UserManager
@@ -50,6 +54,7 @@ config_manager = ConfigManager(runtime=runtime)
 system_utils = SystemUtils(runtime=runtime)
 user_manager = UserManager(runtime=runtime)
 smb_manager = SMBManager(runtime=runtime)
+server_identity_service = ServerIdentityService(config_manager=config_manager, runtime=runtime)
 setup_command_adapter = SetupCommandAdapter()
 logger = logging.getLogger(__name__)
 
@@ -66,6 +71,19 @@ def _validation_problem(message, **extra):
 
 def _operation_problem(message, **extra):
     return json_problem(OperationProblem(message, slug='setup-operation-failed', extra=extra))
+
+
+def _cloud_backup_service():
+    """Return the shared cloud-backup service registered by the app factory."""
+    return current_app.extensions["simple_safer_server"].cloud_backup_service
+
+
+def _server_identity_service():
+    """Return the shared server-identity service, with test fallback support."""
+    services = current_app.extensions.get("simple_safer_server")
+    if services is not None and hasattr(services, "server_identity_service"):
+        return services.server_identity_service
+    return server_identity_service
 
 
 def _valid_tcp_port(value):
@@ -213,6 +231,10 @@ def _unmount_selected_partition_with_managed_retry(partition, force_managed=Fals
 def setup_page():
     """Render the setup wizard page"""
     try:
+        # Setup routes still support module-level test seams, while shared
+        # services write through the app-factory ConfigManager. Reload before
+        # validation so cross-service setup writes are visible immediately.
+        config_manager.load_config()
         current_config = config_manager.get_all_config()
         # Log section names only; setup config can include admin contact details
         # and managed service paths that do not belong in routine logs.
@@ -243,16 +265,16 @@ def setup_page():
 
         if missing_fields:
             logger.info(f"Setup incomplete, missing fields: {missing_fields}")
-            return render_template('setup.html')
+            return render_template('setup.html', server_name_help_text=SERVER_NAME_HELP_TEXT)
 
         # Do NOT mark setup as complete here. Only do so in /api/setup/complete.
-        return render_template('setup.html')
+        return render_template('setup.html', server_name_help_text=SERVER_NAME_HELP_TEXT)
 
     except ApiProblem:
         raise
     except Exception as e:
         logger.error(f"Error checking setup status: {e}")
-        return render_template('setup.html')
+        return render_template('setup.html', server_name_help_text=SERVER_NAME_HELP_TEXT)
 
 
 @setup.route('/api/setup/user', methods=['POST'])
@@ -581,7 +603,7 @@ def mount_drive():
 @setup.route('/api/setup/rclone', methods=['POST'])
 @setup_api_access_required
 def setup_rclone():
-    """Set up rclone configuration"""
+    """Set up advanced rclone configuration through the shared backup service."""
     try:
         data = json_request_data()
         config = data.get('config')
@@ -590,12 +612,15 @@ def setup_rclone():
         if not config or not remote_name:
             return _validation_problem('Config and remote name are required')
 
-        # Store rclone config
-        if not system_utils.setup_rclone(config):
-            return _operation_problem('Failed to set up rclone')
-
-        # Save to config
-        config_manager.set_value('backup', 'rclone_dir', remote_name)
+        # Setup keeps its historical field names; the cloud-backup service owns
+        # rclone persistence and mode flags for every cloud configuration flow.
+        _cloud_backup_service().save_config(
+            {
+                'cloud_mode': 'advanced',
+                'rclone_config': config,
+                'remote_name': remote_name,
+            }
+        )
 
         return json_data()
     except ApiProblem:
@@ -775,6 +800,10 @@ def setup_smb_share(config):
 def complete_setup():
     """Complete the setup process"""
     try:
+        # Cloud-backup setup writes through the shared app-factory service; this
+        # module-level manager must reload before final missing-field checks and
+        # systemd generation use the setup snapshot.
+        config_manager.load_config()
         current_config = config_manager.get_all_config()
         # The validation loop below logs only missing section/field names.
         logger.debug("Completing setup after loading current configuration")
@@ -860,8 +889,10 @@ def setup_system_info():
                     'Username must match the admin account created during setup'
                 )
 
-        config_manager.set_value('system', 'server_name', server_name)
+        _server_identity_service().update_server_name(server_name, restart_samba=False)
         return json_data()
+    except ServerIdentityError as e:
+        return _validation_problem(str(e))
     except ApiProblem:
         raise
     except Exception as e:
@@ -872,39 +903,17 @@ def setup_system_info():
 @setup.route('/api/setup/mega/connect', methods=['POST'])
 @setup_api_access_required
 def mega_connect():
-    """Authenticate with MEGA and list folders using rclone."""
+    """Authenticate with MEGA and return root folders using the shared service."""
     try:
         data = json_request_data()
         email = data.get('email')
         password = data.get('password')
         if not email or not password:
             return _validation_problem('Email and password are required.')
-        # Obscure password using rclone
-        obscured_pw = setup_command_adapter.obscure_rclone_password(password)
-        # Build temp rclone config
-        config_text = f"""
-[mega]
-type = mega
-user = {email}
-pass = {obscured_pw}
-"""
-        with NamedTemporaryFile(
-            delete=False, mode="w", prefix="rclone-", suffix=".conf"
-        ) as config_file:
-            config_file.write(config_text)
-            config_path = config_file.name
-        try:
-            # List folders at root
-            lsjson = setup_command_adapter.rclone_lsjson("mega:/", config_path)
-            if lsjson.returncode != 0:
-                return _validation_problem('Failed to list MEGA folders. Check credentials.')
-            import json as pyjson
-
-            items = pyjson.loads(lsjson.stdout)
-            folders = [item['Name'] for item in items if item['IsDir']]
-            return json_data({'folders': folders})
-        finally:
-            os.remove(config_path)
+        folder_list = _cloud_backup_service().list_mega_folders(
+            {'email': email, 'password': password, 'path': '/'}
+        )
+        return json_data({'folders': folder_list.folders})
     except ApiProblem:
         raise
     except Exception as e:
@@ -915,7 +924,7 @@ pass = {obscured_pw}
 @setup.route('/api/setup/mega/list_folders', methods=['POST'])
 @setup_api_access_required
 def mega_list_folders():
-    """List folders at a given MEGA path using rclone."""
+    """List folders at a given MEGA path using the shared service."""
     try:
         data = json_request_data()
         path = data.get('path', '/')
@@ -923,35 +932,10 @@ def mega_list_folders():
         password = data.get('password')
         if not email or not password:
             return _validation_problem('Email and password are required.')
-        obscured_pw = setup_command_adapter.obscure_rclone_password(password)
-        config_text = f"""
-[mega]
-type = mega
-user = {email}
-pass = {obscured_pw}
-"""
-        from tempfile import NamedTemporaryFile
-
-        with NamedTemporaryFile(
-            delete=False, mode="w", prefix="rclone-", suffix=".conf"
-        ) as config_file:
-            config_file.write(config_text)
-            config_path = config_file.name
-        try:
-            lsjson = setup_command_adapter.rclone_lsjson(f"mega:{path}", config_path)
-            if lsjson.returncode != 0:
-                return _validation_problem(
-                    'Failed to list MEGA folders. Check credentials or path.'
-                )
-            import json as pyjson
-
-            items = pyjson.loads(lsjson.stdout)
-            folders = [item['Name'] for item in items if item['IsDir']]
-            # Compute parent path
-            parent = '/'.join(path.rstrip('/').split('/')[:-1]) or '/'
-            return json_data({'folders': folders, 'path': path, 'parent': parent})
-        finally:
-            os.remove(config_path)
+        folder_list = _cloud_backup_service().list_mega_folders(
+            {'email': email, 'password': password, 'path': path}
+        )
+        return json_data(folder_list)
     except ApiProblem:
         raise
     except Exception as e:
@@ -962,7 +946,7 @@ pass = {obscured_pw}
 @setup.route('/api/setup/mega/create_folder', methods=['POST'])
 @setup_api_access_required
 def mega_create_folder_picker():
-    """Create a new folder at a given MEGA path using rclone."""
+    """Create a new MEGA folder using the shared service."""
     try:
         data = json_request_data()
         folder_name = data.get('folder_name')
@@ -971,29 +955,10 @@ def mega_create_folder_picker():
         password = data.get('password')
         if not folder_name or not email or not password:
             return _validation_problem('Folder name, email, and password are required.')
-        obscured_pw = setup_command_adapter.obscure_rclone_password(password)
-        config_text = f"""
-[mega]
-type = mega
-user = {email}
-pass = {obscured_pw}
-"""
-        from tempfile import NamedTemporaryFile
-
-        with NamedTemporaryFile(
-            delete=False, mode="w", prefix="rclone-", suffix=".conf"
-        ) as config_file:
-            config_file.write(config_text)
-            config_path = config_file.name
-        try:
-            # Create folder at mega:{path}/{folder_name}
-            full_path = f"{path.rstrip('/')}/{folder_name}" if path != '/' else f"/{folder_name}"
-            mkdir = setup_command_adapter.rclone_mkdir(f"mega:{full_path}", config_path)
-            if mkdir.returncode != 0:
-                return _validation_problem('Failed to create folder on MEGA.')
-            return json_data()
-        finally:
-            os.remove(config_path)
+        _cloud_backup_service().create_mega_folder(
+            {'email': email, 'password': password, 'path': path, 'folder_name': folder_name}
+        )
+        return json_data()
     except ApiProblem:
         raise
     except Exception as e:
@@ -1004,7 +969,7 @@ pass = {obscured_pw}
 @setup.route('/api/setup/mega/save', methods=['POST'])
 @setup_api_access_required
 def mega_save():
-    """Save MEGA config (obscured password, selected folder) securely and write rclone config."""
+    """Save MEGA credentials and selected folder through the shared backup service."""
     try:
         data = json_request_data()
         email = data.get('email')
@@ -1012,18 +977,16 @@ def mega_save():
         folder = data.get('folder')
         if not email or not password or not folder:
             return _validation_problem('Email, password, and folder are required.')
-        obscured_pw = setup_command_adapter.obscure_rclone_password(password)
-        # Write rclone config for MEGA
-        mega_rclone_config = f"""[mega]\ntype = mega\nuser = {email}\npass = {obscured_pw}\n"""
-        if not system_utils.setup_rclone(mega_rclone_config):
-            return _operation_problem('Failed to write rclone config for MEGA')
-        # Persist after rclone is written so the UI does not advertise a cloud
-        # target that the backup scripts cannot actually use.
-        config_manager.set_value('backup', 'cloud_mode', 'mega')
-        config_manager.set_value('backup', 'mega_email', email)
-        config_manager.set_value('backup', 'mega_pass', obscured_pw)
-        config_manager.set_value('backup', 'mega_folder', folder)
-        config_manager.set_value('backup', 'rclone_dir', f"mega:{folder}")
+        # Setup keeps its concise field names; the service keeps write ordering
+        # consistent with post-onboarding cloud-backup management.
+        _cloud_backup_service().save_config(
+            {
+                'cloud_mode': 'mega',
+                'mega_email': email,
+                'mega_password': password,
+                'mega_folder': folder,
+            }
+        )
         return json_data()
     except ApiProblem:
         raise

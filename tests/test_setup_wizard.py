@@ -7,7 +7,40 @@ from unittest.mock import MagicMock, patch
 
 from flask import Flask
 
+from simple_safer_server.services.cloud_backup_service import MegaFolderList
+from simple_safer_server.services.server_identity import ServerIdentityError
 from simple_safer_server.services.smb_manager import SMB_DOCS_URL
+
+
+class FakeCloudBackupService:
+    def __init__(self):
+        self.calls = []
+
+    def list_mega_folders(self, data):
+        self.calls.append(("list_mega_folders", data))
+        path = data.get("path", "/")
+        parent = "/".join(path.rstrip("/").split("/")[:-1]) or "/"
+        return MegaFolderList(folders=["Backups"], path=path, parent=parent)
+
+    def create_mega_folder(self, data):
+        self.calls.append(("create_mega_folder", data))
+
+    def save_config(self, data):
+        self.calls.append(("save_config", data))
+        return {}
+
+
+class FakeServerIdentityService:
+    def __init__(self):
+        self.calls = []
+
+    def update_server_name(self, server_name, restart_samba=True):
+        self.calls.append((server_name, restart_samba))
+        if server_name == "bad name":
+            raise ServerIdentityError(
+                "Server name may only contain letters, numbers, and hyphens, and cannot start or end with a hyphen."
+            )
+        return types.SimpleNamespace(server_name=server_name, hostname=server_name, warning="")
 
 
 class SetupWizardTests(unittest.TestCase):
@@ -57,6 +90,12 @@ class SetupWizardTests(unittest.TestCase):
         self.setup_wizard = importlib.import_module("simple_safer_server.routes.setup_wizard")
         self.app = Flask(__name__)
         self.app.secret_key = 'test-secret'
+        self.cloud_backup_service = FakeCloudBackupService()
+        self.server_identity_service = FakeServerIdentityService()
+        self.app.extensions["simple_safer_server"] = types.SimpleNamespace(
+            cloud_backup_service=self.cloud_backup_service,
+            server_identity_service=self.server_identity_service,
+        )
         self.app.register_error_handler(
             self.setup_wizard.ApiProblem,
             lambda error: self.setup_wizard.json_problem(error),
@@ -119,6 +158,118 @@ class SetupWizardTests(unittest.TestCase):
         self.assertEqual(response.status_code, 401)
         self.assertProblemDetail(response, 'Please log in again.')
         mock_get_available_backup_drives.assert_not_called()
+
+    def test_setup_mega_connect_delegates_to_cloud_backup_service(self):
+        with self.app.test_client() as client:
+            response = client.post(
+                "/api/setup/mega/connect",
+                json={"email": "user@example.com", "password": "secret"},
+            )
+
+        self.assertDataResponse(response, {"folders": ["Backups"]})
+        self.assertEqual(
+            self.cloud_backup_service.calls,
+            [
+                (
+                    "list_mega_folders",
+                    {"email": "user@example.com", "password": "secret", "path": "/"},
+                )
+            ],
+        )
+
+    def test_setup_mega_list_folders_delegates_to_cloud_backup_service(self):
+        with self.app.test_client() as client:
+            response = client.post(
+                "/api/setup/mega/list_folders",
+                json={"email": "user@example.com", "password": "secret", "path": "/Photos"},
+            )
+
+        self.assertDataResponse(
+            response,
+            {"folders": ["Backups"], "path": "/Photos", "parent": "/"},
+        )
+        self.assertEqual(
+            self.cloud_backup_service.calls,
+            [
+                (
+                    "list_mega_folders",
+                    {"email": "user@example.com", "password": "secret", "path": "/Photos"},
+                )
+            ],
+        )
+
+    def test_setup_mega_create_folder_delegates_to_cloud_backup_service(self):
+        with self.app.test_client() as client:
+            response = client.post(
+                "/api/setup/mega/create_folder",
+                json={
+                    "email": "user@example.com",
+                    "password": "secret",
+                    "path": "/",
+                    "folder_name": "Backups",
+                },
+            )
+
+        self.assertDataResponse(response)
+        self.assertEqual(
+            self.cloud_backup_service.calls,
+            [
+                (
+                    "create_mega_folder",
+                    {
+                        "email": "user@example.com",
+                        "password": "secret",
+                        "path": "/",
+                        "folder_name": "Backups",
+                    },
+                )
+            ],
+        )
+
+    def test_setup_mega_save_delegates_to_cloud_backup_service(self):
+        with self.app.test_client() as client:
+            response = client.post(
+                "/api/setup/mega/save",
+                json={"email": "user@example.com", "password": "secret", "folder": "/Backups"},
+            )
+
+        self.assertDataResponse(response)
+        self.assertEqual(
+            self.cloud_backup_service.calls,
+            [
+                (
+                    "save_config",
+                    {
+                        "cloud_mode": "mega",
+                        "mega_email": "user@example.com",
+                        "mega_password": "secret",
+                        "mega_folder": "/Backups",
+                    },
+                )
+            ],
+        )
+
+    def test_setup_rclone_delegates_to_cloud_backup_service(self):
+        with self.app.test_client() as client:
+            response = client.post(
+                "/api/setup/rclone",
+                json={"config": "[remote]\ntype = test\n", "remote_name": "remote:/Backups"},
+            )
+
+        self.assertDataResponse(response)
+        self.assertEqual(
+            self.cloud_backup_service.calls,
+            [
+                (
+                    "save_config",
+                    {
+                        "cloud_mode": "advanced",
+                        "rclone_config": "[remote]\ntype = test\n",
+                        "remote_name": "remote:/Backups",
+                    },
+                )
+            ],
+        )
 
     def test_setup_api_requires_admin_after_setup_is_complete(self):
         completed_config = MagicMock()
@@ -384,7 +535,7 @@ class SetupWizardTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         config_manager.set_value.assert_called_once_with('system', 'username', 'admin')
 
-    def test_setup_system_info_only_persists_server_name(self):
+    def test_setup_system_info_updates_server_identity(self):
         config_manager = MagicMock()
         config_manager.is_setup_complete.return_value = False
         config_manager.get_value.return_value = 'admin'
@@ -401,7 +552,28 @@ class SetupWizardTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         user_manager.reload_users.assert_called_once_with()
-        config_manager.set_value.assert_called_once_with('system', 'server_name', 'simple-safer')
+        self.assertEqual(self.server_identity_service.calls, [('simple-safer', False)])
+
+    def test_setup_system_info_rejects_invalid_server_name(self):
+        config_manager = MagicMock()
+        config_manager.is_setup_complete.return_value = False
+        config_manager.get_value.return_value = 'admin'
+        user_manager = MagicMock()
+        user_manager.users = {'admin': {'is_admin': True}}
+
+        with patch.object(self.setup_wizard, 'config_manager', config_manager):
+            with patch.object(self.setup_wizard, 'user_manager', user_manager):
+                with self.app.test_client() as client:
+                    response = client.post(
+                        '/api/setup/system',
+                        json={'username': 'admin', 'server_name': 'bad name'},
+                    )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertProblemDetail(
+            response,
+            'Server name may only contain letters, numbers, and hyphens, and cannot start or end with a hyphen.',
+        )
 
     def test_setup_system_info_rejects_username_that_does_not_match_created_admin(self):
         config_manager = MagicMock()
