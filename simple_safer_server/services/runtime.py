@@ -45,11 +45,17 @@ class Runtime:
 
 
 class FakeState:
-    TASK_NAMES: ClassVar[List[str]] = ["Check Mount", "Drive Health Check", "Cloud Backup"]
+    TASK_NAMES: ClassVar[List[str]] = [
+        "Check Mount",
+        "Drive Health Check",
+        "Cloud Backup",
+        "App Update",
+    ]
     TASK_SERVICE_NAMES: ClassVar[Dict[str, str]] = {
         "Check Mount": "check_mount.service",
         "Drive Health Check": "check_health.service",
         "Cloud Backup": "backup_cloud.service",
+        "App Update": "app_update.service",
     }
 
     def __init__(self, runtime: Runtime):
@@ -209,6 +215,7 @@ class FakeState:
             backup_hour, backup_minute = 3, 0
 
         offsets = {
+            "App Update": -19,
             "Check Mount": -2,
             "Drive Health Check": -1,
             "Cloud Backup": 0,

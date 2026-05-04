@@ -2,6 +2,39 @@
 
 The System Updates page manages Debian and Ubuntu package maintenance from the admin UI.
 
+## Application version and updates
+
+The page shows the installed SimpleSaferServer source state:
+
+- branch, tag, detached checkout, or unavailable Git state
+- current commit
+- cached remote check time
+- whether the checkout is up to date, behind, ahead, diverged, dirty, pinned, or unavailable
+
+Remote Git status is checked only when an administrator clicks **Refresh**. This avoids doing a
+network fetch every time the page loads. The page uses the cached remote result until Refresh runs
+again or the installed commit changes.
+
+**Update Now** is enabled only when the installed checkout is:
+
+- on a branch
+- clean of tracked local file edits
+- configured with an upstream
+- behind that upstream
+
+Tag and detached checkouts are shown as pinned. They are useful as install snapshots, but the
+automatic updater does not move them to another commit.
+
+Application updates run through the `App Update` scheduled task. The task runs `git pull --ff-only`
+from the installed checkout and then reruns the full installer from that checkout. Full installer
+updates keep Python dependencies, systemd units, helper scripts, templates, and static assets in
+sync with the pulled code. Fast-forward-only pulls prevent the updater from creating merge commits
+or resolving branch divergence without an administrator.
+
+The daily `App Update` timer is generated with the other SimpleSaferServer timers and runs 15
+minutes before `Check Mount`. It is also visible on the Dashboard scheduled-task table, where admins
+can inspect logs or start the task manually.
+
 ## Operating system support
 
 - Shows the current Debian or Ubuntu release from `/etc/os-release`.

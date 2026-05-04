@@ -10,7 +10,11 @@ def _build_app(manager):
     app = Flask(__name__)
     app.config["TESTING"] = True
     app.secret_key = "test-secret"
-    app.extensions["simple_safer_server"] = SimpleNamespace(system_updates_manager=manager)
+    app.extensions["simple_safer_server"] = SimpleNamespace(
+        system_updates_manager=manager,
+        app_update_manager=MagicMock(),
+        task_service=MagicMock(),
+    )
     app.register_blueprint(system_updates)
     return app
 
@@ -41,3 +45,27 @@ def test_livepatch_setup_returns_validation_problem_for_empty_token():
         "detail": "Livepatch token is required.",
     }
     manager.setup_livepatch.assert_called_once_with("")
+
+
+def test_application_update_returns_conflict_when_no_update_is_available():
+    manager = MagicMock()
+    app_update_manager = MagicMock()
+    app_update_manager.get_status.return_value = {
+        "can_update": False,
+        "message": "Up to date with origin/main.",
+    }
+    app = _build_app(manager)
+    app.extensions["simple_safer_server"].app_update_manager = app_update_manager
+    user_manager = MagicMock()
+    user_manager.is_admin.return_value = True
+
+    with patch(
+        "simple_safer_server.services.user_manager.UserManager", return_value=user_manager
+    ), app.test_client() as client:
+        with client.session_transaction() as session:
+            session["username"] = "admin"
+
+        response = client.post("/api/system_updates/application/update")
+
+    assert response.status_code == 409
+    assert response.get_json()["detail"] == "Up to date with origin/main."

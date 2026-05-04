@@ -156,6 +156,9 @@ class TaskServiceTests(unittest.TestCase):
 
         assert task is not None
         self.assertEqual(task.service_name, "backup_cloud.service")
+        app_update = service.get_task("App Update")
+        assert app_update is not None
+        self.assertEqual(app_update.service_name, "app_update.service")
         self.assertIsNone(service.get_task("Missing Task"))
 
     def test_task_summary_returns_error_fields_when_task_property_fails(self):

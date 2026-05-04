@@ -38,6 +38,14 @@
       'livepatch-token',
       'livepatch-setup-btn',
       'livepatch-source-link',
+      'app-update-title',
+      'app-update-detail',
+      'app-update-badge',
+      'app-update-source',
+      'app-update-commit',
+      'app-update-checked',
+      'app-update-refresh-btn',
+      'app-update-now-btn',
       'remove-locks-btn'
     ].forEach((id) => {
       els[id] = $(id);
@@ -172,6 +180,46 @@
     }
   }
 
+  function appUpdateBadgeType(status) {
+    if (status === 'up_to_date') return 'success';
+    if (status === 'behind') return 'warning';
+    if (status === 'dirty' || status === 'diverged') return 'danger';
+    if (status === 'ahead' || status === 'pinned') return 'neutral';
+    return 'neutral';
+  }
+
+  function appUpdateBadgeText(status) {
+    if (status === 'up_to_date') return 'Up to date';
+    if (status === 'behind') return 'Update available';
+    if (status === 'dirty') return 'Local edits';
+    if (status === 'diverged') return 'Diverged';
+    if (status === 'ahead') return 'Ahead';
+    if (status === 'pinned') return 'Pinned';
+    if (status === 'unchecked') return 'Not checked';
+    return 'Unavailable';
+  }
+
+  function sourceLabel(application) {
+    const sourceType = application && application.source_type ? application.source_type : 'unknown';
+    const sourceName = application && application.source_name ? application.source_name : '';
+    if (sourceType === 'branch') return sourceName ? `Branch ${sourceName}` : 'Branch';
+    if (sourceType === 'tag') return sourceName ? `Tag ${sourceName}` : 'Tag';
+    if (sourceType === 'detached') return 'Detached checkout';
+    return 'Unknown';
+  }
+
+  function renderApplicationUpdate(application) {
+    if (!application) return;
+    const status = application.status || 'unavailable';
+    els['app-update-title'].textContent = 'Application';
+    els['app-update-detail'].textContent = application.message || 'Application update status unavailable.';
+    els['app-update-source'].textContent = sourceLabel(application);
+    els['app-update-commit'].textContent = application.current_commit || '—';
+    els['app-update-checked'].textContent = application.last_remote_check_at || 'Not checked';
+    setBadge(els['app-update-badge'], appUpdateBadgeText(status), appUpdateBadgeType(status));
+    els['app-update-now-btn'].disabled = !application.can_update;
+  }
+
   async function loadSummary() {
     try {
       const { data } = await window.ApiClient.fetchJson('/api/system_updates/summary');
@@ -179,6 +227,7 @@
       renderOperation(data.operation);
       renderSettings(data.settings);
       renderLivepatch(data.livepatch);
+      renderApplicationUpdate(data.application);
     } catch (error) {
       showAlert(error.message || 'Could not load system updates.', 'danger');
     }
@@ -295,12 +344,50 @@
     }
   }
 
+  async function refreshApplicationUpdate(button) {
+    window.AsyncButtonState.start(button);
+    let latestApplication = null;
+    try {
+      const { data } = await window.ApiClient.fetchJson('/api/system_updates/application/refresh', {
+        method: 'POST',
+        headers: { 'Accept': 'application/json' }
+      });
+      latestApplication = data.application;
+      showAlert('Application update status refreshed.', 'success');
+    } catch (error) {
+      showAlert(error.message || 'Could not refresh application update status.', 'danger');
+    } finally {
+      window.AsyncButtonState.reset(button);
+      if (latestApplication) renderApplicationUpdate(latestApplication);
+    }
+  }
+
+  async function startApplicationUpdate(button) {
+    window.AsyncButtonState.start(button);
+    let latestApplication = null;
+    try {
+      const { message, data } = await window.ApiClient.fetchJson('/api/system_updates/application/update', {
+        method: 'POST',
+        headers: { 'Accept': 'application/json' }
+      });
+      latestApplication = data.application;
+      showAlert(message || 'Application update started.', 'success');
+    } catch (error) {
+      showAlert(error.message || 'Could not start application update.', 'danger');
+    } finally {
+      window.AsyncButtonState.reset(button);
+      if (latestApplication) renderApplicationUpdate(latestApplication);
+    }
+  }
+
   function bindActions() {
     els['apt-update-btn'].addEventListener('click', () => startOperation('update', els['apt-update-btn']));
     els['apt-upgrade-btn'].addEventListener('click', () => startOperation('upgrade', els['apt-upgrade-btn']));
     els['apt-stop-btn'].addEventListener('click', () => stopOperation(els['apt-stop-btn']));
     els['auto-updates-form'].addEventListener('submit', saveSettings);
     els['livepatch-form'].addEventListener('submit', setupLivepatch);
+    els['app-update-refresh-btn'].addEventListener('click', () => refreshApplicationUpdate(els['app-update-refresh-btn']));
+    els['app-update-now-btn'].addEventListener('click', () => startApplicationUpdate(els['app-update-now-btn']));
     els['remove-locks-btn'].addEventListener('click', () => removeStaleLocks(els['remove-locks-btn']));
   }
 

@@ -139,6 +139,8 @@ account default : simplesaferserver
                 'check_health.sh',
                 'check_health.py',
                 'backup_cloud.sh',
+                'app_update.sh',
+                'app_update.py',
                 'log_alert.py',
                 'ddns_update.sh',
                 'ddns_update.py',
@@ -251,6 +253,12 @@ account default : simplesaferserver
                 minutes_before=4,
             )
             check_mount_time = f"{check_mount_hour:02d}:{check_mount_minute:02d}:00"
+            app_update_hour, app_update_minute = _time_before(
+                check_mount_hour,
+                check_mount_minute,
+                minutes_before=15,
+            )
+            app_update_time = f"{app_update_hour:02d}:{app_update_minute:02d}:00"
 
             # Define services and timers with proper formatting
             services = {
@@ -357,6 +365,32 @@ Persistent=true
 [Install]
 WantedBy=timers.target
 """,
+                'app_update.service': """[Unit]
+Description=SimpleSaferServer Application Update
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/app_update.sh
+User=root
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+""",
+                'app_update.timer': f"""[Unit]
+Description=Run SimpleSaferServer application update before backup maintenance
+
+[Timer]
+OnCalendar=*-*-* {app_update_time}
+Persistent=true
+RandomizedDelaySec=30
+
+[Install]
+WantedBy=timers.target
+""",
             }
 
             # Write all service and timer files
@@ -372,7 +406,13 @@ WantedBy=timers.target
             self.run_command(['systemctl', 'daemon-reload'])
 
             if not activate_timers:
-                for service_name in ['check_mount', 'check_health', 'backup_cloud', 'ddns_update']:
+                for service_name in [
+                    'check_mount',
+                    'check_health',
+                    'backup_cloud',
+                    'ddns_update',
+                    'app_update',
+                ]:
                     # Persistent timers replay missed runs as soon as they start. During first-run
                     # setup the config still has empty mount/rclone/email fields, so keep every
                     # generated recurring unit inactive until the wizard completes.
@@ -388,7 +428,13 @@ WantedBy=timers.target
                 return True, None
 
             # Enable and start services and timers
-            for service_name in ['check_mount', 'check_health', 'backup_cloud', 'ddns_update']:
+            for service_name in [
+                'check_mount',
+                'check_health',
+                'backup_cloud',
+                'ddns_update',
+                'app_update',
+            ]:
                 # Enable services
                 self.run_command(['systemctl', 'enable', f'{service_name}.service'])
                 # Enable timers

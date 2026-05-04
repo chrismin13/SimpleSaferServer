@@ -18,6 +18,8 @@ Four cards display real-time status:
 - **Actions**: Each task can be run immediately via the `Run Now` button.
 - **Refresh**: Button to reload the task schedule.
 - Scheduled task success follows the underlying command exit code. For DDNS, a provider-level error or missing provider configuration fails the `DDNS Update` task after the provider details are written for the DDNS page.
+- `App Update` is the application self-update task. It runs the installed Git checkout's
+  fast-forward update path and full installer, and is scheduled before the daily mount check.
 
 ## System Actions
 - **Unmount Storage**: Opens a modal to confirm a temporary unmount of the configured backup drive.

@@ -3,6 +3,7 @@ from typing import Any
 from flask import Blueprint, current_app, render_template, session
 
 from simple_safer_server.adapters.command_runner import CalledProcessError
+from simple_safer_server.services.app_updates import AppUpdateError
 from simple_safer_server.services.system_updates import AptOperationConflict
 from simple_safer_server.services.user_manager import admin_required, api_admin_required
 from simple_safer_server.web.api import json_data, json_problem, json_request_data
@@ -37,11 +38,54 @@ def api_system_updates_summary():
                 "operation": manager.get_status(),
                 "settings": manager.get_settings(),
                 "livepatch": manager.get_livepatch_status(),
+                "application": _get_services().app_update_manager.get_status(fetch_remote=False),
             }
         )
     except Exception:
         current_app.logger.exception("Error loading system update summary")
         return json_problem(OperationProblem("Failed to load system update summary."))
+
+
+@system_updates.route("/api/system_updates/application/refresh", methods=["POST"])
+@api_admin_required
+def api_system_updates_application_refresh():
+    try:
+        return json_data(
+            {"application": _get_services().app_update_manager.get_status(fetch_remote=True)}
+        )
+    except Exception:
+        current_app.logger.exception("Error refreshing application update status")
+        return json_problem(OperationProblem("Failed to refresh application update status."))
+
+
+@system_updates.route("/api/system_updates/application/update", methods=["POST"])
+@api_admin_required
+def api_system_updates_application_update():
+    try:
+        app_update_manager = _get_services().app_update_manager
+        status = app_update_manager.get_status(fetch_remote=False)
+        if not status.get("can_update"):
+            return json_problem(
+                ConflictProblem(
+                    status.get("message") or "Application update is not available.",
+                    slug="application-update-not-available",
+                )
+            )
+        task = _get_services().task_service.get_task("App Update")
+        if task is None:
+            return json_problem(
+                OperationProblem(
+                    "Application update task is not installed.",
+                    slug="application-update-task-missing",
+                )
+            )
+        task.start()
+        return json_data({"application": status}, message="Application update started.")
+    except AppUpdateError as exc:
+        return json_problem(ConflictProblem(str(exc), slug="application-update-not-available"))
+    except Exception:
+        current_app.logger.exception("Could not start application update")
+        return json_problem(OperationProblem("Could not start application update."))
 
 
 @system_updates.route("/api/system_updates/status", methods=["GET"])

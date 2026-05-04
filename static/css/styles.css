@@ -2259,6 +2259,13 @@ pre code {
   align-items: center;
 }
 
+.system-updates-app-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  gap: var(--sp-4);
+  align-items: center;
+}
+
 .system-updates-progress-wrap {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 3rem;
@@ -2409,6 +2416,10 @@ pre code {
   }
 
   .system-updates-command-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .system-updates-app-grid {
     grid-template-columns: 1fr;
   }
 

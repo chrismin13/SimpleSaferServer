@@ -94,6 +94,7 @@ class TaskService:
             Task(self, "Drive Health Check", "check_health.service", "check_health.timer"),
             Task(self, "Cloud Backup", "backup_cloud.service", "backup_cloud.timer"),
             Task(self, "DDNS Update", "ddns_update.service", "ddns_update.timer"),
+            Task(self, "App Update", "app_update.service", "app_update.timer"),
         ]
 
     def get_task(self, name: str) -> Optional[Task]:
@@ -195,6 +196,11 @@ class TaskService:
                     minutes=minutes
                 )
                 return next_run.strftime("%Y-%m-%d %H:%M:00")
+            if task.name == "App Update":
+                backup_time = self.config_manager.get_value(
+                    "schedule", "backup_cloud_time", "03:00"
+                )
+                return self._require_fake_state().get_next_run(task.name, backup_time or "03:00")
             backup_time = self.config_manager.get_value("schedule", "backup_cloud_time", "03:00")
             return self._require_fake_state().get_next_run(task.name, backup_time or "03:00")
         try:

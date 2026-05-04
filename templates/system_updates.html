@@ -30,6 +30,44 @@
   </div>
 </section>
 
+<section class="system-updates-panel system-updates-app-panel">
+  <div class="system-updates-toolbar">
+    <div class="system-updates-status-main">
+      <strong id="app-update-title">Application</strong>
+      <span id="app-update-detail">Loading application version…</span>
+    </div>
+    <span class="badge badge-neutral" id="app-update-badge">Checking...</span>
+  </div>
+  <div class="system-updates-app-grid">
+    <div class="system-updates-facts">
+      <div>
+        <span>Source</span>
+        <strong id="app-update-source">—</strong>
+      </div>
+      <div>
+        <span>Commit</span>
+        <strong class="text-mono" id="app-update-commit">—</strong>
+      </div>
+      <div>
+        <span>Remote Check</span>
+        <strong id="app-update-checked">Not checked</strong>
+      </div>
+    </div>
+    <div class="system-updates-actions">
+      <button type="button" class="btn btn-secondary btn-sm" id="app-update-refresh-btn">
+        <i class="fas fa-rotate"></i> Refresh
+      </button>
+      <button type="button" class="btn btn-primary btn-sm" id="app-update-now-btn" disabled
+        data-confirm="Update SimpleSaferServer now? This pulls the latest branch commit, reruns the installer, and restarts the web service."
+        data-confirm-title="Update application"
+        data-confirm-button="Update"
+        data-confirm-class="btn-primary">
+        <i class="fas fa-code-pull-request"></i> Update Now
+      </button>
+    </div>
+  </div>
+</section>
+
 <section class="system-updates-panel system-updates-command-panel">
   <div class="system-updates-toolbar">
     <div class="system-updates-status-main">

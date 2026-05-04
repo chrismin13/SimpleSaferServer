@@ -23,6 +23,7 @@ class CommandRunner:
         stderr: Optional[Any] = None,
         text: bool = False,
         timeout: Optional[float] = None,
+        cwd: Optional[Any] = None,
     ) -> subprocess.CompletedProcess:
         # Keep subprocess use centralized so future allowlisting, logging, and
         # fake adapters can be added without changing feature services again.
@@ -41,6 +42,8 @@ class CommandRunner:
             kwargs["stderr"] = stderr
         if timeout is not None:
             kwargs["timeout"] = timeout
+        if cwd is not None:
+            kwargs["cwd"] = cwd
         return subprocess.run(command, **kwargs)
 
     def popen(

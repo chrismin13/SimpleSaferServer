@@ -31,6 +31,7 @@ from simple_safer_server.routes.system_updates import system_updates as system_u
 from simple_safer_server.routes.tasks import tasks as task_routes
 from simple_safer_server.routes.users import users as users_routes
 from simple_safer_server.services.alerts_service import AlertsService
+from simple_safer_server.services.app_updates import AppUpdateManager
 from simple_safer_server.services.cloud_backup_service import CloudBackupService
 from simple_safer_server.services.config_manager import ConfigManager
 from simple_safer_server.services.container import AppServices
@@ -109,6 +110,7 @@ def create_app() -> Tuple[Flask, SocketIO]:
     rclone_adapter = RcloneAdapter(command_runner)
     storage_command_adapter = StorageCommandAdapter(command_runner)
     system_updates_manager = SystemUpdatesManager(config_manager, runtime=runtime)
+    app_update_manager = AppUpdateManager(runtime=runtime)
     task_service = TaskService(
         runtime=runtime,
         fake_state=fake_state,
@@ -156,6 +158,7 @@ def create_app() -> Tuple[Flask, SocketIO]:
         config_manager=config_manager,
         system_utils=system_utils,
         system_updates_manager=system_updates_manager,
+        app_update_manager=app_update_manager,
         smb_manager=smb_manager,
         user_manager=user_manager,
         task_service=task_service,

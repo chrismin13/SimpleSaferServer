@@ -32,6 +32,8 @@ SCRIPT_FILES=(
   import_legacy.py
   ddns_update.sh
   ddns_update.py
+  app_update.sh
+  app_update.py
 )
 
 # The installer writes rclone config where the root-owned scheduled tasks can
@@ -352,7 +354,7 @@ main() {
     fi
 
     echo "Stopping and disabling systemd units..."
-    for svc in check_mount check_health backup_cloud ddns_update; do
+    for svc in check_mount check_health backup_cloud ddns_update app_update; do
         remove_systemd_unit "${svc}.timer"
         remove_systemd_unit "${svc}.service"
     done

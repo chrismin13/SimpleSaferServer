@@ -1,0 +1,28 @@
+#!/usr/bin/env python3
+import sys
+from pathlib import Path
+
+APP_ROOT = Path(__file__).resolve().parents[1]
+if str(APP_ROOT) not in sys.path:
+    sys.path.insert(0, str(APP_ROOT))
+
+
+def main() -> int:
+    from simple_safer_server.services.app_updates import AppUpdateError, AppUpdateManager
+
+    manager = AppUpdateManager()
+    try:
+        before = manager.get_status(fetch_remote=True)
+        print(before.get("message") or "Application update status checked.")
+        if not before.get("can_update"):
+            return 0
+        after = manager.update_now()
+        print(after.get("message") or "Application update completed.")
+        return 0
+    except AppUpdateError as exc:
+        print(f"Application update failed: {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

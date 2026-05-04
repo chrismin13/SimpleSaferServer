@@ -57,7 +57,13 @@ class SystemUtilsTimerActivationTests(unittest.TestCase):
 
             # Fresh installs write the unit files early, but Persistent=true timers must not
             # replay missed work until the setup wizard has collected the real backup config.
-            for service_name in ["check_mount", "check_health", "backup_cloud", "ddns_update"]:
+            for service_name in [
+                "check_mount",
+                "check_health",
+                "backup_cloud",
+                "ddns_update",
+                "app_update",
+            ]:
                 self.assertIn(
                     (["systemctl", "stop", f"{service_name}.timer"], False), system_utils.commands
                 )
@@ -84,7 +90,13 @@ class SystemUtilsTimerActivationTests(unittest.TestCase):
             self.assertTrue(ok, error)
             self.assertIsNone(error)
 
-            for service_name in ["check_mount", "check_health", "backup_cloud", "ddns_update"]:
+            for service_name in [
+                "check_mount",
+                "check_health",
+                "backup_cloud",
+                "ddns_update",
+                "app_update",
+            ]:
                 self.assertIn(
                     (["systemctl", "enable", f"{service_name}.service"], True),
                     system_utils.commands,
@@ -124,6 +136,10 @@ class SystemUtilsTimerActivationTests(unittest.TestCase):
             self.assertIn(
                 "OnCalendar=*-*-* 02:56:00",
                 (runtime.systemd_dir / "check_mount.timer").read_text(),
+            )
+            self.assertIn(
+                "OnCalendar=*-*-* 02:41:00",
+                (runtime.systemd_dir / "app_update.timer").read_text(),
             )
             self.assertIn(
                 "OnCalendar=*-*-* 02:58:00",
