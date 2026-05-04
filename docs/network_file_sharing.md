@@ -1,8 +1,8 @@
 # Network File Sharing
 
 The Network File Sharing page manages Samba shares and Samba service status.
-It also includes the server name because that name is used when finding the
-server on the network and in alert emails.
+It also includes the server name. This is the name you'll use to find this
+server on your network. Scheduled task alert emails include it in the subject.
 
 SimpleSaferServer now distinguishes between two kinds of Samba shares:
 

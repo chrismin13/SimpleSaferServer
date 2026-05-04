@@ -28,8 +28,8 @@ def api_get_server_identity():
 @server_identity.route("/api/server_identity", methods=["PUT"])
 @api_admin_required
 def api_update_server_identity():
+    data = json_request_data()
     try:
-        data = json_request_data()
         result = _get_services().server_identity_service.update_server_name(
             data.get("server_name"),
             restart_samba=True,

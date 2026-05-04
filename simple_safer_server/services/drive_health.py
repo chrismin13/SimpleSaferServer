@@ -798,11 +798,15 @@ def _log_and_email_alert(config_manager, runtime, title, message, *, alert_type,
 
     email_address = (config_manager.get_value("backup", "email_address", "") or "").strip()
     from_address = (config_manager.get_value("backup", "from_address", "") or "").strip()
+    server_name = (
+        config_manager.get_value("system", "server_name", "SimpleSaferServer")
+        or "SimpleSaferServer"
+    ).strip()
     if not email_address or not from_address:
         LOGGER.warning("Skipping email alert because email settings are incomplete.")
         return
 
-    email_body = f"Subject: {title}\nFrom: {from_address}\n\n{message}"
+    email_body = f"Subject: {title} - {server_name}\nFrom: {from_address}\n\n{message}"
     try:
         drive_health_command_adapter.send_email(from_address, email_address, email_body)
     except (CalledProcessError, OSError, TimeoutExpired) as exc:

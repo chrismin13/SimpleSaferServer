@@ -13,8 +13,8 @@ from simple_safer_server.services.runtime import get_runtime
 LOGGER = logging.getLogger(__name__)
 
 SERVER_NAME_HELP_TEXT = (
-    "This is the name you'll use to find this server on your network, "
-    "and it appears in alert emails."
+    "This is the name you'll use to find this server on your network. "
+    "Scheduled task alert emails include it in the subject."
 )
 SERVER_NAME_VALIDATION_MESSAGE = (
     "Server name may only contain letters, numbers, and hyphens, and cannot "

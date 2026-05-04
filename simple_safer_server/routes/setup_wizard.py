@@ -231,6 +231,10 @@ def _unmount_selected_partition_with_managed_retry(partition, force_managed=Fals
 def setup_page():
     """Render the setup wizard page"""
     try:
+        # Setup routes still support module-level test seams, while shared
+        # services write through the app-factory ConfigManager. Reload before
+        # validation so cross-service setup writes are visible immediately.
+        config_manager.load_config()
         current_config = config_manager.get_all_config()
         # Log section names only; setup config can include admin contact details
         # and managed service paths that do not belong in routine logs.
@@ -796,6 +800,10 @@ def setup_smb_share(config):
 def complete_setup():
     """Complete the setup process"""
     try:
+        # Cloud-backup setup writes through the shared app-factory service; this
+        # module-level manager must reload before final missing-field checks and
+        # systemd generation use the setup snapshot.
+        config_manager.load_config()
         current_config = config_manager.get_all_config()
         # The validation loop below logs only missing section/field names.
         logger.debug("Completing setup after loading current configuration")
