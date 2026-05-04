@@ -162,6 +162,50 @@ class InstallPreflightTests(unittest.TestCase):
             "systemd does not appear to be running as the host init system", result.stdout
         )
 
+    def test_script_install_loop_skips_same_app_destination(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            scripts_dir = root / "scripts"
+            bin_dir = root / "bin"
+            scripts_dir.mkdir()
+            bin_dir.mkdir()
+            script = scripts_dir / "app_update.sh"
+            script.write_text("#!/bin/bash\necho app\n")
+            py_script = scripts_dir / "app_update.py"
+            py_script.write_text("#!/usr/bin/env python3\nprint('app')\n")
+
+            snippet = textwrap.dedent(
+                f"""\
+                set -e
+                SCRIPTS_DIR="{scripts_dir}"
+                BIN_DIR="{bin_dir}"
+                cd "{root}"
+                for script in scripts/*.sh scripts/*.py; do
+                  script_name="$(basename "$script")"
+                  app_script_path="$SCRIPTS_DIR/$script_name"
+                  bin_script_path="$BIN_DIR/$script_name"
+                  if [ "$(readlink -f "$script")" != "$(readlink -f "$app_script_path" 2>/dev/null || printf '%s' "$app_script_path")" ]; then
+                    cp "$script" "$app_script_path"
+                  fi
+                  chmod +x "$app_script_path"
+                  cp "$script" "$bin_script_path"
+                  chmod +x "$bin_script_path"
+                done
+                """
+            )
+
+            result = subprocess.run(
+                ["bash", "-lc", snippet],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+            self.assertTrue(os.access(script, os.X_OK))
+            self.assertTrue(os.access(py_script, os.X_OK))
+            self.assertEqual((bin_dir / "app_update.sh").read_text(), "#!/bin/bash\necho app\n")
+
 
 if __name__ == "__main__":
     unittest.main()

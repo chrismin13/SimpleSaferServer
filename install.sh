@@ -436,10 +436,17 @@ echo -e "${YELLOW}Step 7: Installing scripts...${NC}"
 mkdir -p "$SCRIPTS_DIR"
 mkdir -p "$BIN_DIR"
 for script in scripts/*.sh scripts/*.py; do
-  cp "$script" "$SCRIPTS_DIR/"
-  chmod +x "$SCRIPTS_DIR/$(basename $script)"
-  cp "$script" "$BIN_DIR/"
-  chmod +x "$BIN_DIR/$(basename $script)"
+  script_name="$(basename "$script")"
+  app_script_path="$SCRIPTS_DIR/$script_name"
+  bin_script_path="$BIN_DIR/$script_name"
+  # Reinstalling from /opt/SimpleSaferServer makes the app script source and
+  # destination the same file. Skip that copy so cp does not stop the installer.
+  if [ "$(readlink -f "$script")" != "$(readlink -f "$app_script_path" 2>/dev/null || printf '%s' "$app_script_path")" ]; then
+    cp "$script" "$app_script_path"
+  fi
+  chmod +x "$app_script_path"
+  cp "$script" "$bin_script_path"
+  chmod +x "$bin_script_path"
 done
 echo -e "${GREEN}✔ Scripts installed to $SCRIPTS_DIR and $BIN_DIR.${NC}\n"
 
