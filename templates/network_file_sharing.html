@@ -354,6 +354,9 @@ document.addEventListener('DOMContentLoaded', function() {
   loadUsers();
 
   document.getElementById('serverNameForm').addEventListener('submit', saveServerName);
+  document.getElementById('serverNameInput').addEventListener('input', function() {
+    forceServerNameLowercase(this);
+  });
   document.getElementById('saveShareBtn').addEventListener('click', addShare);
   document.getElementById('updateShareBtn').addEventListener('click', updateShare);
   document.getElementById('confirmDeleteShareBtn').addEventListener('click', deleteShare);
@@ -417,6 +420,11 @@ function normalizeServerName(value) {
   return String(value || '').trim().toLowerCase();
 }
 
+function forceServerNameLowercase(input) {
+  const lowerValue = input.value.toLowerCase();
+  if (input.value !== lowerValue) input.value = lowerValue;
+}
+
 function isValidServerName(value) {
   return /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(normalizeServerName(value));
 }
@@ -437,6 +445,7 @@ async function saveServerName(event) {
   if (event) event.preventDefault();
   const input = document.getElementById('serverNameInput');
   const saveBtn = document.getElementById('saveServerNameBtn');
+  forceServerNameLowercase(input);
   const serverName = normalizeServerName(input.value);
 
   if (!isValidServerName(serverName)) {
