@@ -453,7 +453,15 @@ echo -e "${GREEN}✔ Scripts installed to $SCRIPTS_DIR and $BIN_DIR.${NC}\n"
 # 8. Copy model files
 echo -e "${YELLOW}Step 8: Copying model files...${NC}"
 mkdir -p "$MODEL_DIR"
-cp harddrive_model/* "$MODEL_DIR/"
+for model_file in harddrive_model/*; do
+  model_name="$(basename "$model_file")"
+  model_dest_path="$MODEL_DIR/$model_name"
+  # Reinstalling from /opt/SimpleSaferServer makes the model source and
+  # destination identical. Skip same-file copies but keep permissions intact.
+  if [ "$(readlink -f "$model_file")" != "$(readlink -f "$model_dest_path" 2>/dev/null || printf '%s' "$model_dest_path")" ]; then
+    cp "$model_file" "$model_dest_path"
+  fi
+done
 echo -e "${GREEN}✔ Model files copied.${NC}\n"
 
 # 9. Install/refresh systemd service for Flask app

@@ -206,6 +206,39 @@ class InstallPreflightTests(unittest.TestCase):
             self.assertTrue(os.access(py_script, os.X_OK))
             self.assertEqual((bin_dir / "app_update.sh").read_text(), "#!/bin/bash\necho app\n")
 
+    def test_model_install_loop_skips_same_app_destination(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            model_dir = root / "harddrive_model"
+            model_dir.mkdir()
+            model = model_dir / "xgb_model.json"
+            model.write_text('{"model": true}\n')
+
+            snippet = textwrap.dedent(
+                f"""\
+                set -e
+                MODEL_DIR="{model_dir}"
+                cd "{root}"
+                for model_file in harddrive_model/*; do
+                  model_name="$(basename "$model_file")"
+                  model_dest_path="$MODEL_DIR/$model_name"
+                  if [ "$(readlink -f "$model_file")" != "$(readlink -f "$model_dest_path" 2>/dev/null || printf '%s' "$model_dest_path")" ]; then
+                    cp "$model_file" "$model_dest_path"
+                  fi
+                done
+                """
+            )
+
+            result = subprocess.run(
+                ["bash", "-lc", snippet],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+            self.assertEqual(model.read_text(), '{"model": true}\n')
+
 
 if __name__ == "__main__":
     unittest.main()
