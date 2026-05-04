@@ -610,6 +610,82 @@ body.fake-mode-active .toast-stack {
 }
 .btn-ghost:hover { background: var(--bg-hover); color: var(--text-primary); }
 
+/* Keep this identity strip compact; it sits between status controls and the shares table. */
+.server-identity-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  min-height: 44px;
+  padding: var(--sp-2) var(--sp-3);
+  background: hsla(220, 16%, 12%, 0.58);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.server-identity-main {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+
+.server-identity-mark {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  background: var(--bg-overlay);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.server-identity-copy {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.server-identity-title {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+}
+
+.server-identity-value {
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semi);
+  max-width: min(30vw, 24rem);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .server-identity-section {
+    gap: var(--sp-3);
+    padding-right: var(--sp-2);
+  }
+
+  .server-identity-copy {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .server-identity-value {
+    max-width: 100%;
+  }
+}
+
 .btn-outline-primary {
   background: transparent;
   color: var(--accent-text);

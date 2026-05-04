@@ -134,6 +134,32 @@ raise SystemExit(1)
 PY
 }
 
+managed_hostname_summary() {
+    if [ ! -f "$CONFIG_FILE" ]; then
+        return 0
+    fi
+
+    require_python3 "read hostname metadata from $CONFIG_FILE" || return 1
+
+    python3 - "$CONFIG_FILE" <<'PY'
+import configparser
+import socket
+import sys
+
+config = configparser.ConfigParser()
+config.read(sys.argv[1])
+if not config.getboolean("system", "hostname_managed", fallback=False):
+    raise SystemExit(0)
+
+original = config.get("system", "original_hostname", fallback="").strip()
+applied = config.get("system", "applied_hostname", fallback="").strip()
+current = socket.gethostname().strip()
+print("original={}".format(original))
+print("applied={}".format(applied))
+print("current={}".format(current))
+PY
+}
+
 backup_file_if_present() {
     local path="$1"
     local label="$2"
@@ -319,6 +345,11 @@ main() {
     if livepatch_was_managed; then
         livepatch_managed="true"
     fi
+    local hostname_summary=""
+    if ! hostname_summary="$(managed_hostname_summary)"; then
+        echo "ERROR: Failed to read SimpleSaferServer hostname metadata from $CONFIG_FILE."
+        exit 1
+    fi
 
     echo "Stopping and disabling systemd units..."
     for svc in check_mount check_health backup_cloud ddns_update; do
@@ -397,6 +428,28 @@ main() {
         echo "SimpleSaferServer enabled Ubuntu Livepatch through Ubuntu Pro integration."
         echo "Ubuntu Pro and Livepatch state were left in place."
         echo "Review or disable them manually if you do not want them after uninstall."
+    fi
+    if [ -n "$hostname_summary" ]; then
+        local original_hostname=""
+        local applied_hostname=""
+        local current_hostname=""
+        while IFS='=' read -r key value; do
+            case "$key" in
+                original) original_hostname="$value" ;;
+                applied) applied_hostname="$value" ;;
+                current) current_hostname="$value" ;;
+            esac
+        done <<< "$hostname_summary"
+
+        echo "SimpleSaferServer changed this server's hostname during setup or management."
+        if [ -n "$original_hostname" ] && [ -n "$applied_hostname" ]; then
+            echo "Original hostname: $original_hostname"
+            echo "Last SimpleSaferServer-applied hostname: $applied_hostname"
+        fi
+        if [ -n "$current_hostname" ] && [ "$current_hostname" != "$applied_hostname" ]; then
+            echo "Current hostname: $current_hostname"
+        fi
+        echo "The hostname and /etc/hosts were left in place. Change them manually if you want a different server name after uninstall."
     fi
 }
 

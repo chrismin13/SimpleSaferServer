@@ -7,9 +7,9 @@
 {% endblock %}
 
 {% block content %}
-<!-- System Status - compact inline, no card -->
-<div class="d-flex items-center justify-between mb-6 flex-wrap gap-3" id="systemStatusArea">
-  <div class="d-flex items-center gap-3">
+<!-- Connection summary - compact inline, no card -->
+<div class="d-flex items-center justify-between mb-4 flex-wrap gap-3" id="systemStatusArea">
+  <div class="d-flex items-center gap-3 flex-wrap">
     <span class="badge badge-neutral" id="overallStatus">Checking…</span>
     <span class="text-secondary" id="statusMessage" style="font-size: var(--text-sm);">Checking system status…</span>
   </div>
@@ -29,10 +29,9 @@
 </div>
 
 <!-- Collapsible technical details -->
-<div class="collapse-content mb-6" id="technicalDetails">
-  <div class="p-4" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md);">
-    <h4 class="mb-3" style="font-size: var(--text-sm); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;">Service Details</h4>
-    <div class="d-flex gap-6 flex-wrap">
+<div class="collapse-content mb-5" id="technicalDetails">
+  <div class="p-3" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md);">
+    <div class="d-flex gap-6 flex-wrap items-center">
       <div class="d-flex items-center gap-2">
         <span class="badge badge-neutral" id="smbdStatus">Checking…</span>
         <span style="font-size: var(--text-sm);">SMB Daemon (smbd)</span>
@@ -50,6 +49,21 @@
     </div>
   </div>
 </div>
+
+<section class="server-identity-section mb-5">
+  <div class="server-identity-main">
+    <div class="server-identity-mark" aria-hidden="true">
+      <i class="fas fa-server"></i>
+    </div>
+    <div class="server-identity-copy">
+      <span class="server-identity-title">Server Name</span>
+      <strong class="text-mono server-identity-value" id="serverNameValue">Loading…</strong>
+    </div>
+  </div>
+  <button class="btn btn-secondary btn-sm" type="button" data-modal-target="serverNameModal">
+    <i class="fas fa-pen me-1"></i>Edit
+  </button>
+</section>
 
 <!-- SMB Shares -->
 <section>
@@ -91,6 +105,39 @@
     </table>
   </div>
 </section>
+
+<!-- Server Name Modal -->
+<div class="modal-overlay" id="serverNameModal">
+  <div class="modal-container">
+    <div class="modal-header">
+      <h5>Edit Server Name</h5>
+      <button class="modal-close" data-modal-close><i class="fas fa-xmark"></i></button>
+    </div>
+    <div class="modal-body">
+      <form id="serverNameForm" novalidate>
+        <div class="form-group mb-4">
+          <label for="serverNameInput" class="form-label">Server Name</label>
+          <input type="text" class="form-control" id="serverNameInput" required>
+          <div class="invalid-feedback">Use letters, numbers, and hyphens only. The name cannot start or end with a hyphen.</div>
+          <div class="form-hint">This is the name you'll use to find this server on your network, and it appears in alert emails.</div>
+        </div>
+        <div class="alert alert-warning" style="font-size: var(--text-sm);">
+          <div class="alert-content">
+            <i class="fas fa-triangle-exclamation"></i>
+            <span class="alert-message">Saving restarts file sharing discovery and may briefly interrupt connected clients.</span>
+          </div>
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer">
+      <div class="modal-footer-message" data-modal-error role="alert" aria-live="polite"></div>
+      <div class="modal-footer-actions">
+        <button class="btn btn-secondary" data-modal-close>Cancel</button>
+        <button class="btn btn-primary" id="saveServerNameBtn">Save Server Name</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- Add Share Modal -->
 <div class="modal-overlay" id="addShareModal">
@@ -298,12 +345,15 @@ let shares = [];
 let currentDeleteShare = null;
 let allUsers = [];
 let unmanagedShareNames = [];
+let currentServerName = '';
 
 document.addEventListener('DOMContentLoaded', function() {
+  loadServerIdentity();
   loadShares();
   loadSMBStatus();
   loadUsers();
 
+  document.getElementById('saveServerNameBtn').addEventListener('click', saveServerName);
   document.getElementById('saveShareBtn').addEventListener('click', addShare);
   document.getElementById('updateShareBtn').addEventListener('click', updateShare);
   document.getElementById('confirmDeleteShareBtn').addEventListener('click', deleteShare);
@@ -328,7 +378,7 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 
   // Reset validation when modals close
-  ['addShareModal', 'editShareModal'].forEach(modalId => {
+  ['serverNameModal', 'addShareModal', 'editShareModal'].forEach(modalId => {
     document.getElementById(modalId).addEventListener('modal:hidden', function() {
       const form = this.querySelector('form');
       if (form) {
@@ -337,6 +387,11 @@ document.addEventListener('DOMContentLoaded', function() {
         });
       }
     });
+  });
+
+  document.getElementById('serverNameModal').addEventListener('modal:hidden', function() {
+    document.getElementById('serverNameInput').value = currentServerName;
+    clearModalError('serverNameModal');
   });
 
   document.getElementById('addShareModal').addEventListener('modal:hidden', function() {
@@ -357,6 +412,69 @@ document.addEventListener('DOMContentLoaded', function() {
   setupFolderPicker('browseSharePathBtn', 'sharePath');
   setupFolderPicker('browseEditSharePathBtn', 'editSharePath');
 });
+
+function normalizeServerName(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function isValidServerName(value) {
+  return /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(normalizeServerName(value));
+}
+
+function loadServerIdentity() {
+  window.ApiClient.fetchJson('/api/server_identity')
+    .then(({ data }) => {
+      currentServerName = data.server_name || data.hostname || '';
+      document.getElementById('serverNameValue').textContent = currentServerName || 'Not set';
+      document.getElementById('serverNameInput').value = currentServerName;
+    })
+    .catch(() => {
+      document.getElementById('serverNameValue').textContent = 'Unavailable';
+    });
+}
+
+async function saveServerName() {
+  const input = document.getElementById('serverNameInput');
+  const saveBtn = document.getElementById('saveServerNameBtn');
+  const serverName = normalizeServerName(input.value);
+
+  if (!isValidServerName(serverName)) {
+    input.classList.add('is-invalid');
+    return;
+  }
+  input.value = serverName;
+  input.classList.remove('is-invalid');
+
+  const confirmed = await window.showConfirmationDialog({
+    title: 'Change Server Name',
+    message: `Change the server name to "${serverName}"?
+
+File sharing discovery will restart, and connected clients may be interrupted briefly.`,
+    confirmLabel: 'Save',
+    confirmClass: 'btn-warning'
+  });
+  if (!confirmed) return;
+
+  window.AsyncButtonState.start(saveBtn);
+  window.ApiClient.fetchJson('/api/server_identity', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ server_name: serverName })
+  })
+    .then(({ data, message }) => {
+      window.AsyncButtonState.success(saveBtn);
+      currentServerName = data.server_name || serverName;
+      document.getElementById('serverNameValue').textContent = currentServerName;
+      document.getElementById('serverNameInput').value = currentServerName;
+      BunkerModal.hide('serverNameModal');
+      showAlert(message || 'Server name updated.', data.warning ? 'warning' : 'success');
+      setTimeout(loadSMBStatus, 2000);
+    })
+    .catch((error) => {
+      window.AsyncButtonState.error(saveBtn);
+      showModalError('serverNameModal', error.message || 'Failed to update server name');
+    });
+}
 
 function setupFolderPicker(browseBtnId, pathInputId) {
   const browseBtn = document.getElementById(browseBtnId);

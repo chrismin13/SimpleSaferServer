@@ -16,7 +16,10 @@ That split is important because the safety checks are different.
 ## Step 1: Create Admin Account
 
 - Enter the admin username.
-- Enter the server name.
+- Enter the server name. This is the name you use to find the server on your
+  network, and it appears in alert emails.
+- Server names may contain letters, numbers, and hyphens. They cannot contain
+  spaces or start/end with a hyphen.
 - Enter and confirm the password.
 - On success, the wizard logs the user in and moves to the next step.
 - That first account becomes the initial administrator for the web UI.
