@@ -72,8 +72,9 @@ def task_detail(task_name):
     task = _get_services().task_service.get_task(task_name)
     if not task:
         abort(404)
-    logs = task.get_logs()
-    return render_template("task_detail.html", task=task, logs=logs)
+    log_lines = 500
+    logs = task.get_logs(log_lines)
+    return render_template("task_detail.html", task=task, logs=logs, log_lines=log_lines)
 
 
 @tasks.route("/task/<task_name>/logs")

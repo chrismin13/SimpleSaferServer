@@ -12,6 +12,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const refreshState = document.getElementById("task-log-refresh-state");
     const statusBadge = document.getElementById("task-status-badge");
     const taskName = autoRefreshCheckbox.getAttribute("data-task-name");
+    const logLines = autoRefreshCheckbox.getAttribute("data-log-lines") || "500";
     let intervalId;
     let initialLoad = true;
     let failedFetchCount = 0;
@@ -107,7 +108,7 @@ document.addEventListener("DOMContentLoaded", function () {
         : 0;
       const stickToBottom = distanceFromBottom < 48;
 
-      return fetch(`/task/${encodeURIComponent(taskName)}/logs`)
+      return fetch(`/task/${encodeURIComponent(taskName)}/logs?lines=${encodeURIComponent(logLines)}`)
         .then((resp) => {
           if (!resp.ok) throw new Error(`Log refresh failed with HTTP ${resp.status}`);
           return resp.text();

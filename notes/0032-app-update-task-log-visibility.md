@@ -47,6 +47,8 @@
   aligned on the right side of the log header.
 - Preserved full journal output for task logs and render installer ANSI SGR colors in the web log
   viewer after escaping command output.
+- Raised the task detail log view to the existing 500-line API cap so app updates do not immediately
+  lose most installer output during auto-refresh.
 
 Docs and uninstall impact:
 
