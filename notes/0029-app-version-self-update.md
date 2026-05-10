@@ -46,8 +46,8 @@
 
 - Added the Application section to System Updates with Refresh and Update Now.
 - Updated docs for System Updates and Dashboard.
-- Hardened the installer so self-updates can rerun it from `/opt/SimpleSaferServer` without `cp`
-  failing on script or model files that are already at their installed path.
+- Hardened the installer with a shared same-file copy helper so self-updates can rerun it from
+  `/opt/SimpleSaferServer` without `cp` failing on files already at their installed path.
 
 Docs and uninstall impact:
 

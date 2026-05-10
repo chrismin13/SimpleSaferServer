@@ -10,6 +10,12 @@ INSTALL_SCRIPT = REPO_ROOT / "install.sh"
 
 
 class InstallPreflightTests(unittest.TestCase):
+    def installer_function(self, name):
+        text = INSTALL_SCRIPT.read_text()
+        start = text.index(f"{name}() {{")
+        end = text.index("\n}\n\n", start) + len("\n}\n")
+        return text[start:end]
+
     def run_preflight(self, os_release_text, *args, fake_commands="apt-get,dpkg,systemctl"):
         with tempfile.TemporaryDirectory() as temp_dir:
             os_release_path = Path(temp_dir) / "os-release"
@@ -177,6 +183,7 @@ class InstallPreflightTests(unittest.TestCase):
             snippet = textwrap.dedent(
                 f"""\
                 set -e
+                {self.installer_function("copy_unless_same_file")}
                 SCRIPTS_DIR="{scripts_dir}"
                 BIN_DIR="{bin_dir}"
                 cd "{root}"
@@ -184,11 +191,9 @@ class InstallPreflightTests(unittest.TestCase):
                   script_name="$(basename "$script")"
                   app_script_path="$SCRIPTS_DIR/$script_name"
                   bin_script_path="$BIN_DIR/$script_name"
-                  if [ "$(readlink -f "$script")" != "$(readlink -f "$app_script_path" 2>/dev/null || printf '%s' "$app_script_path")" ]; then
-                    cp "$script" "$app_script_path"
-                  fi
+                  copy_unless_same_file "$script" "$app_script_path"
                   chmod +x "$app_script_path"
-                  cp "$script" "$bin_script_path"
+                  copy_unless_same_file "$script" "$bin_script_path"
                   chmod +x "$bin_script_path"
                 done
                 """
@@ -217,14 +222,13 @@ class InstallPreflightTests(unittest.TestCase):
             snippet = textwrap.dedent(
                 f"""\
                 set -e
+                {self.installer_function("copy_unless_same_file")}
                 MODEL_DIR="{model_dir}"
                 cd "{root}"
                 for model_file in harddrive_model/*; do
                   model_name="$(basename "$model_file")"
                   model_dest_path="$MODEL_DIR/$model_name"
-                  if [ "$(readlink -f "$model_file")" != "$(readlink -f "$model_dest_path" 2>/dev/null || printf '%s' "$model_dest_path")" ]; then
-                    cp "$model_file" "$model_dest_path"
-                  fi
+                  copy_unless_same_file "$model_file" "$model_dest_path"
                 done
                 """
             )

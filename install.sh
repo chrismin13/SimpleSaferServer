@@ -99,6 +99,20 @@ contains_os_family() {
     return 1
 }
 
+copy_unless_same_file() {
+    local source_path="$1"
+    local dest_path="$2"
+    local source_real=""
+    local dest_real=""
+
+    source_real="$(readlink -f "$source_path")"
+    dest_real="$(readlink -f "$dest_path" 2>/dev/null || printf '%s' "$dest_path")"
+    if [ "$source_real" = "$dest_real" ]; then
+        return 0
+    fi
+    cp "$source_path" "$dest_path"
+}
+
 run_installer_preflight() {
     local release_file=""
     local os_id=""
@@ -441,11 +455,9 @@ for script in scripts/*.sh scripts/*.py; do
   bin_script_path="$BIN_DIR/$script_name"
   # Reinstalling from /opt/SimpleSaferServer makes the app script source and
   # destination the same file. Skip that copy so cp does not stop the installer.
-  if [ "$(readlink -f "$script")" != "$(readlink -f "$app_script_path" 2>/dev/null || printf '%s' "$app_script_path")" ]; then
-    cp "$script" "$app_script_path"
-  fi
+  copy_unless_same_file "$script" "$app_script_path"
   chmod +x "$app_script_path"
-  cp "$script" "$bin_script_path"
+  copy_unless_same_file "$script" "$bin_script_path"
   chmod +x "$bin_script_path"
 done
 echo -e "${GREEN}✔ Scripts installed to $SCRIPTS_DIR and $BIN_DIR.${NC}\n"
@@ -458,9 +470,7 @@ for model_file in harddrive_model/*; do
   model_dest_path="$MODEL_DIR/$model_name"
   # Reinstalling from /opt/SimpleSaferServer makes the model source and
   # destination identical. Skip same-file copies but keep permissions intact.
-  if [ "$(readlink -f "$model_file")" != "$(readlink -f "$model_dest_path" 2>/dev/null || printf '%s' "$model_dest_path")" ]; then
-    cp "$model_file" "$model_dest_path"
-  fi
+  copy_unless_same_file "$model_file" "$model_dest_path"
 done
 echo -e "${GREEN}✔ Model files copied.${NC}\n"
 
