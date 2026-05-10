@@ -1,6 +1,7 @@
 (function () {
   const POLL_MS = 2000;
   let pollTimer = null;
+  let currentApplication = null;
 
   const els = {};
 
@@ -211,6 +212,7 @@
 
   function renderApplicationUpdate(application) {
     if (!application) return;
+    currentApplication = application;
     const status = application.status || 'unavailable';
     const lastRemoteCheck = application.last_remote_check_at || '';
     els['app-update-title'].textContent = 'Application';
@@ -395,6 +397,9 @@
   }
 
   async function startApplicationForceUpdate(button) {
+    const confirmed = await confirmApplicationForceUpdate(currentApplication);
+    if (!confirmed) return;
+
     window.AsyncButtonState.start(button);
     let latestApplication = null;
     try {
@@ -411,6 +416,63 @@
       if (latestApplication) renderApplicationUpdate(latestApplication);
       else refreshApplicationUpdate(els['app-update-refresh-btn']);
     }
+  }
+
+  function formatDirtyFileKind(file) {
+    if (!file || file.kind !== 'extra') return 'Changed';
+    return 'Extra';
+  }
+
+  function buildDirtyFileList(application) {
+    const files = Array.isArray(application && application.dirty_files) ? application.dirty_files : [];
+    if (!files.length) return null;
+
+    const details = document.createElement('details');
+    details.className = 'app-cleanup-file-details';
+    const summary = document.createElement('summary');
+    summary.textContent = `Show affected files (${files.length})`;
+    details.appendChild(summary);
+
+    const list = document.createElement('ul');
+    files.forEach((file) => {
+      const item = document.createElement('li');
+      const kind = document.createElement('span');
+      kind.className = `app-cleanup-file-kind ${file && file.kind === 'extra' ? 'is-extra' : 'is-changed'}`;
+      kind.textContent = formatDirtyFileKind(file);
+      const path = document.createElement('code');
+      path.textContent = file && file.path ? file.path : 'Unknown file';
+      item.append(kind, path);
+      list.appendChild(item);
+    });
+    details.appendChild(list);
+    return details;
+  }
+
+  function confirmApplicationForceUpdate(application) {
+    const body = document.createElement('div');
+    body.className = 'app-cleanup-confirm';
+
+    const message = document.createElement('p');
+    message.textContent = 'SimpleSaferServer found changed or extra files in its app folder. This can happen after older installs or manual troubleshooting.';
+    body.appendChild(message);
+
+    const action = document.createElement('p');
+    action.textContent = 'Clean Up and Update resets /opt/SimpleSaferServer to the selected branch, removes extra app-folder files, then runs the update.';
+    body.appendChild(action);
+
+    const keep = document.createElement('p');
+    keep.textContent = 'Settings, users, logs, backups, and system config stored outside the app folder are not removed.';
+    body.appendChild(keep);
+
+    const fileList = buildDirtyFileList(application);
+    if (fileList) body.appendChild(fileList);
+
+    return window.showConfirmationDialog({
+      title: 'Clean up app folder and update?',
+      body,
+      confirmLabel: 'Clean Up and Update',
+      confirmClass: 'btn-warning'
+    });
   }
 
   function bindActions() {

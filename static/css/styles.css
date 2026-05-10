@@ -1120,6 +1120,53 @@ table .text-end { text-align: right; }
   white-space: pre-line;
 }
 
+.app-cleanup-confirm {
+  display: grid;
+  gap: var(--sp-3);
+}
+
+.app-cleanup-confirm p {
+  margin: 0;
+}
+
+.app-cleanup-file-details {
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--sp-3);
+}
+
+.app-cleanup-file-details summary {
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: var(--text-sm);
+}
+
+.app-cleanup-file-details ul {
+  display: grid;
+  gap: var(--sp-2);
+  margin: var(--sp-3) 0 0;
+  max-height: 180px;
+  overflow: auto;
+  padding: 0;
+}
+
+.app-cleanup-file-details li {
+  display: grid;
+  grid-template-columns: 4.5rem minmax(0, 1fr);
+  gap: var(--sp-2);
+  align-items: baseline;
+}
+
+.app-cleanup-file-kind {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.app-cleanup-file-details code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .modal-footer {
   display: flex;
   align-items: center;

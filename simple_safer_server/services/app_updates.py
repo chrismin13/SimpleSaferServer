@@ -84,6 +84,7 @@ class AppUpdateManager:
             "dirty": False,
             "tracked_change_count": 0,
             "untracked_file_count": 0,
+            "dirty_files": [],
             "can_force_update": False,
             "diagnostic": "",
             "status": status,
@@ -148,6 +149,7 @@ class AppUpdateManager:
             "dirty": bool(status_output),
             "tracked_change_count": tracked_change_count,
             "untracked_file_count": untracked_file_count,
+            "dirty_files": self._status_files(status_output),
             "can_force_update": False,
             "diagnostic": "",
             "status": "unchecked",
@@ -170,21 +172,12 @@ class AppUpdateManager:
             status["can_force_update"] = source_type == "branch" and bool(upstream)
             if tracked_change_count and untracked_file_count:
                 status["message"] = (
-                    "Changed or extra files in the app folder are blocking the update. "
-                    "Use Clean Up and Update to reset the app folder and continue."
+                    "Changed and extra app files are blocking the update."
                 )
             elif tracked_change_count:
-                status["message"] = (
-                    "Changed app files are blocking the update. This can happen after manual "
-                    "troubleshooting or older installer behavior. Use Clean Up and Update to "
-                    "reset the app folder and continue."
-                )
+                status["message"] = "Changed app files are blocking the update."
             else:
-                status["message"] = (
-                    "Extra files in the app folder are blocking the update. This can happen "
-                    "after older installs. Use Clean Up and Update to remove extra app-folder "
-                    "files and continue."
-                )
+                status["message"] = "Extra app files are blocking the update."
             return status
 
         if source_type != "branch":
@@ -210,6 +203,26 @@ class AppUpdateManager:
             elif line:
                 tracked_change_count += 1
         return tracked_change_count, untracked_file_count
+
+    def _status_files(self, status_output: str) -> List[Dict[str, str]]:
+        files = []
+        for line in status_output.splitlines()[:50]:
+            if len(line) < 4:
+                continue
+            code = line[:2]
+            # Git porcelain uses two status columns followed by the path. Tracked edits can
+            # place their marker in either column, so trim after both columns instead of
+            # assuming a particular marker/space arrangement.
+            path = line[2:].strip()
+            if not path:
+                continue
+            files.append(
+                {
+                    "path": path,
+                    "kind": "extra" if code == "??" else "changed",
+                }
+            )
+        return files
 
     def _apply_counts(self, status: Dict[str, Any]) -> Dict[str, Any]:
         counts = self._git_stdout(

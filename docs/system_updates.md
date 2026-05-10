@@ -38,7 +38,9 @@ When changed or extra files in `/opt/SimpleSaferServer` block the normal update 
 **Clean Up and Update**. That action resets tracked app files to the selected branch, removes
 untracked files from the app folder, fetches the remote, fast-forwards the branch, and reruns the
 installer. It does not remove settings, users, logs, backups, or system configuration stored outside
-`/opt/SimpleSaferServer`. Ignored files are not removed by this cleanup path.
+`/opt/SimpleSaferServer`. Ignored files are not removed by this cleanup path. The confirmation dialog
+shows the changed and extra app-folder paths reported by Git so administrators can review what will
+be reset or removed before continuing.
 
 Application updates run through the `App Update` scheduled task. The task runs `git pull --ff-only`
 from the installed checkout and then reruns the full installer from that checkout. Full installer

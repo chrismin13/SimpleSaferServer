@@ -172,6 +172,7 @@ window.showConfirmationDialog = function showConfirmationDialog(options) {
   const {
     title = 'Confirm Action',
     message = 'Are you sure you want to continue?',
+    body = null,
     confirmLabel = 'Confirm',
     cancelLabel = 'Cancel',
     confirmClass = 'btn-primary'
@@ -188,7 +189,14 @@ window.showConfirmationDialog = function showConfirmationDialog(options) {
   const cancelBtn = document.getElementById('confirmationModalCancelBtn');
 
   titleEl.textContent = title;
-  bodyEl.textContent = message;
+  bodyEl.textContent = '';
+  if (typeof Node !== 'undefined' && body instanceof Node) {
+    bodyEl.classList.remove('modal-body-pre');
+    bodyEl.appendChild(body);
+  } else {
+    bodyEl.classList.add('modal-body-pre');
+    bodyEl.textContent = message;
+  }
   confirmBtn.textContent = confirmLabel;
   cancelBtn.textContent = cancelLabel;
   confirmBtn.className = `btn ${confirmClass}`;

@@ -106,6 +106,7 @@ class AppUpdateManagerTests(unittest.TestCase):
         self.assertTrue(status["can_force_update"])
         self.assertEqual(status["tracked_change_count"], 1)
         self.assertEqual(status["untracked_file_count"], 0)
+        self.assertEqual(status["dirty_files"], [{"path": "file.txt", "kind": "changed"}])
         self.assertIn("Changed app files are blocking the update", status["message"])
 
     def test_status_blocks_untracked_files(self):
@@ -119,7 +120,8 @@ class AppUpdateManagerTests(unittest.TestCase):
         self.assertTrue(status["can_force_update"])
         self.assertEqual(status["tracked_change_count"], 0)
         self.assertEqual(status["untracked_file_count"], 1)
-        self.assertIn("Extra files in the app folder are blocking the update", status["message"])
+        self.assertEqual(status["dirty_files"], [{"path": "extra.txt", "kind": "extra"}])
+        self.assertIn("Extra app files are blocking the update", status["message"])
 
     def test_status_blocks_mixed_local_changes(self):
         temp_dir, root, _remote, clone = self.make_repo_pair()
@@ -131,7 +133,10 @@ class AppUpdateManagerTests(unittest.TestCase):
         self.assertEqual(status["status"], "dirty")
         self.assertEqual(status["tracked_change_count"], 1)
         self.assertEqual(status["untracked_file_count"], 1)
-        self.assertIn("Changed or extra files in the app folder", status["message"])
+        self.assertEqual(len(status["dirty_files"]), 2)
+        self.assertIn({"path": "file.txt", "kind": "changed"}, status["dirty_files"])
+        self.assertIn({"path": "extra.txt", "kind": "extra"}, status["dirty_files"])
+        self.assertIn("Changed and extra app files", status["message"])
 
     def test_tag_checkout_is_pinned(self):
         temp_dir, root, _remote, clone = self.make_repo_pair()
