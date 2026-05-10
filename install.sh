@@ -99,7 +99,7 @@ contains_os_family() {
     return 1
 }
 
-copy_unless_same_file() {
+same_file() {
     local source_path="$1"
     local dest_path="$2"
     local source_real=""
@@ -107,7 +107,14 @@ copy_unless_same_file() {
 
     source_real="$(readlink -f "$source_path")"
     dest_real="$(readlink -f "$dest_path" 2>/dev/null || printf '%s' "$dest_path")"
-    if [ "$source_real" = "$dest_real" ]; then
+    [ "$source_real" = "$dest_real" ]
+}
+
+copy_unless_same_file() {
+    local source_path="$1"
+    local dest_path="$2"
+
+    if same_file "$source_path" "$dest_path"; then
         return 0
     fi
     cp "$source_path" "$dest_path"
@@ -454,9 +461,12 @@ for script in scripts/*.sh scripts/*.py; do
   app_script_path="$SCRIPTS_DIR/$script_name"
   bin_script_path="$BIN_DIR/$script_name"
   # Reinstalling from /opt/SimpleSaferServer makes the app script source and
-  # destination the same file. Skip that copy so cp does not stop the installer.
-  copy_unless_same_file "$script" "$app_script_path"
-  chmod +x "$app_script_path"
+  # destination the same file. Skip copy and chmod there so the installer does
+  # not dirty the Git checkout that future self-updates need to inspect.
+  if ! same_file "$script" "$app_script_path"; then
+    cp "$script" "$app_script_path"
+    chmod +x "$app_script_path"
+  fi
   copy_unless_same_file "$script" "$bin_script_path"
   chmod +x "$bin_script_path"
 done

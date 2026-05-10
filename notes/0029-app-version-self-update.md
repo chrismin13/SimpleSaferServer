@@ -48,6 +48,8 @@
 - Updated docs for System Updates and Dashboard.
 - Hardened the installer with a shared same-file copy helper so self-updates can rerun it from
   `/opt/SimpleSaferServer` without `cp` failing on files already at their installed path.
+- Avoided chmodding same-file script destinations because changing tracked script modes dirties the
+  installed Git checkout and blocks the updater.
 
 Docs and uninstall impact:
 

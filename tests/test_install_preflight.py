@@ -183,6 +183,7 @@ class InstallPreflightTests(unittest.TestCase):
             snippet = textwrap.dedent(
                 f"""\
                 set -e
+                {self.installer_function("same_file")}
                 {self.installer_function("copy_unless_same_file")}
                 SCRIPTS_DIR="{scripts_dir}"
                 BIN_DIR="{bin_dir}"
@@ -191,8 +192,10 @@ class InstallPreflightTests(unittest.TestCase):
                   script_name="$(basename "$script")"
                   app_script_path="$SCRIPTS_DIR/$script_name"
                   bin_script_path="$BIN_DIR/$script_name"
-                  copy_unless_same_file "$script" "$app_script_path"
-                  chmod +x "$app_script_path"
+                  if ! same_file "$script" "$app_script_path"; then
+                    cp "$script" "$app_script_path"
+                    chmod +x "$app_script_path"
+                  fi
                   copy_unless_same_file "$script" "$bin_script_path"
                   chmod +x "$bin_script_path"
                 done
@@ -207,9 +210,11 @@ class InstallPreflightTests(unittest.TestCase):
             )
 
             self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
-            self.assertTrue(os.access(script, os.X_OK))
-            self.assertTrue(os.access(py_script, os.X_OK))
+            self.assertFalse(os.access(script, os.X_OK))
+            self.assertFalse(os.access(py_script, os.X_OK))
             self.assertEqual((bin_dir / "app_update.sh").read_text(), "#!/bin/bash\necho app\n")
+            self.assertTrue(os.access(bin_dir / "app_update.sh", os.X_OK))
+            self.assertTrue(os.access(bin_dir / "app_update.py", os.X_OK))
 
     def test_model_install_loop_skips_same_app_destination(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -222,6 +227,7 @@ class InstallPreflightTests(unittest.TestCase):
             snippet = textwrap.dedent(
                 f"""\
                 set -e
+                {self.installer_function("same_file")}
                 {self.installer_function("copy_unless_same_file")}
                 MODEL_DIR="{model_dir}"
                 cd "{root}"
