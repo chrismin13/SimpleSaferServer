@@ -193,6 +193,38 @@ class AppUpdateManagerTests(unittest.TestCase):
         )
         adapter.run_installer.assert_called_once_with(clone)
 
+    def test_update_now_can_stream_pull_and_installer_to_journal(self):
+        temp_dir, root, _remote, clone = self.make_repo_pair()
+        with temp_dir:
+            adapter = MagicMock()
+            status_calls = [
+                {
+                    "can_update": True,
+                    "message": "Update available.",
+                },
+                {
+                    "can_update": False,
+                    "message": "Up to date.",
+                },
+            ]
+            manager = self.manager(root, clone, adapter=adapter)
+            manager.get_status = MagicMock(side_effect=status_calls)
+            adapter.run_git_for_journal.return_value = SimpleNamespace(returncode=0)
+            adapter.run_installer_for_journal.return_value = SimpleNamespace(returncode=0)
+
+            result = manager.update_now(stream_to_journal=True)
+
+        self.assertEqual(result["message"], "Up to date.")
+        adapter.run_git_for_journal.assert_called_once_with(
+            clone,
+            ["pull", "--ff-only"],
+            check=False,
+            timeout=None,
+        )
+        adapter.run_installer_for_journal.assert_called_once_with(clone)
+        adapter.run_git.assert_not_called()
+        adapter.run_installer.assert_not_called()
+
     def test_force_update_runs_cleanup_fetch_pull_and_installer(self):
         temp_dir, root, _remote, clone = self.make_repo_pair()
         with temp_dir:
@@ -231,6 +263,18 @@ class AppUpdateManagerTests(unittest.TestCase):
         )
         self.assertNotIn("-x", adapter.run_git.call_args_list[1].args[1])
         adapter.run_installer.assert_called_once_with(clone)
+
+    def test_cleanup_update_request_is_volatile_and_consumed_once(self):
+        temp_dir, root, _remote, clone = self.make_repo_pair()
+        with temp_dir:
+            manager = self.manager(root, clone)
+
+            manager.request_cleanup_update()
+            first_mode = manager.consume_update_request_mode()
+            second_mode = manager.consume_update_request_mode()
+
+        self.assertEqual(first_mode, "cleanup")
+        self.assertEqual(second_mode, "normal")
 
     def test_git_failure_diagnostic_includes_command_repo_return_code_and_output(self):
         temp_dir, root, _remote, clone = self.make_repo_pair()

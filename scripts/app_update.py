@@ -12,11 +12,16 @@ def main() -> int:
 
     manager = AppUpdateManager()
     try:
+        mode = manager.consume_update_request_mode()
         before = manager.get_status(fetch_remote=True)
         print(before.get("message") or "Application update status checked.")
+        if mode == "cleanup":
+            after = manager.force_update_now(stream_to_journal=True)
+            print(after.get("message") or "Application cleanup update completed.")
+            return 0
         if not before.get("can_update"):
             return 0
-        after = manager.update_now()
+        after = manager.update_now(stream_to_journal=True)
         print(after.get("message") or "Application update completed.")
         return 0
     except AppUpdateError as exc:

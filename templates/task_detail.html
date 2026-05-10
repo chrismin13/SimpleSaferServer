@@ -60,6 +60,7 @@
         <input type="checkbox" class="form-check-input" id="auto-refresh" data-task-name="{{ task.name }}" checked>
         <label class="form-check-label" for="auto-refresh">Auto-refresh</label>
       </div>
+      <span class="task-log-refresh-state" id="task-log-refresh-state" aria-live="polite"></span>
     </div>
     <pre class="log-viewer task-log-viewer">{{ logs }}</pre>
   </section>

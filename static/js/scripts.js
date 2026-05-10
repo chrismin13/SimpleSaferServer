@@ -9,9 +9,11 @@ document.addEventListener("DOMContentLoaded", function () {
   const autoRefreshCheckbox = document.getElementById("auto-refresh");
   if (autoRefreshCheckbox) {
     const logContainer = document.querySelector(".log-viewer");
+    const refreshState = document.getElementById("task-log-refresh-state");
     const taskName = autoRefreshCheckbox.getAttribute("data-task-name");
     let intervalId;
     let initialLoad = true;
+    let failedFetchCount = 0;
 
     function scrollToBottom() {
       if (logContainer) logContainer.scrollTop = logContainer.scrollHeight;
@@ -24,8 +26,13 @@ document.addEventListener("DOMContentLoaded", function () {
       const stickToBottom = distanceFromBottom < 48;
 
       return fetch(`/task/${encodeURIComponent(taskName)}/logs`)
-        .then((resp) => resp.text())
+        .then((resp) => {
+          if (!resp.ok) throw new Error(`Log refresh failed with HTTP ${resp.status}`);
+          return resp.text();
+        })
         .then((text) => {
+          failedFetchCount = 0;
+          if (refreshState) refreshState.textContent = "";
           if (logContainer) logContainer.textContent = text;
           if (initialLoad) {
             scrollToBottom();
@@ -34,7 +41,15 @@ document.addEventListener("DOMContentLoaded", function () {
             scrollToBottom();
           }
         })
-        .catch((err) => console.error(err));
+        .catch((err) => {
+          failedFetchCount += 1;
+          if (refreshState) {
+            refreshState.textContent = failedFetchCount > 1
+              ? "Reconnecting to log..."
+              : "Log refresh paused; retrying...";
+          }
+          console.error(err);
+        });
     }
 
     function start() {

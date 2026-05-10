@@ -4,7 +4,6 @@ from unittest.mock import MagicMock, patch
 from flask import Flask
 
 from simple_safer_server.routes.system_updates import system_updates
-from simple_safer_server.services.app_updates import AppUpdateError
 
 
 def _build_app(manager):
@@ -72,18 +71,45 @@ def test_application_update_returns_conflict_when_no_update_is_available():
     assert response.get_json()["detail"] == "Up to date with origin/main."
 
 
-def test_application_force_update_returns_diagnostic_without_scary_ui_detail():
+def test_application_update_starts_task_and_returns_task_url():
+    manager = MagicMock()
+    app_update_manager = MagicMock()
+    app_update_manager.get_status.return_value = {
+        "can_update": True,
+        "message": "Update available.",
+    }
+    task = MagicMock()
+    app = _build_app(manager)
+    app.extensions["simple_safer_server"].app_update_manager = app_update_manager
+    app.extensions["simple_safer_server"].task_service.get_task.return_value = task
+    user_manager = MagicMock()
+    user_manager.is_admin.return_value = True
+
+    with patch(
+        "simple_safer_server.services.user_manager.UserManager", return_value=user_manager
+    ), app.test_client() as client:
+        with client.session_transaction() as session:
+            session["username"] = "admin"
+
+        response = client.post("/api/system_updates/application/update")
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["data"]["task_url"] == "/task/App%20Update"
+    task.start.assert_called_once_with()
+
+
+def test_application_force_update_starts_task_and_returns_task_url():
     manager = MagicMock()
     app_update_manager = MagicMock()
     app_update_manager.get_status.return_value = {
         "can_force_update": True,
         "message": "Changed app files are blocking the update.",
     }
-    app_update_manager.force_update_now.side_effect = AppUpdateError(
-        "Command: git pull\nstderr:\nfatal"
-    )
+    task = MagicMock()
     app = _build_app(manager)
     app.extensions["simple_safer_server"].app_update_manager = app_update_manager
+    app.extensions["simple_safer_server"].task_service.get_task.return_value = task
     user_manager = MagicMock()
     user_manager.is_admin.return_value = True
 
@@ -96,6 +122,7 @@ def test_application_force_update_returns_diagnostic_without_scary_ui_detail():
         response = client.post("/api/system_updates/application/force_update")
 
     payload = response.get_json()
-    assert response.status_code == 500
-    assert payload["detail"] == "Application cleanup update failed. Check logs before retrying."
-    assert payload["diagnostic"] == "Command: git pull\nstderr:\nfatal"
+    assert response.status_code == 200
+    assert payload["data"]["task_url"] == "/task/App%20Update"
+    app_update_manager.request_cleanup_update.assert_called_once_with()
+    task.start.assert_called_once_with()

@@ -1409,6 +1409,12 @@ table .text-end { text-align: right; }
   margin-right: var(--sp-3);
 }
 
+.task-log-refresh-state {
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  min-height: 1.2em;
+}
+
 .task-log-header h2 {
   font-size: var(--text-md);
   margin: 0;

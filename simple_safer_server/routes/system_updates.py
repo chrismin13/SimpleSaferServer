@@ -80,7 +80,13 @@ def api_system_updates_application_update():
                 )
             )
         task.start()
-        return json_data({"application": status}, message="Application update started.")
+        return json_data(
+            {
+                "application": status,
+                "task_url": "/task/App%20Update",
+            },
+            message="Application update started. Opening the App Update log.",
+        )
     except AppUpdateError as exc:
         return json_problem(ConflictProblem(str(exc), slug="application-update-not-available"))
     except Exception:
@@ -101,10 +107,22 @@ def api_system_updates_application_force_update():
                     slug="application-force-update-not-available",
                 )
             )
-        application = app_update_manager.force_update_now()
+        app_update_manager.request_cleanup_update()
+        task = _get_services().task_service.get_task("App Update")
+        if task is None:
+            return json_problem(
+                OperationProblem(
+                    "Application update task is not installed.",
+                    slug="application-update-task-missing",
+                )
+            )
+        task.start()
         return json_data(
-            {"application": application},
-            message="Application folder cleaned up and update completed.",
+            {
+                "application": status,
+                "task_url": "/task/App%20Update",
+            },
+            message="Application cleanup update started. Opening the App Update log.",
         )
     except AppUpdateError as exc:
         current_app.logger.warning("Application cleanup update failed: %s", exc)

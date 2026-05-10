@@ -380,19 +380,16 @@
 
   async function startApplicationUpdate(button) {
     window.AsyncButtonState.start(button);
-    let latestApplication = null;
     try {
       const { message, data } = await window.ApiClient.fetchJson('/api/system_updates/application/update', {
         method: 'POST',
         headers: { 'Accept': 'application/json' }
       });
-      latestApplication = data.application;
       showAlert(message || 'Application update started.', 'success');
+      window.location.href = data.task_url || '/task/App%20Update';
     } catch (error) {
       showAlert(error.message || 'Could not start application update.', 'danger');
-    } finally {
       window.AsyncButtonState.reset(button);
-      if (latestApplication) renderApplicationUpdate(latestApplication);
     }
   }
 
@@ -401,20 +398,16 @@
     if (!confirmed) return;
 
     window.AsyncButtonState.start(button);
-    let latestApplication = null;
     try {
       const { message, data } = await window.ApiClient.fetchJson('/api/system_updates/application/force_update', {
         method: 'POST',
         headers: { 'Accept': 'application/json' }
       });
-      latestApplication = data.application;
-      showAlert(message || 'Application folder cleaned up and update completed.', 'success');
+      showAlert(message || 'Application cleanup update started.', 'success');
+      window.location.href = data.task_url || '/task/App%20Update';
     } catch (error) {
       showAlert(error.message || 'Could not clean up and update application.', 'danger');
-    } finally {
       window.AsyncButtonState.reset(button);
-      if (latestApplication) renderApplicationUpdate(latestApplication);
-      else refreshApplicationUpdate(els['app-update-refresh-btn']);
     }
   }
 

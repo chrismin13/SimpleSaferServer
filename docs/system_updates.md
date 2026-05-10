@@ -48,6 +48,12 @@ updates keep Python dependencies, systemd units, helper scripts, templates, and 
 sync with the pulled code. Fast-forward-only pulls prevent the updater from creating merge commits
 or resolving branch divergence without an administrator.
 
+When an administrator starts **Update Now** or **Clean Up and Update** from the System Updates page,
+the browser opens `/task/App Update` so the administrator can watch the task journal. The journal
+includes the Git and `install.sh` output from the update run. The web service may briefly restart
+while the installer refreshes service files; the task page keeps retrying log refreshes so it can
+resume after the session reconnects.
+
 The scheduled task runs as root. During install, SimpleSaferServer registers
 `/opt/SimpleSaferServer` as a Git `safe.directory` in the system Git config so root-run services can
 inspect a checkout owned by the installing administrator. The installer preserves file modes inside

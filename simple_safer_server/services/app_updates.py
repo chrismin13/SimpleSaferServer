@@ -1,12 +1,13 @@
 import json
 import shlex
+from contextlib import suppress
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from simple_safer_server.adapters.app_update_commands import AppUpdateCommandAdapter
 from simple_safer_server.adapters.command_runner import CalledProcessError
-from simple_safer_server.services.file_persistence import atomic_write_json
+from simple_safer_server.services.file_persistence import atomic_write_json, read_json
 from simple_safer_server.services.runtime import get_runtime
 
 
@@ -33,6 +34,7 @@ class AppUpdateManager:
         self.repo_path = Path(repo_path) if repo_path is not None else self._default_repo_path()
         self.command_adapter = command_adapter or AppUpdateCommandAdapter()
         self.cache_path = self.runtime.volatile_dir / "app_update_status.json"
+        self.request_path = self.runtime.volatile_dir / "app_update_request.json"
         self.cache_path.parent.mkdir(parents=True, exist_ok=True)
 
     def _default_repo_path(self) -> Path:
@@ -43,6 +45,14 @@ class AppUpdateManager:
 
     def _git(self, args, *, check=False, timeout=None):
         return self.command_adapter.run_git(
+            self.repo_path,
+            list(args),
+            check=check,
+            timeout=timeout,
+        )
+
+    def _git_for_journal(self, args, *, check=False, timeout=None):
+        return self.command_adapter.run_git_for_journal(
             self.repo_path,
             list(args),
             check=check,
@@ -102,6 +112,33 @@ class AppUpdateManager:
 
     def _write_cache(self, status: Dict[str, Any]) -> None:
         atomic_write_json(self.cache_path, status, mode=0o644, durable=False)
+
+    def request_cleanup_update(self) -> None:
+        """Ask the next app_update.service run to use the cleanup update path."""
+        atomic_write_json(
+            self.request_path,
+            {"mode": "cleanup", "requested_at": self._now()},
+            mode=0o600,
+            durable=False,
+        )
+
+    def consume_update_request_mode(self) -> str:
+        """Return the queued update mode and clear the volatile request.
+
+        The web process writes this before starting app_update.service. The
+        service consumes it so cleanup updates still run under systemd and keep
+        their progress in the task journal across web restarts.
+        """
+        try:
+            payload = read_json(self.request_path, {})
+        except (OSError, ValueError, TypeError):
+            payload = {}
+        with suppress(FileNotFoundError):
+            self.request_path.unlink()
+        mode = payload.get("mode") if isinstance(payload, dict) else None
+        if mode == "cleanup":
+            return "cleanup"
+        return "normal"
 
     def _source_info(self) -> Tuple[str, str]:
         branch = self._git_stdout(["symbolic-ref", "--quiet", "--short", "HEAD"], check=False)
@@ -285,22 +322,30 @@ class AppUpdateManager:
                 status["can_update"] = bool(cache.get("can_update"))
         return status
 
-    def update_now(self) -> Dict[str, Any]:
+    def update_now(self, *, stream_to_journal: bool = False) -> Dict[str, Any]:
         status = self.get_status(fetch_remote=True)
         if not status.get("can_update"):
             raise AppUpdateError(status.get("message") or "Application update is not available.")
 
-        pull = self._git(["pull", "--ff-only"], check=False)
+        if stream_to_journal:
+            print("Running git pull --ff-only", flush=True)
+            pull = self._git_for_journal(["pull", "--ff-only"], check=False)
+        else:
+            pull = self._git(["pull", "--ff-only"], check=False)
         if pull.returncode != 0:
             raise AppUpdateError(self._process_failure_detail(["git", "pull", "--ff-only"], pull))
 
-        installer = self.command_adapter.run_installer(self.repo_path)
+        if stream_to_journal:
+            print("Running bash install.sh", flush=True)
+            installer = self.command_adapter.run_installer_for_journal(self.repo_path)
+        else:
+            installer = self.command_adapter.run_installer(self.repo_path)
         if installer.returncode != 0:
             raise AppUpdateError(self._process_failure_detail(["bash", "install.sh"], installer))
 
         return self.get_status(fetch_remote=False)
 
-    def force_update_now(self) -> Dict[str, Any]:
+    def force_update_now(self, *, stream_to_journal: bool = False) -> Dict[str, Any]:
         status = self.get_status(fetch_remote=False)
         if not status.get("can_force_update"):
             raise AppUpdateError(status.get("message") or "Application cleanup is not available.")
@@ -315,11 +360,19 @@ class AppUpdateManager:
             (["pull", "--ff-only"], ["git", "pull", "--ff-only"]),
         ]
         for git_args, command in commands:
-            result = self._git(git_args, check=False)
+            if stream_to_journal:
+                print("Running {}".format(" ".join(command)), flush=True)
+                result = self._git_for_journal(git_args, check=False)
+            else:
+                result = self._git(git_args, check=False)
             if result.returncode != 0:
                 raise AppUpdateError(self._process_failure_detail(command, result))
 
-        installer = self.command_adapter.run_installer(self.repo_path)
+        if stream_to_journal:
+            print("Running bash install.sh", flush=True)
+            installer = self.command_adapter.run_installer_for_journal(self.repo_path)
+        else:
+            installer = self.command_adapter.run_installer(self.repo_path)
         if installer.returncode != 0:
             raise AppUpdateError(self._process_failure_detail(["bash", "install.sh"], installer))
 
