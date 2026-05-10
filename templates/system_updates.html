@@ -57,12 +57,12 @@
       <button type="button" class="btn btn-secondary btn-sm" id="app-update-refresh-btn">
         <i class="fas fa-rotate"></i> Refresh
       </button>
-      <button type="button" class="btn btn-primary btn-sm" id="app-update-now-btn" disabled
+      <button type="button" class="btn btn-success btn-sm" id="app-update-now-btn" disabled
         data-confirm="Update SimpleSaferServer now? This pulls the latest branch commit, reruns the installer, and restarts the web service."
         data-confirm-title="Update application"
         data-confirm-button="Update"
-        data-confirm-class="btn-primary">
-        <i class="fas fa-code-pull-request"></i> Update Now
+        data-confirm-class="btn-success">
+        <i class="fas fa-circle-up"></i> Update Now
       </button>
       <button type="button" class="btn btn-warning btn-sm d-none" id="app-update-force-btn"
         data-confirm="SimpleSaferServer found extra or changed files in its app folder. This can happen after older installs or manual troubleshooting. This will reset /opt/SimpleSaferServer to the selected branch, remove extra files in that app folder, then run the update. Your settings, users, logs, backups, and system config are stored outside this folder and will not be removed."
