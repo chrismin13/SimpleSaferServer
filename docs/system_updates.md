@@ -112,7 +112,10 @@ On real systems, saving the form writes `/etc/apt/apt.conf.d/20auto-upgrades` wi
 
 Other apt configuration files under `/etc/apt/apt.conf.d/` may still define additional apt behavior that this page does not edit.
 
-`unattended-upgrades` must be installed for unattended upgrades to actually run.
+The automated installer and manual install guide install `unattended-upgrades` so the unattended
+upgrade control has its required apt backend. Debian and Ubuntu package defaults can already enable
+security upgrades when the package is installed, so the page shows the current apt periodic values
+before SimpleSaferServer adopts the settings.
 
 Uninstalling SimpleSaferServer does not remove or revert `/etc/apt/apt.conf.d/20auto-upgrades`. These are normal operating system update settings, and an administrator may want them to keep applying after the app is removed.
 

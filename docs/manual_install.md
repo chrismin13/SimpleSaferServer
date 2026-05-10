@@ -7,7 +7,7 @@ This guide explains how to manually install SimpleSaferServer on a clean Debian 
 ## 1. Install System Dependencies
 
 - Run `sudo apt-get update`.
-- Run `sudo apt-get install -y git python3 python3-pip python3-venv smartmontools samba msmtp rsync curl unzip fdisk ntfs-3g`.
+- Run `sudo apt-get install -y git python3 python3-pip python3-venv smartmontools samba msmtp rsync curl unzip fdisk ntfs-3g unattended-upgrades`.
 
 ## 2. Install rclone
 
