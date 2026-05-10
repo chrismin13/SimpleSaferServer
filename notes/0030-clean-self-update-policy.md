@@ -13,6 +13,8 @@
 - Cleanup runs `git reset --hard HEAD`, `git clean -fd`, `git fetch --prune --tags origin`, `git pull --ff-only`, and `bash install.sh`.
 - Ignored files are not removed because the cleanup path intentionally avoids `git clean -x`.
 - Installer app, static, template, and bundled model syncs prune removed app-owned files with `rsync --delete`.
+- Real-mode durable state uses `/var/lib/SimpleSaferServer`; the installed checkout remains the self-update Git repo through `runtime.repo_root`.
+- Drive-health telemetry, HDSentinel state, apt config staging, and Livepatch attach temp files must not write into `/opt/SimpleSaferServer`.
 
 ## Documentation
 
@@ -22,5 +24,5 @@
 
 ## Uninstall
 
-- No new files, services, timers, config files, or state directories were added.
-- Existing uninstall behavior already removes installed app files and `harddrive_model`.
+- No new services, timers, or config files were added.
+- Existing uninstall behavior already removes installed app files, `harddrive_model`, and `/var/lib/SimpleSaferServer`.

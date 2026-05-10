@@ -36,9 +36,7 @@ class AppUpdateManager:
         self.cache_path.parent.mkdir(parents=True, exist_ok=True)
 
     def _default_repo_path(self) -> Path:
-        if self.runtime.is_fake:
-            return self.runtime.repo_root
-        return self.runtime.data_dir
+        return self.runtime.repo_root
 
     def _now(self) -> str:
         return datetime.now().isoformat(timespec="seconds")

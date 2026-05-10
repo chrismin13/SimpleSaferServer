@@ -16,6 +16,7 @@ def make_runtime(root: Path):
     return SimpleNamespace(
         mode="fake",
         is_fake=True,
+        repo_root=root,
         data_dir=root,
         volatile_dir=root / "run",
         config_dir=root / "config",
@@ -27,6 +28,7 @@ def make_real_runtime(root: Path):
     return SimpleNamespace(
         mode="real",
         is_fake=False,
+        repo_root=root / "app",
         data_dir=root,
         volatile_dir=root / "run",
         config_dir=root / "config",
@@ -413,6 +415,7 @@ class SystemUpdatesTests(unittest.TestCase):
             )
 
         self.assertEqual(command_adapter.calls, [("write_apt_periodic_config",)])
+        self.assertFalse((runtime.data_dir / "20auto-upgrades").exists())
         self.assertIn("// Managed by SimpleSaferServer.", command_adapter.apt_periodic_content)
         self.assertIn(
             'APT::Periodic::Update-Package-Lists "1";', command_adapter.apt_periodic_content
@@ -481,6 +484,7 @@ class SystemUpdatesTests(unittest.TestCase):
             self.assertEqual(command_adapter.calls[0][0], "pro_attach")
             self.assertEqual(command_adapter.calls[1], ("pro_enable_livepatch", "/usr/bin/pro"))
             self.assertIn('token: "secret-token"', seen_attach_config["content"])
+            self.assertEqual(seen_attach_config["path"].parent, root / "run")
             self.assertFalse(seen_attach_config["path"].exists())
             self.assertEqual(config.get_value("system_updates", "livepatch_managed"), "true")
             status.assert_called_once()

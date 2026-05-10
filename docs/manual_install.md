@@ -62,11 +62,12 @@ Install the extracted binary:
 ## 5. Copy Application Files
 
 - Run `sudo mkdir -p /opt/SimpleSaferServer`.
+- Run `sudo mkdir -p /var/lib/SimpleSaferServer`.
 - Run `sudo rsync -a --delete --exclude='venv' --exclude='__pycache__' --exclude='*.pyc' --exclude='*.pyo' --exclude='*.log' --exclude='telemetry.csv' --exclude='harddrive_model' --exclude='static' --exclude='templates' ./ /opt/SimpleSaferServer/`.
 - Run `sudo rsync -a --delete static /opt/SimpleSaferServer/`.
 - Run `sudo rsync -a --delete templates /opt/SimpleSaferServer/`.
 
-`/opt/SimpleSaferServer` is the application folder. Keep durable app data in `/var/lib/SimpleSaferServer`, configuration in `/etc/SimpleSaferServer`, logs in `/var/log/SimpleSaferServer`, and volatile runtime state in `/run/SimpleSaferServer`.
+`/opt/SimpleSaferServer` is the application folder. Keep durable app data, including drive-health telemetry and HDSentinel state, in `/var/lib/SimpleSaferServer`; configuration in `/etc/SimpleSaferServer`; logs in `/var/log/SimpleSaferServer`; and volatile runtime state in `/run/SimpleSaferServer`.
 
 ## 6. Set Up the Python Virtualenv
 

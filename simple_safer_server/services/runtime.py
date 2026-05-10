@@ -369,7 +369,7 @@ def get_runtime() -> Runtime:
         # runtime so service code can write status before FakeState is loaded.
         _runtime.volatile_dir.mkdir(parents=True, exist_ok=True)
     else:
-        data_dir = Path("/opt/SimpleSaferServer")
+        data_dir = Path("/var/lib/SimpleSaferServer")
         _runtime = Runtime(
             mode="real",
             skip_login=False,
@@ -387,7 +387,7 @@ def get_runtime() -> Runtime:
             backup_drive_dir=Path("/media/backup"),
             cloud_target_dir=Path("/media/backup"),
             model_dir=Path("/opt/SimpleSaferServer/harddrive_model"),
-            telemetry_path=repo_root / "telemetry.csv",
+            telemetry_path=data_dir / "telemetry.csv",
             msmtp_config_path=Path("/etc/msmtprc"),
             state_path=Path(tempfile.gettempdir()) / "simple_safer_server_unused_state.json",
         )

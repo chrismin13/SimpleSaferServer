@@ -61,6 +61,19 @@ class AppUpdateManagerTests(unittest.TestCase):
         self.assertFalse(status["can_update"])
         self.assertEqual(status["behind"], 0)
 
+    def test_default_repo_path_uses_repo_root_even_when_data_dir_is_durable_state(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            runtime = SimpleNamespace(
+                is_fake=False,
+                repo_root=root / "app",
+                data_dir=root / "var-lib",
+                volatile_dir=root / "run",
+            )
+            manager = AppUpdateManager(runtime=runtime, command_adapter=MagicMock())
+
+        self.assertEqual(manager.repo_path, runtime.repo_root)
+
     def test_status_reports_branch_behind(self):
         temp_dir, root, _remote, clone = self.make_repo_pair()
         with temp_dir:

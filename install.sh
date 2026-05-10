@@ -236,6 +236,7 @@ cd "$SRC_DIR"
 set -e
 
 APP_DIR="/opt/SimpleSaferServer"
+DATA_DIR="/var/lib/SimpleSaferServer"
 SCRIPTS_DIR="$APP_DIR/scripts"
 BIN_DIR="/usr/local/bin"
 MODEL_DIR="/opt/SimpleSaferServer/harddrive_model"
@@ -436,6 +437,7 @@ install_hdsentinel
 # 4. Copy/update application files (excluding app-owned subtrees handled below)
 echo -e "${YELLOW}Step 4: Copying application files...${NC}"
 mkdir -p "$APP_DIR"
+mkdir -p "$DATA_DIR"
 rsync -a --delete --exclude='venv' --exclude='__pycache__' --exclude='*.pyc' --exclude='*.pyo' --exclude='*.log' --exclude='telemetry.csv' --exclude='harddrive_model' --exclude='static' --exclude='templates' ./ "$APP_DIR/"
 echo -e "${GREEN}✔ Application files copied.${NC}\n"
 
