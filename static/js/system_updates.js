@@ -212,11 +212,17 @@
   function renderApplicationUpdate(application) {
     if (!application) return;
     const status = application.status || 'unavailable';
+    const lastRemoteCheck = application.last_remote_check_at || '';
     els['app-update-title'].textContent = 'Application';
     els['app-update-detail'].textContent = application.message || 'Application update status unavailable.';
     els['app-update-source'].textContent = sourceLabel(application);
     els['app-update-commit'].textContent = application.current_commit || '—';
-    els['app-update-checked'].textContent = application.last_remote_check_at || 'Not checked';
+    els['app-update-checked'].textContent = window.formatRelativeTimestamp(lastRemoteCheck, {
+      fallback: 'Not checked',
+      compact: true
+    });
+    // Keep the exact cached fetch time available without making the status strip harder to scan.
+    els['app-update-checked'].title = lastRemoteCheck;
     setBadge(els['app-update-badge'], appUpdateBadgeText(status), appUpdateBadgeType(status));
     els['app-update-now-btn'].disabled = !application.can_update;
     if (application.can_force_update) {
