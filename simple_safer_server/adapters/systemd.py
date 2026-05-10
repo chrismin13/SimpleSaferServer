@@ -14,7 +14,7 @@ class SystemdAdapter:
 
     def journal(self, unit_name: str, lines: int) -> str:
         result = self._command_runner.run(
-            ["journalctl", "-u", unit_name, "-n", str(lines), "--no-pager"],
+            ["journalctl", "-a", "-u", unit_name, "-n", str(lines), "--no-pager"],
             capture_output=True,
             text=True,
             check=True,

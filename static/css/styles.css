@@ -1365,6 +1365,15 @@ table .text-end { text-align: right; }
   word-break: break-all;
 }
 
+.log-viewer .ansi-red { color: var(--danger-text); }
+.log-viewer .ansi-green { color: var(--success-text); }
+.log-viewer .ansi-yellow { color: var(--warning-text); }
+.log-viewer .ansi-blue { color: var(--info-text); }
+.log-viewer .ansi-magenta { color: #d8b4fe; }
+.log-viewer .ansi-cyan { color: #7dd3fc; }
+.log-viewer .ansi-white { color: var(--text-primary); }
+.log-viewer .ansi-bright { font-weight: var(--weight-semibold); }
+
 .task-detail-shell {
   flex: 1;
   min-height: 0;

@@ -29,6 +29,53 @@ document.addEventListener("DOMContentLoaded", function () {
         .replace(/'/g, "&#39;");
     }
 
+    function ansiCodesToClass(codes) {
+      const parts = codes.split(";").filter(Boolean);
+      const classes = [];
+      let isBright = false;
+      parts.forEach((part) => {
+        if (part === "1") isBright = true;
+        if (part === "31") classes.push("ansi-red");
+        if (part === "32") classes.push("ansi-green");
+        if (part === "33") classes.push("ansi-yellow");
+        if (part === "34") classes.push("ansi-blue");
+        if (part === "35") classes.push("ansi-magenta");
+        if (part === "36") classes.push("ansi-cyan");
+        if (part === "37") classes.push("ansi-white");
+      });
+      if (isBright && classes.length) classes.push("ansi-bright");
+      return classes.join(" ");
+    }
+
+    function renderAnsiLog(text) {
+      let html = "";
+      let open = false;
+      let lastIndex = 0;
+      const ansiPattern = /\x1b\[([0-9;]*)m/g;
+      let match;
+
+      // Only SGR color/reset sequences become markup. Log text is escaped so
+      // command output cannot inject HTML while still allowing installer colors.
+      while ((match = ansiPattern.exec(text)) !== null) {
+        html += escapeHtml(text.slice(lastIndex, match.index));
+        if (open) {
+          html += "</span>";
+          open = false;
+        }
+
+        const className = ansiCodesToClass(match[1] || "0");
+        if (className) {
+          html += `<span class="${className}">`;
+          open = true;
+        }
+        lastIndex = ansiPattern.lastIndex;
+      }
+
+      html += escapeHtml(text.slice(lastIndex));
+      if (open) html += "</span>";
+      return html;
+    }
+
     function renderTaskStatusBadge(status) {
       if (status === "Success") return '<span class="badge badge-success"><i class="fas fa-circle-check"></i> Success</span>';
       if (status === "Failure") return '<span class="badge badge-danger"><i class="fas fa-circle-xmark"></i> Failure</span>';
@@ -68,7 +115,7 @@ document.addEventListener("DOMContentLoaded", function () {
         .then((text) => {
           failedFetchCount = 0;
           if (refreshState) refreshState.textContent = "";
-          if (logContainer) logContainer.textContent = text;
+          if (logContainer) logContainer.innerHTML = renderAnsiLog(text);
           if (initialLoad) {
             scrollToBottom();
             initialLoad = false;

@@ -45,6 +45,8 @@
   auto-refreshing.
 - Moved the reconnecting message into the top toolbar near the status badge and kept Auto-refresh
   aligned on the right side of the log header.
+- Preserved full journal output for task logs and render installer ANSI SGR colors in the web log
+  viewer after escaping command output.
 
 Docs and uninstall impact:
 
@@ -57,6 +59,7 @@ Docs and uninstall impact:
 Verification:
 
 - `.venv/bin/python -m pytest tests/test_task_routes.py tests/test_app_updates.py tests/test_system_updates_routes.py tests/test_task_service.py` passed.
+- `.venv/bin/python -m pytest tests/test_systemd_adapter.py` passed.
 - `.venv/bin/python -m ruff check simple_safer_server/routes/tasks.py tests/test_task_routes.py tests/test_app_updates.py tests/test_system_updates_routes.py simple_safer_server/services/app_updates.py simple_safer_server/adapters/app_update_commands.py simple_safer_server/routes/system_updates.py scripts/app_update.py` passed.
 - `.venv/bin/python -m py_compile simple_safer_server/services/app_updates.py simple_safer_server/adapters/app_update_commands.py simple_safer_server/routes/system_updates.py simple_safer_server/routes/tasks.py scripts/app_update.py` passed.
 - `node --check static/js/system_updates.js && node --check static/js/scripts.js` passed.
