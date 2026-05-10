@@ -1359,10 +1359,11 @@ table .text-end { text-align: right; }
   line-height: var(--leading-loose);
   color: var(--text-secondary);
   overflow-y: auto;
+  overflow-x: auto;
   max-height: 400px;
   resize: vertical;
-  white-space: pre-wrap;
-  word-break: break-all;
+  white-space: pre;
+  word-break: normal;
 }
 
 .log-viewer .ansi-red { color: var(--danger-text); }
