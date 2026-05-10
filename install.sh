@@ -8,9 +8,9 @@ BLUE='\033[1;34m'
 NC='\033[0m' # No Color
 
 # Welcome banner
-echo -e "${BLUE}==============================================="
-echo -e "   SimpleSaferServer Installer"
-echo -e "===============================================${NC}\n"
+echo -e "${BLUE}===============================================${NC}"
+echo -e "${BLUE}   SimpleSaferServer Installer${NC}"
+echo -e "${BLUE}===============================================${NC}\n"
 
 UNSUPPORTED_OS_OK="${SSS_UNSUPPORTED_OS_OK:-0}"
 PREFLIGHT_ONLY="${SSS_INSTALLER_PREFLIGHT_ONLY:-0}"
@@ -565,9 +565,9 @@ fi
 echo
 
 # 12. Print all network interface IPs for user access
-echo -e "${BLUE}==============================================="
-echo -e "  SimpleSaferServer Web UI Access URLs"
-echo -e "===============================================${NC}"
+echo -e "${BLUE}===============================================${NC}"
+echo -e "${BLUE}  SimpleSaferServer Web UI Access URLs${NC}"
+echo -e "${BLUE}===============================================${NC}"
 
 # Only show IPv4 addresses, skip 127.0.0.1 and IPv6
 IP_LIST=$(hostname -I | tr ' ' '\n' | grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}' | grep -v '^127\.')

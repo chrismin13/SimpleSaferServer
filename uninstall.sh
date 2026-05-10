@@ -339,9 +339,9 @@ remove_git_safe_directory() {
 }
 
 main() {
-    echo -e "${BLUE}==============================================="
-    echo -e "   SimpleSaferServer Uninstaller"
-    echo -e "===============================================${NC}\n"
+    echo -e "${BLUE}===============================================${NC}"
+    echo -e "${BLUE}   SimpleSaferServer Uninstaller${NC}"
+    echo -e "${BLUE}===============================================${NC}\n"
 
     if [ "$EUID" -ne 0 ]; then
         echo -e "${RED}ERROR:${NC} Please run as root (sudo)"

@@ -49,32 +49,26 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     function renderAnsiLog(text) {
-      let html = "";
-      let open = false;
-      let lastIndex = 0;
+      // Process each line independently so color cannot spill across lines
+      // (handles truncated logs that start mid-color-block).
       const ansiPattern = /\x1b\[([0-9;]*)m/g;
-      let match;
-
-      // Only SGR color/reset sequences become markup. Log text is escaped so
-      // command output cannot inject HTML while still allowing installer colors.
-      while ((match = ansiPattern.exec(text)) !== null) {
-        html += escapeHtml(text.slice(lastIndex, match.index));
-        if (open) {
-          html += "</span>";
-          open = false;
+      return text.split("\n").map(function (line) {
+        let html = "";
+        let open = false;
+        let lastIndex = 0;
+        let match;
+        ansiPattern.lastIndex = 0;
+        while ((match = ansiPattern.exec(line)) !== null) {
+          html += escapeHtml(line.slice(lastIndex, match.index));
+          if (open) { html += "</span>"; open = false; }
+          const className = ansiCodesToClass(match[1] || "0");
+          if (className) { html += `<span class="${className}">`; open = true; }
+          lastIndex = ansiPattern.lastIndex;
         }
-
-        const className = ansiCodesToClass(match[1] || "0");
-        if (className) {
-          html += `<span class="${className}">`;
-          open = true;
-        }
-        lastIndex = ansiPattern.lastIndex;
-      }
-
-      html += escapeHtml(text.slice(lastIndex));
-      if (open) html += "</span>";
-      return html;
+        html += escapeHtml(line.slice(lastIndex));
+        if (open) html += "</span>";
+        return html;
+      }).join("\n");
     }
 
     function renderTaskStatusBadge(status) {
