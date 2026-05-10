@@ -46,6 +46,12 @@ updates keep Python dependencies, systemd units, helper scripts, templates, and 
 sync with the pulled code. Fast-forward-only pulls prevent the updater from creating merge commits
 or resolving branch divergence without an administrator.
 
+The scheduled task runs as root. During install, SimpleSaferServer registers
+`/opt/SimpleSaferServer` as a Git `safe.directory` in the system Git config so root-run services can
+inspect a checkout owned by the installing administrator. The installer preserves file modes inside
+the app checkout and only forces executable bits on the `/usr/local/bin` helper-script copies, so
+routine installs do not create script-mode changes in Git status.
+
 The daily `App Update` timer is generated with the other SimpleSaferServer timers and runs 15
 minutes before `Check Mount`. It is also visible on the Dashboard scheduled-task table, where admins
 can inspect logs or start the task manually.

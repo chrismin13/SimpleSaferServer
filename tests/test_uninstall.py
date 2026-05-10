@@ -403,6 +403,65 @@ class UninstallScriptTests(unittest.TestCase):
         self.assertIn("markers are malformed", result.stdout)
         self.assertEqual(content, original)
 
+    def test_remove_git_safe_directory_removes_only_matching_entries(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            fake_bin = root / "bin"
+            config_path = root / "gitconfig"
+            fake_bin.mkdir()
+            git = fake_bin / "git"
+            git.write_text(
+                textwrap.dedent(
+                    f"""\
+                    #!/bin/sh
+                    export GIT_CONFIG_SYSTEM="{config_path}"
+                    exec /usr/bin/git "$@"
+                    """
+                )
+            )
+            git.chmod(0o755)
+            env_prefix = f'export PATH="{fake_bin}:$PATH"'
+            subprocess.run(
+                [
+                    "bash",
+                    "-lc",
+                    textwrap.dedent(
+                        f"""\
+                        {env_prefix}
+                        git config --system --add safe.directory /opt/SimpleSaferServer
+                        git config --system --add safe.directory /srv/other
+                        git config --system --add safe.directory /opt/SimpleSaferServer
+                        """
+                    ),
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            self.run_bash(
+                textwrap.dedent(
+                    f"""\
+                    source "{UNINSTALL_SCRIPT}"
+                    {env_prefix}
+                    remove_git_safe_directory /opt/SimpleSaferServer
+                    """
+                )
+            )
+
+            remaining = subprocess.run(
+                [
+                    "bash",
+                    "-lc",
+                    f'{env_prefix}\ngit config --system --get-all safe.directory',
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+        self.assertEqual(remaining.stdout.strip().splitlines(), ["/srv/other"])
+
 
 if __name__ == "__main__":
     unittest.main()

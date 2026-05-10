@@ -15,11 +15,16 @@
 - Installer app, static, template, and bundled model syncs prune removed app-owned files with `rsync --delete`.
 - Real-mode durable state uses `/var/lib/SimpleSaferServer`; the installed checkout remains the self-update Git repo through `runtime.repo_root`.
 - Drive-health telemetry, HDSentinel state, apt config staging, and Livepatch attach temp files must not write into `/opt/SimpleSaferServer`.
+- Root-run systemd services do not inherit interactive `sudo`'s `SUDO_UID` trust context, so the
+  installer registers `/opt/SimpleSaferServer` as a system Git `safe.directory`.
+- Installer script syncs preserve modes inside `/opt/SimpleSaferServer/scripts`; only the
+  `/usr/local/bin` helper copies are forced executable. This avoids creating Git mode changes for
+  scripts tracked as non-executable.
 
 ## Documentation
 
 - `docs/system_updates.md` describes the app folder policy and cleanup behavior.
-- `docs/manual_install.md` mirrors the installer sync commands.
+- `docs/manual_install.md` mirrors the installer sync commands and root Git trust setup.
 - `index.html` already links to System Updates and manual install docs.
 
 ## Uninstall

@@ -84,7 +84,10 @@ Install the extracted binary:
 
 - Run `sudo mkdir -p /usr/local/bin`.
 - Copy each file from `scripts/` into `/usr/local/bin/`.
-- Mark each copied script as executable with `chmod +x`.
+- Preserve the copied files' modes under `/opt/SimpleSaferServer/scripts`. Only the helper-script
+  copies under `/usr/local/bin` need executable bits.
+- Register the installed checkout for root-run Git commands:
+  `sudo git config --system --add safe.directory /opt/SimpleSaferServer`.
 - Run `sudo mkdir -p /opt/SimpleSaferServer/harddrive_model`.
 - Run `sudo rsync -a --delete harddrive_model/ /opt/SimpleSaferServer/harddrive_model/`.
 

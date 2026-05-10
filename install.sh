@@ -120,6 +120,25 @@ copy_unless_same_file() {
     cp "$source_path" "$dest_path"
 }
 
+ensure_git_safe_directory() {
+    local repo_path="$1"
+    local existing_paths=""
+
+    if ! command -v git >/dev/null 2>&1; then
+        return 0
+    fi
+
+    existing_paths="$(git config --system --get-all safe.directory 2>/dev/null || true)"
+    if printf '%s\n' "$existing_paths" | grep -Fxq "$repo_path"; then
+        return 0
+    fi
+
+    # The app checkout may be owned by the installing admin while update services
+    # run as root without sudo's SUDO_UID trust hint, so root Git commands need an
+    # explicit safe.directory entry for the managed app folder.
+    git config --system --add safe.directory "$repo_path"
+}
+
 run_installer_preflight() {
     local release_file=""
     local os_id=""
@@ -467,12 +486,14 @@ for script in scripts/*.sh scripts/*.py; do
   # not dirty the Git checkout that future self-updates need to inspect.
   if ! same_file "$script" "$app_script_path"; then
     cp "$script" "$app_script_path"
-    chmod +x "$app_script_path"
   fi
   copy_unless_same_file "$script" "$bin_script_path"
   chmod +x "$bin_script_path"
 done
 echo -e "${GREEN}✔ Scripts installed to $SCRIPTS_DIR and $BIN_DIR.${NC}\n"
+
+# Root-run systemd services do not inherit sudo's repository-owner trust context.
+ensure_git_safe_directory "$APP_DIR"
 
 # 8. Copy model files
 echo -e "${YELLOW}Step 8: Copying model files...${NC}"

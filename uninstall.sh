@@ -325,6 +325,19 @@ PY
     systemctl restart nmbd 2>/dev/null || true
 }
 
+remove_git_safe_directory() {
+    local repo_path="${1:-$APP_DIR}"
+
+    if ! command -v git >/dev/null 2>&1; then
+        return 0
+    fi
+
+    # The installer adds this so root-run systemd services can inspect the
+    # admin-owned app checkout. Remove every matching value because repeated
+    # reinstalls before this cleanup may have written duplicates.
+    git config --system --unset-all safe.directory "$repo_path" 2>/dev/null || true
+}
+
 main() {
     echo -e "${BLUE}==============================================="
     echo -e "   SimpleSaferServer Uninstaller"
@@ -404,6 +417,9 @@ main() {
     rm -rf "$DATA_DIR"
     rm -rf "$VOLATILE_DIR"
     rm -rf "$LOG_DIR"
+
+    echo "Removing SimpleSaferServer Git trust entry if present..."
+    remove_git_safe_directory "$APP_DIR"
 
     echo "Removing SimpleSaferServer rclone configuration if present..."
     rm -f "$RCLONE_CONFIG_PATH"
