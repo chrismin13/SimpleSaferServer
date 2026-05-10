@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}{{ task.name }} — SimpleSaferServer{% endblock %}
+{% block title %}{{ browser_title(task.name) }}{% endblock %}
 {% block header %}{{ task.name }}{% endblock %}
 {% block body_class %}task-detail-body{% endblock %}
 

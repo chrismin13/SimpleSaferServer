@@ -278,12 +278,26 @@ def create_app() -> Tuple[Flask, SocketIO]:
         return redirect(url_for("login"))
 
     @app.context_processor
-    def inject_username():
+    def inject_template_context():
         username = session.get("username")
+
+        def browser_title(page_name):
+            hostname = ""
+            try:
+                # Page titles should identify the machine being administered,
+                # but should not break page rendering if the host command is
+                # unavailable during recovery or early setup.
+                hostname = server_identity_service.current_identity().hostname.strip()
+            except Exception:
+                app.logger.exception("Failed to read hostname for browser title")
+            host_label = hostname or "SimpleSaferServer"
+            return f"{page_name} - {host_label}"
+
         return {
             "username": username,
             "runtime_mode": runtime.mode,
             "default_mount_point": runtime.default_mount_point,
+            "browser_title": browser_title,
             # Expose admin status so templates can conditionally show admin-only nav items.
             "is_admin": user_manager.is_admin(username) if username else False,
         }
