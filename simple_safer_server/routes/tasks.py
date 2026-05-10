@@ -91,6 +91,21 @@ def task_logs(task_name):
     return logs, 200, {"Content-Type": "text/plain; charset=utf-8"}
 
 
+@tasks.route("/api/tasks/<task_name>/status")
+@api_admin_required
+def api_task_status(task_name):
+    task = _get_services().task_service.get_task(task_name)
+    if not task:
+        return json_problem(
+            NotFoundProblem("Task not found.", title="Task not found", slug="task-not-found")
+        )
+    try:
+        return json_data({"task": _get_services().task_service.task_summary(task)})
+    except Exception:
+        current_app.logger.exception("Failed to load task status for %s", task_name)
+        return json_problem(OperationProblem("Failed to load task status."))
+
+
 @tasks.route("/task/<task_name>/start", methods=["POST"])
 @admin_required
 def start_task(task_name):

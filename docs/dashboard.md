@@ -21,7 +21,8 @@ Four cards display real-time status:
 - `App Update` is the application self-update task. It runs the installed Git checkout's
   fast-forward update path and full installer, and is scheduled before the daily mount check. The
   task log includes update and installer output, and the log page keeps retrying if the web service
-  briefly restarts during the install.
+  briefly restarts during the install. The task detail page refreshes both the log and status badge
+  while auto-refresh is enabled.
 
 ## System Actions
 - **Unmount Storage**: Opens a modal to confirm a temporary unmount of the configured backup drive.

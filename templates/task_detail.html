@@ -12,7 +12,8 @@
     </a>
 
     <div class="d-flex items-center gap-3 flex-wrap task-detail-toolbar-actions">
-      <span>
+      <span class="task-log-refresh-state" id="task-log-refresh-state" aria-live="polite"></span>
+      <span id="task-status-badge" data-task-name="{{ task.name }}">
         {% if task.status == 'Success' %}
           <span class="badge badge-success"><i class="fas fa-circle-check"></i> {{ task.status }}</span>
         {% elif task.status == 'Failure' %}
@@ -56,11 +57,10 @@
   <section class="task-log-panel">
     <div class="task-log-header">
       <h2>Recent Logs</h2>
-      <div class="form-check">
+      <div class="form-check task-log-auto-refresh">
         <input type="checkbox" class="form-check-input" id="auto-refresh" data-task-name="{{ task.name }}" checked>
         <label class="form-check-label" for="auto-refresh">Auto-refresh</label>
       </div>
-      <span class="task-log-refresh-state" id="task-log-refresh-state" aria-live="polite"></span>
     </div>
     <pre class="log-viewer task-log-viewer">{{ logs }}</pre>
   </section>

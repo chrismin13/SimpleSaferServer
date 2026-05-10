@@ -10,6 +10,7 @@ document.addEventListener("DOMContentLoaded", function () {
   if (autoRefreshCheckbox) {
     const logContainer = document.querySelector(".log-viewer");
     const refreshState = document.getElementById("task-log-refresh-state");
+    const statusBadge = document.getElementById("task-status-badge");
     const taskName = autoRefreshCheckbox.getAttribute("data-task-name");
     let intervalId;
     let initialLoad = true;
@@ -17,6 +18,40 @@ document.addEventListener("DOMContentLoaded", function () {
 
     function scrollToBottom() {
       if (logContainer) logContainer.scrollTop = logContainer.scrollHeight;
+    }
+
+    function escapeHtml(value) {
+      return String(value || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+    function renderTaskStatusBadge(status) {
+      if (status === "Success") return '<span class="badge badge-success"><i class="fas fa-circle-check"></i> Success</span>';
+      if (status === "Failure") return '<span class="badge badge-danger"><i class="fas fa-circle-xmark"></i> Failure</span>';
+      if (status === "Running") return '<span class="badge badge-info"><i class="fas fa-spinner fa-spin"></i> Running</span>';
+      if (status === "Missing") return '<span class="badge badge-warning"><i class="fas fa-circle-exclamation"></i> Missing</span>';
+      if (status === "Not Run Yet") return '<span class="badge badge-neutral"><i class="fas fa-clock"></i> Not Run Yet</span>';
+      if (status === "Stopped") return '<span class="badge badge-neutral"><i class="fas fa-stop"></i> Stopped</span>';
+      return `<span class="badge badge-warning"><i class="fas fa-question-circle"></i> ${escapeHtml(status || "Unknown")}</span>`;
+    }
+
+    function fetchTaskStatus() {
+      if (!statusBadge) return Promise.resolve();
+      return fetch(`/api/tasks/${encodeURIComponent(taskName)}/status`, {
+        headers: { "Accept": "application/json" }
+      })
+        .then((resp) => {
+          if (!resp.ok) throw new Error(`Task status refresh failed with HTTP ${resp.status}`);
+          return resp.json();
+        })
+        .then((payload) => {
+          const task = payload && payload.data ? payload.data.task : null;
+          statusBadge.innerHTML = renderTaskStatusBadge(task && task.status);
+        });
     }
 
     function fetchLogs() {
@@ -52,9 +87,14 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     }
 
-    function start() {
+    function refreshTaskDetail() {
+      fetchTaskStatus().catch((err) => console.error(err));
       fetchLogs();
-      intervalId = setInterval(fetchLogs, 1000);
+    }
+
+    function start() {
+      refreshTaskDetail();
+      intervalId = setInterval(refreshTaskDetail, 1000);
     }
 
     function stop() {

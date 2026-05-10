@@ -41,6 +41,10 @@
   after the task starts.
 - Updated task-log polling to keep retrying after temporary fetch failures and show a reconnecting
   status near the auto-refresh control.
+- Added a single-task status API so the task detail status badge refreshes while the log is
+  auto-refreshing.
+- Moved the reconnecting message into the top toolbar near the status badge and kept Auto-refresh
+  aligned on the right side of the log header.
 
 Docs and uninstall impact:
 
@@ -52,9 +56,9 @@ Docs and uninstall impact:
 
 Verification:
 
-- `.venv/bin/python -m pytest tests/test_app_updates.py tests/test_system_updates_routes.py tests/test_task_service.py` passed.
-- `.venv/bin/python -m ruff check simple_safer_server/adapters/app_update_commands.py simple_safer_server/services/app_updates.py simple_safer_server/routes/system_updates.py scripts/app_update.py tests/test_app_updates.py tests/test_system_updates_routes.py` passed.
-- `.venv/bin/python -m py_compile simple_safer_server/services/app_updates.py simple_safer_server/adapters/app_update_commands.py simple_safer_server/routes/system_updates.py scripts/app_update.py` passed.
+- `.venv/bin/python -m pytest tests/test_task_routes.py tests/test_app_updates.py tests/test_system_updates_routes.py tests/test_task_service.py` passed.
+- `.venv/bin/python -m ruff check simple_safer_server/routes/tasks.py tests/test_task_routes.py tests/test_app_updates.py tests/test_system_updates_routes.py simple_safer_server/services/app_updates.py simple_safer_server/adapters/app_update_commands.py simple_safer_server/routes/system_updates.py scripts/app_update.py` passed.
+- `.venv/bin/python -m py_compile simple_safer_server/services/app_updates.py simple_safer_server/adapters/app_update_commands.py simple_safer_server/routes/system_updates.py simple_safer_server/routes/tasks.py scripts/app_update.py` passed.
 - `node --check static/js/system_updates.js && node --check static/js/scripts.js` passed.
 - `git diff --check` passed.
 
