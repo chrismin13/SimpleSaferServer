@@ -90,6 +90,35 @@ class AppUpdateManagerTests(unittest.TestCase):
 
         self.assertEqual(status["status"], "dirty")
         self.assertFalse(status["can_update"])
+        self.assertTrue(status["can_force_update"])
+        self.assertEqual(status["tracked_change_count"], 1)
+        self.assertEqual(status["untracked_file_count"], 0)
+        self.assertIn("Changed app files are blocking the update", status["message"])
+
+    def test_status_blocks_untracked_files(self):
+        temp_dir, root, _remote, clone = self.make_repo_pair()
+        with temp_dir:
+            (clone / "extra.txt").write_text("extra\n", encoding="utf-8")
+            status = self.manager(root, clone).get_status(fetch_remote=True)
+
+        self.assertEqual(status["status"], "dirty")
+        self.assertFalse(status["can_update"])
+        self.assertTrue(status["can_force_update"])
+        self.assertEqual(status["tracked_change_count"], 0)
+        self.assertEqual(status["untracked_file_count"], 1)
+        self.assertIn("Extra files in the app folder are blocking the update", status["message"])
+
+    def test_status_blocks_mixed_local_changes(self):
+        temp_dir, root, _remote, clone = self.make_repo_pair()
+        with temp_dir:
+            (clone / "file.txt").write_text("local\n", encoding="utf-8")
+            (clone / "extra.txt").write_text("extra\n", encoding="utf-8")
+            status = self.manager(root, clone).get_status(fetch_remote=True)
+
+        self.assertEqual(status["status"], "dirty")
+        self.assertEqual(status["tracked_change_count"], 1)
+        self.assertEqual(status["untracked_file_count"], 1)
+        self.assertIn("Changed or extra files in the app folder", status["message"])
 
     def test_tag_checkout_is_pinned(self):
         temp_dir, root, _remote, clone = self.make_repo_pair()
@@ -102,6 +131,8 @@ class AppUpdateManagerTests(unittest.TestCase):
         self.assertEqual(status["source_name"], "v0.1.0")
         self.assertEqual(status["status"], "pinned")
         self.assertFalse(status["can_update"])
+        self.assertFalse(status["can_force_update"])
+        self.assertIn("pinned to a specific commit or tag", status["message"])
 
     def test_update_now_refuses_when_not_updateable(self):
         temp_dir, root, _remote, clone = self.make_repo_pair()
@@ -143,3 +174,64 @@ class AppUpdateManagerTests(unittest.TestCase):
             timeout=None,
         )
         adapter.run_installer.assert_called_once_with(clone)
+
+    def test_force_update_runs_cleanup_fetch_pull_and_installer(self):
+        temp_dir, root, _remote, clone = self.make_repo_pair()
+        with temp_dir:
+            adapter = MagicMock()
+            manager = self.manager(root, clone, adapter=adapter)
+            manager.get_status = MagicMock(
+                side_effect=[
+                    {
+                        "can_force_update": True,
+                        "message": "Changed app files are blocking the update.",
+                    },
+                    {
+                        "can_update": False,
+                        "message": "Up to date.",
+                    },
+                ]
+            )
+            adapter.run_git.return_value = SimpleNamespace(returncode=0, stdout="", stderr="")
+            adapter.run_installer.return_value = SimpleNamespace(
+                returncode=0,
+                stdout="installed",
+                stderr="",
+            )
+
+            result = manager.force_update_now()
+
+        self.assertEqual(result["message"], "Up to date.")
+        self.assertEqual(
+            [call.args[1] for call in adapter.run_git.call_args_list],
+            [
+                ["reset", "--hard", "HEAD"],
+                ["clean", "-fd"],
+                ["fetch", "--prune", "--tags", "origin"],
+                ["pull", "--ff-only"],
+            ],
+        )
+        self.assertNotIn("-x", adapter.run_git.call_args_list[1].args[1])
+        adapter.run_installer.assert_called_once_with(clone)
+
+    def test_git_failure_diagnostic_includes_command_repo_return_code_and_output(self):
+        temp_dir, root, _remote, clone = self.make_repo_pair()
+        with temp_dir:
+            adapter = MagicMock()
+            manager = self.manager(root, clone, adapter=adapter)
+            manager.get_status = MagicMock(return_value={"can_force_update": True})
+            adapter.run_git.return_value = SimpleNamespace(
+                returncode=2,
+                stdout="out",
+                stderr="err",
+            )
+
+            with self.assertRaises(AppUpdateError) as error:
+                manager.force_update_now()
+
+        detail = str(error.exception)
+        self.assertIn("Command: git reset --hard HEAD", detail)
+        self.assertIn(f"Repository: {clone}", detail)
+        self.assertIn("Return code: 2", detail)
+        self.assertIn("stdout:\nout", detail)
+        self.assertIn("stderr:\nerr", detail)

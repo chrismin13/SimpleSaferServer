@@ -64,6 +64,13 @@
         data-confirm-class="btn-primary">
         <i class="fas fa-code-pull-request"></i> Update Now
       </button>
+      <button type="button" class="btn btn-warning btn-sm d-none" id="app-update-force-btn"
+        data-confirm="SimpleSaferServer found extra or changed files in its app folder. This can happen after older installs or manual troubleshooting. This will reset /opt/SimpleSaferServer to the selected branch, remove extra files in that app folder, then run the update. Your settings, users, logs, backups, and system config are stored outside this folder and will not be removed."
+        data-confirm-title="Clean up app folder and update?"
+        data-confirm-button="Clean Up and Update"
+        data-confirm-class="btn-warning">
+        <i class="fas fa-broom"></i> Clean Up and Update
+      </button>
     </div>
   </div>
 </section>

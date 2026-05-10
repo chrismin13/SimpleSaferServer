@@ -433,16 +433,16 @@ rm -f "$TMPFILE"
 echo -e "${YELLOW}Step 3: Installing HDSentinel...${NC}"
 install_hdsentinel
 
-# 4. Copy/update application files (excluding /etc/SimpleSaferServer/)
+# 4. Copy/update application files (excluding app-owned subtrees handled below)
 echo -e "${YELLOW}Step 4: Copying application files...${NC}"
 mkdir -p "$APP_DIR"
-rsync -a --exclude='venv' --exclude='__pycache__' --exclude='*.pyc' --exclude='*.pyo' --exclude='*.log' --exclude='telemetry.csv' --exclude='harddrive_model' --exclude='static' --exclude='templates' ./ "$APP_DIR/"
+rsync -a --delete --exclude='venv' --exclude='__pycache__' --exclude='*.pyc' --exclude='*.pyo' --exclude='*.log' --exclude='telemetry.csv' --exclude='harddrive_model' --exclude='static' --exclude='templates' ./ "$APP_DIR/"
 echo -e "${GREEN}✔ Application files copied.${NC}\n"
 
 # 5. Copy static and templates directories
 echo -e "${YELLOW}Step 5: Copying static assets and templates...${NC}"
-rsync -a static "$APP_DIR/"
-rsync -a templates "$APP_DIR/"
+rsync -a --delete static "$APP_DIR/"
+rsync -a --delete templates "$APP_DIR/"
 echo -e "${GREEN}✔ Static assets and templates copied.${NC}\n"
 
 # 6. Create the dedicated app virtualenv and install Python packages.
@@ -475,13 +475,11 @@ echo -e "${GREEN}✔ Scripts installed to $SCRIPTS_DIR and $BIN_DIR.${NC}\n"
 # 8. Copy model files
 echo -e "${YELLOW}Step 8: Copying model files...${NC}"
 mkdir -p "$MODEL_DIR"
-for model_file in harddrive_model/*; do
-  model_name="$(basename "$model_file")"
-  model_dest_path="$MODEL_DIR/$model_name"
-  # Reinstalling from /opt/SimpleSaferServer makes the model source and
-  # destination identical. Skip same-file copies but keep permissions intact.
-  copy_unless_same_file "$model_file" "$model_dest_path"
-done
+# Model files are bundled application artifacts. Pruning here keeps removed
+# model artifacts from lingering after installs from a separate checkout.
+if ! same_file harddrive_model "$MODEL_DIR"; then
+  rsync -a --delete harddrive_model/ "$MODEL_DIR/"
+fi
 echo -e "${GREEN}✔ Model files copied.${NC}\n"
 
 # 9. Install/refresh systemd service for Flask app

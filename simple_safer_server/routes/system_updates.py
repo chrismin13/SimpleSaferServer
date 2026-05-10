@@ -88,6 +88,40 @@ def api_system_updates_application_update():
         return json_problem(OperationProblem("Could not start application update."))
 
 
+@system_updates.route("/api/system_updates/application/force_update", methods=["POST"])
+@api_admin_required
+def api_system_updates_application_force_update():
+    try:
+        app_update_manager = _get_services().app_update_manager
+        status = app_update_manager.get_status(fetch_remote=False)
+        if not status.get("can_force_update"):
+            return json_problem(
+                ConflictProblem(
+                    status.get("message") or "Application cleanup is not available.",
+                    slug="application-force-update-not-available",
+                )
+            )
+        application = app_update_manager.force_update_now()
+        return json_data(
+            {"application": application},
+            message="Application folder cleaned up and update completed.",
+        )
+    except AppUpdateError as exc:
+        current_app.logger.warning("Application cleanup update failed: %s", exc)
+        # Keep the UI wording action-oriented while preserving command output
+        # for diagnostics in the Problem Details payload.
+        return json_problem(
+            OperationProblem(
+                "Application cleanup update failed. Check logs before retrying.",
+                slug="application-force-update-failed",
+                extra={"diagnostic": str(exc)},
+            )
+        )
+    except Exception:
+        current_app.logger.exception("Could not clean up and update application")
+        return json_problem(OperationProblem("Could not clean up and update application."))
+
+
 @system_updates.route("/api/system_updates/status", methods=["GET"])
 @api_admin_required
 def api_system_updates_status():

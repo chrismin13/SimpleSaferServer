@@ -46,6 +46,7 @@
       'app-update-checked',
       'app-update-refresh-btn',
       'app-update-now-btn',
+      'app-update-force-btn',
       'remove-locks-btn'
     ].forEach((id) => {
       els[id] = $(id);
@@ -218,6 +219,13 @@
     els['app-update-checked'].textContent = application.last_remote_check_at || 'Not checked';
     setBadge(els['app-update-badge'], appUpdateBadgeText(status), appUpdateBadgeType(status));
     els['app-update-now-btn'].disabled = !application.can_update;
+    if (application.can_force_update) {
+      els['app-update-force-btn'].classList.remove('d-none');
+      els['app-update-force-btn'].disabled = false;
+    } else {
+      els['app-update-force-btn'].classList.add('d-none');
+      els['app-update-force-btn'].disabled = true;
+    }
   }
 
   async function loadSummary() {
@@ -380,6 +388,25 @@
     }
   }
 
+  async function startApplicationForceUpdate(button) {
+    window.AsyncButtonState.start(button);
+    let latestApplication = null;
+    try {
+      const { message, data } = await window.ApiClient.fetchJson('/api/system_updates/application/force_update', {
+        method: 'POST',
+        headers: { 'Accept': 'application/json' }
+      });
+      latestApplication = data.application;
+      showAlert(message || 'Application folder cleaned up and update completed.', 'success');
+    } catch (error) {
+      showAlert(error.message || 'Could not clean up and update application.', 'danger');
+    } finally {
+      window.AsyncButtonState.reset(button);
+      if (latestApplication) renderApplicationUpdate(latestApplication);
+      else refreshApplicationUpdate(els['app-update-refresh-btn']);
+    }
+  }
+
   function bindActions() {
     els['apt-update-btn'].addEventListener('click', () => startOperation('update', els['apt-update-btn']));
     els['apt-upgrade-btn'].addEventListener('click', () => startOperation('upgrade', els['apt-upgrade-btn']));
@@ -388,6 +415,7 @@
     els['livepatch-form'].addEventListener('submit', setupLivepatch);
     els['app-update-refresh-btn'].addEventListener('click', () => refreshApplicationUpdate(els['app-update-refresh-btn']));
     els['app-update-now-btn'].addEventListener('click', () => startApplicationUpdate(els['app-update-now-btn']));
+    els['app-update-force-btn'].addEventListener('click', () => startApplicationForceUpdate(els['app-update-force-btn']));
     els['remove-locks-btn'].addEventListener('click', () => removeStaleLocks(els['remove-locks-btn']));
   }
 

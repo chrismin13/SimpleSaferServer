@@ -15,15 +15,30 @@ Remote Git status is checked only when an administrator clicks **Refresh**. This
 network fetch every time the page loads. The page uses the cached remote result until Refresh runs
 again or the installed commit changes.
 
+`/opt/SimpleSaferServer` is the application folder. It is not user storage, and application update
+cleanup may return it to the selected Git branch state. SimpleSaferServer stores durable operator
+state outside that folder:
+
+- configuration in `/etc/SimpleSaferServer`
+- logs in `/var/log/SimpleSaferServer`
+- volatile runtime state in `/run/SimpleSaferServer`
+- durable app data in `/var/lib/SimpleSaferServer`
+
 **Update Now** is enabled only when the installed checkout is:
 
 - on a branch
-- clean of tracked local file edits
+- clean of tracked local file edits and untracked files
 - configured with an upstream
 - behind that upstream
 
 Tag and detached checkouts are shown as pinned. They are useful as install snapshots, but the
 automatic updater does not move them to another commit.
+
+When changed or extra files in `/opt/SimpleSaferServer` block the normal update path, the page shows
+**Clean Up and Update**. That action resets tracked app files to the selected branch, removes
+untracked files from the app folder, fetches the remote, fast-forwards the branch, and reruns the
+installer. It does not remove settings, users, logs, backups, or system configuration stored outside
+`/opt/SimpleSaferServer`. Ignored files are not removed by this cleanup path.
 
 Application updates run through the `App Update` scheduled task. The task runs `git pull --ff-only`
 from the installed checkout and then reruns the full installer from that checkout. Full installer

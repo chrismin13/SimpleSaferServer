@@ -62,9 +62,11 @@ Install the extracted binary:
 ## 5. Copy Application Files
 
 - Run `sudo mkdir -p /opt/SimpleSaferServer`.
-- Run `sudo rsync -a --exclude='venv' --exclude='__pycache__' --exclude='*.pyc' --exclude='*.pyo' --exclude='*.log' --exclude='telemetry.csv' --exclude='harddrive_model' --exclude='scripts' --exclude='static' --exclude='templates' ./ /opt/SimpleSaferServer/`.
-- Run `sudo rsync -a static /opt/SimpleSaferServer/`.
-- Run `sudo rsync -a templates /opt/SimpleSaferServer/`.
+- Run `sudo rsync -a --delete --exclude='venv' --exclude='__pycache__' --exclude='*.pyc' --exclude='*.pyo' --exclude='*.log' --exclude='telemetry.csv' --exclude='harddrive_model' --exclude='static' --exclude='templates' ./ /opt/SimpleSaferServer/`.
+- Run `sudo rsync -a --delete static /opt/SimpleSaferServer/`.
+- Run `sudo rsync -a --delete templates /opt/SimpleSaferServer/`.
+
+`/opt/SimpleSaferServer` is the application folder. Keep durable app data in `/var/lib/SimpleSaferServer`, configuration in `/etc/SimpleSaferServer`, logs in `/var/log/SimpleSaferServer`, and volatile runtime state in `/run/SimpleSaferServer`.
 
 ## 6. Set Up the Python Virtualenv
 
@@ -83,7 +85,7 @@ Install the extracted binary:
 - Copy each file from `scripts/` into `/usr/local/bin/`.
 - Mark each copied script as executable with `chmod +x`.
 - Run `sudo mkdir -p /opt/SimpleSaferServer/harddrive_model`.
-- Copy the contents of `harddrive_model/` into `/opt/SimpleSaferServer/harddrive_model/`.
+- Run `sudo rsync -a --delete harddrive_model/ /opt/SimpleSaferServer/harddrive_model/`.
 
 ## 8. Set Up the Systemd Service
 

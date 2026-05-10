@@ -249,6 +249,15 @@ class InstallPreflightTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
             self.assertEqual(model.read_text(), '{"model": true}\n')
 
+    def test_app_rsyncs_prune_removed_app_owned_files(self):
+        text = INSTALL_SCRIPT.read_text()
+
+        self.assertIn("rsync -a --delete", text)
+        self.assertIn("--exclude='venv'", text)
+        self.assertIn("rsync -a --delete static", text)
+        self.assertIn("rsync -a --delete templates", text)
+        self.assertIn("rsync -a --delete harddrive_model/", text)
+
 
 if __name__ == "__main__":
     unittest.main()
