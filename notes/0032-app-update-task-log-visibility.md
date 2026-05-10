@@ -49,6 +49,8 @@
   viewer after escaping command output.
 - Raised the task detail log view to the existing 500-line API cap so app updates do not immediately
   lose most installer output during auto-refresh.
+- Follow-up: centralized the 500-line task-log window in the task service so the detail page, log
+  endpoint default, service default, and tests share one value.
 
 Docs and uninstall impact:
 

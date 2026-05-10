@@ -5,7 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from simple_safer_server.services.task_service import Status, TaskService
+from simple_safer_server.services.task_service import TASK_LOG_LINE_LIMIT, Status, TaskService
 
 
 class FakeConfigManager:
@@ -77,8 +77,10 @@ class FakeSystemdAdapter:
             )
         }
         self.active = "inactive"
+        self.journal_calls = []
 
     def journal(self, unit_name, lines):
+        self.journal_calls.append((unit_name, lines))
         return self.journal_output
 
     def start_unit(self, unit_name):
@@ -267,5 +269,9 @@ class TaskServiceTests(unittest.TestCase):
         task.stop()
 
         self.assertEqual(task.get_logs(), "journal output")
+        self.assertEqual(
+            systemd_adapter.journal_calls,
+            [("backup_cloud.service", TASK_LOG_LINE_LIMIT)],
+        )
         self.assertEqual(systemd_adapter.started, ["backup_cloud.service"])
         self.assertEqual(systemd_adapter.stopped, ["backup_cloud.service"])

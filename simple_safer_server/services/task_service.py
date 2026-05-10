@@ -29,6 +29,18 @@ class Status:
 
 TERMINAL_FAKE_STATUSES = {Status.SUCCESS, Status.FAILURE, Status.ERROR, Status.STOPPED}
 
+# Keep one app-wide task-log window so routes, auto-refresh, and service defaults
+# do not quietly drift apart after app-update output grows or shrinks.
+TASK_LOG_LINE_LIMIT = 500
+
+
+def clamp_task_log_lines(lines: Any) -> int:
+    try:
+        parsed_lines = int(lines)
+    except (TypeError, ValueError):
+        parsed_lines = TASK_LOG_LINE_LIMIT
+    return max(1, min(parsed_lines, TASK_LOG_LINE_LIMIT))
+
 
 class Task:
     def __init__(self, service: "TaskService", name: str, service_name: str, timer_name: str):
@@ -37,7 +49,7 @@ class Task:
         self.service_name = service_name
         self.timer_name = timer_name
 
-    def get_logs(self, lines: int = 50) -> str:
+    def get_logs(self, lines: int = TASK_LOG_LINE_LIMIT) -> str:
         """Return the latest systemd journal logs for this service."""
         return self._service.get_logs(self, lines)
 
@@ -137,7 +149,7 @@ class TaskService:
             raise RuntimeError("Fake task state is not available.")
         return self.fake_state
 
-    def get_logs(self, task: Task, lines: int = 50) -> str:
+    def get_logs(self, task: Task, lines: int = TASK_LOG_LINE_LIMIT) -> str:
         if self.runtime.is_fake:
             return self._require_fake_state().get_task_log(task.name)
         try:

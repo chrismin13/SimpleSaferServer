@@ -1,9 +1,10 @@
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 from flask import Flask
 
 from simple_safer_server.routes.tasks import tasks
+from simple_safer_server.services.task_service import TASK_LOG_LINE_LIMIT
 
 
 def _build_app(task_service):
@@ -41,8 +42,77 @@ def test_task_detail_loads_maximum_log_window():
         response = client.get("/task/App%20Update")
 
     assert response.status_code == 200
-    task.get_logs.assert_called_once_with(500)
-    assert render.call_args.kwargs["log_lines"] == 500
+    task.get_logs.assert_called_once_with(TASK_LOG_LINE_LIMIT)
+    assert render.call_args.kwargs["log_lines"] == TASK_LOG_LINE_LIMIT
+
+
+def test_task_logs_defaults_to_global_log_window():
+    task = MagicMock()
+    task.get_logs.return_value = "full log"
+    task_service = MagicMock()
+    task_service.get_task.return_value = task
+    app = _build_app(task_service)
+    user_manager = MagicMock()
+    user_manager.is_admin.return_value = True
+
+    with patch(
+        "simple_safer_server.services.user_manager.UserManager", return_value=user_manager
+    ), app.test_client() as client:
+        with client.session_transaction() as session:
+            session["username"] = "admin"
+
+        response = client.get("/task/App%20Update/logs")
+
+    assert response.status_code == 200
+    assert response.text == "full log"
+    task.get_logs.assert_called_once_with(TASK_LOG_LINE_LIMIT)
+
+
+def test_task_logs_clamps_invalid_and_oversized_windows_to_global_limit():
+    task = MagicMock()
+    task.get_logs.return_value = "full log"
+    task_service = MagicMock()
+    task_service.get_task.return_value = task
+    app = _build_app(task_service)
+    user_manager = MagicMock()
+    user_manager.is_admin.return_value = True
+
+    with patch(
+        "simple_safer_server.services.user_manager.UserManager", return_value=user_manager
+    ), app.test_client() as client:
+        with client.session_transaction() as session:
+            session["username"] = "admin"
+
+        invalid_response = client.get("/task/App%20Update/logs?lines=abc")
+        oversized_response = client.get("/task/App%20Update/logs?lines=999999")
+
+    assert invalid_response.status_code == 200
+    assert oversized_response.status_code == 200
+    assert task.get_logs.call_args_list == [
+        call(TASK_LOG_LINE_LIMIT),
+        call(TASK_LOG_LINE_LIMIT),
+    ]
+
+
+def test_task_logs_keeps_smaller_requested_window():
+    task = MagicMock()
+    task.get_logs.return_value = "short log"
+    task_service = MagicMock()
+    task_service.get_task.return_value = task
+    app = _build_app(task_service)
+    user_manager = MagicMock()
+    user_manager.is_admin.return_value = True
+
+    with patch(
+        "simple_safer_server.services.user_manager.UserManager", return_value=user_manager
+    ), app.test_client() as client:
+        with client.session_transaction() as session:
+            session["username"] = "admin"
+
+        response = client.get("/task/App%20Update/logs?lines=25")
+
+    assert response.status_code == 200
+    task.get_logs.assert_called_once_with(25)
 
 
 def test_task_status_returns_current_task_summary():

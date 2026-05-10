@@ -11,6 +11,7 @@ from flask import (
     url_for,
 )
 
+from simple_safer_server.services.task_service import TASK_LOG_LINE_LIMIT, clamp_task_log_lines
 from simple_safer_server.services.user_manager import admin_required, api_admin_required
 from simple_safer_server.web.api import json_data, json_problem
 from simple_safer_server.web.problems import NotFoundProblem, OperationProblem
@@ -72,7 +73,7 @@ def task_detail(task_name):
     task = _get_services().task_service.get_task(task_name)
     if not task:
         abort(404)
-    log_lines = 500
+    log_lines = TASK_LOG_LINE_LIMIT
     logs = task.get_logs(log_lines)
     return render_template("task_detail.html", task=task, logs=logs, log_lines=log_lines)
 
@@ -83,11 +84,7 @@ def task_logs(task_name):
     task = _get_services().task_service.get_task(task_name)
     if not task:
         abort(404)
-    try:
-        lines = int(request.args.get("lines", 50))
-    except (TypeError, ValueError):
-        lines = 50
-    lines = max(1, min(lines, 500))
+    lines = clamp_task_log_lines(request.args.get("lines", TASK_LOG_LINE_LIMIT))
     logs = task.get_logs(lines)
     return logs, 200, {"Content-Type": "text/plain; charset=utf-8"}
 
