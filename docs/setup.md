@@ -107,6 +107,8 @@ Advanced mode:
 - Optionally set a bandwidth limit.
 - Save to complete setup.
 - Completing setup installs and activates the recurring systemd timers for mount checks, drive-health checks, cloud backups, and DDNS updates.
+- Setup and later unit refreshes preserve active SimpleSaferServer Disable Schedule records so
+  regenerating unit files does not silently re-enable a disabled timer.
 - The cloud backup timer stays on the configured time. The generated mount check runs 4 minutes
   before backup, and the generated drive-health check runs 2 minutes before backup. This spacing
   gives the mount check time to finish before health probes the drive, even with systemd's small

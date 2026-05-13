@@ -30,6 +30,9 @@
           <span class="badge badge-warning"><i class="fas fa-question-circle"></i> {{ task.status }}</span>
         {% endif %}
       </span>
+      <span class="badge badge-neutral" id="task-schedule-badge">
+        <i class="fas fa-calendar-days"></i> {{ task_summary.schedule.label }}
+      </span>
 
       <div class="btn-group">
         <form method="post" action="{{ url_for('task_routes.start_task', task_name=task.name) }}" class="d-inline">
@@ -50,9 +53,27 @@
             <i class="fas fa-stop me-1"></i> Stop
           </button>
         </form>
+        <button id="disable-schedule-btn" type="button" class="btn btn-secondary btn-sm"
+          data-task-name="{{ task.name }}"
+          data-schedule-action="disable">
+          <i class="fas fa-calendar-xmark me-1"></i> Disable Schedule
+        </button>
+        <button id="enable-schedule-btn" type="button" class="btn btn-secondary btn-sm{% if not task_summary.schedule.can_enable %} d-none{% endif %}"
+          data-task-name="{{ task.name }}"
+          data-schedule-action="enable">
+          <i class="fas fa-calendar-check me-1"></i> Enable Schedule
+        </button>
       </div>
     </div>
   </div>
+
+  {% if task_summary.schedule.state == 'issue' %}
+  <section class="task-schedule-notice">
+    <strong>Schedule issue:</strong>
+    <span>{{ task_summary.schedule.guidance }}</span>
+    <code>{{ task_summary.schedule.raw }}</code>
+  </section>
+  {% endif %}
 
   <section class="task-log-panel">
     <div class="task-log-header">
@@ -64,6 +85,37 @@
     </div>
     <pre class="log-viewer task-log-viewer">{{ logs }}</pre>
   </section>
+</div>
+
+<div class="modal-overlay d-none" id="disableScheduleModal" aria-hidden="true">
+  <div class="modal-container task-schedule-modal" role="dialog" aria-modal="true" aria-labelledby="disableScheduleTitle">
+    <div class="modal-header">
+      <h2 id="disableScheduleTitle">Disable Schedule</h2>
+      <button type="button" class="modal-close" id="disableScheduleClose" aria-label="Close">
+        <i class="fas fa-xmark"></i>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p>Automatic runs stop for this task. Manual Start still works and starts the service immediately.</p>
+      <div class="schedule-duration-grid" role="radiogroup" aria-label="Disable duration">
+        <label><input type="radio" name="disableScheduleDuration" value="1" checked> 1 hour</label>
+        <label><input type="radio" name="disableScheduleDuration" value="6"> 6 hours</label>
+        <label><input type="radio" name="disableScheduleDuration" value="24"> 24 hours</label>
+        <label><input type="radio" name="disableScheduleDuration" value="168"> 7 days</label>
+        <label><input type="radio" name="disableScheduleDuration" value="permanent"> Permanent</label>
+      </div>
+      <p class="schedule-permanent-note d-none" id="disableSchedulePermanentNote">
+        Permanent keeps automatic runs off until Enable Schedule is used.
+      </p>
+    </div>
+    <div class="modal-footer">
+      <span class="modal-status-line" id="disableScheduleStatus" aria-live="polite"></span>
+      <button type="button" class="btn btn-ghost btn-sm" id="disableScheduleCancel">Cancel</button>
+      <button type="button" class="btn btn-warning btn-sm" id="disableScheduleConfirm">
+        <i class="fas fa-calendar-xmark me-1"></i> Disable Schedule
+      </button>
+    </div>
+  </div>
 </div>
 {% endblock %}
 

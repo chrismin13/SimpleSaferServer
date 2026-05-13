@@ -222,6 +222,14 @@ class UninstallScriptTests(unittest.TestCase):
 
         self.assertNotEqual(result.returncode, 0)
 
+    def test_uninstall_removes_schedule_restore_units_and_helper(self):
+        script = UNINSTALL_SCRIPT.read_text()
+
+        self.assertIn('remove_systemd_unit "simple_safer_server_restore_schedules.timer"', script)
+        self.assertIn('remove_systemd_unit "simple_safer_server_restore_schedules.service"', script)
+        self.assertIn("restore_disabled_timers.py", script)
+        self.assertIn('rm -rf "$DATA_DIR"', script)
+
     def test_managed_hostname_summary_reads_hostname_metadata(self):
         with tempfile.TemporaryDirectory() as tempdir:
             config_path = Path(tempdir) / "config.conf"

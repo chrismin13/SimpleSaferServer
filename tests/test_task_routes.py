@@ -27,6 +27,7 @@ def test_task_detail_loads_maximum_log_window():
     task.get_logs.return_value = "full log"
     task_service = MagicMock()
     task_service.get_task.return_value = task
+    task_service.task_summary.return_value = {"schedule": {"state": "active"}}
     app = _build_app(task_service)
     user_manager = MagicMock()
     user_manager.is_admin.return_value = True
@@ -44,6 +45,7 @@ def test_task_detail_loads_maximum_log_window():
     assert response.status_code == 200
     task.get_logs.assert_called_once_with(TASK_LOG_LINE_LIMIT)
     assert render.call_args.kwargs["log_lines"] == TASK_LOG_LINE_LIMIT
+    assert render.call_args.kwargs["task_summary"] == {"schedule": {"state": "active"}}
 
 
 def test_task_logs_defaults_to_global_log_window():
@@ -161,3 +163,107 @@ def test_task_status_returns_not_found_for_unknown_task():
 
     assert response.status_code == 404
     assert response.get_json()["type"].endswith("#task-not-found")
+
+
+def test_disable_schedule_route_calls_task_and_returns_updated_summary():
+    task = MagicMock()
+    task_service = MagicMock()
+    task_service.get_task.return_value = task
+    task_service.task_summary.return_value = {
+        "name": "Cloud Backup",
+        "schedule": {"state": "permanent"},
+    }
+    app = _build_app(task_service)
+    user_manager = MagicMock()
+    user_manager.is_admin.return_value = True
+
+    with patch(
+        "simple_safer_server.services.user_manager.UserManager", return_value=user_manager
+    ), app.test_client() as client:
+        with client.session_transaction() as session:
+            session["username"] = "admin"
+
+        response = client.post(
+            "/task/Cloud%20Backup/disable-schedule",
+            json={"mode": "temporary", "hours": 6},
+            headers={"Accept": "application/json"},
+        )
+
+    assert response.status_code == 200
+    task.disable_schedule.assert_called_once_with("temporary", hours=6)
+    assert response.get_json()["data"]["task"]["schedule"]["state"] == "permanent"
+
+
+def test_enable_schedule_route_calls_task_and_returns_updated_summary():
+    task = MagicMock()
+    task_service = MagicMock()
+    task_service.get_task.return_value = task
+    task_service.task_summary.return_value = {
+        "name": "Cloud Backup",
+        "schedule": {"state": "active"},
+    }
+    app = _build_app(task_service)
+    user_manager = MagicMock()
+    user_manager.is_admin.return_value = True
+
+    with patch(
+        "simple_safer_server.services.user_manager.UserManager", return_value=user_manager
+    ), app.test_client() as client:
+        with client.session_transaction() as session:
+            session["username"] = "admin"
+
+        response = client.post(
+            "/task/Cloud%20Backup/enable-schedule",
+            headers={"Accept": "application/json"},
+        )
+
+    assert response.status_code == 200
+    task.enable_schedule.assert_called_once_with()
+    assert response.get_json()["data"]["task"]["schedule"]["state"] == "active"
+
+
+def test_disable_schedule_route_returns_not_found_for_unknown_task():
+    task_service = MagicMock()
+    task_service.get_task.return_value = None
+    app = _build_app(task_service)
+    user_manager = MagicMock()
+    user_manager.is_admin.return_value = True
+
+    with patch(
+        "simple_safer_server.services.user_manager.UserManager", return_value=user_manager
+    ), app.test_client() as client:
+        with client.session_transaction() as session:
+            session["username"] = "admin"
+
+        response = client.post(
+            "/task/Missing/disable-schedule",
+            json={"mode": "permanent"},
+            headers={"Accept": "application/json"},
+        )
+
+    assert response.status_code == 404
+    assert response.get_json()["type"].endswith("#task-not-found")
+
+
+def test_enable_schedule_route_reports_operation_failure():
+    task = MagicMock()
+    task.enable_schedule.side_effect = RuntimeError("boom")
+    task_service = MagicMock()
+    task_service.get_task.return_value = task
+    app = _build_app(task_service)
+    user_manager = MagicMock()
+    user_manager.is_admin.return_value = True
+
+    with patch(
+        "simple_safer_server.services.user_manager.UserManager", return_value=user_manager
+    ), app.test_client() as client:
+        with client.session_transaction() as session:
+            session["username"] = "admin"
+
+        response = client.post(
+            "/task/Cloud%20Backup/enable-schedule",
+            headers={"Accept": "application/json"},
+        )
+
+    assert response.status_code == 500
+    assert response.get_json()["type"].endswith("#task-operation-failed")

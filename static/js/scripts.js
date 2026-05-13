@@ -11,6 +11,15 @@ document.addEventListener("DOMContentLoaded", function () {
     const logContainer = document.querySelector(".log-viewer");
     const refreshState = document.getElementById("task-log-refresh-state");
     const statusBadge = document.getElementById("task-status-badge");
+    const scheduleBadge = document.getElementById("task-schedule-badge");
+    const disableScheduleBtn = document.getElementById("disable-schedule-btn");
+    const enableScheduleBtn = document.getElementById("enable-schedule-btn");
+    const disableScheduleModal = document.getElementById("disableScheduleModal");
+    const disableScheduleConfirm = document.getElementById("disableScheduleConfirm");
+    const disableScheduleCancel = document.getElementById("disableScheduleCancel");
+    const disableScheduleClose = document.getElementById("disableScheduleClose");
+    const disableScheduleStatus = document.getElementById("disableScheduleStatus");
+    const permanentNote = document.getElementById("disableSchedulePermanentNote");
     const taskName = autoRefreshCheckbox.getAttribute("data-task-name");
     const logLines = autoRefreshCheckbox.getAttribute("data-log-lines") || "500";
     let intervalId;
@@ -93,7 +102,82 @@ document.addEventListener("DOMContentLoaded", function () {
         .then((payload) => {
           const task = payload && payload.data ? payload.data.task : null;
           statusBadge.innerHTML = renderTaskStatusBadge(task && task.status);
+          updateScheduleControls(task && task.schedule);
         });
+    }
+
+    function updateScheduleControls(schedule) {
+      if (!schedule) return;
+      if (scheduleBadge) {
+        scheduleBadge.innerHTML = `<i class="fas fa-calendar-days"></i> ${escapeHtml(schedule.label || "Unknown")}`;
+      }
+      if (enableScheduleBtn) {
+        enableScheduleBtn.classList.toggle("d-none", !schedule.can_enable);
+      }
+    }
+
+    function openDisableScheduleModal() {
+      if (!disableScheduleModal) return;
+      disableScheduleStatus.textContent = "";
+      disableScheduleModal.classList.remove("d-none");
+      disableScheduleModal.classList.add("visible");
+      disableScheduleModal.setAttribute("aria-hidden", "false");
+    }
+
+    function closeDisableScheduleModal() {
+      if (!disableScheduleModal) return;
+      disableScheduleModal.classList.add("d-none");
+      disableScheduleModal.classList.remove("visible");
+      disableScheduleModal.setAttribute("aria-hidden", "true");
+    }
+
+    function selectedDisableDuration() {
+      const selected = document.querySelector('input[name="disableScheduleDuration"]:checked');
+      return selected ? selected.value : "1";
+    }
+
+    async function disableSchedule() {
+      const duration = selectedDisableDuration();
+      const payload = duration === "permanent"
+        ? { mode: "permanent" }
+        : { mode: "temporary", hours: Number(duration) };
+      window.AsyncButtonState.start(disableScheduleConfirm);
+      try {
+        const response = await window.ApiClient.fetchJson(
+          `/task/${encodeURIComponent(taskName)}/disable-schedule`,
+          {
+            method: "POST",
+            headers: { "Accept": "application/json", "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+          }
+        );
+        window.AsyncButtonState.success(disableScheduleConfirm);
+        updateScheduleControls(response.data && response.data.task && response.data.task.schedule);
+        closeDisableScheduleModal();
+        showAlert(response.message || "Schedule disabled.", "success");
+      } catch (error) {
+        window.AsyncButtonState.error(disableScheduleConfirm);
+        disableScheduleStatus.textContent = error.message || "Schedule disable failed.";
+      }
+    }
+
+    async function enableSchedule() {
+      window.AsyncButtonState.start(enableScheduleBtn);
+      try {
+        const response = await window.ApiClient.fetchJson(
+          `/task/${encodeURIComponent(taskName)}/enable-schedule`,
+          {
+            method: "POST",
+            headers: { "Accept": "application/json" }
+          }
+        );
+        window.AsyncButtonState.success(enableScheduleBtn);
+        updateScheduleControls(response.data && response.data.task && response.data.task.schedule);
+        showAlert(response.message || "Schedule enabled.", "success");
+      } catch (error) {
+        window.AsyncButtonState.error(enableScheduleBtn);
+        showAlert(error.message || "Schedule enable failed.", "danger");
+      }
     }
 
     function fetchLogs() {
@@ -156,6 +240,26 @@ document.addEventListener("DOMContentLoaded", function () {
 
     scrollToBottom();
     start();
+
+    if (disableScheduleBtn) {
+      disableScheduleBtn.addEventListener("click", openDisableScheduleModal);
+    }
+    if (enableScheduleBtn) {
+      enableScheduleBtn.addEventListener("click", enableSchedule);
+    }
+    if (disableScheduleConfirm) {
+      disableScheduleConfirm.addEventListener("click", disableSchedule);
+    }
+    [disableScheduleCancel, disableScheduleClose].forEach((button) => {
+      if (button) button.addEventListener("click", closeDisableScheduleModal);
+    });
+    document.querySelectorAll('input[name="disableScheduleDuration"]').forEach((input) => {
+      input.addEventListener("change", () => {
+        if (permanentNote) {
+          permanentNote.classList.toggle("d-none", selectedDisableDuration() !== "permanent");
+        }
+      });
+    });
   }
 
   // --- Setup Wizard: Backup Config Step Logic ---

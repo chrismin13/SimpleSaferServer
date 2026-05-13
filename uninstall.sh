@@ -34,6 +34,7 @@ SCRIPT_FILES=(
   ddns_update.py
   app_update.sh
   app_update.py
+  restore_disabled_timers.py
 )
 
 # The installer writes rclone config where the root-owned scheduled tasks can
@@ -371,6 +372,8 @@ main() {
         remove_systemd_unit "${svc}.timer"
         remove_systemd_unit "${svc}.service"
     done
+    remove_systemd_unit "simple_safer_server_restore_schedules.timer"
+    remove_systemd_unit "simple_safer_server_restore_schedules.service"
     remove_systemd_unit "simple_safer_server_web.service"
 
     remove_managed_fstab_entries

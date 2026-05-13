@@ -14,9 +14,15 @@ Four cards display real-time status:
 - **System Resources**: Displays CPU and RAM usage, and live network traffic (up/down rates).
 
 ## Task Schedule
-- **Table**: Lists all scheduled tasks with columns for Task, Next Run, Last Run, Duration, Status, and Actions.
-- **Actions**: Each task can be run immediately via the `Run Now` button.
-- **Refresh**: Button to reload the task schedule.
+- **Table**: Lists all scheduled tasks with columns for Task, Status, Last Run, and Next Run.
+- **Next Run**: Shows the active next run time or a short schedule state label. Temporary disables
+  show `Disabled until 18:00`, `Disabled until Tomorrow 18:00`, or a later date such as
+  `Disabled until May 16 18:00`. Permanent disables show `Disabled`. Timers disabled outside
+  SimpleSaferServer show `Disabled externally`; unexpected timer states show `Schedule issue`.
+- **Actions**: Right-click a task row to Start, Stop, Disable Schedule, or Enable Schedule when that
+  action applies.
+- **Disable Schedule**: Disables the task's systemd timer, not the service. Automatic runs stop, but
+  manual Start remains available.
 - Scheduled task success follows the underlying command exit code. For DDNS, a provider-level error or missing provider configuration fails the `DDNS Update` task after the provider details are written for the DDNS page.
 - `App Update` is the application self-update task. It runs the installed Git checkout's
   fast-forward update path and full installer, and is scheduled before the daily mount check. The

@@ -70,12 +70,19 @@ def dashboard():
 @tasks.route("/task/<task_name>")
 @admin_required
 def task_detail(task_name):
-    task = _get_services().task_service.get_task(task_name)
+    task_service = _get_services().task_service
+    task = task_service.get_task(task_name)
     if not task:
         abort(404)
     log_lines = TASK_LOG_LINE_LIMIT
     logs = task.get_logs(log_lines)
-    return render_template("task_detail.html", task=task, logs=logs, log_lines=log_lines)
+    return render_template(
+        "task_detail.html",
+        task=task,
+        task_summary=task_service.task_summary(task),
+        logs=logs,
+        log_lines=log_lines,
+    )
 
 
 @tasks.route("/task/<task_name>/logs")
@@ -151,6 +158,68 @@ def stop_task(task_name):
             return json_problem(
                 OperationProblem(
                     "Could not stop task. Check task logs.", slug="task-operation-failed"
+                )
+            )
+        abort(500)
+
+
+@tasks.route("/task/<task_name>/disable-schedule", methods=["POST"])
+@admin_required
+def disable_schedule(task_name):
+    task = _get_services().task_service.get_task(task_name)
+    if not task:
+        if request.accept_mimetypes.best == "application/json":
+            return json_problem(
+                NotFoundProblem("Task not found.", title="Task not found", slug="task-not-found")
+            )
+        abort(404)
+    data = request.get_json(silent=True) or request.form
+    mode = (data.get("mode") or "").strip()
+    hours = data.get("hours")
+    try:
+        parsed_hours = None
+        if hours is not None and hours != "":
+            parsed_hours = int(hours)
+        task.disable_schedule(mode, hours=parsed_hours)
+        if request.accept_mimetypes.best == "application/json":
+            summary = _get_services().task_service.task_summary(task)
+            return json_data({"task": summary}, message=f"Disabled schedule for {task_name}.")
+        return redirect(url_for("task_routes.task_detail", task_name=task_name))
+    except Exception:
+        current_app.logger.exception("Failed to disable schedule for %s", task_name)
+        if request.accept_mimetypes.best == "application/json":
+            return json_problem(
+                OperationProblem(
+                    "Could not disable schedule. Check systemd status.",
+                    slug="task-operation-failed",
+                )
+            )
+        abort(500)
+
+
+@tasks.route("/task/<task_name>/enable-schedule", methods=["POST"])
+@admin_required
+def enable_schedule(task_name):
+    task = _get_services().task_service.get_task(task_name)
+    if not task:
+        if request.accept_mimetypes.best == "application/json":
+            return json_problem(
+                NotFoundProblem("Task not found.", title="Task not found", slug="task-not-found")
+            )
+        abort(404)
+    try:
+        task.enable_schedule()
+        if request.accept_mimetypes.best == "application/json":
+            summary = _get_services().task_service.task_summary(task)
+            return json_data({"task": summary}, message=f"Enabled schedule for {task_name}.")
+        return redirect(url_for("task_routes.task_detail", task_name=task_name))
+    except Exception:
+        current_app.logger.exception("Failed to enable schedule for %s", task_name)
+        if request.accept_mimetypes.best == "application/json":
+            return json_problem(
+                OperationProblem(
+                    "Could not enable schedule. Check systemd status.",
+                    slug="task-operation-failed",
                 )
             )
         abort(500)

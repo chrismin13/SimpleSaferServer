@@ -5,7 +5,8 @@ import re
 import shutil
 
 from simple_safer_server.adapters.command_runner import CalledProcessError, CommandRunner
-from simple_safer_server.services.file_persistence import atomic_write_text
+from simple_safer_server.services.disabled_timers import DISABLED_TIMERS_FILENAME
+from simple_safer_server.services.file_persistence import atomic_write_text, read_json
 from simple_safer_server.services.runtime import get_fake_state, get_runtime
 from simple_safer_server.services.schedule_time import systemd_schedule_time
 
@@ -144,6 +145,7 @@ account default : simplesaferserver
                 'log_alert.py',
                 'ddns_update.sh',
                 'ddns_update.py',
+                'restore_disabled_timers.py',
             ]
 
             for script_file in script_files:
@@ -391,6 +393,29 @@ RandomizedDelaySec=30
 [Install]
 WantedBy=timers.target
 """,
+                'simple_safer_server_restore_schedules.service': """[Unit]
+Description=Restore SimpleSaferServer disabled task schedules
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/restore_disabled_timers.py
+User=root
+StandardOutput=journal
+StandardError=journal
+""",
+                'simple_safer_server_restore_schedules.timer': """[Unit]
+Description=Restore SimpleSaferServer disabled task schedules every five minutes
+
+[Timer]
+OnCalendar=*:0/5
+Persistent=true
+AccuracySec=1m
+
+[Install]
+WantedBy=timers.target
+""",
             }
 
             # Write all service and timer files
@@ -404,6 +429,8 @@ WantedBy=timers.target
             if self.runtime.is_fake:
                 return True, None
             self.run_command(['systemctl', 'daemon-reload'])
+            self.run_command(['systemctl', 'enable', 'simple_safer_server_restore_schedules.timer'])
+            self.run_command(['systemctl', 'start', 'simple_safer_server_restore_schedules.timer'])
 
             if not activate_timers:
                 for service_name in [
@@ -428,6 +455,7 @@ WantedBy=timers.target
                 return True, None
 
             # Enable and start services and timers
+            disabled_records = self._active_disabled_timer_records()
             for service_name in [
                 'check_mount',
                 'check_health',
@@ -437,6 +465,12 @@ WantedBy=timers.target
             ]:
                 # Enable services
                 self.run_command(['systemctl', 'enable', f'{service_name}.service'])
+                if f'{service_name}.timer' in disabled_records:
+                    # Regenerating unit files must not erase a maintenance window
+                    # that an admin explicitly set through Disable Schedule.
+                    self.run_command(['systemctl', 'disable', '--now', f'{service_name}.timer'])
+                    self.logger.info(f"Preserved disabled schedule state for {service_name} timer")
+                    continue
                 # Enable timers
                 self.run_command(['systemctl', 'enable', f'{service_name}.timer'])
                 # Start timers (services will be started by timers)
@@ -449,3 +483,14 @@ WantedBy=timers.target
         except Exception as e:
             self.logger.error(f"Error installing systemd services and timers: {e}")
             return False, str(e)
+
+    def _active_disabled_timer_records(self):
+        records_path = self.runtime.data_dir / DISABLED_TIMERS_FILENAME
+        records = read_json(records_path, {})
+        if not isinstance(records, dict):
+            return set()
+        return {
+            timer_name
+            for timer_name, record in records.items()
+            if isinstance(record, dict) and not record.get("restore_failed")
+        }

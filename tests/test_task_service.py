@@ -1,11 +1,17 @@
 import threading
 import time
 import unittest
+from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from simple_safer_server.services.task_service import TASK_LOG_LINE_LIMIT, Status, TaskService
+from simple_safer_server.services.task_service import (
+    TASK_LOG_LINE_LIMIT,
+    Status,
+    TaskService,
+    format_compact_schedule_datetime,
+)
 
 
 class FakeConfigManager:
@@ -60,6 +66,8 @@ class FakeSystemdAdapter:
     def __init__(self):
         self.started = []
         self.stopped = []
+        self.disabled_timers = []
+        self.enabled_timers = []
         self.journal_output = "journal output"
         self.properties = {
             ("backup_cloud.timer", "NextElapseUSecRealtime"): (
@@ -70,6 +78,9 @@ class FakeSystemdAdapter:
             ),
             ("backup_cloud.service", "LoadState"): "LoadState=loaded",
             ("backup_cloud.service", "Result"): "Result=success",
+            ("backup_cloud.timer", "UnitFileState"): "UnitFileState=enabled",
+            ("backup_cloud.timer", "LoadState"): "LoadState=loaded",
+            ("backup_cloud.timer", "ActiveState"): "ActiveState=active",
         }
         self.multi_properties = {
             "backup_cloud.service": (
@@ -88,6 +99,12 @@ class FakeSystemdAdapter:
 
     def stop_unit(self, unit_name):
         self.stopped.append(unit_name)
+
+    def disable_timer_now(self, unit_name):
+        self.disabled_timers.append(unit_name)
+
+    def enable_timer_now(self, unit_name):
+        self.enabled_timers.append(unit_name)
 
     def show_property(self, unit_name, property_name):
         return self.properties[(unit_name, property_name)]
@@ -137,6 +154,7 @@ class TaskServiceTests(unittest.TestCase):
     ):
         runtime = SimpleNamespace(
             is_fake=is_fake,
+            data_dir=Path("/tmp/simple-safer-server-test-data"),
             default_mount_point=mount_point,
             repo_root=Path("."),
             rclone_config_dir=Path("."),
@@ -168,8 +186,7 @@ class TaskServiceTests(unittest.TestCase):
         task = service.get_task("Cloud Backup")
         assert task is not None
 
-        task._service = MagicMock()
-        task._service.get_next_run.side_effect = RuntimeError("boom")
+        service.get_next_run = MagicMock(side_effect=RuntimeError("boom"))
 
         self.assertEqual(
             service.task_summary(task),
@@ -179,6 +196,14 @@ class TaskServiceTests(unittest.TestCase):
                 "last_run": "Error",
                 "status": "Error",
                 "last_run_duration": "Error",
+                "schedule": {
+                    "state": "issue",
+                    "label": "Schedule issue",
+                    "source": "system",
+                    "raw": "boom",
+                    "can_disable": True,
+                    "can_enable": True,
+                },
             },
         )
 
@@ -275,3 +300,71 @@ class TaskServiceTests(unittest.TestCase):
         )
         self.assertEqual(systemd_adapter.started, ["backup_cloud.service"])
         self.assertEqual(systemd_adapter.stopped, ["backup_cloud.service"])
+
+    def test_disable_schedule_disables_timer_not_service_and_manual_start_still_works(self):
+        systemd_adapter = FakeSystemdAdapter()
+        service, _fake_state = self.build_service(is_fake=False, systemd_adapter=systemd_adapter)
+        task = service.get_task("Cloud Backup")
+        assert task is not None
+
+        service.disable_schedule(task, "permanent")
+        task.start()
+
+        self.assertEqual(systemd_adapter.disabled_timers, ["backup_cloud.timer"])
+        self.assertEqual(systemd_adapter.started, ["backup_cloud.service"])
+
+    def test_enable_schedule_enables_timer_and_clears_schedule_state(self):
+        systemd_adapter = FakeSystemdAdapter()
+        service, _fake_state = self.build_service(is_fake=False, systemd_adapter=systemd_adapter)
+        task = service.get_task("Cloud Backup")
+        assert task is not None
+
+        service.disable_schedule(task, "permanent")
+        service.enable_schedule(task)
+
+        self.assertEqual(systemd_adapter.enabled_timers, ["backup_cloud.timer"])
+        self.assertEqual(service.schedule_state(task)["state"], "active")
+
+    def test_schedule_state_reports_managed_external_and_issue_states(self):
+        systemd_adapter = FakeSystemdAdapter()
+        service, _fake_state = self.build_service(is_fake=False, systemd_adapter=systemd_adapter)
+        task = service.get_task("Cloud Backup")
+        assert task is not None
+
+        service.disable_schedule(task, "permanent")
+        self.assertEqual(service.schedule_state(task)["label"], "Disabled")
+
+        service.enable_schedule(task)
+        systemd_adapter.properties[("backup_cloud.timer", "UnitFileState")] = (
+            "UnitFileState=disabled"
+        )
+        self.assertEqual(service.schedule_state(task)["label"], "Disabled externally")
+
+        systemd_adapter.properties[("backup_cloud.timer", "UnitFileState")] = "UnitFileState=bad"
+        self.assertEqual(service.schedule_state(task)["label"], "Schedule issue")
+
+    def test_temporary_schedule_state_uses_compact_disable_label(self):
+        systemd_adapter = FakeSystemdAdapter()
+        service, _fake_state = self.build_service(is_fake=False, systemd_adapter=systemd_adapter)
+        task = service.get_task("Cloud Backup")
+        assert task is not None
+
+        service.disable_schedule(task, "temporary", hours=6)
+
+        self.assertTrue(service.schedule_state(task)["label"].startswith("Disabled until "))
+
+    def test_schedule_datetime_labels_cover_today_tomorrow_and_later_dates(self):
+        now = datetime(2026, 5, 13, 9, 0, 0)
+
+        self.assertEqual(
+            format_compact_schedule_datetime(datetime(2026, 5, 13, 18, 0, 0), now),
+            "18:00",
+        )
+        self.assertEqual(
+            format_compact_schedule_datetime(datetime(2026, 5, 14, 18, 0, 0), now),
+            "Tomorrow 18:00",
+        )
+        self.assertEqual(
+            format_compact_schedule_datetime(datetime(2026, 5, 16, 18, 0, 0), now),
+            "May 16 18:00",
+        )

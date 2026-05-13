@@ -121,7 +121,7 @@
             {% endif %}
           </td>
           <td class="text-mono task-time-cell" style="font-size: var(--text-xs);" data-timestamp="{{ task.last_run or '' }}">{{ task.last_run or '—' }}</td>
-          <td class="text-mono task-time-cell" style="font-size: var(--text-xs);" data-timestamp="{{ task.next_run or '' }}" data-future="true">{{ task.next_run or '—' }}</td>
+          <td class="text-mono task-time-cell" style="font-size: var(--text-xs);" data-timestamp="{{ task.schedule.raw_next_run or '' }}" data-schedule-label="{{ task.schedule.label or task.next_run or '' }}" data-future="true">{{ task.schedule.label or task.next_run or '—' }}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -180,6 +180,43 @@
   <button type="button" class="task-context-menu-item" data-task-action="stop" role="menuitem">
     <i class="fas fa-stop"></i> Stop
   </button>
+  <button type="button" class="task-context-menu-item" data-task-action="disable-schedule" role="menuitem">
+    <i class="fas fa-calendar-xmark"></i> Disable Schedule
+  </button>
+  <button type="button" class="task-context-menu-item" data-task-action="enable-schedule" role="menuitem">
+    <i class="fas fa-calendar-check"></i> Enable Schedule
+  </button>
+</div>
+
+<div class="modal-overlay d-none" id="dashboardDisableScheduleModal" aria-hidden="true">
+  <div class="modal-container task-schedule-modal" role="dialog" aria-modal="true" aria-labelledby="dashboardDisableScheduleTitle">
+    <div class="modal-header">
+      <h2 id="dashboardDisableScheduleTitle">Disable Schedule</h2>
+      <button type="button" class="modal-close" id="dashboardDisableScheduleClose" aria-label="Close">
+        <i class="fas fa-xmark"></i>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p>Automatic runs stop for this task. Manual Start still works from the task page and context menu.</p>
+      <div class="schedule-duration-grid" role="radiogroup" aria-label="Disable duration">
+        <label><input type="radio" name="dashboardDisableScheduleDuration" value="1" checked> 1 hour</label>
+        <label><input type="radio" name="dashboardDisableScheduleDuration" value="6"> 6 hours</label>
+        <label><input type="radio" name="dashboardDisableScheduleDuration" value="24"> 24 hours</label>
+        <label><input type="radio" name="dashboardDisableScheduleDuration" value="168"> 7 days</label>
+        <label><input type="radio" name="dashboardDisableScheduleDuration" value="permanent"> Permanent</label>
+      </div>
+      <p class="schedule-permanent-note d-none" id="dashboardDisableSchedulePermanentNote">
+        Permanent keeps automatic runs off until Enable Schedule is used.
+      </p>
+    </div>
+    <div class="modal-footer">
+      <span class="modal-status-line" id="dashboardDisableScheduleStatus" aria-live="polite"></span>
+      <button type="button" class="btn btn-ghost btn-sm" id="dashboardDisableScheduleCancel">Cancel</button>
+      <button type="button" class="btn btn-warning btn-sm" id="dashboardDisableScheduleConfirm">
+        <i class="fas fa-calendar-xmark me-1"></i> Disable Schedule
+      </button>
+    </div>
+  </div>
 </div>
 {% endblock %}
 
@@ -188,6 +225,10 @@
 document.addEventListener('DOMContentLoaded', function() {
   const tasksBody = document.getElementById('tasks-body');
   const taskContextMenu = document.getElementById('taskContextMenu');
+  const disableScheduleModal = document.getElementById('dashboardDisableScheduleModal');
+  const disableScheduleConfirm = document.getElementById('dashboardDisableScheduleConfirm');
+  const disableScheduleStatus = document.getElementById('dashboardDisableScheduleStatus');
+  const permanentNote = document.getElementById('dashboardDisableSchedulePermanentNote');
   const driveActionSlot = document.getElementById('drive-action-slot');
   const healthRefreshButton = document.getElementById('health-refresh-button');
   const taskScheduleByName = new Map();
@@ -261,7 +302,9 @@ Remove the drive now if you do not want it mounted again.`;
   function renderTaskRow(task) {
     const url = `/task/${encodeURIComponent(task.name)}`;
     const lastRun = task.last_run || '';
-    const nextRun = task.next_run || '';
+    const schedule = task.schedule || {};
+    const nextRun = schedule.raw_next_run || task.next_run || '';
+    const scheduleLabel = schedule.label || task.next_run || '';
 
     const row = document.createElement('tr');
     row.className = 'clickable-row';
@@ -291,8 +334,9 @@ Remove the drive now if you do not want it mounted again.`;
     tdNextRun.className = 'text-mono task-time-cell';
     tdNextRun.style.fontSize = 'var(--text-xs)';
     tdNextRun.dataset.timestamp = nextRun;
+    tdNextRun.dataset.scheduleLabel = scheduleLabel;
     tdNextRun.dataset.future = 'true';
-    tdNextRun.textContent = nextRun || '—';
+    tdNextRun.textContent = scheduleLabel || '—';
     row.appendChild(tdNextRun);
 
     return row;
@@ -340,7 +384,13 @@ Remove the drive now if you do not want it mounted again.`;
   function applyRelativeTaskTimes() {
     document.querySelectorAll('.task-time-cell').forEach((cell) => {
       const timestamp = cell.dataset.timestamp || '';
+      const scheduleLabel = cell.dataset.scheduleLabel || '';
       const isFuture = cell.dataset.future === 'true';
+      if (scheduleLabel && scheduleLabel !== timestamp) {
+        cell.textContent = scheduleLabel;
+        cell.title = timestamp || scheduleLabel;
+        return;
+      }
       cell.textContent = window.formatRelativeTimestamp(timestamp, {
         fallback: '—',
         futurePrefix: !isFuture ? true : false
@@ -404,6 +454,48 @@ Remove the drive now if you do not want it mounted again.`;
     showAlert(message || 'Task updated.', 'success');
     updateTaskSchedule();
     setTimeout(updateTaskSchedule, 1500);
+  }
+
+  function selectedDashboardDisableDuration() {
+    const selected = document.querySelector('input[name="dashboardDisableScheduleDuration"]:checked');
+    return selected ? selected.value : '1';
+  }
+
+  function openDashboardDisableScheduleModal(taskName) {
+    activeContextTaskName = taskName;
+    disableScheduleStatus.textContent = '';
+    disableScheduleModal.classList.remove('d-none');
+    disableScheduleModal.classList.add('visible');
+    disableScheduleModal.setAttribute('aria-hidden', 'false');
+  }
+
+  function closeDashboardDisableScheduleModal() {
+    disableScheduleModal.classList.add('d-none');
+    disableScheduleModal.classList.remove('visible');
+    disableScheduleModal.setAttribute('aria-hidden', 'true');
+  }
+
+  async function disableScheduleFromDashboard() {
+    if (!activeContextTaskName) return;
+    const duration = selectedDashboardDisableDuration();
+    const payload = duration === 'permanent'
+      ? { mode: 'permanent' }
+      : { mode: 'temporary', hours: Number(duration) };
+    window.AsyncButtonState.start(disableScheduleConfirm);
+    try {
+      const { message } = await window.ApiClient.fetchJson(`/task/${encodeURIComponent(activeContextTaskName)}/disable-schedule`, {
+        method: 'POST',
+        headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      window.AsyncButtonState.success(disableScheduleConfirm);
+      closeDashboardDisableScheduleModal();
+      showAlert(message || 'Schedule disabled.', 'success');
+      updateTaskSchedule();
+    } catch (error) {
+      window.AsyncButtonState.error(disableScheduleConfirm);
+      disableScheduleStatus.textContent = error.message || 'Schedule disable failed.';
+    }
   }
 
   function bindDashboardActionForms() {
@@ -727,9 +819,29 @@ Remove the drive now if you do not want it mounted again.`;
       const action = button.dataset.taskAction;
       hideTaskContextMenu();
       try {
-        await runTaskAction(taskName, action);
+        if (action === 'disable-schedule') {
+          openDashboardDisableScheduleModal(taskName);
+        } else if (action === 'enable-schedule') {
+          await runTaskAction(taskName, 'enable-schedule');
+        } else {
+          await runTaskAction(taskName, action);
+        }
       } catch (error) {
         showAlert(error.message || 'Task action failed.', 'danger');
+      }
+    });
+  });
+
+  [document.getElementById('dashboardDisableScheduleCancel'), document.getElementById('dashboardDisableScheduleClose')].forEach((button) => {
+    if (button) button.addEventListener('click', closeDashboardDisableScheduleModal);
+  });
+  if (disableScheduleConfirm) {
+    disableScheduleConfirm.addEventListener('click', disableScheduleFromDashboard);
+  }
+  document.querySelectorAll('input[name="dashboardDisableScheduleDuration"]').forEach((input) => {
+    input.addEventListener('change', () => {
+      if (permanentNote) {
+        permanentNote.classList.toggle('d-none', selectedDashboardDisableDuration() !== 'permanent');
       }
     });
   });

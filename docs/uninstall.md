@@ -18,6 +18,7 @@ The uninstaller removes:
 - SimpleSaferServer application files, scripts, and models
 - SimpleSaferServer systemd services and timers
 - app config, logs, task data, and user data
+- Disable Schedule restore timer state, helper script, and disabled-timer data
 - the SimpleSaferServer-managed `/etc/fstab` entry
 - Samba users synced from SimpleSaferServer accounts
 - marker-wrapped SimpleSaferServer-managed Samba share blocks

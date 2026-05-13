@@ -57,6 +57,37 @@ def test_fake_dashboard_renders_storage_action_urls():
             assert 'action="/unmount"' in page
             assert 'action="/mount"' in page
             assert 'id="health-refresh-button"' in page
+            assert "<th>Next Run</th>" in page
+            assert "Disable Schedule" in page
+            assert "Enable Schedule" in page
+            assert "dashboardDisableScheduleModal" in page
+            assert "<th>Schedule</th>" not in page
+    finally:
+        runtime._runtime = previous_runtime
+        runtime._fake_state = previous_fake_state
+
+
+def test_fake_task_detail_renders_schedule_controls_and_modal():
+    previous_runtime = runtime._runtime
+    previous_fake_state = runtime._fake_state
+    try:
+        with TemporaryDirectory() as temp_dir:
+            app = _create_fake_app(temp_dir)
+            _finish_fake_setup(app)
+
+            with app.test_client() as client:
+                response = client.get("/task/Cloud%20Backup")
+
+            assert response.status_code == 200
+            page = response.get_data(as_text=True)
+            assert "Disable Schedule" in page
+            assert "Enable Schedule" in page
+            assert "1 hour" in page
+            assert "6 hours" in page
+            assert "24 hours" in page
+            assert "7 days" in page
+            assert "Permanent" in page
+            assert "Manual Start still works" in page
     finally:
         runtime._runtime = previous_runtime
         runtime._fake_state = previous_fake_state

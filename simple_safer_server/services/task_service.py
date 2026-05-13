@@ -14,6 +14,7 @@ from simple_safer_server.adapters.command_runner import (
 )
 from simple_safer_server.adapters.rclone import RcloneAdapter
 from simple_safer_server.adapters.systemd import CalledProcessError, SystemdAdapter
+from simple_safer_server.services.disabled_timers import DisabledTimerService, parse_timestamp
 from simple_safer_server.services.drive_health import run_scheduled_drive_health_check
 
 
@@ -32,6 +33,32 @@ TERMINAL_FAKE_STATUSES = {Status.SUCCESS, Status.FAILURE, Status.ERROR, Status.S
 # Keep one app-wide task-log window so routes, auto-refresh, and service defaults
 # do not quietly drift apart after app-update output grows or shrinks.
 TASK_LOG_LINE_LIMIT = 500
+
+
+def parse_systemd_datetime(value: str) -> Optional[datetime]:
+    if not value or value in {"Unknown", "Retrieval Error"}:
+        return None
+    formats = [
+        "%Y-%m-%d %H:%M:%S",
+        "%a %Y-%m-%d %H:%M:%S %Z",
+        "%Y-%m-%d %H:%M:00",
+    ]
+    for fmt in formats:
+        try:
+            return datetime.strptime(value, fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def format_compact_schedule_datetime(value: Optional[datetime], now: datetime) -> str:
+    if value is None:
+        return "Unknown"
+    if value.date() == now.date():
+        return value.strftime("%H:%M")
+    if value.date() == (now + timedelta(days=1)).date():
+        return "Tomorrow {}".format(value.strftime("%H:%M"))
+    return value.strftime("%b %-d %H:%M")
 
 
 def clamp_task_log_lines(lines: Any) -> int:
@@ -61,6 +88,12 @@ class Task:
         """Stop the associated service asynchronously."""
         self._service.stop_task(self)
 
+    def disable_schedule(self, mode: str, hours: Optional[int] = None) -> None:
+        self._service.disable_schedule(self, mode, hours=hours)
+
+    def enable_schedule(self) -> None:
+        self._service.enable_schedule(self)
+
     @property
     def next_run(self) -> str:
         return self._service.get_next_run(self)
@@ -89,6 +122,7 @@ class TaskService:
         command_runner: Optional[CommandRunner] = None,
         systemd_adapter: Optional[SystemdAdapter] = None,
         rclone_adapter: Optional[RcloneAdapter] = None,
+        disabled_timer_service: Optional[DisabledTimerService] = None,
     ):
         self.runtime = runtime
         self.config_manager = config_manager
@@ -98,6 +132,11 @@ class TaskService:
         self.command_runner = command_runner or CommandRunner()
         self.systemd_adapter = systemd_adapter or SystemdAdapter(self.command_runner)
         self.rclone_adapter = rclone_adapter or RcloneAdapter(self.command_runner)
+        self.disabled_timer_service = disabled_timer_service or DisabledTimerService(
+            runtime,
+            self.systemd_adapter,
+            logger=logger,
+        )
         self._fake_task_threads = {}  # type: Dict[str, threading.Thread]
         self._fake_task_cancel_events = {}  # type: Dict[str, threading.Event]
         self._fake_task_lock = threading.Lock()
@@ -115,14 +154,16 @@ class TaskService:
                 return task
         return None
 
-    def task_summary(self, task: Task) -> Dict[str, str]:
+    def task_summary(self, task: Task) -> Dict[str, Any]:
         try:
+            schedule = self.schedule_state(task)
             return {
                 "name": task.name,
-                "next_run": task.next_run,
+                "next_run": schedule["label"],
                 "last_run": task.last_run,
                 "status": task.status,
                 "last_run_duration": task.last_run_duration,
+                "schedule": schedule,
             }
         except Exception as exc:
             if self.logger:
@@ -133,16 +174,24 @@ class TaskService:
                 "last_run": "Error",
                 "status": "Error",
                 "last_run_duration": "Error",
+                "schedule": {
+                    "state": "issue",
+                    "label": "Schedule issue",
+                    "source": "system",
+                    "raw": str(exc),
+                    "can_disable": True,
+                    "can_enable": True,
+                },
             }
 
-    def task_summaries(self) -> List[Dict[str, str]]:
+    def task_summaries(self) -> List[Dict[str, Any]]:
         return [self.task_summary(task) for task in self._tasks]
 
     def get_check_mount_next_run(self) -> Optional[str]:
         check_mount_task = self.get_task("Check Mount")
         if not check_mount_task:
             return None
-        return check_mount_task.next_run
+        return self.schedule_state(check_mount_task)["raw_next_run"]
 
     def _require_fake_state(self) -> Any:
         if self.fake_state is None:
@@ -194,6 +243,121 @@ class TaskService:
             self.systemd_adapter.stop_unit(task.service_name)
         except Exception as exc:
             raise RuntimeError(f"Failed to stop {task.service_name}: {exc}") from exc
+
+    def disable_schedule(
+        self,
+        task: Task,
+        mode: str,
+        *,
+        hours: Optional[int] = None,
+    ) -> None:
+        expires_at = None
+        if mode == "temporary":
+            if hours is None:
+                raise ValueError("temporary schedule disable requires hours")
+            expires_at = datetime.now() + timedelta(hours=hours)
+        self.disabled_timer_service.disable(
+            task.name,
+            task.timer_name,
+            mode=mode,
+            expires_at=expires_at,
+        )
+
+    def enable_schedule(self, task: Task) -> None:
+        self.disabled_timer_service.enable(task.timer_name)
+
+    def schedule_state(self, task: Task) -> Dict[str, Any]:
+        raw_next_run = self.get_next_run(task)
+        record = self.disabled_timer_service.get_record(task.timer_name)
+        if record:
+            state = "restore_failed" if record.get("restore_failed") else record.get("mode")
+            label = "Restore failed" if state == "restore_failed" else "Disabled"
+            if state == "temporary":
+                label = "Disabled until {}".format(
+                    self._format_compact_datetime(parse_timestamp(record.get("expires_at")))
+                )
+            return {
+                "state": state,
+                "label": label,
+                "source": "simple_safer_server",
+                "mode": record.get("mode"),
+                "expires_at": record.get("expires_at"),
+                "restore_attempts": record.get("restore_attempts", 0),
+                "restore_failed": bool(record.get("restore_failed")),
+                "raw_next_run": raw_next_run,
+                "can_disable": True,
+                "can_enable": True,
+            }
+
+        if self.runtime.is_fake:
+            return {
+                "state": "active",
+                "label": self._format_compact_datetime(parse_systemd_datetime(raw_next_run)),
+                "source": "fake",
+                "raw_next_run": raw_next_run,
+                "can_disable": True,
+                "can_enable": False,
+            }
+
+        try:
+            unit_state = self._systemd_property(task.timer_name, "UnitFileState")
+            active_state = self._systemd_property(task.timer_name, "ActiveState")
+            load_state = self._systemd_property(task.timer_name, "LoadState")
+        except CalledProcessError as exc:
+            return self._schedule_issue_state(raw_next_run, str(exc))
+
+        if unit_state in {"disabled", "masked"}:
+            return {
+                "state": "external_disabled",
+                "label": "Disabled externally",
+                "source": "systemd",
+                "raw_next_run": raw_next_run,
+                "raw": {
+                    "unit_file_state": unit_state,
+                    "active_state": active_state,
+                    "load_state": load_state,
+                },
+                "can_disable": True,
+                "can_enable": True,
+            }
+        if unit_state == "enabled" and active_state in {"active", "waiting", "inactive"}:
+            return {
+                "state": "active",
+                "label": self._format_compact_datetime(parse_systemd_datetime(raw_next_run)),
+                "source": "systemd",
+                "raw_next_run": raw_next_run,
+                "can_disable": True,
+                "can_enable": False,
+            }
+        return self._schedule_issue_state(
+            raw_next_run,
+            {
+                "unit_file_state": unit_state,
+                "active_state": active_state,
+                "load_state": load_state,
+            },
+        )
+
+    def _schedule_issue_state(self, raw_next_run: str, raw: Any) -> Dict[str, Any]:
+        return {
+            "state": "issue",
+            "label": "Schedule issue",
+            "source": "systemd",
+            "raw_next_run": raw_next_run,
+            "raw": raw,
+            "guidance": "Inspect systemd or regenerate units from System Updates.",
+            "can_disable": True,
+            "can_enable": True,
+        }
+
+    def _systemd_property(self, unit_name: str, property_name: str) -> str:
+        output = self.systemd_adapter.show_property(unit_name, property_name)
+        if "=" in output:
+            return output.split("=", 1)[1].strip()
+        return output.strip()
+
+    def _format_compact_datetime(self, value: Optional[datetime]) -> str:
+        return format_compact_schedule_datetime(value, datetime.now())
 
     def get_next_run(self, task: Task) -> str:
         if self.runtime.is_fake:

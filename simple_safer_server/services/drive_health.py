@@ -11,10 +11,10 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 from simple_safer_server.adapters.drive_health_commands import (
-    CalledProcessError,
     DriveHealthCommandAdapter,
     TimeoutExpired,
 )
+from simple_safer_server.services.alert_notifications import AlertNotifier
 from simple_safer_server.services.file_persistence import atomic_write_json
 from simple_safer_server.services.runtime import get_runtime
 
@@ -790,27 +790,12 @@ def get_hdsentinel_display_snapshot(config_manager, system_utils, runtime=None):
 
 
 def _log_and_email_alert(config_manager, runtime, title, message, *, alert_type, source):
-    config_manager.log_alert(title, message, alert_type=alert_type, source=source)
-
-    if runtime.is_fake:
-        LOGGER.info("Fake mode: suppressing email for alert '%s'", title)
-        return
-
-    email_address = (config_manager.get_value("backup", "email_address", "") or "").strip()
-    from_address = (config_manager.get_value("backup", "from_address", "") or "").strip()
-    server_name = (
-        config_manager.get_value("system", "server_name", "SimpleSaferServer")
-        or "SimpleSaferServer"
-    ).strip()
-    if not email_address or not from_address:
-        LOGGER.warning("Skipping email alert because email settings are incomplete.")
-        return
-
-    email_body = f"Subject: {title} - {server_name}\nFrom: {from_address}\n\n{message}"
-    try:
-        drive_health_command_adapter.send_email(from_address, email_address, email_body)
-    except (CalledProcessError, OSError, TimeoutExpired) as exc:
-        LOGGER.warning("Failed to send alert email '%s': %s", title, exc)
+    AlertNotifier(
+        config_manager,
+        runtime,
+        command_adapter=drive_health_command_adapter,
+        logger=LOGGER,
+    ).notify(title, message, alert_type=alert_type, source=source)
 
 
 def run_hdsentinel_health_monitor(config_manager, system_utils, runtime=None):

@@ -30,12 +30,14 @@ from simple_safer_server.routes.storage import storage as storage_routes
 from simple_safer_server.routes.system_updates import system_updates as system_updates_routes
 from simple_safer_server.routes.tasks import tasks as task_routes
 from simple_safer_server.routes.users import users as users_routes
+from simple_safer_server.services.alert_notifications import AlertNotifier
 from simple_safer_server.services.alerts_service import AlertsService
 from simple_safer_server.services.app_updates import AppUpdateManager
 from simple_safer_server.services.cloud_backup_service import CloudBackupService
 from simple_safer_server.services.config_manager import ConfigManager
 from simple_safer_server.services.container import AppServices
 from simple_safer_server.services.ddns_service import DdnsService
+from simple_safer_server.services.disabled_timers import DisabledTimerService
 from simple_safer_server.services.drive_health import DriveHealthSummaryService
 from simple_safer_server.services.runtime import get_fake_state, get_flask_secret_key, get_runtime
 from simple_safer_server.services.server_identity import ServerIdentityService
@@ -109,6 +111,13 @@ def create_app() -> Tuple[Flask, SocketIO]:
     systemd_adapter = SystemdAdapter(command_runner)
     rclone_adapter = RcloneAdapter(command_runner)
     storage_command_adapter = StorageCommandAdapter(command_runner)
+    alert_notifier = AlertNotifier(config_manager, runtime, logger=app.logger)
+    disabled_timer_service = DisabledTimerService(
+        runtime,
+        systemd_adapter,
+        alert_notifier=alert_notifier,
+        logger=app.logger,
+    )
     system_updates_manager = SystemUpdatesManager(config_manager, runtime=runtime)
     app_update_manager = AppUpdateManager(runtime=runtime)
     task_service = TaskService(
@@ -120,6 +129,7 @@ def create_app() -> Tuple[Flask, SocketIO]:
         command_runner=command_runner,
         systemd_adapter=systemd_adapter,
         rclone_adapter=rclone_adapter,
+        disabled_timer_service=disabled_timer_service,
     )
     ddns_service = DdnsService(
         runtime=runtime,

@@ -40,6 +40,24 @@ class SystemdAdapter:
             timeout=SYSTEMD_COMMAND_TIMEOUT_SECONDS,
         )
 
+    def disable_timer_now(self, unit_name: str) -> None:
+        self._command_runner.run(
+            ["systemctl", "disable", "--now", unit_name],
+            stdout=DEVNULL,
+            stderr=DEVNULL,
+            check=True,
+            timeout=SYSTEMD_COMMAND_TIMEOUT_SECONDS,
+        )
+
+    def enable_timer_now(self, unit_name: str) -> None:
+        self._command_runner.run(
+            ["systemctl", "enable", "--now", unit_name],
+            stdout=DEVNULL,
+            stderr=DEVNULL,
+            check=True,
+            timeout=SYSTEMD_COMMAND_TIMEOUT_SECONDS,
+        )
+
     def show_property(self, unit_name: str, property_name: str) -> str:
         result = self._command_runner.run(
             ["systemctl", "show", unit_name, f"--property={property_name}"],

@@ -28,6 +28,7 @@ class SystemUtilsTimerActivationTests(unittest.TestCase):
         return types.SimpleNamespace(
             is_fake=False,
             systemd_dir=Path(temp_dir) / "systemd",
+            data_dir=Path(temp_dir) / "data",
         )
 
     def _config(self):
@@ -40,6 +41,7 @@ class SystemUtilsTimerActivationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             runtime = self._runtime(temp_dir)
             runtime.systemd_dir.mkdir()
+            runtime.data_dir.mkdir()
             system_utils = RecordingSystemUtils(runtime)
 
             ok, error = system_utils.install_systemd_services_and_timers(
@@ -51,6 +53,14 @@ class SystemUtilsTimerActivationTests(unittest.TestCase):
             self.assertIsNone(error)
             self.assertTrue((runtime.systemd_dir / "backup_cloud.timer").exists())
             self.assertIn((["systemctl", "daemon-reload"], True), system_utils.commands)
+            self.assertIn(
+                (["systemctl", "enable", "simple_safer_server_restore_schedules.timer"], True),
+                system_utils.commands,
+            )
+            self.assertIn(
+                (["systemctl", "start", "simple_safer_server_restore_schedules.timer"], True),
+                system_utils.commands,
+            )
             self.assertNotIn(
                 (["systemctl", "start", "backup_cloud.timer"], True), system_utils.commands
             )
@@ -80,6 +90,7 @@ class SystemUtilsTimerActivationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             runtime = self._runtime(temp_dir)
             runtime.systemd_dir.mkdir()
+            runtime.data_dir.mkdir()
             system_utils = RecordingSystemUtils(runtime)
 
             ok, error = system_utils.install_systemd_services_and_timers(
@@ -107,6 +118,36 @@ class SystemUtilsTimerActivationTests(unittest.TestCase):
                 self.assertIn(
                     (["systemctl", "start", f"{service_name}.timer"], True), system_utils.commands
                 )
+
+    def test_install_systemd_services_preserves_managed_disabled_timers(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime = self._runtime(temp_dir)
+            runtime.systemd_dir.mkdir()
+            runtime.data_dir.mkdir()
+            (runtime.data_dir / "disabled_timers.json").write_text(
+                '{"backup_cloud.timer": {"mode": "permanent", "restore_failed": false}}'
+            )
+            system_utils = RecordingSystemUtils(runtime)
+
+            ok, error = system_utils.install_systemd_services_and_timers(
+                self._config(),
+                activate_timers=True,
+            )
+
+            self.assertTrue(ok, error)
+            self.assertIsNone(error)
+            self.assertIn(
+                (["systemctl", "disable", "--now", "backup_cloud.timer"], True),
+                system_utils.commands,
+            )
+            self.assertNotIn(
+                (["systemctl", "start", "backup_cloud.timer"], True),
+                system_utils.commands,
+            )
+            self.assertIn(
+                (["systemctl", "start", "check_mount.timer"], True),
+                system_utils.commands,
+            )
 
     def test_parent_device_fallback_strips_standard_partition_suffix(self):
         with tempfile.TemporaryDirectory() as temp_dir:
