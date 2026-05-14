@@ -53,12 +53,16 @@
             <i class="fas fa-stop me-1"></i> Stop
           </button>
         </form>
-        <button id="disable-schedule-btn" type="button" class="btn btn-secondary btn-sm"
+      </div>
+
+      <div class="btn-group">
+        <button id="disable-schedule-btn" type="button" class="btn btn-warning btn-sm"
           data-task-name="{{ task.name }}"
           data-schedule-action="disable">
           <i class="fas fa-calendar-xmark me-1"></i> Disable Schedule
         </button>
-        <button id="enable-schedule-btn" type="button" class="btn btn-secondary btn-sm{% if not task_summary.schedule.can_enable %} d-none{% endif %}"
+        <button id="enable-schedule-btn" type="button" class="btn btn-primary btn-sm"
+          {% if not task_summary.schedule.can_enable %}disabled{% endif %}
           data-task-name="{{ task.name }}"
           data-schedule-action="enable">
           <i class="fas fa-calendar-check me-1"></i> Enable Schedule
@@ -103,17 +107,24 @@
         <label><input type="radio" name="disableScheduleDuration" value="24"> 24 hours</label>
         <label><input type="radio" name="disableScheduleDuration" value="168"> 7 days</label>
         <label><input type="radio" name="disableScheduleDuration" value="permanent"> Permanent</label>
+        <label><input type="radio" name="disableScheduleDuration" value="custom"> Custom</label>
       </div>
       <p class="schedule-permanent-note d-none" id="disableSchedulePermanentNote">
         Permanent keeps automatic runs off until Enable Schedule is used.
       </p>
+      <div class="form-group mt-3 d-none" id="disableScheduleCustomGroup">
+        <label class="form-label text-muted" style="font-size: var(--text-sm);" for="disableScheduleCustomHours">Custom Duration (hours)</label>
+        <input type="text" id="disableScheduleCustomHours" class="form-control mt-1" placeholder="48" value="48" inputmode="numeric" pattern="[0-9]*">
+      </div>
     </div>
     <div class="modal-footer">
-      <span class="modal-status-line" id="disableScheduleStatus" aria-live="polite"></span>
-      <button type="button" class="btn btn-ghost btn-sm" id="disableScheduleCancel">Cancel</button>
-      <button type="button" class="btn btn-warning btn-sm" id="disableScheduleConfirm">
-        <i class="fas fa-calendar-xmark me-1"></i> Disable Schedule
-      </button>
+      <div class="modal-footer-message text-danger" id="disableScheduleStatus" role="alert" aria-live="polite"></div>
+      <div class="modal-footer-actions">
+        <button type="button" class="btn btn-secondary" id="disableScheduleCancel">Cancel</button>
+        <button type="button" class="btn btn-warning" id="disableScheduleConfirm">
+          <i class="fas fa-calendar-xmark me-1"></i> Disable Schedule
+        </button>
+      </div>
     </div>
   </div>
 </div>

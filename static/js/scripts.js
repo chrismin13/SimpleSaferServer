@@ -20,6 +20,8 @@ document.addEventListener("DOMContentLoaded", function () {
     const disableScheduleClose = document.getElementById("disableScheduleClose");
     const disableScheduleStatus = document.getElementById("disableScheduleStatus");
     const permanentNote = document.getElementById("disableSchedulePermanentNote");
+    const customGroup = document.getElementById("disableScheduleCustomGroup");
+    const customHoursInput = document.getElementById("disableScheduleCustomHours");
     const taskName = autoRefreshCheckbox.getAttribute("data-task-name");
     const logLines = autoRefreshCheckbox.getAttribute("data-log-lines") || "500";
     let intervalId;
@@ -112,7 +114,7 @@ document.addEventListener("DOMContentLoaded", function () {
         scheduleBadge.innerHTML = `<i class="fas fa-calendar-days"></i> ${escapeHtml(schedule.label || "Unknown")}`;
       }
       if (enableScheduleBtn) {
-        enableScheduleBtn.classList.toggle("d-none", !schedule.can_enable);
+        enableScheduleBtn.disabled = !schedule.can_enable;
       }
     }
 
@@ -137,7 +139,22 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     async function disableSchedule() {
-      const duration = selectedDisableDuration();
+      let duration = selectedDisableDuration();
+      disableScheduleStatus.textContent = "";
+      if (duration === "custom") {
+        if (!customHoursInput) return;
+        const customVal = customHoursInput.value.trim();
+        if (!/^\d+$/.test(customVal)) {
+          disableScheduleStatus.textContent = "Custom duration must contain only digits.";
+          return;
+        }
+        const hours = parseInt(customVal, 10);
+        if (isNaN(hours) || hours <= 0) {
+          disableScheduleStatus.textContent = "Custom duration must be greater than 0 hours.";
+          return;
+        }
+        duration = String(hours);
+      }
       const payload = duration === "permanent"
         ? { mode: "permanent" }
         : { mode: "temporary", hours: Number(duration) };
@@ -255,8 +272,16 @@ document.addEventListener("DOMContentLoaded", function () {
     });
     document.querySelectorAll('input[name="disableScheduleDuration"]').forEach((input) => {
       input.addEventListener("change", () => {
+        const val = selectedDisableDuration();
         if (permanentNote) {
-          permanentNote.classList.toggle("d-none", selectedDisableDuration() !== "permanent");
+          permanentNote.classList.toggle("d-none", val !== "permanent");
+        }
+        if (customGroup) {
+          const isCustom = val === "custom";
+          customGroup.classList.toggle("d-none", !isCustom);
+          if (isCustom && customHoursInput) {
+            customHoursInput.focus();
+          }
         }
       });
     });

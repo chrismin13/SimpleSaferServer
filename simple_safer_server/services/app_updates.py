@@ -208,9 +208,7 @@ class AppUpdateManager:
             # Cleanup is only actionable when a branch has an upstream to fast-forward after reset.
             status["can_force_update"] = source_type == "branch" and bool(upstream)
             if tracked_change_count and untracked_file_count:
-                status["message"] = (
-                    "Changed and extra app files are blocking the update."
-                )
+                status["message"] = "Changed and extra app files are blocking the update."
             elif tracked_change_count:
                 status["message"] = "Changed app files are blocking the update."
             else:

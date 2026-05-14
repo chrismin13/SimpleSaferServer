@@ -12,5 +12,7 @@ These local issue files replace publishing tracker issues. They are ordered roug
 6. Dashboard Row Display and Context Actions
 7. Preserve Disabled Schedules During Unit Refresh
 8. Documentation and Uninstall Cleanup
+9. Task Toolbar Layout Stabilization & Premium Button Color Refresh
+10. Strict Custom Duration Field & Standardized Modal Form Alignment
 
 All slices are marked AFK. The product and architecture decisions were already resolved in the PRD/grilling conversation, so no HITL slice is required before implementation.
