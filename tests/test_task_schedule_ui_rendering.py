@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
@@ -116,6 +117,8 @@ def test_disabled_task_schedule_is_dangerous_on_task_detail_and_dashboard():
             schedule_badge = detail_page.split('id="task-schedule-badge"')[0].rsplit("<span", 1)[-1]
             assert "badge-schedule-danger" in schedule_badge
             assert "fa-calendar-xmark" in detail_page
+            manage_button = detail_page.split('id="manage-schedule-btn"')[1].split(">", 1)[0]
+            assert 'data-schedule-can-enable="true"' in manage_button
 
             assert "task-schedule-danger" in dashboard_page
             assert "Disabled" in dashboard_page
@@ -184,3 +187,10 @@ def test_schedule_issue_is_warning_and_active_schedule_stays_neutral():
     finally:
         runtime._runtime = previous_runtime
         runtime._fake_state = previous_fake_state
+
+
+def test_task_detail_schedule_menu_script_does_not_reference_removed_enable_button():
+    scripts_js = Path("static/js/scripts.js").read_text(encoding="utf-8")
+
+    assert 'id="enable-schedule-btn"' not in scripts_js
+    assert "enableScheduleBtn" not in scripts_js

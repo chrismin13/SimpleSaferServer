@@ -68,7 +68,9 @@
       </div>
 
       <div class="btn-group">
-        <button id="manage-schedule-btn" type="button" class="btn btn-secondary btn-sm" aria-haspopup="menu">
+        <button id="manage-schedule-btn" type="button" class="btn btn-secondary btn-sm"
+          aria-haspopup="menu"
+          data-schedule-can-enable="{{ 'true' if task_summary.schedule.can_enable else 'false' }}">
           <i class="fas fa-calendar-days me-1"></i> Manage Schedule <i class="fas fa-caret-down ms-1"></i>
         </button>
       </div>

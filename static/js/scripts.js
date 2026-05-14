@@ -13,7 +13,9 @@ document.addEventListener("DOMContentLoaded", function () {
     const statusBadge = document.getElementById("task-status-badge");
     const scheduleBadge = document.getElementById("task-schedule-badge");
     const manageScheduleBtn = document.getElementById("manage-schedule-btn");
-    let currentScheduleCanEnable = false;
+    let currentScheduleCanEnable = manageScheduleBtn
+      ? manageScheduleBtn.dataset.scheduleCanEnable === "true"
+      : false;
     const disableScheduleModal = document.getElementById("disableScheduleModal");
     const disableScheduleConfirm = document.getElementById("disableScheduleConfirm");
     const disableScheduleCancel = document.getElementById("disableScheduleCancel");
@@ -128,6 +130,9 @@ document.addEventListener("DOMContentLoaded", function () {
         scheduleBadge.innerHTML = `<i class="fas ${badgeMeta.iconClass}"></i> ${escapeHtml(schedule.label || "Unknown")}`;
       }
       currentScheduleCanEnable = Boolean(schedule.can_enable);
+      if (manageScheduleBtn) {
+        manageScheduleBtn.dataset.scheduleCanEnable = currentScheduleCanEnable ? "true" : "false";
+      }
     }
 
     function openDisableScheduleModal() {
@@ -191,7 +196,7 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     async function enableSchedule() {
-      window.AsyncButtonState.start(enableScheduleBtn);
+      window.AsyncButtonState.start(manageScheduleBtn);
       try {
         const response = await window.ApiClient.fetchJson(
           `/task/${encodeURIComponent(taskName)}/enable-schedule`,
@@ -200,11 +205,11 @@ document.addEventListener("DOMContentLoaded", function () {
             headers: { "Accept": "application/json" }
           }
         );
-        window.AsyncButtonState.success(enableScheduleBtn);
+        window.AsyncButtonState.success(manageScheduleBtn);
         updateScheduleControls(response.data && response.data.task && response.data.task.schedule);
         showAlert(response.message || "Schedule enabled.", "success");
       } catch (error) {
-        window.AsyncButtonState.error(enableScheduleBtn);
+        window.AsyncButtonState.error(manageScheduleBtn);
         showAlert(error.message || "Schedule enable failed.", "danger");
       }
     }

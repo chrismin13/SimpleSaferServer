@@ -5,6 +5,9 @@ The Task Detail page shows information and logs for a specific scheduled task.
 ## Task Information
 - **Task Name**: Displayed at the top.
 - **Status**: Shows current status with a badge (Success, Failure, Running, Missing, Not Run Yet, Error).
+- **Schedule**: Shows the Task Schedule state with a badge. Disabled schedule states use a
+  danger-colored disabled-calendar badge, schedule issues use a warning badge, and active schedules
+  use the normal calendar badge.
 
 ## Controls
 - **Start**: Button to start the task (confirmation required).
