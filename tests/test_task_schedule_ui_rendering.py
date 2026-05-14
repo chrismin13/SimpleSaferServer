@@ -44,19 +44,15 @@ def test_task_detail_renders_stable_schedule_toolbar_buttons():
             assert response.status_code == 200
             page = response.get_data(as_text=True)
 
-            # Assert solid premium button classes are used
-            assert 'class="btn btn-warning btn-sm"' in page or "btn-warning" in page
-            assert 'class="btn btn-primary btn-sm' in page or "btn-primary" in page
+            # Assert persistent Manage Schedule dropdown button is rendered
+            assert 'id="manage-schedule-btn"' in page
+            manage_btn_block = page.split('id="manage-schedule-btn"')[1].split(">", 1)[0]
+            assert 'aria-haspopup="menu"' in manage_btn_block
+            assert "d-none" not in manage_btn_block
 
-            # Assert both Disable and Enable buttons are rendered without d-none hiding
-            assert 'id="disable-schedule-btn"' in page
-            assert 'id="enable-schedule-btn"' in page
-
-            enable_btn_block = page.split('id="enable-schedule-btn"')[1].split(">", 1)[0]
-            assert "d-none" not in enable_btn_block
-
-            # When default active schedule, Enable Schedule should be natively disabled
-            assert "disabled" in enable_btn_block
+            # Assert separate controls are completely eliminated
+            assert 'id="disable-schedule-btn"' not in page
+            assert 'id="enable-schedule-btn"' not in page
     finally:
         runtime._runtime = previous_runtime
         runtime._fake_state = previous_fake_state

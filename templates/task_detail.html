@@ -56,16 +56,8 @@
       </div>
 
       <div class="btn-group">
-        <button id="disable-schedule-btn" type="button" class="btn btn-warning btn-sm"
-          data-task-name="{{ task.name }}"
-          data-schedule-action="disable">
-          <i class="fas fa-calendar-xmark me-1"></i> Disable Schedule
-        </button>
-        <button id="enable-schedule-btn" type="button" class="btn btn-primary btn-sm"
-          {% if not task_summary.schedule.can_enable %}disabled{% endif %}
-          data-task-name="{{ task.name }}"
-          data-schedule-action="enable">
-          <i class="fas fa-calendar-check me-1"></i> Enable Schedule
+        <button id="manage-schedule-btn" type="button" class="btn btn-secondary btn-sm" aria-haspopup="menu">
+          <i class="fas fa-calendar-days me-1"></i> Manage Schedule <i class="fas fa-caret-down ms-1"></i>
         </button>
       </div>
     </div>

@@ -12,8 +12,8 @@ document.addEventListener("DOMContentLoaded", function () {
     const refreshState = document.getElementById("task-log-refresh-state");
     const statusBadge = document.getElementById("task-status-badge");
     const scheduleBadge = document.getElementById("task-schedule-badge");
-    const disableScheduleBtn = document.getElementById("disable-schedule-btn");
-    const enableScheduleBtn = document.getElementById("enable-schedule-btn");
+    const manageScheduleBtn = document.getElementById("manage-schedule-btn");
+    let currentScheduleCanEnable = false;
     const disableScheduleModal = document.getElementById("disableScheduleModal");
     const disableScheduleConfirm = document.getElementById("disableScheduleConfirm");
     const disableScheduleCancel = document.getElementById("disableScheduleCancel");
@@ -113,9 +113,7 @@ document.addEventListener("DOMContentLoaded", function () {
       if (scheduleBadge) {
         scheduleBadge.innerHTML = `<i class="fas fa-calendar-days"></i> ${escapeHtml(schedule.label || "Unknown")}`;
       }
-      if (enableScheduleBtn) {
-        enableScheduleBtn.disabled = !schedule.can_enable;
-      }
+      currentScheduleCanEnable = Boolean(schedule.can_enable);
     }
 
     function openDisableScheduleModal() {
@@ -258,11 +256,26 @@ document.addEventListener("DOMContentLoaded", function () {
     scrollToBottom();
     start();
 
-    if (disableScheduleBtn) {
-      disableScheduleBtn.addEventListener("click", openDisableScheduleModal);
-    }
-    if (enableScheduleBtn) {
-      enableScheduleBtn.addEventListener("click", enableSchedule);
+    if (manageScheduleBtn) {
+      manageScheduleBtn.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const items = [
+          {
+            label: "Disable Schedule...",
+            iconClass: "fas fa-calendar-xmark me-2",
+            destructive: true,
+            onSelect: () => openDisableScheduleModal()
+          },
+          {
+            label: "Enable Schedule",
+            iconClass: "fas fa-calendar-check me-2",
+            disabled: !currentScheduleCanEnable,
+            onSelect: () => enableSchedule()
+          }
+        ];
+        window.ActionContextMenu.show(items, event.clientX, event.clientY);
+      });
     }
     if (disableScheduleConfirm) {
       disableScheduleConfirm.addEventListener("click", disableSchedule);
