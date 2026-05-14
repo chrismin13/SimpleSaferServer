@@ -19,6 +19,9 @@ Four cards display real-time status:
   show `Disabled until 18:00`, `Disabled until Tomorrow 18:00`, or a later date such as
   `Disabled until May 16 18:00`. Permanent disables show `Disabled`. Timers disabled outside
   SimpleSaferServer show `Disabled externally`; unexpected timer states show `Schedule issue`.
+  Disabled schedule labels are danger-colored in this field only, so automatic-run suspension stands
+  out without making the entire task row look failed. Schedule issues remain warning-colored because
+  they mean the timer state needs investigation.
 - **Actions**: Right-click a task row to Start, Stop, Disable Schedule, or Enable Schedule when that
   action applies.
 - **Disable Schedule**: Disables the task's systemd timer, not the service. Automatic runs stop, but

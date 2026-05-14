@@ -121,7 +121,16 @@
             {% endif %}
           </td>
           <td class="text-mono task-time-cell" style="font-size: var(--text-xs);" data-timestamp="{{ task.last_run or '' }}">{{ task.last_run or '—' }}</td>
-          <td class="text-mono task-time-cell" style="font-size: var(--text-xs);" data-timestamp="{{ task.schedule.raw_next_run or '' }}" data-schedule-label="{{ task.schedule.label or task.next_run or '' }}" data-future="true">{{ task.schedule.label or task.next_run or '—' }}</td>
+          {# Keep this state list aligned with TaskService.schedule_state() labels. #}
+          {% set disabled_schedule_states = ['temporary', 'permanent', 'restore_failed', 'external_disabled'] %}
+          {% if task.schedule.state in disabled_schedule_states %}
+            {% set schedule_cell_class = ' task-schedule-danger' %}
+          {% elif task.schedule.state == 'issue' %}
+            {% set schedule_cell_class = ' task-schedule-warning' %}
+          {% else %}
+            {% set schedule_cell_class = '' %}
+          {% endif %}
+          <td class="text-mono task-time-cell{{ schedule_cell_class }}" style="font-size: var(--text-xs);" data-timestamp="{{ task.schedule.raw_next_run or '' }}" data-schedule-label="{{ task.schedule.label or task.next_run or '' }}" data-future="true">{{ task.schedule.label or task.next_run or '—' }}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -255,6 +264,17 @@ document.addEventListener('DOMContentLoaded', function() {
     return `<span class="badge badge-warning">${escapeHtml(status || 'Unknown')}</span>`;
   }
 
+  function scheduleStateClass(state) {
+    // These are schedule states, not task run statuses; row-level styling would imply task failure.
+    if (['temporary', 'permanent', 'restore_failed', 'external_disabled'].includes(state)) {
+      return 'task-schedule-danger';
+    }
+    if (state === 'issue') {
+      return 'task-schedule-warning';
+    }
+    return '';
+  }
+
   function rememberTaskSchedule(tasks) {
     taskScheduleByName.clear();
     (tasks || []).forEach((task) => {
@@ -331,7 +351,9 @@ Remove the drive now if you do not want it mounted again.`;
     row.appendChild(tdLastRun);
 
     const tdNextRun = document.createElement('td');
-    tdNextRun.className = 'text-mono task-time-cell';
+    tdNextRun.className = ['text-mono', 'task-time-cell', scheduleStateClass(schedule.state)]
+      .filter(Boolean)
+      .join(' ');
     tdNextRun.style.fontSize = 'var(--text-xs)';
     tdNextRun.dataset.timestamp = nextRun;
     tdNextRun.dataset.scheduleLabel = scheduleLabel;

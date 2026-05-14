@@ -88,3 +88,99 @@ def test_task_detail_renders_strict_custom_duration_modal():
     finally:
         runtime._runtime = previous_runtime
         runtime._fake_state = previous_fake_state
+
+
+def test_disabled_task_schedule_is_dangerous_on_task_detail_and_dashboard():
+    previous_runtime = runtime._runtime
+    previous_fake_state = runtime._fake_state
+    try:
+        with TemporaryDirectory() as temp_dir:
+            app = _create_fake_app(temp_dir)
+
+            with app.app_context():
+                services = app.extensions["simple_safer_server"]
+                task = services.task_service.get_task("Cloud Backup")
+                assert task is not None
+                task.disable_schedule("permanent")
+
+            with app.test_client() as client:
+                detail_response = client.get("/task/Cloud%20Backup")
+                dashboard_response = client.get("/dashboard")
+
+            assert detail_response.status_code == 200
+            assert dashboard_response.status_code == 200
+            detail_page = detail_response.get_data(as_text=True)
+            dashboard_page = dashboard_response.get_data(as_text=True)
+
+            assert 'id="task-schedule-badge"' in detail_page
+            schedule_badge = detail_page.split('id="task-schedule-badge"')[0].rsplit("<span", 1)[-1]
+            assert "badge-schedule-danger" in schedule_badge
+            assert "fa-calendar-xmark" in detail_page
+
+            assert "task-schedule-danger" in dashboard_page
+            assert "Disabled" in dashboard_page
+    finally:
+        runtime._runtime = previous_runtime
+        runtime._fake_state = previous_fake_state
+
+
+def test_schedule_issue_is_warning_and_active_schedule_stays_neutral():
+    previous_runtime = runtime._runtime
+    previous_fake_state = runtime._fake_state
+    try:
+        with TemporaryDirectory() as temp_dir:
+            app = _create_fake_app(temp_dir)
+
+            with app.test_client() as client:
+                active_response = client.get("/task/Cloud%20Backup")
+
+            assert active_response.status_code == 200
+            active_page = active_response.get_data(as_text=True)
+            active_badge = active_page.split('id="task-schedule-badge"')[0].rsplit("<span", 1)[-1]
+            assert "badge-neutral" in active_badge
+            assert "badge-schedule-danger" not in active_badge
+            assert "fa-calendar-days" in active_page
+
+            with app.app_context():
+                services = app.extensions["simple_safer_server"]
+                task = services.task_service.get_task("Cloud Backup")
+                assert task is not None
+                original_schedule_state = services.task_service.schedule_state
+
+                def issue_schedule_state(candidate):
+                    if candidate.name == "Cloud Backup":
+                        return {
+                            "state": "issue",
+                            "label": "Schedule issue",
+                            "source": "systemd",
+                            "raw_next_run": "",
+                            "raw": "broken timer",
+                            "guidance": "Inspect systemd.",
+                            "can_disable": True,
+                            "can_enable": True,
+                        }
+                    return original_schedule_state(candidate)
+
+                services.task_service.schedule_state = issue_schedule_state
+
+            with app.test_client() as client:
+                issue_detail_response = client.get("/task/Cloud%20Backup")
+                issue_dashboard_response = client.get("/dashboard")
+
+            assert issue_detail_response.status_code == 200
+            assert issue_dashboard_response.status_code == 200
+            issue_detail_page = issue_detail_response.get_data(as_text=True)
+            issue_dashboard_page = issue_dashboard_response.get_data(as_text=True)
+            issue_badge = issue_detail_page.split('id="task-schedule-badge"')[0].rsplit("<span", 1)[
+                -1
+            ]
+
+            assert "badge-schedule-warning" in issue_badge
+            assert "badge-schedule-danger" not in issue_badge
+            assert "fa-triangle-exclamation" in issue_detail_page
+            issue_cell = issue_dashboard_page.split("Schedule issue")[0].rsplit("<td", 1)[-1]
+            assert "task-schedule-warning" in issue_cell
+            assert "task-schedule-danger" not in issue_cell
+    finally:
+        runtime._runtime = previous_runtime
+        runtime._fake_state = previous_fake_state

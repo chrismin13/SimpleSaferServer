@@ -92,6 +92,18 @@ document.addEventListener("DOMContentLoaded", function () {
       return `<span class="badge badge-warning"><i class="fas fa-question-circle"></i> ${escapeHtml(status || "Unknown")}</span>`;
     }
 
+    function scheduleBadgeMeta(schedule) {
+      const state = schedule && schedule.state;
+      // Schedule severity is separate from the task run status badge shown beside it.
+      if (["temporary", "permanent", "restore_failed", "external_disabled"].includes(state)) {
+        return { className: "badge-schedule-danger", iconClass: "fa-calendar-xmark" };
+      }
+      if (state === "issue") {
+        return { className: "badge-schedule-warning", iconClass: "fa-triangle-exclamation" };
+      }
+      return { className: "badge-neutral", iconClass: "fa-calendar-days" };
+    }
+
     function fetchTaskStatus() {
       if (!statusBadge) return Promise.resolve();
       return fetch(`/api/tasks/${encodeURIComponent(taskName)}/status`, {
@@ -111,7 +123,9 @@ document.addEventListener("DOMContentLoaded", function () {
     function updateScheduleControls(schedule) {
       if (!schedule) return;
       if (scheduleBadge) {
-        scheduleBadge.innerHTML = `<i class="fas fa-calendar-days"></i> ${escapeHtml(schedule.label || "Unknown")}`;
+        const badgeMeta = scheduleBadgeMeta(schedule);
+        scheduleBadge.className = `badge ${badgeMeta.className}`;
+        scheduleBadge.innerHTML = `<i class="fas ${badgeMeta.iconClass}"></i> ${escapeHtml(schedule.label || "Unknown")}`;
       }
       currentScheduleCanEnable = Boolean(schedule.can_enable);
     }

@@ -539,6 +539,11 @@ body.fake-mode-active .toast-stack {
 .badge-info    { background: var(--info-subtle);    color: var(--info-text);    }
 .badge-neutral { background: var(--bg-overlay);     color: var(--text-secondary); }
 .badge-accent  { background: var(--accent-subtle);  color: var(--accent-text);  }
+.badge-schedule-danger { background: var(--danger-subtle); color: var(--danger-text); }
+.badge-schedule-warning { background: var(--warning-subtle); color: var(--warning-text); }
+
+.task-schedule-danger { color: var(--danger-text); }
+.task-schedule-warning { color: var(--warning-text); }
 
 /* ── Buttons ────────────────────────────────────────────────── */
 .btn {

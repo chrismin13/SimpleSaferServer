@@ -30,8 +30,20 @@
           <span class="badge badge-warning"><i class="fas fa-question-circle"></i> {{ task.status }}</span>
         {% endif %}
       </span>
-      <span class="badge badge-neutral" id="task-schedule-badge">
-        <i class="fas fa-calendar-days"></i> {{ task_summary.schedule.label }}
+      {# Keep this state list aligned with TaskService.schedule_state() labels. #}
+      {% set disabled_schedule_states = ['temporary', 'permanent', 'restore_failed', 'external_disabled'] %}
+      {% if task_summary.schedule.state in disabled_schedule_states %}
+        {% set schedule_badge_class = 'badge-schedule-danger' %}
+        {% set schedule_icon_class = 'fa-calendar-xmark' %}
+      {% elif task_summary.schedule.state == 'issue' %}
+        {% set schedule_badge_class = 'badge-schedule-warning' %}
+        {% set schedule_icon_class = 'fa-triangle-exclamation' %}
+      {% else %}
+        {% set schedule_badge_class = 'badge-neutral' %}
+        {% set schedule_icon_class = 'fa-calendar-days' %}
+      {% endif %}
+      <span class="badge {{ schedule_badge_class }}" id="task-schedule-badge">
+        <i class="fas {{ schedule_icon_class }}"></i> {{ task_summary.schedule.label }}
       </span>
 
       <div class="btn-group">
