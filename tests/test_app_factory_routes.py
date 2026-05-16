@@ -60,7 +60,7 @@ def test_fake_dashboard_renders_storage_action_urls():
             assert "<th>Next Run</th>" in page
             assert "Disable Schedule" in page
             assert "Enable Schedule" in page
-            assert "dashboardDisableScheduleModal" in page
+            assert 'data-task-schedule-control="disable-modal"' in page
             assert "<th>Schedule</th>" not in page
     finally:
         runtime._runtime = previous_runtime

@@ -2210,7 +2210,6 @@ pre code {
   color: var(--text-primary);
 }
 
-.task-context-menu,
 .action-context-menu {
   position: fixed;
   top: 0;
@@ -2225,12 +2224,10 @@ pre code {
   z-index: var(--z-modal);
 }
 
-.task-context-menu.visible,
 .action-context-menu.visible {
   display: block;
 }
 
-.task-context-menu-item,
 .action-context-menu-item {
   width: 100%;
   display: flex;
@@ -2247,7 +2244,6 @@ pre code {
   cursor: pointer;
 }
 
-.task-context-menu-item:hover,
 .action-context-menu-item:hover {
   background: var(--bg-hover);
   color: var(--text-primary);

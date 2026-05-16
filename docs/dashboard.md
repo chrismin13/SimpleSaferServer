@@ -22,10 +22,11 @@ Four cards display real-time status:
   Disabled schedule labels are danger-colored in this field only, so automatic-run suspension stands
   out without making the entire task row look failed. Schedule issues remain warning-colored because
   they mean the timer state needs investigation.
-- **Actions**: Right-click a task row to Start, Stop, Disable Schedule, or Enable Schedule when that
-  action applies.
-- **Disable Schedule**: Disables the task's systemd timer, not the service. Automatic runs stop, but
-  manual Start remains available.
+- **Task Schedule Control**: Right-click a task row to Start, Stop, Disable Schedule, or Enable
+  Schedule when that action applies. The menu stays open across passive schedule refreshes so the
+  operator does not lose the selected row actions while reading the menu.
+- **Disable Schedule**: Disables the task's systemd timer, not the service. Automatic runs stop, but manual Start remains available. The shared dialog supports preset durations, permanent disable, and a custom positive
+  whole-hour duration.
 - Scheduled task success follows the underlying command exit code. For DDNS, a provider-level error or missing provider configuration fails the `DDNS Update` task after the provider details are written for the DDNS page.
 - `App Update` is the application self-update task. It runs the installed Git checkout's
   fast-forward update path and full installer, and is scheduled before the daily mount check. The

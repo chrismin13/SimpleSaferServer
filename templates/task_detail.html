@@ -97,45 +97,11 @@
   </section>
 </div>
 
-<div class="modal-overlay d-none" id="disableScheduleModal" aria-hidden="true">
-  <div class="modal-container task-schedule-modal" role="dialog" aria-modal="true" aria-labelledby="disableScheduleTitle">
-    <div class="modal-header">
-      <h2 id="disableScheduleTitle">Disable Schedule</h2>
-      <button type="button" class="modal-close" id="disableScheduleClose" aria-label="Close">
-        <i class="fas fa-xmark"></i>
-      </button>
-    </div>
-    <div class="modal-body">
-      <p>Automatic runs stop for this task. Manual Start still works and starts the service immediately.</p>
-      <div class="schedule-duration-grid" role="radiogroup" aria-label="Disable duration">
-        <label><input type="radio" name="disableScheduleDuration" value="1" checked> 1 hour</label>
-        <label><input type="radio" name="disableScheduleDuration" value="6"> 6 hours</label>
-        <label><input type="radio" name="disableScheduleDuration" value="24"> 24 hours</label>
-        <label><input type="radio" name="disableScheduleDuration" value="168"> 7 days</label>
-        <label><input type="radio" name="disableScheduleDuration" value="permanent"> Permanent</label>
-        <label><input type="radio" name="disableScheduleDuration" value="custom"> Custom</label>
-      </div>
-      <p class="schedule-permanent-note d-none" id="disableSchedulePermanentNote">
-        Permanent keeps automatic runs off until Enable Schedule is used.
-      </p>
-      <div class="form-group mt-3 d-none" id="disableScheduleCustomGroup">
-        <label class="form-label text-muted" style="font-size: var(--text-sm);" for="disableScheduleCustomHours">Custom Duration (hours)</label>
-        <input type="text" id="disableScheduleCustomHours" class="form-control mt-1" placeholder="48" value="48" inputmode="numeric" pattern="[0-9]*">
-      </div>
-    </div>
-    <div class="modal-footer">
-      <div class="modal-footer-message text-danger" id="disableScheduleStatus" role="alert" aria-live="polite"></div>
-      <div class="modal-footer-actions">
-        <button type="button" class="btn btn-secondary" id="disableScheduleCancel">Cancel</button>
-        <button type="button" class="btn btn-warning" id="disableScheduleConfirm">
-          <i class="fas fa-calendar-xmark me-1"></i> Disable Schedule
-        </button>
-      </div>
-    </div>
-  </div>
-</div>
+{% set task_schedule_disable_context = 'Automatic runs stop for this task. Manual Start still works and starts the service immediately.' %}
+{% include 'partials/task_schedule_disable_modal.html' %}
 {% endblock %}
 
 {% block extra_js %}
+<script src="{{ url_for('static', filename='js/task_schedule_control.js') }}"></script>
 <script src="{{ url_for('static', filename='js/scripts.js') }}"></script>
 {% endblock %}

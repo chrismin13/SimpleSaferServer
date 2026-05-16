@@ -91,6 +91,101 @@ def test_task_detail_renders_strict_custom_duration_modal():
         runtime._fake_state = previous_fake_state
 
 
+def test_task_detail_uses_shared_task_schedule_control_modal():
+    previous_runtime = runtime._runtime
+    previous_fake_state = runtime._fake_state
+    try:
+        with TemporaryDirectory() as temp_dir:
+            app = _create_fake_app(temp_dir)
+
+            with app.test_client() as client:
+                response = client.get("/task/Cloud%20Backup")
+
+            assert response.status_code == 200
+            page = response.get_data(as_text=True)
+
+            assert 'data-task-schedule-control="disable-modal"' in page
+            assert 'static/js/task_schedule_control.js' in page
+            assert "disableScheduleDuration" in page
+            assert "disableScheduleCustomHours" in page
+    finally:
+        runtime._runtime = previous_runtime
+        runtime._fake_state = previous_fake_state
+
+
+def test_dashboard_uses_shared_task_schedule_control_modal():
+    previous_runtime = runtime._runtime
+    previous_fake_state = runtime._fake_state
+    try:
+        with TemporaryDirectory() as temp_dir:
+            app = _create_fake_app(temp_dir)
+
+            with app.test_client() as client:
+                response = client.get("/dashboard")
+
+            assert response.status_code == 200
+            page = response.get_data(as_text=True)
+
+            assert 'data-task-schedule-control="disable-modal"' in page
+            assert 'static/js/task_schedule_control.js' in page
+            assert "TaskScheduleControl.createDisableScheduleController" in page
+            assert "disableScheduleDuration" in page
+            assert "disableScheduleCustomHours" in page
+            assert 'id="dashboardDisableScheduleModal"' not in page
+            assert 'name="dashboardDisableScheduleDuration"' not in page
+            assert "selectedDashboardDisableDuration" not in page
+            assert "disableScheduleFromDashboard" not in page
+            assert "openDashboardDisableScheduleModal" not in page
+    finally:
+        runtime._runtime = previous_runtime
+        runtime._fake_state = previous_fake_state
+
+
+def test_dashboard_task_context_menu_uses_shared_action_menu():
+    previous_runtime = runtime._runtime
+    previous_fake_state = runtime._fake_state
+    try:
+        with TemporaryDirectory() as temp_dir:
+            app = _create_fake_app(temp_dir)
+
+            with app.test_client() as client:
+                response = client.get("/dashboard")
+
+            assert response.status_code == 200
+            page = response.get_data(as_text=True)
+
+            assert 'id="taskContextMenu"' not in page
+            assert "task-context-menu" not in page
+            assert "task-context-menu-item" not in page
+            assert "ActionContextMenu.bind" in page
+            assert "Start" in page
+            assert "Stop" in page
+            assert "Disable Schedule" in page
+            assert "Enable Schedule" in page
+    finally:
+        runtime._runtime = previous_runtime
+        runtime._fake_state = previous_fake_state
+
+
+def test_dashboard_passive_task_refresh_keeps_open_context_menu():
+    dashboard_template = Path("templates/dashboard.html").read_text(encoding="utf-8")
+    update_task_schedule = dashboard_template.split("async function updateTaskSchedule()", 1)[1].split(
+        "function renderDriveActionForm", 1
+    )[0]
+
+    assert "ActionContextMenu.hide()" not in update_task_schedule
+    assert "setInterval(updateTaskSchedule, 5000)" in dashboard_template
+
+
+def test_dashboard_only_task_context_menu_selectors_are_removed():
+    dashboard_template = Path("templates/dashboard.html").read_text(encoding="utf-8")
+    styles_css = Path("static/css/styles.css").read_text(encoding="utf-8")
+
+    assert "taskContextMenu" not in dashboard_template
+    assert "task-context-menu" not in dashboard_template
+    assert "task-context-menu" not in styles_css
+
+
 def test_disabled_task_schedule_is_dangerous_on_task_detail_and_dashboard():
     previous_runtime = runtime._runtime
     previous_fake_state = runtime._fake_state
@@ -196,6 +291,26 @@ def test_task_detail_schedule_menu_script_does_not_reference_removed_enable_butt
     assert "enableScheduleBtn" not in scripts_js
 
 
+def test_task_detail_script_delegates_disable_schedule_flow_to_shared_controller():
+    scripts_js = Path("static/js/scripts.js").read_text(encoding="utf-8")
+    shared_schedule_js = Path("static/js/task_schedule_control.js").read_text(encoding="utf-8")
+
+    assert "TaskScheduleControl.createDisableScheduleController" in scripts_js
+    assert "/disable-schedule" not in scripts_js
+    assert 'input[name="disableScheduleDuration"]' not in scripts_js
+    assert "/disable-schedule" in shared_schedule_js
+    assert 'input[name="disableScheduleDuration"]' in shared_schedule_js
+
+
+def test_shared_task_schedule_controller_validates_custom_duration():
+    shared_schedule_js = Path("static/js/task_schedule_control.js").read_text(encoding="utf-8")
+
+    assert "Custom duration must contain only digits." in shared_schedule_js
+    assert "Custom duration must be greater than 0 hours." in shared_schedule_js
+    assert "/^\\d+$/.test(customVal)" in shared_schedule_js
+    assert "hours <= 0" in shared_schedule_js
+
+
 def test_system_updates_application_card_owns_source_controls():
     previous_runtime = runtime._runtime
     previous_fake_state = runtime._fake_state
@@ -210,7 +325,9 @@ def test_system_updates_application_card_owns_source_controls():
             page = response.get_data(as_text=True)
 
             assert page.count('class="system-updates-panel system-updates-app-panel"') == 1
-            assert "<span><i class=\"fas fa-code-branch\"></i> Application Source</span>" not in page
+            assert (
+                "<span><i class=\"fas fa-code-branch\"></i> Application Source</span>" not in page
+            )
 
             app_card = page.split('class="system-updates-panel system-updates-app-panel"', 1)[1]
             app_card = app_card.split("</section>", 1)[0]

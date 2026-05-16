@@ -16,14 +16,6 @@ document.addEventListener("DOMContentLoaded", function () {
     let currentScheduleCanEnable = manageScheduleBtn
       ? manageScheduleBtn.dataset.scheduleCanEnable === "true"
       : false;
-    const disableScheduleModal = document.getElementById("disableScheduleModal");
-    const disableScheduleConfirm = document.getElementById("disableScheduleConfirm");
-    const disableScheduleCancel = document.getElementById("disableScheduleCancel");
-    const disableScheduleClose = document.getElementById("disableScheduleClose");
-    const disableScheduleStatus = document.getElementById("disableScheduleStatus");
-    const permanentNote = document.getElementById("disableSchedulePermanentNote");
-    const customGroup = document.getElementById("disableScheduleCustomGroup");
-    const customHoursInput = document.getElementById("disableScheduleCustomHours");
     const taskName = autoRefreshCheckbox.getAttribute("data-task-name");
     const logLines = autoRefreshCheckbox.getAttribute("data-log-lines") || "500";
     let intervalId;
@@ -135,66 +127,6 @@ document.addEventListener("DOMContentLoaded", function () {
       }
     }
 
-    function openDisableScheduleModal() {
-      if (!disableScheduleModal) return;
-      disableScheduleStatus.textContent = "";
-      disableScheduleModal.classList.remove("d-none");
-      disableScheduleModal.classList.add("visible");
-      disableScheduleModal.setAttribute("aria-hidden", "false");
-    }
-
-    function closeDisableScheduleModal() {
-      if (!disableScheduleModal) return;
-      disableScheduleModal.classList.add("d-none");
-      disableScheduleModal.classList.remove("visible");
-      disableScheduleModal.setAttribute("aria-hidden", "true");
-    }
-
-    function selectedDisableDuration() {
-      const selected = document.querySelector('input[name="disableScheduleDuration"]:checked');
-      return selected ? selected.value : "1";
-    }
-
-    async function disableSchedule() {
-      let duration = selectedDisableDuration();
-      disableScheduleStatus.textContent = "";
-      if (duration === "custom") {
-        if (!customHoursInput) return;
-        const customVal = customHoursInput.value.trim();
-        if (!/^\d+$/.test(customVal)) {
-          disableScheduleStatus.textContent = "Custom duration must contain only digits.";
-          return;
-        }
-        const hours = parseInt(customVal, 10);
-        if (isNaN(hours) || hours <= 0) {
-          disableScheduleStatus.textContent = "Custom duration must be greater than 0 hours.";
-          return;
-        }
-        duration = String(hours);
-      }
-      const payload = duration === "permanent"
-        ? { mode: "permanent" }
-        : { mode: "temporary", hours: Number(duration) };
-      window.AsyncButtonState.start(disableScheduleConfirm);
-      try {
-        const response = await window.ApiClient.fetchJson(
-          `/task/${encodeURIComponent(taskName)}/disable-schedule`,
-          {
-            method: "POST",
-            headers: { "Accept": "application/json", "Content-Type": "application/json" },
-            body: JSON.stringify(payload)
-          }
-        );
-        window.AsyncButtonState.success(disableScheduleConfirm);
-        updateScheduleControls(response.data && response.data.task && response.data.task.schedule);
-        closeDisableScheduleModal();
-        showAlert(response.message || "Schedule disabled.", "success");
-      } catch (error) {
-        window.AsyncButtonState.error(disableScheduleConfirm);
-        disableScheduleStatus.textContent = error.message || "Schedule disable failed.";
-      }
-    }
-
     async function enableSchedule() {
       window.AsyncButtonState.start(manageScheduleBtn);
       try {
@@ -275,6 +207,13 @@ document.addEventListener("DOMContentLoaded", function () {
     scrollToBottom();
     start();
 
+    const disableScheduleControl = window.TaskScheduleControl
+      ? window.TaskScheduleControl.createDisableScheduleController({
+        taskName,
+        onScheduleChanged: updateScheduleControls
+      })
+      : null;
+
     if (manageScheduleBtn) {
       manageScheduleBtn.addEventListener("click", (event) => {
         event.preventDefault();
@@ -284,7 +223,9 @@ document.addEventListener("DOMContentLoaded", function () {
             label: "Disable Schedule...",
             iconClass: "fas fa-calendar-xmark me-2",
             destructive: true,
-            onSelect: () => openDisableScheduleModal()
+            onSelect: () => {
+              if (disableScheduleControl) disableScheduleControl.open();
+            }
           },
           {
             label: "Enable Schedule",
@@ -296,27 +237,6 @@ document.addEventListener("DOMContentLoaded", function () {
         window.ActionContextMenu.show(items, event.clientX, event.clientY);
       });
     }
-    if (disableScheduleConfirm) {
-      disableScheduleConfirm.addEventListener("click", disableSchedule);
-    }
-    [disableScheduleCancel, disableScheduleClose].forEach((button) => {
-      if (button) button.addEventListener("click", closeDisableScheduleModal);
-    });
-    document.querySelectorAll('input[name="disableScheduleDuration"]').forEach((input) => {
-      input.addEventListener("change", () => {
-        const val = selectedDisableDuration();
-        if (permanentNote) {
-          permanentNote.classList.toggle("d-none", val !== "permanent");
-        }
-        if (customGroup) {
-          const isCustom = val === "custom";
-          customGroup.classList.toggle("d-none", !isCustom);
-          if (isCustom && customHoursInput) {
-            customHoursInput.focus();
-          }
-        }
-      });
-    });
   }
 
   // --- Setup Wizard: Backup Config Step Logic ---
