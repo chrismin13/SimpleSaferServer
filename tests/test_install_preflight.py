@@ -277,8 +277,15 @@ class InstallPreflightTests(unittest.TestCase):
                     f"""\
                     #!/bin/sh
                     printf '%s\\n' "$*" >> "{calls_path}"
-                    export GIT_CONFIG_SYSTEM="{config_path}"
-                    exec /usr/bin/git "$@"
+                    if [ "$1" = "config" ] && [ "$2" = "--system" ] && [ "$3" = "--get-all" ] && [ "$4" = "safe.directory" ]; then
+                        [ -f "{config_path}" ] && cat "{config_path}"
+                        exit 0
+                    fi
+                    if [ "$1" = "config" ] && [ "$2" = "--system" ] && [ "$3" = "--add" ] && [ "$4" = "safe.directory" ]; then
+                        printf '%s\\n' "$5" >> "{config_path}"
+                        exit 0
+                    fi
+                    exit 1
                     """
                 )
             )
