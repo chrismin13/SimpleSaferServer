@@ -8,9 +8,9 @@ BLUE='\033[1;34m'
 NC='\033[0m' # No Color
 
 # Welcome banner
-echo -e "${BLUE}==============================================="
-echo -e "   SimpleSaferServer Installer"
-echo -e "===============================================${NC}\n"
+echo -e "${BLUE}===============================================${NC}"
+echo -e "${BLUE}   SimpleSaferServer Installer${NC}"
+echo -e "${BLUE}===============================================${NC}\n"
 
 UNSUPPORTED_OS_OK="${SSS_UNSUPPORTED_OS_OK:-0}"
 PREFLIGHT_ONLY="${SSS_INSTALLER_PREFLIGHT_ONLY:-0}"
@@ -97,6 +97,46 @@ contains_os_family() {
         *" $family "*) return 0 ;;
     esac
     return 1
+}
+
+same_file() {
+    local source_path="$1"
+    local dest_path="$2"
+    local source_real=""
+    local dest_real=""
+
+    source_real="$(readlink -f "$source_path")"
+    dest_real="$(readlink -f "$dest_path" 2>/dev/null || printf '%s' "$dest_path")"
+    [ "$source_real" = "$dest_real" ]
+}
+
+copy_unless_same_file() {
+    local source_path="$1"
+    local dest_path="$2"
+
+    if same_file "$source_path" "$dest_path"; then
+        return 0
+    fi
+    cp "$source_path" "$dest_path"
+}
+
+ensure_git_safe_directory() {
+    local repo_path="$1"
+    local existing_paths=""
+
+    if ! command -v git >/dev/null 2>&1; then
+        return 0
+    fi
+
+    existing_paths="$(git config --system --get-all safe.directory 2>/dev/null || true)"
+    if printf '%s\n' "$existing_paths" | grep -Fxq "$repo_path"; then
+        return 0
+    fi
+
+    # The app checkout may be owned by the installing admin while update services
+    # run as root without sudo's SUDO_UID trust hint, so root Git commands need an
+    # explicit safe.directory entry for the managed app folder.
+    git config --system --add safe.directory "$repo_path"
 }
 
 run_installer_preflight() {
@@ -215,6 +255,7 @@ cd "$SRC_DIR"
 set -e
 
 APP_DIR="/opt/SimpleSaferServer"
+DATA_DIR="/var/lib/SimpleSaferServer"
 SCRIPTS_DIR="$APP_DIR/scripts"
 BIN_DIR="/usr/local/bin"
 MODEL_DIR="/opt/SimpleSaferServer/harddrive_model"
@@ -352,7 +393,7 @@ echo -e "${YELLOW}Step 1: Installing system and Python dependencies...${NC}"
 apt-get update
 # Preseed AppArmor prompt for msmtp only to ensure non-interactive install
 echo "msmtp msmtp/apply_apparmor boolean true" | debconf-set-selections
-DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-pip python3-venv python3-flask python3-psutil python3-cryptography smartmontools samba msmtp curl unzip rsync fdisk ntfs-3g
+DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-pip python3-venv python3-flask python3-psutil python3-cryptography smartmontools samba msmtp curl unzip rsync fdisk ntfs-3g unattended-upgrades
 
 echo -e "${GREEN}✔ System and Python dependencies installed.${NC}\n"
 
@@ -412,16 +453,17 @@ rm -f "$TMPFILE"
 echo -e "${YELLOW}Step 3: Installing HDSentinel...${NC}"
 install_hdsentinel
 
-# 4. Copy/update application files (excluding /etc/SimpleSaferServer/)
+# 4. Copy/update application files (excluding app-owned subtrees handled below)
 echo -e "${YELLOW}Step 4: Copying application files...${NC}"
 mkdir -p "$APP_DIR"
-rsync -a --exclude='venv' --exclude='__pycache__' --exclude='*.pyc' --exclude='*.pyo' --exclude='*.log' --exclude='telemetry.csv' --exclude='harddrive_model' --exclude='static' --exclude='templates' ./ "$APP_DIR/"
+mkdir -p "$DATA_DIR"
+rsync -a --delete --exclude='venv' --exclude='__pycache__' --exclude='*.pyc' --exclude='*.pyo' --exclude='*.log' --exclude='telemetry.csv' --exclude='harddrive_model' --exclude='static' --exclude='templates' ./ "$APP_DIR/"
 echo -e "${GREEN}✔ Application files copied.${NC}\n"
 
 # 5. Copy static and templates directories
 echo -e "${YELLOW}Step 5: Copying static assets and templates...${NC}"
-rsync -a static "$APP_DIR/"
-rsync -a templates "$APP_DIR/"
+rsync -a --delete static "$APP_DIR/"
+rsync -a --delete templates "$APP_DIR/"
 echo -e "${GREEN}✔ Static assets and templates copied.${NC}\n"
 
 # 6. Create the dedicated app virtualenv and install Python packages.
@@ -436,17 +478,31 @@ echo -e "${YELLOW}Step 7: Installing scripts...${NC}"
 mkdir -p "$SCRIPTS_DIR"
 mkdir -p "$BIN_DIR"
 for script in scripts/*.sh scripts/*.py; do
-  cp "$script" "$SCRIPTS_DIR/"
-  chmod +x "$SCRIPTS_DIR/$(basename $script)"
-  cp "$script" "$BIN_DIR/"
-  chmod +x "$BIN_DIR/$(basename $script)"
+  script_name="$(basename "$script")"
+  app_script_path="$SCRIPTS_DIR/$script_name"
+  bin_script_path="$BIN_DIR/$script_name"
+  # Reinstalling from /opt/SimpleSaferServer makes the app script source and
+  # destination the same file. Skip copy and chmod there so the installer does
+  # not dirty the Git checkout that future self-updates need to inspect.
+  if ! same_file "$script" "$app_script_path"; then
+    cp "$script" "$app_script_path"
+  fi
+  copy_unless_same_file "$script" "$bin_script_path"
+  chmod +x "$bin_script_path"
 done
 echo -e "${GREEN}✔ Scripts installed to $SCRIPTS_DIR and $BIN_DIR.${NC}\n"
+
+# Root-run systemd services do not inherit sudo's repository-owner trust context.
+ensure_git_safe_directory "$APP_DIR"
 
 # 8. Copy model files
 echo -e "${YELLOW}Step 8: Copying model files...${NC}"
 mkdir -p "$MODEL_DIR"
-cp harddrive_model/* "$MODEL_DIR/"
+# Model files are bundled application artifacts. Pruning here keeps removed
+# model artifacts from lingering after installs from a separate checkout.
+if ! same_file harddrive_model "$MODEL_DIR"; then
+  rsync -a --delete harddrive_model/ "$MODEL_DIR/"
+fi
 echo -e "${GREEN}✔ Model files copied.${NC}\n"
 
 # 9. Install/refresh systemd service for Flask app
@@ -509,9 +565,9 @@ fi
 echo
 
 # 12. Print all network interface IPs for user access
-echo -e "${BLUE}==============================================="
-echo -e "  SimpleSaferServer Web UI Access URLs"
-echo -e "===============================================${NC}"
+echo -e "${BLUE}===============================================${NC}"
+echo -e "${BLUE}  SimpleSaferServer Web UI Access URLs${NC}"
+echo -e "${BLUE}===============================================${NC}"
 
 # Only show IPv4 addresses, skip 127.0.0.1 and IPv6
 IP_LIST=$(hostname -I | tr ' ' '\n' | grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}' | grep -v '^127\.')

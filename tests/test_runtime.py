@@ -72,6 +72,30 @@ class RuntimeHelpersTests(unittest.TestCase):
                 Path("/run/SimpleSaferServer"),
             )
 
+    def test_get_runtime_real_mode_keeps_durable_data_outside_app_checkout(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            module_path = Path(temp_dir) / "simple_safer_server" / "services" / "runtime.py"
+
+            with patch.dict(os.environ, {"SSS_MODE": "real"}, clear=True):
+                with patch.object(runtime, "__file__", str(module_path)):
+                    prev_runtime = runtime._runtime
+                    prev_fake = runtime._fake_state
+                    runtime._runtime = None
+                    runtime._fake_state = None
+                    try:
+                        resolved_runtime = runtime.get_runtime()
+                    finally:
+                        runtime._runtime = prev_runtime
+                        runtime._fake_state = prev_fake
+
+        self.assertEqual(resolved_runtime.repo_root, Path(temp_dir))
+        self.assertEqual(resolved_runtime.data_dir, Path("/var/lib/SimpleSaferServer"))
+        self.assertEqual(resolved_runtime.volatile_dir, Path("/run/SimpleSaferServer"))
+        self.assertEqual(
+            resolved_runtime.telemetry_path,
+            Path("/var/lib/SimpleSaferServer/telemetry.csv"),
+        )
+
     def test_resolve_volatile_dir_accepts_explicit_override(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             configured = Path(temp_dir) / "volatile"

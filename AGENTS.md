@@ -1,8 +1,4 @@
 Follow `docs/development.md` as the canonical coding standard for this repository.
-You must follow `notes/README.md` for task notes: start or update the numbered note for substantial work.
-
-When refactoring old code, move touched code toward the standard without unrelated churn.
-The quality gates are advisory until the planned cleanup/refactor pass removes advisory mode.
 
 Always sprinkle comments about things we might forget in a few months, or that might not immediately seem obvious on a first read.
 

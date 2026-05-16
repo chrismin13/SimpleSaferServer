@@ -45,11 +45,17 @@ class Runtime:
 
 
 class FakeState:
-    TASK_NAMES: ClassVar[List[str]] = ["Check Mount", "Drive Health Check", "Cloud Backup"]
+    TASK_NAMES: ClassVar[List[str]] = [
+        "Check Mount",
+        "Drive Health Check",
+        "Cloud Backup",
+        "App Update",
+    ]
     TASK_SERVICE_NAMES: ClassVar[Dict[str, str]] = {
         "Check Mount": "check_mount.service",
         "Drive Health Check": "check_health.service",
         "Cloud Backup": "backup_cloud.service",
+        "App Update": "app_update.service",
     }
 
     def __init__(self, runtime: Runtime):
@@ -209,6 +215,7 @@ class FakeState:
             backup_hour, backup_minute = 3, 0
 
         offsets = {
+            "App Update": -19,
             "Check Mount": -2,
             "Drive Health Check": -1,
             "Cloud Backup": 0,
@@ -362,7 +369,7 @@ def get_runtime() -> Runtime:
         # runtime so service code can write status before FakeState is loaded.
         _runtime.volatile_dir.mkdir(parents=True, exist_ok=True)
     else:
-        data_dir = Path("/opt/SimpleSaferServer")
+        data_dir = Path("/var/lib/SimpleSaferServer")
         _runtime = Runtime(
             mode="real",
             skip_login=False,
@@ -380,7 +387,7 @@ def get_runtime() -> Runtime:
             backup_drive_dir=Path("/media/backup"),
             cloud_target_dir=Path("/media/backup"),
             model_dir=Path("/opt/SimpleSaferServer/harddrive_model"),
-            telemetry_path=repo_root / "telemetry.csv",
+            telemetry_path=data_dir / "telemetry.csv",
             msmtp_config_path=Path("/etc/msmtprc"),
             state_path=Path(tempfile.gettempdir()) / "simple_safer_server_unused_state.json",
         )

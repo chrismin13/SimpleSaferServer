@@ -14,10 +14,26 @@ Four cards display real-time status:
 - **System Resources**: Displays CPU and RAM usage, and live network traffic (up/down rates).
 
 ## Task Schedule
-- **Table**: Lists all scheduled tasks with columns for Task, Next Run, Last Run, Duration, Status, and Actions.
-- **Actions**: Each task can be run immediately via the `Run Now` button.
-- **Refresh**: Button to reload the task schedule.
+- **Table**: Lists all scheduled tasks with columns for Task, Status, Last Run, and Next Run.
+- **Next Run**: Shows the active next run time or a short schedule state label. Temporary disables
+  show `Disabled until 18:00`, `Disabled until Tomorrow 18:00`, or a later date such as
+  `Disabled until May 16 18:00`. Permanent disables show `Disabled`. Timers disabled outside
+  SimpleSaferServer show `Disabled externally`; unexpected timer states show `Schedule issue`.
+  Disabled schedule labels are danger-colored in this field only, so automatic-run suspension stands
+  out without making the entire task row look failed. Schedule issues remain warning-colored because
+  they mean the timer state needs investigation.
+- **Task Schedule Control**: Right-click a task row to Start, Stop, Disable Schedule, or Enable
+  Schedule when that action applies. The menu stays open across passive schedule refreshes so the
+  operator does not lose the selected row actions while reading the menu.
+- **Disable Schedule**: Disables the task's systemd timer, not the service. Automatic runs stop, but manual Start remains available. The shared dialog supports preset durations, permanent disable, and a custom positive
+  whole-hour duration.
 - Scheduled task success follows the underlying command exit code. For DDNS, a provider-level error or missing provider configuration fails the `DDNS Update` task after the provider details are written for the DDNS page.
+- `App Update` is the application self-update task. It runs the installed Git checkout's
+  fast-forward update path and full installer, and is scheduled before the daily mount check. The
+  task log includes update and installer output, and the log page keeps retrying if the web service
+  briefly restarts during the install. The task detail page refreshes both the log and status badge
+  while auto-refresh is enabled, showing up to the latest 500 journal lines. Installer ANSI colors
+  are rendered in the web log when the journal output includes them.
 
 ## System Actions
 - **Unmount Storage**: Opens a modal to confirm a temporary unmount of the configured backup drive.

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}{{ task.name }} — SimpleSaferServer{% endblock %}
+{% block title %}{{ browser_title(task.name) }}{% endblock %}
 {% block header %}{{ task.name }}{% endblock %}
 {% block body_class %}task-detail-body{% endblock %}
 
@@ -12,7 +12,8 @@
     </a>
 
     <div class="d-flex items-center gap-3 flex-wrap task-detail-toolbar-actions">
-      <span>
+      <span class="task-log-refresh-state" id="task-log-refresh-state" aria-live="polite"></span>
+      <span id="task-status-badge" data-task-name="{{ task.name }}">
         {% if task.status == 'Success' %}
           <span class="badge badge-success"><i class="fas fa-circle-check"></i> {{ task.status }}</span>
         {% elif task.status == 'Failure' %}
@@ -28,6 +29,21 @@
         {% else %}
           <span class="badge badge-warning"><i class="fas fa-question-circle"></i> {{ task.status }}</span>
         {% endif %}
+      </span>
+      {# Keep this state list aligned with TaskService.schedule_state() labels. #}
+      {% set disabled_schedule_states = ['temporary', 'permanent', 'restore_failed', 'external_disabled'] %}
+      {% if task_summary.schedule.state in disabled_schedule_states %}
+        {% set schedule_badge_class = 'badge-schedule-danger' %}
+        {% set schedule_icon_class = 'fa-calendar-xmark' %}
+      {% elif task_summary.schedule.state == 'issue' %}
+        {% set schedule_badge_class = 'badge-schedule-warning' %}
+        {% set schedule_icon_class = 'fa-triangle-exclamation' %}
+      {% else %}
+        {% set schedule_badge_class = 'badge-neutral' %}
+        {% set schedule_icon_class = 'fa-calendar-days' %}
+      {% endif %}
+      <span class="badge {{ schedule_badge_class }}" id="task-schedule-badge">
+        <i class="fas {{ schedule_icon_class }}"></i> {{ task_summary.schedule.label }}
       </span>
 
       <div class="btn-group">
@@ -50,22 +66,42 @@
           </button>
         </form>
       </div>
+
+      <div class="btn-group">
+        <button id="manage-schedule-btn" type="button" class="btn btn-secondary btn-sm"
+          aria-haspopup="menu"
+          data-schedule-can-enable="{{ 'true' if task_summary.schedule.can_enable else 'false' }}">
+          <i class="fas fa-calendar-days me-1"></i> Manage Schedule <i class="fas fa-caret-down ms-1"></i>
+        </button>
+      </div>
     </div>
   </div>
+
+  {% if task_summary.schedule.state == 'issue' %}
+  <section class="task-schedule-notice">
+    <strong>Schedule issue:</strong>
+    <span>{{ task_summary.schedule.guidance }}</span>
+    <code>{{ task_summary.schedule.raw }}</code>
+  </section>
+  {% endif %}
 
   <section class="task-log-panel">
     <div class="task-log-header">
       <h2>Recent Logs</h2>
-      <div class="form-check">
-        <input type="checkbox" class="form-check-input" id="auto-refresh" data-task-name="{{ task.name }}" checked>
+      <div class="form-check task-log-auto-refresh">
+        <input type="checkbox" class="form-check-input" id="auto-refresh" data-task-name="{{ task.name }}" data-log-lines="{{ log_lines }}" checked>
         <label class="form-check-label" for="auto-refresh">Auto-refresh</label>
       </div>
     </div>
     <pre class="log-viewer task-log-viewer">{{ logs }}</pre>
   </section>
 </div>
+
+{% set task_schedule_disable_context = 'Automatic runs stop for this task. Manual Start still works and starts the service immediately.' %}
+{% include 'partials/task_schedule_disable_modal.html' %}
 {% endblock %}
 
 {% block extra_js %}
+<script src="{{ url_for('static', filename='js/task_schedule_control.js') }}"></script>
 <script src="{{ url_for('static', filename='js/scripts.js') }}"></script>
 {% endblock %}

@@ -28,6 +28,7 @@ class SystemUtilsTimerActivationTests(unittest.TestCase):
         return types.SimpleNamespace(
             is_fake=False,
             systemd_dir=Path(temp_dir) / "systemd",
+            data_dir=Path(temp_dir) / "data",
         )
 
     def _config(self):
@@ -40,6 +41,7 @@ class SystemUtilsTimerActivationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             runtime = self._runtime(temp_dir)
             runtime.systemd_dir.mkdir()
+            runtime.data_dir.mkdir()
             system_utils = RecordingSystemUtils(runtime)
 
             ok, error = system_utils.install_systemd_services_and_timers(
@@ -51,13 +53,27 @@ class SystemUtilsTimerActivationTests(unittest.TestCase):
             self.assertIsNone(error)
             self.assertTrue((runtime.systemd_dir / "backup_cloud.timer").exists())
             self.assertIn((["systemctl", "daemon-reload"], True), system_utils.commands)
+            self.assertIn(
+                (["systemctl", "enable", "simple_safer_server_restore_schedules.timer"], True),
+                system_utils.commands,
+            )
+            self.assertIn(
+                (["systemctl", "start", "simple_safer_server_restore_schedules.timer"], True),
+                system_utils.commands,
+            )
             self.assertNotIn(
                 (["systemctl", "start", "backup_cloud.timer"], True), system_utils.commands
             )
 
             # Fresh installs write the unit files early, but Persistent=true timers must not
             # replay missed work until the setup wizard has collected the real backup config.
-            for service_name in ["check_mount", "check_health", "backup_cloud", "ddns_update"]:
+            for service_name in [
+                "check_mount",
+                "check_health",
+                "backup_cloud",
+                "ddns_update",
+                "app_update",
+            ]:
                 self.assertIn(
                     (["systemctl", "stop", f"{service_name}.timer"], False), system_utils.commands
                 )
@@ -74,6 +90,7 @@ class SystemUtilsTimerActivationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             runtime = self._runtime(temp_dir)
             runtime.systemd_dir.mkdir()
+            runtime.data_dir.mkdir()
             system_utils = RecordingSystemUtils(runtime)
 
             ok, error = system_utils.install_systemd_services_and_timers(
@@ -84,7 +101,13 @@ class SystemUtilsTimerActivationTests(unittest.TestCase):
             self.assertTrue(ok, error)
             self.assertIsNone(error)
 
-            for service_name in ["check_mount", "check_health", "backup_cloud", "ddns_update"]:
+            for service_name in [
+                "check_mount",
+                "check_health",
+                "backup_cloud",
+                "ddns_update",
+                "app_update",
+            ]:
                 self.assertIn(
                     (["systemctl", "enable", f"{service_name}.service"], True),
                     system_utils.commands,
@@ -95,6 +118,36 @@ class SystemUtilsTimerActivationTests(unittest.TestCase):
                 self.assertIn(
                     (["systemctl", "start", f"{service_name}.timer"], True), system_utils.commands
                 )
+
+    def test_install_systemd_services_preserves_managed_disabled_timers(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime = self._runtime(temp_dir)
+            runtime.systemd_dir.mkdir()
+            runtime.data_dir.mkdir()
+            (runtime.data_dir / "disabled_timers.json").write_text(
+                '{"backup_cloud.timer": {"mode": "permanent", "restore_failed": false}}'
+            )
+            system_utils = RecordingSystemUtils(runtime)
+
+            ok, error = system_utils.install_systemd_services_and_timers(
+                self._config(),
+                activate_timers=True,
+            )
+
+            self.assertTrue(ok, error)
+            self.assertIsNone(error)
+            self.assertIn(
+                (["systemctl", "disable", "--now", "backup_cloud.timer"], True),
+                system_utils.commands,
+            )
+            self.assertNotIn(
+                (["systemctl", "start", "backup_cloud.timer"], True),
+                system_utils.commands,
+            )
+            self.assertIn(
+                (["systemctl", "start", "check_mount.timer"], True),
+                system_utils.commands,
+            )
 
     def test_parent_device_fallback_strips_standard_partition_suffix(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -124,6 +177,10 @@ class SystemUtilsTimerActivationTests(unittest.TestCase):
             self.assertIn(
                 "OnCalendar=*-*-* 02:56:00",
                 (runtime.systemd_dir / "check_mount.timer").read_text(),
+            )
+            self.assertIn(
+                "OnCalendar=*-*-* 02:41:00",
+                (runtime.systemd_dir / "app_update.timer").read_text(),
             )
             self.assertIn(
                 "OnCalendar=*-*-* 02:58:00",

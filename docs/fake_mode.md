@@ -9,6 +9,7 @@ Fake mode avoids local system changes that would be disruptive or unavailable on
 machine:
 
 - systemd service and timer state
+- scheduled task Disable Schedule and Enable Schedule state
 - local disks and backup-drive mount state
 - Samba service state and managed Samba configuration
 - restart, shutdown, and other destructive machine actions
@@ -33,6 +34,10 @@ exercising provider behavior from fake mode.
 Fake-mode config, users, secrets, logs, and simulated machine state live under `.dev-data/` unless
 `SSS_DATA_DIR` points somewhere else. Operational state that does not need to survive a restart can
 use the runtime volatile directory.
+
+Disable Schedule writes the same `disabled_timers.json` state in fake mode, but it does not invoke
+systemd. Enable Schedule removes the fake disabled-schedule record so dashboard labels return to the
+simulated next run.
 
 Railway demos run fake mode with `SSS_DATA_DIR=/data`, so `/data` must be a persistent Railway
 volume if setup state should survive redeploys.

@@ -1,5 +1,7 @@
 import json
+import tempfile
 import unittest
+from pathlib import Path
 from subprocess import TimeoutExpired
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -195,6 +197,20 @@ class DriveHealthTests(unittest.TestCase):
         )
         mock_send_email.assert_called_once()
         self.assertIn("Subject: Drive health - nas-01", mock_send_email.call_args[0][2])
+
+    def test_hdsentinel_state_uses_durable_data_dir_not_repo_root(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            runtime = SimpleNamespace(
+                is_fake=False,
+                repo_root=root / "app",
+                data_dir=root / "var-lib",
+            )
+
+            self.assertEqual(
+                drive_health.get_hdsentinel_state_path(runtime),
+                root / "var-lib" / "hdsentinel_state.json",
+            )
 
 
 if __name__ == "__main__":

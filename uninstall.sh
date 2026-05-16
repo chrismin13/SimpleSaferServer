@@ -32,6 +32,9 @@ SCRIPT_FILES=(
   import_legacy.py
   ddns_update.sh
   ddns_update.py
+  app_update.sh
+  app_update.py
+  restore_disabled_timers.py
 )
 
 # The installer writes rclone config where the root-owned scheduled tasks can
@@ -323,10 +326,23 @@ PY
     systemctl restart nmbd 2>/dev/null || true
 }
 
+remove_git_safe_directory() {
+    local repo_path="${1:-$APP_DIR}"
+
+    if ! command -v git >/dev/null 2>&1; then
+        return 0
+    fi
+
+    # The installer adds this so root-run systemd services can inspect the
+    # admin-owned app checkout. Remove every matching value because repeated
+    # reinstalls before this cleanup may have written duplicates.
+    git config --system --unset-all safe.directory "$repo_path" 2>/dev/null || true
+}
+
 main() {
-    echo -e "${BLUE}==============================================="
-    echo -e "   SimpleSaferServer Uninstaller"
-    echo -e "===============================================${NC}\n"
+    echo -e "${BLUE}===============================================${NC}"
+    echo -e "${BLUE}   SimpleSaferServer Uninstaller${NC}"
+    echo -e "${BLUE}===============================================${NC}\n"
 
     if [ "$EUID" -ne 0 ]; then
         echo -e "${RED}ERROR:${NC} Please run as root (sudo)"
@@ -352,10 +368,12 @@ main() {
     fi
 
     echo "Stopping and disabling systemd units..."
-    for svc in check_mount check_health backup_cloud ddns_update; do
+    for svc in check_mount check_health backup_cloud ddns_update app_update; do
         remove_systemd_unit "${svc}.timer"
         remove_systemd_unit "${svc}.service"
     done
+    remove_systemd_unit "simple_safer_server_restore_schedules.timer"
+    remove_systemd_unit "simple_safer_server_restore_schedules.service"
     remove_systemd_unit "simple_safer_server_web.service"
 
     remove_managed_fstab_entries
@@ -402,6 +420,9 @@ main() {
     rm -rf "$DATA_DIR"
     rm -rf "$VOLATILE_DIR"
     rm -rf "$LOG_DIR"
+
+    echo "Removing SimpleSaferServer Git trust entry if present..."
+    remove_git_safe_directory "$APP_DIR"
 
     echo "Removing SimpleSaferServer rclone configuration if present..."
     rm -f "$RCLONE_CONFIG_PATH"

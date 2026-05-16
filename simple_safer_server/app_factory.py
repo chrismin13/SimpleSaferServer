@@ -30,11 +30,14 @@ from simple_safer_server.routes.storage import storage as storage_routes
 from simple_safer_server.routes.system_updates import system_updates as system_updates_routes
 from simple_safer_server.routes.tasks import tasks as task_routes
 from simple_safer_server.routes.users import users as users_routes
+from simple_safer_server.services.alert_notifications import AlertNotifier
 from simple_safer_server.services.alerts_service import AlertsService
+from simple_safer_server.services.app_updates import AppUpdateManager
 from simple_safer_server.services.cloud_backup_service import CloudBackupService
 from simple_safer_server.services.config_manager import ConfigManager
 from simple_safer_server.services.container import AppServices
 from simple_safer_server.services.ddns_service import DdnsService
+from simple_safer_server.services.disabled_timers import DisabledTimerService
 from simple_safer_server.services.drive_health import DriveHealthSummaryService
 from simple_safer_server.services.runtime import get_fake_state, get_flask_secret_key, get_runtime
 from simple_safer_server.services.server_identity import ServerIdentityService
@@ -108,7 +111,15 @@ def create_app() -> Tuple[Flask, SocketIO]:
     systemd_adapter = SystemdAdapter(command_runner)
     rclone_adapter = RcloneAdapter(command_runner)
     storage_command_adapter = StorageCommandAdapter(command_runner)
+    alert_notifier = AlertNotifier(config_manager, runtime, logger=app.logger)
+    disabled_timer_service = DisabledTimerService(
+        runtime,
+        systemd_adapter,
+        alert_notifier=alert_notifier,
+        logger=app.logger,
+    )
     system_updates_manager = SystemUpdatesManager(config_manager, runtime=runtime)
+    app_update_manager = AppUpdateManager(runtime=runtime)
     task_service = TaskService(
         runtime=runtime,
         fake_state=fake_state,
@@ -118,6 +129,7 @@ def create_app() -> Tuple[Flask, SocketIO]:
         command_runner=command_runner,
         systemd_adapter=systemd_adapter,
         rclone_adapter=rclone_adapter,
+        disabled_timer_service=disabled_timer_service,
     )
     ddns_service = DdnsService(
         runtime=runtime,
@@ -156,6 +168,7 @@ def create_app() -> Tuple[Flask, SocketIO]:
         config_manager=config_manager,
         system_utils=system_utils,
         system_updates_manager=system_updates_manager,
+        app_update_manager=app_update_manager,
         smb_manager=smb_manager,
         user_manager=user_manager,
         task_service=task_service,
@@ -275,12 +288,26 @@ def create_app() -> Tuple[Flask, SocketIO]:
         return redirect(url_for("login"))
 
     @app.context_processor
-    def inject_username():
+    def inject_template_context():
         username = session.get("username")
+
+        def browser_title(page_name):
+            hostname = ""
+            try:
+                # Page titles should identify the machine being administered,
+                # but should not break page rendering if the host command is
+                # unavailable during recovery or early setup.
+                hostname = server_identity_service.current_identity().hostname.strip()
+            except Exception:
+                app.logger.exception("Failed to read hostname for browser title")
+            host_label = hostname or "SimpleSaferServer"
+            return f"{page_name} - {host_label}"
+
         return {
             "username": username,
             "runtime_mode": runtime.mode,
             "default_mount_point": runtime.default_mount_point,
+            "browser_title": browser_title,
             # Expose admin status so templates can conditionally show admin-only nav items.
             "is_admin": user_manager.is_admin(username) if username else False,
         }

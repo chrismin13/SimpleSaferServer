@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Overview — SimpleSaferServer{% endblock %}
+{% block title %}{{ browser_title('Overview') }}{% endblock %}
 {% block header %}Overview{% endblock %}
 
 {% block content %}
@@ -121,7 +121,16 @@
             {% endif %}
           </td>
           <td class="text-mono task-time-cell" style="font-size: var(--text-xs);" data-timestamp="{{ task.last_run or '' }}">{{ task.last_run or '—' }}</td>
-          <td class="text-mono task-time-cell" style="font-size: var(--text-xs);" data-timestamp="{{ task.next_run or '' }}" data-future="true">{{ task.next_run or '—' }}</td>
+          {# Keep this state list aligned with TaskService.schedule_state() labels. #}
+          {% set disabled_schedule_states = ['temporary', 'permanent', 'restore_failed', 'external_disabled'] %}
+          {% if task.schedule.state in disabled_schedule_states %}
+            {% set schedule_cell_class = ' task-schedule-danger' %}
+          {% elif task.schedule.state == 'issue' %}
+            {% set schedule_cell_class = ' task-schedule-warning' %}
+          {% else %}
+            {% set schedule_cell_class = '' %}
+          {% endif %}
+          <td class="text-mono task-time-cell{{ schedule_cell_class }}" style="font-size: var(--text-xs);" data-timestamp="{{ task.schedule.raw_next_run or '' }}" data-schedule-label="{{ task.schedule.label or task.next_run or '' }}" data-future="true">{{ task.schedule.label or task.next_run or '—' }}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -173,25 +182,26 @@
   </div>
 </section>
 
-<div class="task-context-menu" id="taskContextMenu" role="menu" aria-hidden="true">
-  <button type="button" class="task-context-menu-item" data-task-action="start" role="menuitem">
-    <i class="fas fa-play"></i> Start
-  </button>
-  <button type="button" class="task-context-menu-item" data-task-action="stop" role="menuitem">
-    <i class="fas fa-stop"></i> Stop
-  </button>
-</div>
+{% set task_schedule_disable_context = 'Automatic runs stop for this task. Manual Start still works from the task page and context menu.' %}
+{% include 'partials/task_schedule_disable_modal.html' %}
 {% endblock %}
 
 {% block extra_js %}
+<script src="{{ url_for('static', filename='js/task_schedule_control.js') }}"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
   const tasksBody = document.getElementById('tasks-body');
-  const taskContextMenu = document.getElementById('taskContextMenu');
   const driveActionSlot = document.getElementById('drive-action-slot');
   const healthRefreshButton = document.getElementById('health-refresh-button');
   const taskScheduleByName = new Map();
   let activeContextTaskName = null;
+  const disableScheduleControl = window.TaskScheduleControl
+    ? window.TaskScheduleControl.createDisableScheduleController({
+      // Dashboard actions come from whichever row opened the context menu most recently.
+      taskName: () => activeContextTaskName,
+      onScheduleChanged: () => updateTaskSchedule()
+    })
+    : null;
 
   rememberTaskSchedule({{ tasks | tojson }});
 
@@ -212,6 +222,17 @@ document.addEventListener('DOMContentLoaded', function() {
     if (status === 'Not Run Yet') return '<span class="badge badge-neutral"><i class="fas fa-clock"></i> Not Run Yet</span>';
     if (status === 'Stopped') return '<span class="badge badge-neutral"><i class="fas fa-circle-stop"></i> Stopped</span>';
     return `<span class="badge badge-warning">${escapeHtml(status || 'Unknown')}</span>`;
+  }
+
+  function scheduleStateClass(state) {
+    // These are schedule states, not task run statuses; row-level styling would imply task failure.
+    if (['temporary', 'permanent', 'restore_failed', 'external_disabled'].includes(state)) {
+      return 'task-schedule-danger';
+    }
+    if (state === 'issue') {
+      return 'task-schedule-warning';
+    }
+    return '';
   }
 
   function rememberTaskSchedule(tasks) {
@@ -261,7 +282,9 @@ Remove the drive now if you do not want it mounted again.`;
   function renderTaskRow(task) {
     const url = `/task/${encodeURIComponent(task.name)}`;
     const lastRun = task.last_run || '';
-    const nextRun = task.next_run || '';
+    const schedule = task.schedule || {};
+    const nextRun = schedule.raw_next_run || task.next_run || '';
+    const scheduleLabel = schedule.label || task.next_run || '';
 
     const row = document.createElement('tr');
     row.className = 'clickable-row';
@@ -288,35 +311,55 @@ Remove the drive now if you do not want it mounted again.`;
     row.appendChild(tdLastRun);
 
     const tdNextRun = document.createElement('td');
-    tdNextRun.className = 'text-mono task-time-cell';
+    tdNextRun.className = ['text-mono', 'task-time-cell', scheduleStateClass(schedule.state)]
+      .filter(Boolean)
+      .join(' ');
     tdNextRun.style.fontSize = 'var(--text-xs)';
     tdNextRun.dataset.timestamp = nextRun;
+    tdNextRun.dataset.scheduleLabel = scheduleLabel;
     tdNextRun.dataset.future = 'true';
-    tdNextRun.textContent = nextRun || '—';
+    tdNextRun.textContent = scheduleLabel || '—';
     row.appendChild(tdNextRun);
 
     return row;
   }
 
-  function hideTaskContextMenu() {
-    taskContextMenu.classList.remove('visible');
-    taskContextMenu.setAttribute('aria-hidden', 'true');
-    activeContextTaskName = null;
+  function runContextTaskAction(taskName, action) {
+    if (!taskName) return;
+    activeContextTaskName = taskName;
+    if (action === 'disable-schedule') {
+      if (disableScheduleControl) disableScheduleControl.open();
+      return;
+    }
+    runTaskAction(taskName, action).catch((error) => {
+      showAlert(error.message || 'Task action failed.', 'danger');
+    });
   }
 
-  function showTaskContextMenu(taskName, clientX, clientY) {
-    activeContextTaskName = taskName;
-    taskContextMenu.classList.add('visible');
-    taskContextMenu.setAttribute('aria-hidden', 'false');
-
-    const { innerWidth, innerHeight } = window;
-    const menuWidth = taskContextMenu.offsetWidth;
-    const menuHeight = taskContextMenu.offsetHeight;
-    const left = Math.min(clientX, innerWidth - menuWidth - 8);
-    const top = Math.min(clientY, innerHeight - menuHeight - 8);
-
-    taskContextMenu.style.left = `${Math.max(8, left)}px`;
-    taskContextMenu.style.top = `${Math.max(8, top)}px`;
+  function dashboardTaskActionItems(taskName) {
+    // Keep this list aligned with the Dashboard shortcuts documented for Task Schedule Control.
+    return [
+      {
+        label: 'Start',
+        iconClass: 'fas fa-play',
+        onSelect: () => runContextTaskAction(taskName, 'start')
+      },
+      {
+        label: 'Stop',
+        iconClass: 'fas fa-stop',
+        onSelect: () => runContextTaskAction(taskName, 'stop')
+      },
+      {
+        label: 'Disable Schedule',
+        iconClass: 'fas fa-calendar-xmark',
+        onSelect: () => runContextTaskAction(taskName, 'disable-schedule')
+      },
+      {
+        label: 'Enable Schedule',
+        iconClass: 'fas fa-calendar-check',
+        onSelect: () => runContextTaskAction(taskName, 'enable-schedule')
+      }
+    ];
   }
 
   function bindInteractiveRows() {
@@ -330,17 +373,22 @@ Remove the drive now if you do not want it mounted again.`;
           window.location.href = row.dataset.href;
         }
       });
-      row.addEventListener('contextmenu', (event) => {
-        event.preventDefault();
-        showTaskContextMenu(row.dataset.taskName, event.clientX, event.clientY);
-      });
+      if (window.ActionContextMenu) {
+        window.ActionContextMenu.bind(row, () => dashboardTaskActionItems(row.dataset.taskName));
+      }
     });
   }
 
   function applyRelativeTaskTimes() {
     document.querySelectorAll('.task-time-cell').forEach((cell) => {
       const timestamp = cell.dataset.timestamp || '';
+      const scheduleLabel = cell.dataset.scheduleLabel || '';
       const isFuture = cell.dataset.future === 'true';
+      if (scheduleLabel && scheduleLabel !== timestamp) {
+        cell.textContent = scheduleLabel;
+        cell.title = timestamp || scheduleLabel;
+        return;
+      }
       cell.textContent = window.formatRelativeTimestamp(timestamp, {
         fallback: '—',
         futurePrefix: !isFuture ? true : false
@@ -353,7 +401,6 @@ Remove the drive now if you do not want it mounted again.`;
 
   async function updateTaskSchedule() {
     try {
-      hideTaskContextMenu();
       const { data } = await window.ApiClient.fetchJson('/api/tasks/schedule');
 
       rememberTaskSchedule(data.tasks);
@@ -719,29 +766,6 @@ Remove the drive now if you do not want it mounted again.`;
   if (healthRefreshButton) {
     healthRefreshButton.addEventListener('click', refreshHealth);
   }
-
-  taskContextMenu.querySelectorAll('[data-task-action]').forEach((button) => {
-    button.addEventListener('click', async () => {
-      if (!activeContextTaskName) return;
-      const taskName = activeContextTaskName;
-      const action = button.dataset.taskAction;
-      hideTaskContextMenu();
-      try {
-        await runTaskAction(taskName, action);
-      } catch (error) {
-        showAlert(error.message || 'Task action failed.', 'danger');
-      }
-    });
-  });
-
-  document.addEventListener('click', (event) => {
-    if (!event.target.closest('#taskContextMenu')) {
-      hideTaskContextMenu();
-    }
-  });
-
-  document.addEventListener('scroll', hideTaskContextMenu, true);
-  window.addEventListener('resize', hideTaskContextMenu);
 
   // Initial load
   updateTaskSchedule();

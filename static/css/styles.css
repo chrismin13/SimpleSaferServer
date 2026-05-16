@@ -539,6 +539,11 @@ body.fake-mode-active .toast-stack {
 .badge-info    { background: var(--info-subtle);    color: var(--info-text);    }
 .badge-neutral { background: var(--bg-overlay);     color: var(--text-secondary); }
 .badge-accent  { background: var(--accent-subtle);  color: var(--accent-text);  }
+.badge-schedule-danger { background: var(--danger-subtle); color: var(--danger-text); }
+.badge-schedule-warning { background: var(--warning-subtle); color: var(--warning-text); }
+
+.task-schedule-danger { color: var(--danger-text); }
+.task-schedule-warning { color: var(--warning-text); }
 
 /* ── Buttons ────────────────────────────────────────────────── */
 .btn {
@@ -1095,6 +1100,12 @@ table .text-end { text-align: right; }
   gap: var(--sp-2);
 }
 
+.modal-header h2 {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semi);
+  margin: 0;
+}
+
 .modal-close {
   width: 32px;
   height: 32px;
@@ -1118,6 +1129,53 @@ table .text-end { text-align: right; }
 
 .modal-body-pre {
   white-space: pre-line;
+}
+
+.app-cleanup-confirm {
+  display: grid;
+  gap: var(--sp-3);
+}
+
+.app-cleanup-confirm p {
+  margin: 0;
+}
+
+.app-cleanup-file-details {
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--sp-3);
+}
+
+.app-cleanup-file-details summary {
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: var(--text-sm);
+}
+
+.app-cleanup-file-details ul {
+  display: grid;
+  gap: var(--sp-2);
+  margin: var(--sp-3) 0 0;
+  max-height: 180px;
+  overflow: auto;
+  padding: 0;
+}
+
+.app-cleanup-file-details li {
+  display: grid;
+  grid-template-columns: 4.5rem minmax(0, 1fr);
+  gap: var(--sp-2);
+  align-items: baseline;
+}
+
+.app-cleanup-file-kind {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.app-cleanup-file-details code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .modal-footer {
@@ -1158,6 +1216,74 @@ table .text-end { text-align: right; }
 
 .modal-footer-message i {
   flex-shrink: 0;
+}
+
+.task-schedule-notice {
+  display: grid;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-4);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: hsla(42, 90%, 55%, 0.08);
+  color: var(--text-secondary);
+}
+
+.task-schedule-notice strong {
+  color: var(--warning-text);
+}
+
+.task-schedule-notice code {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.task-schedule-modal .modal-body {
+  display: grid;
+  gap: var(--sp-4);
+}
+
+.task-schedule-modal p {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.schedule-duration-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-2);
+}
+
+.schedule-duration-grid label {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 40px;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: hsla(220, 16%, 10%, 0.35);
+  cursor: pointer;
+}
+
+.schedule-duration-grid input {
+  margin: 0;
+}
+
+.schedule-permanent-note {
+  font-size: var(--text-sm);
+}
+
+.modal-status-line {
+  min-height: 1.25rem;
+  color: var(--danger-text);
+  font-size: var(--text-xs);
+}
+
+@media (max-width: 560px) {
+  .schedule-duration-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ── Alerts / toasts ────────────────────────────────────────── */
@@ -1312,11 +1438,21 @@ table .text-end { text-align: right; }
   line-height: var(--leading-loose);
   color: var(--text-secondary);
   overflow-y: auto;
+  overflow-x: auto;
   max-height: 400px;
   resize: vertical;
-  white-space: pre-wrap;
-  word-break: break-all;
+  white-space: pre;
+  word-break: normal;
 }
+
+.log-viewer .ansi-red { color: var(--danger-text); }
+.log-viewer .ansi-green { color: var(--success-text); }
+.log-viewer .ansi-yellow { color: var(--warning-text); }
+.log-viewer .ansi-blue { color: var(--info-text); }
+.log-viewer .ansi-magenta { color: #d8b4fe; }
+.log-viewer .ansi-cyan { color: #7dd3fc; }
+.log-viewer .ansi-white { color: var(--text-primary); }
+.log-viewer .ansi-bright { font-weight: var(--weight-semibold); }
 
 .task-detail-shell {
   flex: 1;
@@ -1358,7 +1494,14 @@ table .text-end { text-align: right; }
   flex-wrap: wrap;
 }
 
-.task-log-header .form-check {
+.task-log-refresh-state {
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  min-height: 1.2em;
+}
+
+.task-log-auto-refresh {
+  margin-left: auto;
   margin-right: var(--sp-3);
 }
 
@@ -2067,7 +2210,6 @@ pre code {
   color: var(--text-primary);
 }
 
-.task-context-menu,
 .action-context-menu {
   position: fixed;
   top: 0;
@@ -2082,12 +2224,10 @@ pre code {
   z-index: var(--z-modal);
 }
 
-.task-context-menu.visible,
 .action-context-menu.visible {
   display: block;
 }
 
-.task-context-menu-item,
 .action-context-menu-item {
   width: 100%;
   display: flex;
@@ -2104,7 +2244,6 @@ pre code {
   cursor: pointer;
 }
 
-.task-context-menu-item:hover,
 .action-context-menu-item:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
@@ -2259,6 +2398,19 @@ pre code {
   align-items: center;
 }
 
+.system-updates-app-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  gap: var(--sp-4);
+  align-items: center;
+}
+
+.system-updates-app-panel .system-updates-detail-row {
+  border-top: 1px solid var(--border-subtle);
+  margin-top: var(--sp-4);
+  padding-top: var(--sp-1);
+}
+
 .system-updates-progress-wrap {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 3rem;
@@ -2306,6 +2458,17 @@ pre code {
   margin-top: var(--sp-3);
 }
 
+.system-updates-branch-form {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) max-content;
+  gap: var(--sp-3);
+  align-items: end;
+}
+
+.system-updates-branch-form .btn {
+  min-height: calc(1.5em + (2 * var(--sp-2)) + 2px);
+}
+
 .system-updates-log-header {
   margin-bottom: var(--sp-3);
   color: var(--text-secondary);
@@ -2332,6 +2495,12 @@ pre code {
 .system-updates-facts strong {
   font-size: var(--text-sm);
   overflow-wrap: anywhere;
+}
+
+.app-source-code {
+  font-size: 0.92em;
+  font-weight: var(--weight-semibold);
+  line-height: 1.6;
 }
 
 .system-updates-source-link {
@@ -2412,6 +2581,10 @@ pre code {
     grid-template-columns: 1fr;
   }
 
+  .system-updates-app-grid {
+    grid-template-columns: 1fr;
+  }
+
   .system-updates-actions {
     justify-content: stretch;
   }
@@ -2471,7 +2644,8 @@ pre code {
   }
 
   .system-updates-check-row,
-  .system-updates-livepatch-form {
+  .system-updates-livepatch-form,
+  .system-updates-branch-form {
     display: grid;
     grid-template-columns: 1fr;
   }
@@ -2561,7 +2735,8 @@ body.task-detail-body .page-header {
     min-width: 0;
   }
 
-  .task-log-header .form-check {
+  .task-log-auto-refresh {
+    margin-left: 0;
     margin-right: 0;
   }
 }

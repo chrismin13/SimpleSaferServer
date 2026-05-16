@@ -11,9 +11,10 @@ from flask import (
     url_for,
 )
 
+from simple_safer_server.services.task_service import TASK_LOG_LINE_LIMIT, clamp_task_log_lines
 from simple_safer_server.services.user_manager import admin_required, api_admin_required
 from simple_safer_server.web.api import json_data, json_problem
-from simple_safer_server.web.problems import NotFoundProblem, OperationProblem
+from simple_safer_server.web.problems import NotFoundProblem, OperationProblem, ValidationProblem
 
 tasks = Blueprint("task_routes", __name__)
 
@@ -21,6 +22,12 @@ tasks = Blueprint("task_routes", __name__)
 def _get_services() -> Any:
     """Return app-level services registered during Flask startup."""
     return current_app.extensions["simple_safer_server"]
+
+
+def _bad_disable_schedule_request(message: str):
+    if request.accept_mimetypes.best == "application/json":
+        return json_problem(ValidationProblem(message, slug="task-schedule-validation-error"))
+    abort(400)
 
 
 @tasks.route("/dashboard")
@@ -69,11 +76,19 @@ def dashboard():
 @tasks.route("/task/<task_name>")
 @admin_required
 def task_detail(task_name):
-    task = _get_services().task_service.get_task(task_name)
+    task_service = _get_services().task_service
+    task = task_service.get_task(task_name)
     if not task:
         abort(404)
-    logs = task.get_logs()
-    return render_template("task_detail.html", task=task, logs=logs)
+    log_lines = TASK_LOG_LINE_LIMIT
+    logs = task.get_logs(log_lines)
+    return render_template(
+        "task_detail.html",
+        task=task,
+        task_summary=task_service.task_summary(task),
+        logs=logs,
+        log_lines=log_lines,
+    )
 
 
 @tasks.route("/task/<task_name>/logs")
@@ -82,13 +97,24 @@ def task_logs(task_name):
     task = _get_services().task_service.get_task(task_name)
     if not task:
         abort(404)
-    try:
-        lines = int(request.args.get("lines", 50))
-    except (TypeError, ValueError):
-        lines = 50
-    lines = max(1, min(lines, 500))
+    lines = clamp_task_log_lines(request.args.get("lines", TASK_LOG_LINE_LIMIT))
     logs = task.get_logs(lines)
     return logs, 200, {"Content-Type": "text/plain; charset=utf-8"}
+
+
+@tasks.route("/api/tasks/<task_name>/status")
+@api_admin_required
+def api_task_status(task_name):
+    task = _get_services().task_service.get_task(task_name)
+    if not task:
+        return json_problem(
+            NotFoundProblem("Task not found.", title="Task not found", slug="task-not-found")
+        )
+    try:
+        return json_data({"task": _get_services().task_service.task_summary(task)})
+    except Exception:
+        current_app.logger.exception("Failed to load task status for %s", task_name)
+        return json_problem(OperationProblem("Failed to load task status."))
 
 
 @tasks.route("/task/<task_name>/start", methods=["POST"])
@@ -138,6 +164,82 @@ def stop_task(task_name):
             return json_problem(
                 OperationProblem(
                     "Could not stop task. Check task logs.", slug="task-operation-failed"
+                )
+            )
+        abort(500)
+
+
+@tasks.route("/task/<task_name>/disable-schedule", methods=["POST"])
+@api_admin_required
+def disable_schedule(task_name):
+    task = _get_services().task_service.get_task(task_name)
+    if not task:
+        if request.accept_mimetypes.best == "application/json":
+            return json_problem(
+                NotFoundProblem("Task not found.", title="Task not found", slug="task-not-found")
+            )
+        abort(404)
+    data = request.get_json(silent=True) or request.form
+    mode = (data.get("mode") or "").strip()
+    hours = data.get("hours")
+    if mode not in {"temporary", "permanent"}:
+        return _bad_disable_schedule_request(
+            "Schedule disable mode must be temporary or permanent."
+        )
+
+    parsed_hours = None
+    if mode == "temporary":
+        if hours is None or hours == "":
+            return _bad_disable_schedule_request("Temporary schedule disables require hours.")
+        hours_text = str(hours).strip()
+        # The browser sends positive whole hours; direct API callers get the same contract.
+        if not hours_text.isdigit():
+            return _bad_disable_schedule_request("Schedule disable hours must contain only digits.")
+        parsed_hours = int(hours_text)
+        if parsed_hours <= 0:
+            return _bad_disable_schedule_request("Schedule disable hours must be greater than 0.")
+
+    try:
+        task.disable_schedule(mode, hours=parsed_hours)
+        if request.accept_mimetypes.best == "application/json":
+            summary = _get_services().task_service.task_summary(task)
+            return json_data({"task": summary}, message=f"Disabled schedule for {task_name}.")
+        return redirect(url_for("task_routes.task_detail", task_name=task_name))
+    except Exception:
+        current_app.logger.exception("Failed to disable schedule for %s", task_name)
+        if request.accept_mimetypes.best == "application/json":
+            return json_problem(
+                OperationProblem(
+                    "Could not disable schedule. Check systemd status.",
+                    slug="task-operation-failed",
+                )
+            )
+        abort(500)
+
+
+@tasks.route("/task/<task_name>/enable-schedule", methods=["POST"])
+@api_admin_required
+def enable_schedule(task_name):
+    task = _get_services().task_service.get_task(task_name)
+    if not task:
+        if request.accept_mimetypes.best == "application/json":
+            return json_problem(
+                NotFoundProblem("Task not found.", title="Task not found", slug="task-not-found")
+            )
+        abort(404)
+    try:
+        task.enable_schedule()
+        if request.accept_mimetypes.best == "application/json":
+            summary = _get_services().task_service.task_summary(task)
+            return json_data({"task": summary}, message=f"Enabled schedule for {task_name}.")
+        return redirect(url_for("task_routes.task_detail", task_name=task_name))
+    except Exception:
+        current_app.logger.exception("Failed to enable schedule for %s", task_name)
+        if request.accept_mimetypes.best == "application/json":
+            return json_problem(
+                OperationProblem(
+                    "Could not enable schedule. Check systemd status.",
+                    slug="task-operation-failed",
                 )
             )
         abort(500)

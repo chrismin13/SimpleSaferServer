@@ -7,7 +7,7 @@ This guide explains how to manually install SimpleSaferServer on a clean Debian 
 ## 1. Install System Dependencies
 
 - Run `sudo apt-get update`.
-- Run `sudo apt-get install -y git python3 python3-pip python3-venv smartmontools samba msmtp rsync curl unzip fdisk ntfs-3g`.
+- Run `sudo apt-get install -y git python3 python3-pip python3-venv smartmontools samba msmtp rsync curl unzip fdisk ntfs-3g unattended-upgrades`.
 
 ## 2. Install rclone
 
@@ -62,9 +62,12 @@ Install the extracted binary:
 ## 5. Copy Application Files
 
 - Run `sudo mkdir -p /opt/SimpleSaferServer`.
-- Run `sudo rsync -a --exclude='venv' --exclude='__pycache__' --exclude='*.pyc' --exclude='*.pyo' --exclude='*.log' --exclude='telemetry.csv' --exclude='harddrive_model' --exclude='scripts' --exclude='static' --exclude='templates' ./ /opt/SimpleSaferServer/`.
-- Run `sudo rsync -a static /opt/SimpleSaferServer/`.
-- Run `sudo rsync -a templates /opt/SimpleSaferServer/`.
+- Run `sudo mkdir -p /var/lib/SimpleSaferServer`.
+- Run `sudo rsync -a --delete --exclude='venv' --exclude='__pycache__' --exclude='*.pyc' --exclude='*.pyo' --exclude='*.log' --exclude='telemetry.csv' --exclude='harddrive_model' --exclude='static' --exclude='templates' ./ /opt/SimpleSaferServer/`.
+- Run `sudo rsync -a --delete static /opt/SimpleSaferServer/`.
+- Run `sudo rsync -a --delete templates /opt/SimpleSaferServer/`.
+
+`/opt/SimpleSaferServer` is the application folder. Keep durable app data, including drive-health telemetry and HDSentinel state, in `/var/lib/SimpleSaferServer`; configuration in `/etc/SimpleSaferServer`; logs in `/var/log/SimpleSaferServer`; and volatile runtime state in `/run/SimpleSaferServer`.
 
 ## 6. Set Up the Python Virtualenv
 
@@ -81,9 +84,12 @@ Install the extracted binary:
 
 - Run `sudo mkdir -p /usr/local/bin`.
 - Copy each file from `scripts/` into `/usr/local/bin/`.
-- Mark each copied script as executable with `chmod +x`.
+- Preserve the copied files' modes under `/opt/SimpleSaferServer/scripts`. Only the helper-script
+  copies under `/usr/local/bin` need executable bits.
+- Register the installed checkout for root-run Git commands:
+  `sudo git config --system --add safe.directory /opt/SimpleSaferServer`.
 - Run `sudo mkdir -p /opt/SimpleSaferServer/harddrive_model`.
-- Copy the contents of `harddrive_model/` into `/opt/SimpleSaferServer/harddrive_model/`.
+- Run `sudo rsync -a --delete harddrive_model/ /opt/SimpleSaferServer/harddrive_model/`.
 
 ## 8. Set Up the Systemd Service
 
@@ -96,7 +102,13 @@ Install the extracted binary:
 - Run `sudo systemctl enable simple_safer_server_web.service`.
 - Run `sudo systemctl restart simple_safer_server_web.service`.
 - After the service starts, use the Web UI setup flow to configure email alerts, backup settings, and the initial administrator account.
-- The recurring `check_mount`, `check_health`, `backup_cloud`, and `ddns_update` timers should stay inactive until the Web UI setup flow is complete. They use `Persistent=true`, so starting them before setup can immediately replay missed runs with incomplete backup and alert settings.
+- The recurring `check_mount`, `check_health`, `backup_cloud`, `ddns_update`, and `app_update`
+  timers should stay inactive until the Web UI setup flow is complete. They use `Persistent=true`,
+  so starting them before setup can immediately replay missed runs with incomplete backup and alert
+  settings.
+- The global `simple_safer_server_restore_schedules.timer` runs every five minutes with
+  `Persistent=true`. It is safe before setup completion because it only acts on explicit
+  SimpleSaferServer Disable Schedule records.
 
 ## 9. Open Firewall Port 5000 If Needed
 

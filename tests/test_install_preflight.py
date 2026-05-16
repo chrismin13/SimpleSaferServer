@@ -10,6 +10,12 @@ INSTALL_SCRIPT = REPO_ROOT / "install.sh"
 
 
 class InstallPreflightTests(unittest.TestCase):
+    def installer_function(self, name):
+        text = INSTALL_SCRIPT.read_text()
+        start = text.index(f"{name}() {{")
+        end = text.index("\n}\n\n", start) + len("\n}\n")
+        return text[start:end]
+
     def run_preflight(self, os_release_text, *args, fake_commands="apt-get,dpkg,systemctl"):
         with tempfile.TemporaryDirectory() as temp_dir:
             os_release_path = Path(temp_dir) / "os-release"
@@ -161,6 +167,196 @@ class InstallPreflightTests(unittest.TestCase):
         self.assertIn(
             "systemd does not appear to be running as the host init system", result.stdout
         )
+
+    def test_script_install_loop_skips_same_app_destination(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            scripts_dir = root / "scripts"
+            bin_dir = root / "bin"
+            scripts_dir.mkdir()
+            bin_dir.mkdir()
+            script = scripts_dir / "app_update.sh"
+            script.write_text("#!/bin/bash\necho app\n")
+            py_script = scripts_dir / "app_update.py"
+            py_script.write_text("#!/usr/bin/env python3\nprint('app')\n")
+
+            snippet = textwrap.dedent(
+                f"""\
+                set -e
+                {self.installer_function("same_file")}
+                {self.installer_function("copy_unless_same_file")}
+                SCRIPTS_DIR="{scripts_dir}"
+                BIN_DIR="{bin_dir}"
+                cd "{root}"
+                for script in scripts/*.sh scripts/*.py; do
+                  script_name="$(basename "$script")"
+                  app_script_path="$SCRIPTS_DIR/$script_name"
+                  bin_script_path="$BIN_DIR/$script_name"
+                  if ! same_file "$script" "$app_script_path"; then
+                    cp "$script" "$app_script_path"
+                    chmod +x "$app_script_path"
+                  fi
+                  copy_unless_same_file "$script" "$bin_script_path"
+                  chmod +x "$bin_script_path"
+                done
+                """
+            )
+
+            result = subprocess.run(
+                ["bash", "-lc", snippet],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+            self.assertFalse(os.access(script, os.X_OK))
+            self.assertFalse(os.access(py_script, os.X_OK))
+            self.assertEqual((bin_dir / "app_update.sh").read_text(), "#!/bin/bash\necho app\n")
+            self.assertTrue(os.access(bin_dir / "app_update.sh", os.X_OK))
+            self.assertTrue(os.access(bin_dir / "app_update.py", os.X_OK))
+
+    def test_script_install_loop_preserves_app_script_modes_from_source(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source_dir = root / "source" / "scripts"
+            app_scripts_dir = root / "app" / "scripts"
+            bin_dir = root / "bin"
+            source_dir.mkdir(parents=True)
+            app_scripts_dir.mkdir(parents=True)
+            bin_dir.mkdir()
+            script = source_dir / "app_update.sh"
+            py_script = source_dir / "app_update.py"
+            script.write_text("#!/bin/bash\necho app\n")
+            py_script.write_text("#!/usr/bin/env python3\nprint('app')\n")
+
+            snippet = textwrap.dedent(
+                f"""\
+                set -e
+                {self.installer_function("same_file")}
+                {self.installer_function("copy_unless_same_file")}
+                SCRIPTS_DIR="{app_scripts_dir}"
+                BIN_DIR="{bin_dir}"
+                cd "{root / "source"}"
+                for script in scripts/*.sh scripts/*.py; do
+                  script_name="$(basename "$script")"
+                  app_script_path="$SCRIPTS_DIR/$script_name"
+                  bin_script_path="$BIN_DIR/$script_name"
+                  if ! same_file "$script" "$app_script_path"; then
+                    cp "$script" "$app_script_path"
+                  fi
+                  copy_unless_same_file "$script" "$bin_script_path"
+                  chmod +x "$bin_script_path"
+                done
+                """
+            )
+
+            result = subprocess.run(
+                ["bash", "-lc", snippet],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+            self.assertFalse(os.access(app_scripts_dir / "app_update.sh", os.X_OK))
+            self.assertFalse(os.access(app_scripts_dir / "app_update.py", os.X_OK))
+            self.assertTrue(os.access(bin_dir / "app_update.sh", os.X_OK))
+            self.assertTrue(os.access(bin_dir / "app_update.py", os.X_OK))
+
+    def test_git_safe_directory_helper_adds_system_entry_once(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            fake_bin = root / "bin"
+            config_path = root / "gitconfig"
+            calls_path = root / "calls"
+            fake_bin.mkdir()
+            git = fake_bin / "git"
+            git.write_text(
+                textwrap.dedent(
+                    f"""\
+                    #!/bin/sh
+                    printf '%s\\n' "$*" >> "{calls_path}"
+                    if [ "$1" = "config" ] && [ "$2" = "--system" ] && [ "$3" = "--get-all" ] && [ "$4" = "safe.directory" ]; then
+                        [ -f "{config_path}" ] && cat "{config_path}"
+                        exit 0
+                    fi
+                    if [ "$1" = "config" ] && [ "$2" = "--system" ] && [ "$3" = "--add" ] && [ "$4" = "safe.directory" ]; then
+                        printf '%s\\n' "$5" >> "{config_path}"
+                        exit 0
+                    fi
+                    exit 1
+                    """
+                )
+            )
+            git.chmod(0o755)
+
+            snippet = textwrap.dedent(
+                f"""\
+                set -e
+                {self.installer_function("ensure_git_safe_directory")}
+                export PATH="{fake_bin}:$PATH"
+                ensure_git_safe_directory "/opt/SimpleSaferServer"
+                ensure_git_safe_directory "/opt/SimpleSaferServer"
+                """
+            )
+
+            result = subprocess.run(
+                ["bash", "-lc", snippet],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+            config_text = config_path.read_text()
+            self.assertEqual(config_text.count("/opt/SimpleSaferServer"), 1)
+            self.assertEqual(
+                [line for line in calls_path.read_text().splitlines() if "--add" in line],
+                ["config --system --add safe.directory /opt/SimpleSaferServer"],
+            )
+
+    def test_model_install_loop_skips_same_app_destination(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            model_dir = root / "harddrive_model"
+            model_dir.mkdir()
+            model = model_dir / "xgb_model.json"
+            model.write_text('{"model": true}\n')
+
+            snippet = textwrap.dedent(
+                f"""\
+                set -e
+                {self.installer_function("same_file")}
+                {self.installer_function("copy_unless_same_file")}
+                MODEL_DIR="{model_dir}"
+                cd "{root}"
+                for model_file in harddrive_model/*; do
+                  model_name="$(basename "$model_file")"
+                  model_dest_path="$MODEL_DIR/$model_name"
+                  copy_unless_same_file "$model_file" "$model_dest_path"
+                done
+                """
+            )
+
+            result = subprocess.run(
+                ["bash", "-lc", snippet],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+            self.assertEqual(model.read_text(), '{"model": true}\n')
+
+    def test_app_rsyncs_prune_removed_app_owned_files(self):
+        text = INSTALL_SCRIPT.read_text()
+
+        self.assertIn("rsync -a --delete", text)
+        self.assertIn("--exclude='venv'", text)
+        self.assertIn("rsync -a --delete static", text)
+        self.assertIn("rsync -a --delete templates", text)
+        self.assertIn("rsync -a --delete harddrive_model/", text)
 
 
 if __name__ == "__main__":

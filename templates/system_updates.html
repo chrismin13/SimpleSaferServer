@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}System Updates — SimpleSaferServer{% endblock %}
+{% block title %}{{ browser_title('System Updates') }}{% endblock %}
 {% block header %}System Updates{% endblock %}
 
 {% block content %}
@@ -27,6 +27,80 @@
     <span>Livepatch</span>
     <strong id="livepatch-title">—</strong>
     <span class="badge badge-neutral d-none" id="livepatch-badge">Loading...</span>
+  </div>
+</section>
+
+<section class="system-updates-panel system-updates-app-panel">
+  <div class="system-updates-toolbar">
+    <div class="system-updates-status-main">
+      <strong id="app-update-title">Application</strong>
+      <span id="app-update-detail">Loading application version…</span>
+    </div>
+    <span class="badge badge-neutral" id="app-update-badge">Checking...</span>
+  </div>
+  <div class="system-updates-app-grid">
+    <div class="system-updates-facts">
+      <div>
+        <span>Source</span>
+        <strong id="app-update-source">—</strong>
+      </div>
+      <div>
+        <span>Commit</span>
+        <strong class="text-mono" id="app-update-commit">—</strong>
+      </div>
+      <div>
+        <span>Remote Check</span>
+        <strong id="app-update-checked">Not checked</strong>
+      </div>
+    </div>
+    <div class="system-updates-actions">
+      <button type="button" class="btn btn-secondary btn-sm" id="app-update-refresh-btn">
+        <i class="fas fa-rotate"></i> Refresh
+      </button>
+      <button type="button" class="btn btn-success btn-sm" id="app-update-now-btn" disabled
+        data-confirm="Update SimpleSaferServer now? This pulls the latest branch commit, reruns the installer, and restarts the web service."
+        data-confirm-title="Update application"
+        data-confirm-button="Update"
+        data-confirm-class="btn-success">
+        <i class="fas fa-circle-up"></i> Update Now
+      </button>
+      <button type="button" class="btn btn-warning btn-sm d-none" id="app-update-force-btn"
+        data-confirm-button="Clean Up and Update">
+        <i class="fas fa-broom"></i> Clean Up and Update
+      </button>
+      <span id="app-update-switch-main-tooltip">
+        <button type="button" class="btn btn-primary btn-sm d-none" id="app-update-switch-main-btn">
+          <i class="fas fa-code-branch"></i> Switch to main
+        </button>
+      </span>
+    </div>
+  </div>
+  <!-- Branch switching triggers the same App Update task, so keep it visually owned by this card. -->
+  <div class="system-updates-detail-row">
+    <button type="button" class="collapse-trigger system-updates-collapse-trigger" id="app-branch-advanced-trigger" data-collapse-target="appBranchAdvanced">
+      <span class="system-updates-collapse-label">
+        <i class="fas fa-chevron-right collapse-icon"></i>
+        <span><i class="fas fa-code-branch"></i> Advanced</span>
+      </span>
+    </button>
+    <div class="collapse-content" id="appBranchAdvanced">
+      <div class="system-updates-foldout-body">
+        <p class="status-tile-detail" id="app-branch-advanced-hint">
+          Switch branches only for testing or recovery.
+        </p>
+        <form id="app-branch-switch-form" class="system-updates-branch-form" autocomplete="off">
+          <div class="form-group">
+            <label class="form-label" for="app-branch-select">Branch</label>
+            <select class="form-control" id="app-branch-select">
+              <option value="">Open to load branches</option>
+            </select>
+          </div>
+          <button type="submit" class="btn btn-secondary btn-sm" id="app-branch-switch-btn" disabled>
+            <i class="fas fa-code-branch"></i> Switch Branch
+          </button>
+        </form>
+      </div>
+    </div>
   </div>
 </section>
 

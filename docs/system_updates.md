@@ -2,6 +2,105 @@
 
 The System Updates page manages Debian and Ubuntu package maintenance from the admin UI.
 
+## Application version and updates
+
+The page shows the installed SimpleSaferServer source state:
+
+- branch, tag, detached checkout, or unavailable Git state
+- current commit
+- cached remote check time
+- whether the checkout is up to date, behind, ahead, diverged, dirty, pinned, or unavailable
+
+Remote Git status is checked only when an administrator clicks **Refresh**. This avoids doing a
+network fetch every time the page loads. The page uses the cached remote result until Refresh runs
+again or the installed commit changes. Branch choices for app version source switching are
+also loaded only when an administrator refreshes application status or opens the advanced
+app version source controls.
+
+`/opt/SimpleSaferServer` is the application folder. It is not user storage, and application update
+cleanup may return it to the selected Git branch state. SimpleSaferServer stores durable operator
+state outside that folder:
+
+- configuration in `/etc/SimpleSaferServer`
+- logs in `/var/log/SimpleSaferServer`
+- volatile runtime state in `/run/SimpleSaferServer`
+- durable app data, including drive-health telemetry and HDSentinel state, in `/var/lib/SimpleSaferServer`
+
+**Update Now** is enabled only when the installed checkout is:
+
+- on a branch
+- clean of tracked local file edits and untracked files
+- configured with an upstream
+- behind that upstream
+
+Tag and detached checkouts are shown as pinned. They are useful as install snapshots, but the
+automatic updater does not move them to another commit.
+
+`main` is the Stable Branch for routine self-updates. When the installed app version source is a
+non-`main` branch, tag, or detached commit, the page shows **Switch to main** as the shortest recovery
+path. A clean pinned install can use this action to resume branch-tracking updates. If local
+app-folder changes block branch switching, **Switch to main** remains visible but disabled with a
+cleanup tooltip so the recovery path does not disappear.
+
+The advanced app version source control supports deliberate source switching for testing or
+recovery. It lists branches from `origin` only. It does not show tags, detached commits,
+local-only branches, or `origin/HEAD`. Switching to a non-`main` branch uses a deliberately strong
+confirmation because branch switching is an escape hatch for testing a specific fix or recovering an
+install, not a routine update path. Non-`main` branches can be unfinished, temporary, outdated, or
+removed without notice. The switch reruns the installer from that branch. The collapsed **Advanced**
+row does not include a dynamic branch-relationship summary; the current source, update status, and
+**Switch to main** action provide the useful scan points, while GitHub remains the detailed branch
+comparison surface.
+
+Branch switching requires a clean app checkout. If Git reports changed tracked files or untracked
+files in `/opt/SimpleSaferServer`, clean up or review those files before switching branches. The
+branch switch action does not reset tracked changes or remove extra files; **Clean Up and Update**
+remains the separate recovery action for app-folder cleanup.
+
+When the app checkout is dirty, the **Advanced** branch selector remains visible but disabled. Its
+hint explains that the app folder must be cleaned up before switching branches, which keeps the
+available recovery action discoverable without making it clickable while Git would refuse it.
+
+App version source switching runs through the `App Update` scheduled task. The task fetches `origin`,
+switches to the selected branch, fast-forwards with `git pull --ff-only`, and reruns the installer
+immediately so dependencies, systemd units, helper scripts, templates, static assets, and the running
+web app match the selected branch. Validation problems found before the task starts are shown on the
+System Updates page. Git or installer failures after the task starts are shown in the `App Update`
+task journal.
+
+The branch switch implementation uses Git commands available on Debian 10-era installs, so legacy
+systems can still move between published branches even when newer Git subcommands are unavailable.
+
+When changed or extra files in `/opt/SimpleSaferServer` block the normal update path, the page shows
+**Clean Up and Update**. That action resets tracked app files to the selected branch, removes
+untracked files from the app folder, fetches the remote, fast-forwards the branch, and reruns the
+installer. It does not remove settings, users, logs, backups, or system configuration stored outside
+`/opt/SimpleSaferServer`. Ignored files are not removed by this cleanup path. The confirmation dialog
+shows the changed and extra app-folder paths reported by Git so administrators can review what will
+be reset or removed before continuing.
+
+Application updates run through the `App Update` scheduled task. The task runs `git pull --ff-only`
+from the installed checkout and then reruns the full installer from that checkout. Full installer
+updates keep Python dependencies, systemd units, helper scripts, templates, and static assets in
+sync with the pulled code. Fast-forward-only pulls prevent the updater from creating merge commits
+or resolving branch divergence without an administrator.
+
+When an administrator starts **Update Now** or **Clean Up and Update** from the System Updates page,
+the browser opens `/task/App Update` so the administrator can watch the task journal. The journal
+includes the Git and `install.sh` output from the update run. The web service may briefly restart
+while the installer refreshes service files; the task page keeps retrying log refreshes so it can
+resume after the session reconnects.
+
+The scheduled task runs as root. During install, SimpleSaferServer registers
+`/opt/SimpleSaferServer` as a Git `safe.directory` in the system Git config so root-run services can
+inspect a checkout owned by the installing administrator. The installer preserves file modes inside
+the app checkout and only forces executable bits on the `/usr/local/bin` helper-script copies, so
+routine installs do not create script-mode changes in Git status.
+
+The daily `App Update` timer is generated with the other SimpleSaferServer timers and runs 15
+minutes before `Check Mount`. It is also visible on the Dashboard scheduled-task table, where admins
+can inspect logs or start the task manually.
+
 ## Operating system support
 
 - Shows the current Debian or Ubuntu release from `/etc/os-release`.
@@ -50,7 +149,10 @@ On real systems, saving the form writes `/etc/apt/apt.conf.d/20auto-upgrades` wi
 
 Other apt configuration files under `/etc/apt/apt.conf.d/` may still define additional apt behavior that this page does not edit.
 
-`unattended-upgrades` must be installed for unattended upgrades to actually run.
+The automated installer and manual install guide install `unattended-upgrades` so the unattended
+upgrade control has its required apt backend. Debian and Ubuntu package defaults can already enable
+security upgrades when the package is installed, so the page shows the current apt periodic values
+before SimpleSaferServer adopts the settings.
 
 Uninstalling SimpleSaferServer does not remove or revert `/etc/apt/apt.conf.d/20auto-upgrades`. These are normal operating system update settings, and an administrator may want them to keep applying after the app is removed.
 

@@ -3,6 +3,7 @@ from typing import Any
 from flask import Blueprint, current_app, render_template, session
 
 from simple_safer_server.adapters.command_runner import CalledProcessError
+from simple_safer_server.services.app_updates import AppUpdateError
 from simple_safer_server.services.system_updates import AptOperationConflict
 from simple_safer_server.services.user_manager import admin_required, api_admin_required
 from simple_safer_server.web.api import json_data, json_problem, json_request_data
@@ -18,6 +19,40 @@ def _get_services() -> Any:
 
 def _manager() -> Any:
     return _get_services().system_updates_manager
+
+
+def _app_update_task_missing_problem():
+    return json_problem(
+        OperationProblem(
+            "Application update task is not installed.",
+            slug="application-update-task-missing",
+        )
+    )
+
+
+def _start_app_update_task():
+    task = _get_services().task_service.get_task("App Update")
+    if task is None:
+        return _app_update_task_missing_problem()
+    task.start()
+    return None
+
+
+def _start_app_update_task_with_request(app_update_manager, queue_request):
+    task = _get_services().task_service.get_task("App Update")
+    if task is None:
+        return _app_update_task_missing_problem()
+
+    # app_update.service consumes this one-shot request at process startup, so
+    # it must exist before systemd starts the task. Clear it if systemd refuses
+    # the start so a later scheduled update cannot replay a stale admin intent.
+    queue_request()
+    try:
+        task.start()
+    except Exception:
+        app_update_manager.clear_update_request()
+        raise
+    return None
 
 
 @system_updates.route("/system_updates")
@@ -37,11 +72,154 @@ def api_system_updates_summary():
                 "operation": manager.get_status(),
                 "settings": manager.get_settings(),
                 "livepatch": manager.get_livepatch_status(),
+                "application": _get_services().app_update_manager.get_status(fetch_remote=False),
             }
         )
     except Exception:
         current_app.logger.exception("Error loading system update summary")
         return json_problem(OperationProblem("Failed to load system update summary."))
+
+
+@system_updates.route("/api/system_updates/application/refresh", methods=["POST"])
+@api_admin_required
+def api_system_updates_application_refresh():
+    try:
+        return json_data(
+            {"application": _get_services().app_update_manager.get_status(fetch_remote=True)}
+        )
+    except Exception:
+        current_app.logger.exception("Error refreshing application update status")
+        return json_problem(OperationProblem("Failed to refresh application update status."))
+
+
+@system_updates.route("/api/system_updates/application/update", methods=["POST"])
+@api_admin_required
+def api_system_updates_application_update():
+    try:
+        app_update_manager = _get_services().app_update_manager
+        status = app_update_manager.get_status(fetch_remote=False)
+        if not status.get("can_update"):
+            return json_problem(
+                ConflictProblem(
+                    status.get("message") or "Application update is not available.",
+                    slug="application-update-not-available",
+                )
+            )
+        problem_response = _start_app_update_task()
+        if problem_response is not None:
+            return problem_response
+        return json_data(
+            {
+                "application": status,
+                "task_url": "/task/App%20Update",
+            },
+            message="Application update started. Opening the App Update log.",
+        )
+    except AppUpdateError as exc:
+        return json_problem(ConflictProblem(str(exc), slug="application-update-not-available"))
+    except Exception:
+        current_app.logger.exception("Could not start application update")
+        return json_problem(OperationProblem("Could not start application update."))
+
+
+@system_updates.route("/api/system_updates/application/force_update", methods=["POST"])
+@api_admin_required
+def api_system_updates_application_force_update():
+    try:
+        app_update_manager = _get_services().app_update_manager
+        status = app_update_manager.get_status(fetch_remote=False)
+        if not status.get("can_force_update"):
+            return json_problem(
+                ConflictProblem(
+                    status.get("message") or "Application cleanup is not available.",
+                    slug="application-force-update-not-available",
+                )
+            )
+        problem_response = _start_app_update_task_with_request(
+            app_update_manager,
+            app_update_manager.request_cleanup_update,
+        )
+        if problem_response is not None:
+            return problem_response
+        return json_data(
+            {
+                "application": status,
+                "task_url": "/task/App%20Update",
+            },
+            message="Application cleanup update started. Opening the App Update log.",
+        )
+    except AppUpdateError as exc:
+        current_app.logger.warning("Application cleanup update failed: %s", exc)
+        # Keep the UI wording action-oriented while preserving command output
+        # for diagnostics in the Problem Details payload.
+        return json_problem(
+            OperationProblem(
+                "Application cleanup update failed. Check logs before retrying.",
+                slug="application-force-update-failed",
+                extra={"diagnostic": str(exc)},
+            )
+        )
+    except Exception:
+        current_app.logger.exception("Could not clean up and update application")
+        return json_problem(OperationProblem("Could not clean up and update application."))
+
+
+@system_updates.route("/api/system_updates/application/branches", methods=["POST"])
+@api_admin_required
+def api_system_updates_application_branches():
+    try:
+        branches = _get_services().app_update_manager.list_remote_branches(fetch_remote=True)
+        return json_data({"branches": branches})
+    except AppUpdateError as exc:
+        return json_problem(ConflictProblem(str(exc), slug="application-branches-unavailable"))
+    except Exception:
+        current_app.logger.exception("Could not load application branches")
+        return json_problem(OperationProblem("Could not load application branches."))
+
+
+@system_updates.route("/api/system_updates/application/switch_branch", methods=["POST"])
+@api_admin_required
+def api_system_updates_application_switch_branch():
+    try:
+        data = json_request_data()
+        branch = data.get("branch") if isinstance(data, dict) else None
+        if not isinstance(branch, str) or not branch.strip():
+            return json_problem(ValidationProblem("Branch is required."))
+
+        app_update_manager = _get_services().app_update_manager
+        status = app_update_manager.get_status(fetch_remote=False)
+        if status.get("dirty"):
+            return json_problem(
+                ConflictProblem(
+                    "Clean up app folder before switching branches.",
+                    slug="application-switch-branch-dirty",
+                )
+            )
+        if branch not in app_update_manager.list_remote_branches(fetch_remote=True):
+            return json_problem(
+                ConflictProblem(
+                    "Branch is no longer available. Refresh and try again.",
+                    slug="application-switch-branch-unavailable",
+                )
+            )
+
+        problem_response = _start_app_update_task_with_request(
+            app_update_manager,
+            lambda: app_update_manager.request_branch_switch(branch),
+        )
+        if problem_response is not None:
+            return problem_response
+        return json_data(
+            {
+                "task_url": "/task/App%20Update",
+            },
+            message="Application source switch started. Opening the App Update log.",
+        )
+    except AppUpdateError as exc:
+        return json_problem(ConflictProblem(str(exc), slug="application-switch-branch-unavailable"))
+    except Exception:
+        current_app.logger.exception("Could not switch application branch")
+        return json_problem(OperationProblem("Could not switch application branch."))
 
 
 @system_updates.route("/api/system_updates/status", methods=["GET"])

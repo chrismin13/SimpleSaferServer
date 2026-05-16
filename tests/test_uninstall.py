@@ -222,6 +222,14 @@ class UninstallScriptTests(unittest.TestCase):
 
         self.assertNotEqual(result.returncode, 0)
 
+    def test_uninstall_removes_schedule_restore_units_and_helper(self):
+        script = UNINSTALL_SCRIPT.read_text()
+
+        self.assertIn('remove_systemd_unit "simple_safer_server_restore_schedules.timer"', script)
+        self.assertIn('remove_systemd_unit "simple_safer_server_restore_schedules.service"', script)
+        self.assertIn("restore_disabled_timers.py", script)
+        self.assertIn('rm -rf "$DATA_DIR"', script)
+
     def test_managed_hostname_summary_reads_hostname_metadata(self):
         with tempfile.TemporaryDirectory() as tempdir:
             config_path = Path(tempdir) / "config.conf"
@@ -402,6 +410,65 @@ class UninstallScriptTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("markers are malformed", result.stdout)
         self.assertEqual(content, original)
+
+    def test_remove_git_safe_directory_removes_only_matching_entries(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            fake_bin = root / "bin"
+            config_path = root / "gitconfig"
+            fake_bin.mkdir()
+            git = fake_bin / "git"
+            git.write_text(
+                textwrap.dedent(
+                    f"""\
+                    #!/bin/sh
+                    export GIT_CONFIG_SYSTEM="{config_path}"
+                    exec /usr/bin/git "$@"
+                    """
+                )
+            )
+            git.chmod(0o755)
+            env_prefix = f'export PATH="{fake_bin}:$PATH"'
+            subprocess.run(
+                [
+                    "bash",
+                    "-lc",
+                    textwrap.dedent(
+                        f"""\
+                        {env_prefix}
+                        git config --system --add safe.directory /opt/SimpleSaferServer
+                        git config --system --add safe.directory /srv/other
+                        git config --system --add safe.directory /opt/SimpleSaferServer
+                        """
+                    ),
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            self.run_bash(
+                textwrap.dedent(
+                    f"""\
+                    source "{UNINSTALL_SCRIPT}"
+                    {env_prefix}
+                    remove_git_safe_directory /opt/SimpleSaferServer
+                    """
+                )
+            )
+
+            remaining = subprocess.run(
+                [
+                    "bash",
+                    "-lc",
+                    f'{env_prefix}\ngit config --system --get-all safe.directory',
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+        self.assertEqual(remaining.stdout.strip().splitlines(), ["/srv/other"])
 
 
 if __name__ == "__main__":

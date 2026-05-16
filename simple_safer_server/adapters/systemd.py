@@ -14,7 +14,7 @@ class SystemdAdapter:
 
     def journal(self, unit_name: str, lines: int) -> str:
         result = self._command_runner.run(
-            ["journalctl", "-u", unit_name, "-n", str(lines), "--no-pager"],
+            ["journalctl", "-a", "-u", unit_name, "-n", str(lines), "--no-pager"],
             capture_output=True,
             text=True,
             check=True,
@@ -34,6 +34,24 @@ class SystemdAdapter:
     def stop_unit(self, unit_name: str) -> None:
         self._command_runner.run(
             ["systemctl", "stop", unit_name, "--no-block"],
+            stdout=DEVNULL,
+            stderr=DEVNULL,
+            check=True,
+            timeout=SYSTEMD_COMMAND_TIMEOUT_SECONDS,
+        )
+
+    def disable_timer_now(self, unit_name: str) -> None:
+        self._command_runner.run(
+            ["systemctl", "disable", "--now", unit_name],
+            stdout=DEVNULL,
+            stderr=DEVNULL,
+            check=True,
+            timeout=SYSTEMD_COMMAND_TIMEOUT_SECONDS,
+        )
+
+    def enable_timer_now(self, unit_name: str) -> None:
+        self._command_runner.run(
+            ["systemctl", "enable", "--now", unit_name],
             stdout=DEVNULL,
             stderr=DEVNULL,
             check=True,

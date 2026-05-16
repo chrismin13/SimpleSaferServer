@@ -1,3 +1,4 @@
+import io
 import json
 import os
 import re
@@ -669,12 +670,9 @@ class SystemUpdatesManager:
                 "",
             ]
         )
-        temp_path = self.runtime.data_dir / "20auto-upgrades"
-        atomic_write_text(temp_path, content, mode=0o644)
-        # The command adapter owns the privileged destination write so this
-        # service only needs to stage validated content in app-owned storage.
-        with temp_path.open("r") as temp_file:
-            self.command_adapter.write_apt_periodic_config(temp_file)
+        # Keep this staging data out of the installed Git checkout. The command
+        # adapter only needs a readable text stream for the privileged write.
+        self.command_adapter.write_apt_periodic_config(io.StringIO(content))
 
     def get_livepatch_status(self) -> Dict[str, Any]:
         def status_command_failed(exc: Exception) -> Dict[str, Any]:
@@ -775,9 +773,10 @@ class SystemUpdatesManager:
                 "Ubuntu Pro Client is required to set up Livepatch. Install ubuntu-pro-client and try again."
             )
 
+        self.runtime.volatile_dir.mkdir(parents=True, exist_ok=True)
         with tempfile.NamedTemporaryFile(
             "w",
-            dir=self.runtime.data_dir,
+            dir=self.runtime.volatile_dir,
             prefix="ubuntu-pro-attach-",
             suffix=".yaml",
             delete=False,
