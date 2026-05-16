@@ -13,7 +13,9 @@ The page shows the installed SimpleSaferServer source state:
 
 Remote Git status is checked only when an administrator clicks **Refresh**. This avoids doing a
 network fetch every time the page loads. The page uses the cached remote result until Refresh runs
-again or the installed commit changes.
+again or the installed commit changes. Branch choices for app version source switching are
+also loaded only when an administrator refreshes application status or opens the advanced
+app version source controls.
 
 `/opt/SimpleSaferServer` is the application folder. It is not user storage, and application update
 cleanup may return it to the selected Git branch state. SimpleSaferServer stores durable operator
@@ -33,6 +35,33 @@ state outside that folder:
 
 Tag and detached checkouts are shown as pinned. They are useful as install snapshots, but the
 automatic updater does not move them to another commit.
+
+`main` is the Stable Branch for routine self-updates. When the installed app version source is a
+non-`main` branch, tag, or detached commit, the page shows **Switch to main** as the shortest recovery
+path. A clean pinned install can use this action to resume branch-tracking updates. If local
+app-folder changes block branch switching, **Switch to main** remains visible but disabled with a
+cleanup tooltip so the recovery path does not disappear.
+
+The advanced app version source control supports deliberate source switching for testing or
+recovery. It lists branches from `origin` only. It does not show tags, detached commits,
+local-only branches, or `origin/HEAD`. Switching to a non-`main` branch includes a short caution
+because those branches may be temporary or outdated.
+
+Branch switching requires a clean app checkout. If Git reports changed tracked files or untracked
+files in `/opt/SimpleSaferServer`, clean up or review those files before switching branches. The
+branch switch action does not reset tracked changes or remove extra files; **Clean Up and Update**
+remains the separate recovery action for app-folder cleanup.
+
+When the app checkout is dirty, the **Advanced** branch selector remains visible but disabled. Its
+hint explains that the app folder must be cleaned up before switching branches, which keeps the
+available recovery action discoverable without making it clickable while Git would refuse it.
+
+App version source switching runs through the `App Update` scheduled task. The task fetches `origin`,
+switches to the selected branch, fast-forwards with `git pull --ff-only`, and reruns the installer
+immediately so dependencies, systemd units, helper scripts, templates, static assets, and the running
+web app match the selected branch. Validation problems found before the task starts are shown on the
+System Updates page. Git or installer failures after the task starts are shown in the `App Update`
+task journal.
 
 When changed or extra files in `/opt/SimpleSaferServer` block the normal update path, the page shows
 **Clean Up and Update**. That action resets tracked app files to the selected branch, removes

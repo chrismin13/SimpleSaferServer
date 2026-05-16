@@ -194,3 +194,33 @@ def test_task_detail_schedule_menu_script_does_not_reference_removed_enable_butt
 
     assert 'id="enable-schedule-btn"' not in scripts_js
     assert "enableScheduleBtn" not in scripts_js
+
+
+def test_system_updates_application_card_owns_source_controls():
+    previous_runtime = runtime._runtime
+    previous_fake_state = runtime._fake_state
+    try:
+        with TemporaryDirectory() as temp_dir:
+            app = _create_fake_app(temp_dir)
+
+            with app.test_client() as client:
+                response = client.get("/system_updates")
+
+            assert response.status_code == 200
+            page = response.get_data(as_text=True)
+
+            assert page.count('class="system-updates-panel system-updates-app-panel"') == 1
+            assert "<span><i class=\"fas fa-code-branch\"></i> Application Source</span>" not in page
+
+            app_card = page.split('class="system-updates-panel system-updates-app-panel"', 1)[1]
+            app_card = app_card.split("</section>", 1)[0]
+
+            assert 'id="app-update-switch-main-btn"' in app_card
+            assert 'id="app-update-switch-main-tooltip"' in app_card
+            assert 'id="app-branch-advanced-trigger"' in app_card
+            assert 'id="appBranchAdvanced"' in app_card
+            assert 'id="app-branch-switch-form"' in app_card
+            assert 'id="app-branch-select"' in app_card
+    finally:
+        runtime._runtime = previous_runtime
+        runtime._fake_state = previous_fake_state

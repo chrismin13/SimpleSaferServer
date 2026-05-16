@@ -68,6 +68,39 @@
         data-confirm-button="Clean Up and Update">
         <i class="fas fa-broom"></i> Clean Up and Update
       </button>
+      <span id="app-update-switch-main-tooltip">
+        <button type="button" class="btn btn-primary btn-sm d-none" id="app-update-switch-main-btn">
+          <i class="fas fa-code-branch"></i> Switch to main
+        </button>
+      </span>
+    </div>
+  </div>
+  <!-- Branch switching triggers the same App Update task, so keep it visually owned by this card. -->
+  <div class="system-updates-detail-row">
+    <button type="button" class="collapse-trigger system-updates-collapse-trigger" id="app-branch-advanced-trigger" data-collapse-target="appBranchAdvanced">
+      <span class="system-updates-collapse-label">
+        <i class="fas fa-chevron-right collapse-icon"></i>
+        <span><i class="fas fa-code-branch"></i> Advanced</span>
+      </span>
+      <strong id="app-branch-advanced-summary">Advanced</strong>
+    </button>
+    <div class="collapse-content" id="appBranchAdvanced">
+      <div class="system-updates-foldout-body">
+        <p class="status-tile-detail" id="app-branch-advanced-hint">
+          Switch branches only for testing or recovery.
+        </p>
+        <form id="app-branch-switch-form" class="system-updates-branch-form" autocomplete="off">
+          <div class="form-group">
+            <label class="form-label" for="app-branch-select">Branch</label>
+            <select class="form-control" id="app-branch-select">
+              <option value="">Open to load branches</option>
+            </select>
+          </div>
+          <button type="submit" class="btn btn-secondary btn-sm" id="app-branch-switch-btn" disabled>
+            <i class="fas fa-code-branch"></i> Switch Branch
+          </button>
+        </form>
+      </div>
     </div>
   </div>
 </section>

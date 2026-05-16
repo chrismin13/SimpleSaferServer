@@ -1,4 +1,5 @@
 import json
+import re
 import shlex
 from contextlib import suppress
 from datetime import datetime
@@ -13,6 +14,9 @@ from simple_safer_server.services.runtime import get_runtime
 
 class AppUpdateError(RuntimeError):
     """Raised when the application cannot safely update itself."""
+
+
+BRANCH_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
 
 
 def _format_process_failure(
@@ -122,12 +126,25 @@ class AppUpdateManager:
             durable=False,
         )
 
-    def consume_update_request_mode(self) -> str:
-        """Return the queued update mode and clear the volatile request.
+    def request_branch_switch(self, branch: str) -> None:
+        """Ask the next app_update.service run to switch Application Source."""
+        atomic_write_json(
+            self.request_path,
+            {
+                "mode": "switch_branch",
+                "branch": branch,
+                "requested_at": self._now(),
+            },
+            mode=0o600,
+            durable=False,
+        )
+
+    def consume_update_request(self) -> Dict[str, str]:
+        """Return the queued update request and clear the volatile request.
 
         The web process writes this before starting app_update.service. The
-        service consumes it so cleanup updates still run under systemd and keep
-        their progress in the task journal across web restarts.
+        service consumes it so requested update modes still run under systemd
+        and keep their progress in the task journal across web restarts.
         """
         try:
             payload = read_json(self.request_path, {})
@@ -136,9 +153,17 @@ class AppUpdateManager:
         with suppress(FileNotFoundError):
             self.request_path.unlink()
         mode = payload.get("mode") if isinstance(payload, dict) else None
+        if mode == "switch_branch":
+            branch = payload.get("branch")
+            if isinstance(branch, str) and branch:
+                return {"mode": "switch_branch", "branch": branch}
         if mode == "cleanup":
-            return "cleanup"
-        return "normal"
+            return {"mode": "cleanup"}
+        return {"mode": "normal"}
+
+    def consume_update_request_mode(self) -> str:
+        """Return the queued update mode for callers that do not need details."""
+        return self.consume_update_request()["mode"]
 
     def _source_info(self) -> Tuple[str, str]:
         branch = self._git_stdout(["symbolic-ref", "--quiet", "--short", "HEAD"], check=False)
@@ -151,6 +176,48 @@ class AppUpdateManager:
 
         commit = self._git_stdout(["rev-parse", "--short", "HEAD"], check=False)
         return "detached", commit
+
+    def list_remote_branches(self, *, fetch_remote: bool = False) -> List[str]:
+        """Return switchable branch names advertised by the origin remote."""
+        if fetch_remote:
+            self._git(["fetch", "--prune", "--tags", "origin"], check=True)
+        output = self._git_stdout(
+            [
+                "for-each-ref",
+                "--format=%(refname:short)",
+                "refs/remotes/origin",
+            ],
+            check=True,
+        )
+        branches = []
+        for line in output.splitlines():
+            name = line.strip()
+            if not name or name == "origin/HEAD" or not name.startswith("origin/"):
+                continue
+            branch = name[len("origin/") :]
+            if branch:
+                branches.append(branch)
+        return sorted(branches)
+
+    def _validate_branch_name(self, branch: str) -> str:
+        branch = branch.strip() if isinstance(branch, str) else ""
+        if (
+            not branch
+            or branch.startswith(("-", "origin/"))
+            or ".." in branch
+            or branch.endswith(("/", ".lock"))
+            or not BRANCH_NAME_PATTERN.match(branch)
+        ):
+            raise AppUpdateError("Branch is not available. Refresh and try again.")
+        return branch
+
+    def _local_branch_exists(self, branch: str, *, stream_to_journal: bool = False) -> bool:
+        runner = self._git_for_journal if stream_to_journal else self._git
+        result = runner(
+            ["rev-parse", "--verify", "--quiet", f"refs/heads/{branch}"],
+            check=False,
+        )
+        return result.returncode == 0
 
     def _base_status(self) -> Dict[str, Any]:
         if not (self.repo_path / ".git").exists():
@@ -357,6 +424,51 @@ class AppUpdateManager:
             ),
             (["pull", "--ff-only"], ["git", "pull", "--ff-only"]),
         ]
+        for git_args, command in commands:
+            if stream_to_journal:
+                print("Running {}".format(" ".join(command)), flush=True)
+                result = self._git_for_journal(git_args, check=False)
+            else:
+                result = self._git(git_args, check=False)
+            if result.returncode != 0:
+                raise AppUpdateError(self._process_failure_detail(command, result))
+
+        if stream_to_journal:
+            print("Running bash install.sh", flush=True)
+            installer = self.command_adapter.run_installer_for_journal(self.repo_path)
+        else:
+            installer = self.command_adapter.run_installer(self.repo_path)
+        if installer.returncode != 0:
+            raise AppUpdateError(self._process_failure_detail(["bash", "install.sh"], installer))
+
+        return self.get_status(fetch_remote=False)
+
+    def switch_branch_now(self, branch: str, *, stream_to_journal: bool = False) -> Dict[str, Any]:
+        branch = self._validate_branch_name(branch)
+        status = self.get_status(fetch_remote=False)
+        if status.get("dirty"):
+            raise AppUpdateError("Clean up app folder before switching branches.")
+
+        if branch not in self.list_remote_branches(fetch_remote=True):
+            raise AppUpdateError("Branch is no longer available. Refresh and try again.")
+
+        if self._local_branch_exists(branch, stream_to_journal=stream_to_journal):
+            commands = [
+                (
+                    ["branch", "--set-upstream-to", f"origin/{branch}", branch],
+                    ["git", "branch", "--set-upstream-to", f"origin/{branch}", branch],
+                ),
+                (["switch", branch], ["git", "switch", branch]),
+                (["pull", "--ff-only"], ["git", "pull", "--ff-only"]),
+            ]
+        else:
+            commands = [
+                (
+                    ["switch", "--track", "-c", branch, f"origin/{branch}"],
+                    ["git", "switch", "--track", "-c", branch, f"origin/{branch}"],
+                ),
+                (["pull", "--ff-only"], ["git", "pull", "--ff-only"]),
+            ]
         for git_args, command in commands:
             if stream_to_journal:
                 print("Running {}".format(" ".join(command)), flush=True)

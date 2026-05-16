@@ -140,6 +140,68 @@ def api_system_updates_application_force_update():
         return json_problem(OperationProblem("Could not clean up and update application."))
 
 
+@system_updates.route("/api/system_updates/application/branches", methods=["POST"])
+@api_admin_required
+def api_system_updates_application_branches():
+    try:
+        branches = _get_services().app_update_manager.list_remote_branches(fetch_remote=True)
+        return json_data({"branches": branches})
+    except AppUpdateError as exc:
+        return json_problem(ConflictProblem(str(exc), slug="application-branches-unavailable"))
+    except Exception:
+        current_app.logger.exception("Could not load application branches")
+        return json_problem(OperationProblem("Could not load application branches."))
+
+
+@system_updates.route("/api/system_updates/application/switch_branch", methods=["POST"])
+@api_admin_required
+def api_system_updates_application_switch_branch():
+    try:
+        data = json_request_data()
+        branch = data.get("branch") if isinstance(data, dict) else None
+        if not isinstance(branch, str) or not branch.strip():
+            return json_problem(ValidationProblem("Branch is required."))
+
+        app_update_manager = _get_services().app_update_manager
+        status = app_update_manager.get_status(fetch_remote=False)
+        if status.get("dirty"):
+            return json_problem(
+                ConflictProblem(
+                    "Clean up app folder before switching branches.",
+                    slug="application-switch-branch-dirty",
+                )
+            )
+        if branch not in app_update_manager.list_remote_branches(fetch_remote=True):
+            return json_problem(
+                ConflictProblem(
+                    "Branch is no longer available. Refresh and try again.",
+                    slug="application-switch-branch-unavailable",
+                )
+            )
+
+        app_update_manager.request_branch_switch(branch)
+        task = _get_services().task_service.get_task("App Update")
+        if task is None:
+            return json_problem(
+                OperationProblem(
+                    "Application update task is not installed.",
+                    slug="application-update-task-missing",
+                )
+            )
+        task.start()
+        return json_data(
+            {
+                "task_url": "/task/App%20Update",
+            },
+            message="Application source switch started. Opening the App Update log.",
+        )
+    except AppUpdateError as exc:
+        return json_problem(ConflictProblem(str(exc), slug="application-switch-branch-unavailable"))
+    except Exception:
+        current_app.logger.exception("Could not switch application branch")
+        return json_problem(OperationProblem("Could not switch application branch."))
+
+
 @system_updates.route("/api/system_updates/status", methods=["GET"])
 @api_admin_required
 def api_system_updates_status():

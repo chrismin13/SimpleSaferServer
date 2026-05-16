@@ -126,3 +126,78 @@ def test_application_force_update_starts_task_and_returns_task_url():
     assert payload["data"]["task_url"] == "/task/App%20Update"
     app_update_manager.request_cleanup_update.assert_called_once_with()
     task.start.assert_called_once_with()
+
+
+def test_application_branches_returns_remote_branch_choices():
+    manager = MagicMock()
+    app_update_manager = MagicMock()
+    app_update_manager.list_remote_branches.return_value = ["feature/demo", "main"]
+    app = _build_app(manager)
+    app.extensions["simple_safer_server"].app_update_manager = app_update_manager
+    user_manager = MagicMock()
+    user_manager.is_admin.return_value = True
+
+    with patch(
+        "simple_safer_server.services.user_manager.UserManager", return_value=user_manager
+    ), app.test_client() as client:
+        with client.session_transaction() as session:
+            session["username"] = "admin"
+
+        response = client.post("/api/system_updates/application/branches")
+
+    assert response.status_code == 200
+    assert response.get_json()["data"]["branches"] == ["feature/demo", "main"]
+    app_update_manager.list_remote_branches.assert_called_once_with(fetch_remote=True)
+
+
+def test_application_switch_branch_starts_task_and_returns_task_url():
+    manager = MagicMock()
+    app_update_manager = MagicMock()
+    app_update_manager.get_status.return_value = {"dirty": False}
+    app_update_manager.list_remote_branches.return_value = ["main"]
+    task = MagicMock()
+    app = _build_app(manager)
+    app.extensions["simple_safer_server"].app_update_manager = app_update_manager
+    app.extensions["simple_safer_server"].task_service.get_task.return_value = task
+    user_manager = MagicMock()
+    user_manager.is_admin.return_value = True
+
+    with patch(
+        "simple_safer_server.services.user_manager.UserManager", return_value=user_manager
+    ), app.test_client() as client:
+        with client.session_transaction() as session:
+            session["username"] = "admin"
+
+        response = client.post(
+            "/api/system_updates/application/switch_branch", json={"branch": "main"}
+        )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["data"]["task_url"] == "/task/App%20Update"
+    app_update_manager.request_branch_switch.assert_called_once_with("main")
+    task.start.assert_called_once_with()
+
+
+def test_application_switch_branch_rejects_dirty_checkout():
+    manager = MagicMock()
+    app_update_manager = MagicMock()
+    app_update_manager.get_status.return_value = {"dirty": True}
+    app = _build_app(manager)
+    app.extensions["simple_safer_server"].app_update_manager = app_update_manager
+    user_manager = MagicMock()
+    user_manager.is_admin.return_value = True
+
+    with patch(
+        "simple_safer_server.services.user_manager.UserManager", return_value=user_manager
+    ), app.test_client() as client:
+        with client.session_transaction() as session:
+            session["username"] = "admin"
+
+        response = client.post(
+            "/api/system_updates/application/switch_branch", json={"branch": "main"}
+        )
+
+    assert response.status_code == 409
+    assert response.get_json()["detail"] == "Clean up app folder before switching branches."
+    app_update_manager.request_branch_switch.assert_not_called()

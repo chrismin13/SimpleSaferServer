@@ -60,3 +60,7 @@ coverage.xml
 .env.development.local
 .env.test.local
 .env.production.local
+
+# Matt Pocock Skills
+CONTEXT.md
+Planning/*

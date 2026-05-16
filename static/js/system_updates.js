@@ -1,7 +1,10 @@
 (function () {
   const POLL_MS = 2000;
+  const STABLE_BRANCH = 'main';
   let pollTimer = null;
   let currentApplication = null;
+  let branchChoicesLoaded = false;
+  let branchChoicesLoading = false;
 
   const els = {};
 
@@ -48,6 +51,14 @@
       'app-update-refresh-btn',
       'app-update-now-btn',
       'app-update-force-btn',
+      'app-update-switch-main-tooltip',
+      'app-update-switch-main-btn',
+      'app-branch-advanced-trigger',
+      'app-branch-advanced-summary',
+      'app-branch-advanced-hint',
+      'app-branch-switch-form',
+      'app-branch-select',
+      'app-branch-switch-btn',
       'remove-locks-btn'
     ].forEach((id) => {
       els[id] = $(id);
@@ -206,8 +217,104 @@
     const sourceName = application && application.source_name ? application.source_name : '';
     if (sourceType === 'branch') return sourceName ? `Branch ${sourceName}` : 'Branch';
     if (sourceType === 'tag') return sourceName ? `Tag ${sourceName}` : 'Tag';
-    if (sourceType === 'detached') return 'Detached checkout';
+    if (sourceType === 'detached') return 'Locked commit';
     return 'Unknown';
+  }
+
+  function renderSourceLabel(el, application) {
+    const sourceType = application && application.source_type ? application.source_type : 'unknown';
+    const sourceName = application && application.source_name ? application.source_name : '';
+    el.textContent = '';
+
+    if ((sourceType === 'branch' || sourceType === 'tag') && sourceName) {
+      const label = document.createElement('span');
+      label.textContent = `${sourceType === 'branch' ? 'Branch' : 'Tag'} `;
+      const value = document.createElement('code');
+      value.className = 'app-source-code';
+      value.textContent = sourceName;
+      el.appendChild(label);
+      el.appendChild(value);
+      return;
+    }
+
+    el.textContent = sourceLabel(application);
+  }
+
+  function canOfferBranchSwitch(application) {
+    if (!application || application.dirty) return false;
+    const sourceType = application.source_type || 'unknown';
+    return sourceType === 'branch' || sourceType === 'tag' || sourceType === 'detached';
+  }
+
+  function canShowBranchSwitch(application) {
+    if (!application) return false;
+    const sourceType = application.source_type || 'unknown';
+    return sourceType === 'branch' || sourceType === 'tag' || sourceType === 'detached';
+  }
+
+  function shouldShowSwitchToMain(application) {
+    if (!canShowBranchSwitch(application)) return false;
+    if (application.source_type === 'branch') return application.source_name !== STABLE_BRANCH;
+    return application.source_type === 'tag' || application.source_type === 'detached';
+  }
+
+  function updateBranchAdvancedSummary(application) {
+    if (!els['app-branch-advanced-summary']) return;
+    if (!canOfferBranchSwitch(application)) {
+      els['app-branch-advanced-summary'].textContent = 'Unavailable';
+    } else if (application.source_type === 'branch' && application.source_name === STABLE_BRANCH) {
+      els['app-branch-advanced-summary'].textContent = 'On main';
+    } else {
+      els['app-branch-advanced-summary'].textContent = 'Recovery';
+    }
+  }
+
+  function renderBranchChoices(branches) {
+    const select = els['app-branch-select'];
+    select.textContent = '';
+    if (!branches.length) {
+      const option = document.createElement('option');
+      option.value = '';
+      option.textContent = 'No branches found';
+      select.appendChild(option);
+      els['app-branch-switch-btn'].disabled = true;
+      return;
+    }
+
+    branches.forEach((branch) => {
+      const option = document.createElement('option');
+      option.value = branch;
+      option.textContent = branch;
+      select.appendChild(option);
+    });
+    if (branches.includes(STABLE_BRANCH)) select.value = STABLE_BRANCH;
+    select.disabled = !canOfferBranchSwitch(currentApplication);
+    els['app-branch-switch-btn'].disabled = !canOfferBranchSwitch(currentApplication);
+  }
+
+  function renderBranchSwitchAvailability(application) {
+    const cleanupMessage = 'Clean up app folder before switching branches.';
+    const blockedByDirtyCheckout = Boolean(application && application.dirty);
+    const canSwitchNow = canOfferBranchSwitch(application);
+
+    els['app-branch-select'].disabled = !canSwitchNow;
+    els['app-branch-switch-btn'].disabled = !branchChoicesLoaded || !canSwitchNow;
+    els['app-branch-advanced-hint'].textContent = blockedByDirtyCheckout
+      ? cleanupMessage
+      : 'Switch branches only for testing or recovery.';
+
+    const switchMainTooltip = els['app-update-switch-main-tooltip'];
+    if (!switchMainTooltip) return;
+    if (blockedByDirtyCheckout && shouldShowSwitchToMain(application)) {
+      // Native disabled buttons do not emit hover/focus reliably, so the wrapper owns the tooltip.
+      switchMainTooltip.className = 'tooltip-trigger';
+      switchMainTooltip.setAttribute('data-tooltip', cleanupMessage);
+      switchMainTooltip.setAttribute('tabindex', '0');
+    } else {
+      switchMainTooltip.className = '';
+      switchMainTooltip.setAttribute('data-tooltip', '');
+      switchMainTooltip.setAttribute('tabindex', '-1');
+    }
   }
 
   function renderApplicationUpdate(application) {
@@ -217,7 +324,7 @@
     const lastRemoteCheck = application.last_remote_check_at || '';
     els['app-update-title'].textContent = 'Application';
     els['app-update-detail'].textContent = application.message || 'Application update status unavailable.';
-    els['app-update-source'].textContent = sourceLabel(application);
+    renderSourceLabel(els['app-update-source'], application);
     els['app-update-commit'].textContent = application.current_commit || '—';
     els['app-update-checked'].textContent = window.formatRelativeTimestamp(lastRemoteCheck, {
       fallback: 'Not checked',
@@ -234,6 +341,18 @@
       els['app-update-force-btn'].classList.add('d-none');
       els['app-update-force-btn'].disabled = true;
     }
+    if (shouldShowSwitchToMain(application)) {
+      els['app-update-switch-main-btn'].classList.remove('d-none');
+      els['app-update-switch-main-btn'].disabled = !canOfferBranchSwitch(application);
+      if (application.source_type === 'tag' || application.source_type === 'detached') {
+        els['app-update-detail'].textContent = 'This install is locked to a tag or commit. Switch to main to resume updates.';
+      }
+    } else {
+      els['app-update-switch-main-btn'].classList.add('d-none');
+      els['app-update-switch-main-btn'].disabled = true;
+    }
+    updateBranchAdvancedSummary(application);
+    renderBranchSwitchAvailability(application);
   }
 
   async function loadSummary() {
@@ -369,12 +488,86 @@
         headers: { 'Accept': 'application/json' }
       });
       latestApplication = data.application;
+      await loadBranchChoices({ force: true, quiet: true });
       showAlert('Application update status refreshed.', 'success');
     } catch (error) {
       showAlert(error.message || 'Could not refresh application update status.', 'danger');
     } finally {
       window.AsyncButtonState.reset(button);
       if (latestApplication) renderApplicationUpdate(latestApplication);
+    }
+  }
+
+  async function loadBranchChoices(options) {
+    const opts = options || {};
+    if (branchChoicesLoading || (branchChoicesLoaded && !opts.force)) return;
+    branchChoicesLoading = true;
+    els['app-branch-select'].disabled = true;
+    els['app-branch-switch-btn'].disabled = true;
+    els['app-branch-advanced-hint'].textContent = 'Loading branches...';
+    try {
+      const { data } = await window.ApiClient.fetchJson('/api/system_updates/application/branches', {
+        method: 'POST',
+        headers: { 'Accept': 'application/json' }
+      });
+      renderBranchChoices(Array.isArray(data.branches) ? data.branches : []);
+      branchChoicesLoaded = true;
+      els['app-branch-advanced-hint'].textContent = 'Switch branches only for testing or recovery.';
+    } catch (error) {
+      els['app-branch-advanced-hint'].textContent = error.message || 'Could not load branches.';
+      if (!opts.quiet) showAlert(error.message || 'Could not load branches.', 'danger');
+    } finally {
+      branchChoicesLoading = false;
+      els['app-branch-select'].disabled = !canOfferBranchSwitch(currentApplication);
+      els['app-branch-switch-btn'].disabled = !branchChoicesLoaded || !canOfferBranchSwitch(currentApplication);
+    }
+  }
+
+  function branchSwitchBody(branch) {
+    const body = document.createElement('div');
+    const message = document.createElement('p');
+    message.textContent = `Switch to ${branch} and apply it now?`;
+    body.appendChild(message);
+    if (branch !== STABLE_BRANCH) {
+      const caution = document.createElement('p');
+      caution.textContent = 'Non-main branches may be temporary or outdated.';
+      body.appendChild(caution);
+    }
+    return body;
+  }
+
+  async function confirmBranchSwitch(branch) {
+    return window.showConfirmationDialog({
+      title: branch === STABLE_BRANCH ? 'Switch to main?' : 'Switch application source?',
+      body: branchSwitchBody(branch),
+      confirmLabel: branch === STABLE_BRANCH ? 'Switch to main' : 'Switch Branch',
+      confirmClass: branch === STABLE_BRANCH ? 'btn-primary' : 'btn-warning'
+    });
+  }
+
+  async function switchApplicationBranch(branch, button) {
+    if (!branch) {
+      showAlert('Select a branch first.', 'warning');
+      return;
+    }
+    const confirmed = await confirmBranchSwitch(branch);
+    if (!confirmed) return;
+
+    window.AsyncButtonState.start(button);
+    try {
+      const { message, data } = await window.ApiClient.fetchJson('/api/system_updates/application/switch_branch', {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ branch })
+      });
+      showAlert(message || 'Application source switch started.', 'success');
+      window.location.href = data.task_url || '/task/App%20Update';
+    } catch (error) {
+      showAlert(error.message || 'Could not switch application source.', 'danger');
+      window.AsyncButtonState.reset(button);
     }
   }
 
@@ -477,6 +670,12 @@
     els['app-update-refresh-btn'].addEventListener('click', () => refreshApplicationUpdate(els['app-update-refresh-btn']));
     els['app-update-now-btn'].addEventListener('click', () => startApplicationUpdate(els['app-update-now-btn']));
     els['app-update-force-btn'].addEventListener('click', () => startApplicationForceUpdate(els['app-update-force-btn']));
+    els['app-update-switch-main-btn'].addEventListener('click', () => switchApplicationBranch(STABLE_BRANCH, els['app-update-switch-main-btn']));
+    els['app-branch-advanced-trigger'].addEventListener('click', () => loadBranchChoices());
+    els['app-branch-switch-form'].addEventListener('submit', (event) => {
+      event.preventDefault();
+      switchApplicationBranch(els['app-branch-select'].value, els['app-branch-switch-btn']);
+    });
     els['remove-locks-btn'].addEventListener('click', () => removeStaleLocks(els['remove-locks-btn']));
   }
 
@@ -490,4 +689,13 @@
   window.addEventListener('beforeunload', () => {
     if (pollTimer) window.clearInterval(pollTimer);
   });
+
+  if (window.SystemUpdatesTest) {
+    Object.assign(window.SystemUpdatesTest, {
+      cacheElements,
+      renderApplicationUpdate,
+      renderBranchChoices,
+      loadBranchChoices
+    });
+  }
 })();

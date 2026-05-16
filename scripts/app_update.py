@@ -12,12 +12,18 @@ def main() -> int:
 
     manager = AppUpdateManager()
     try:
-        mode = manager.consume_update_request_mode()
+        request = manager.consume_update_request()
+        mode = request["mode"]
         before = manager.get_status(fetch_remote=True)
         print(before.get("message") or "Application update status checked.")
         if mode == "cleanup":
             after = manager.force_update_now(stream_to_journal=True)
             print(after.get("message") or "Application cleanup update completed.")
+            return 0
+        if mode == "switch_branch":
+            branch = request.get("branch", "")
+            after = manager.switch_branch_now(branch, stream_to_journal=True)
+            print(after.get("message") or "Application source switch completed.")
             return 0
         if not before.get("can_update"):
             return 0

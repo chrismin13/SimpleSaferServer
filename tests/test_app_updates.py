@@ -276,6 +276,146 @@ class AppUpdateManagerTests(unittest.TestCase):
         self.assertEqual(first_mode, "cleanup")
         self.assertEqual(second_mode, "normal")
 
+    def test_branch_switch_request_is_volatile_and_consumed_once(self):
+        temp_dir, root, _remote, clone = self.make_repo_pair()
+        with temp_dir:
+            manager = self.manager(root, clone)
+
+            manager.request_branch_switch("main")
+            first_request = manager.consume_update_request()
+            second_request = manager.consume_update_request()
+
+        self.assertEqual(first_request, {"mode": "switch_branch", "branch": "main"})
+        self.assertEqual(second_request, {"mode": "normal"})
+
+    def test_remote_branch_choices_include_origin_branches_without_head(self):
+        temp_dir, root, _remote, clone = self.make_repo_pair()
+        with temp_dir:
+            git(clone, "checkout", "-b", "feature/demo")
+            git(clone, "push", "-u", "origin", "feature/demo")
+
+            branches = self.manager(root, clone).list_remote_branches(fetch_remote=True)
+
+        self.assertEqual(branches, ["feature/demo", "master"])
+
+    def test_switch_branch_runs_fetch_switch_pull_and_installer(self):
+        temp_dir, root, _remote, clone = self.make_repo_pair()
+        with temp_dir:
+            adapter = MagicMock()
+            manager = self.manager(root, clone, adapter=adapter)
+            manager.get_status = MagicMock(
+                side_effect=[
+                    {
+                        "dirty": False,
+                        "message": "Pinned install.",
+                    },
+                    {
+                        "source_type": "branch",
+                        "source_name": "main",
+                        "message": "Up to date with origin/main.",
+                    },
+                ]
+            )
+            manager.list_remote_branches = MagicMock(return_value=["main"])
+            adapter.run_git.return_value = SimpleNamespace(returncode=0, stdout="", stderr="")
+            adapter.run_installer.return_value = SimpleNamespace(
+                returncode=0,
+                stdout="installed",
+                stderr="",
+            )
+
+            result = manager.switch_branch_now("main")
+
+        self.assertEqual(result["source_name"], "main")
+        self.assertEqual(
+            [call.args[1] for call in adapter.run_git.call_args_list],
+            [
+                ["rev-parse", "--verify", "--quiet", "refs/heads/main"],
+                ["branch", "--set-upstream-to", "origin/main", "main"],
+                ["switch", "main"],
+                ["pull", "--ff-only"],
+            ],
+        )
+        manager.list_remote_branches.assert_called_once_with(fetch_remote=True)
+        adapter.run_installer.assert_called_once_with(clone)
+
+    def test_switch_branch_tracks_remote_when_local_branch_is_missing(self):
+        temp_dir, root, _remote, clone = self.make_repo_pair()
+        with temp_dir:
+            adapter = MagicMock()
+            manager = self.manager(root, clone, adapter=adapter)
+            manager.get_status = MagicMock(
+                side_effect=[
+                    {
+                        "dirty": False,
+                        "message": "Pinned install.",
+                    },
+                    {
+                        "source_type": "branch",
+                        "source_name": "feature/demo",
+                        "message": "Up to date with origin/feature/demo.",
+                    },
+                ]
+            )
+            manager.list_remote_branches = MagicMock(return_value=["feature/demo"])
+            adapter.run_git.side_effect = [
+                SimpleNamespace(returncode=1, stdout="", stderr=""),
+                SimpleNamespace(returncode=0, stdout="", stderr=""),
+                SimpleNamespace(returncode=0, stdout="", stderr=""),
+            ]
+            adapter.run_installer.return_value = SimpleNamespace(
+                returncode=0,
+                stdout="installed",
+                stderr="",
+            )
+
+            result = manager.switch_branch_now("feature/demo")
+
+        self.assertEqual(result["source_name"], "feature/demo")
+        self.assertEqual(
+            [call.args[1] for call in adapter.run_git.call_args_list],
+            [
+                ["rev-parse", "--verify", "--quiet", "refs/heads/feature/demo"],
+                ["switch", "--track", "-c", "feature/demo", "origin/feature/demo"],
+                ["pull", "--ff-only"],
+            ],
+        )
+        adapter.run_installer.assert_called_once_with(clone)
+
+    def test_switch_branch_refuses_dirty_checkout(self):
+        temp_dir, root, _remote, clone = self.make_repo_pair()
+        with temp_dir:
+            adapter = MagicMock()
+            manager = self.manager(root, clone, adapter=adapter)
+            manager.get_status = MagicMock(
+                return_value={
+                    "dirty": True,
+                    "message": "Changed app files are blocking the update.",
+                }
+            )
+
+            with self.assertRaises(AppUpdateError) as error:
+                manager.switch_branch_now("main")
+
+        self.assertIn("Clean up app folder before switching branches", str(error.exception))
+        adapter.run_git.assert_not_called()
+        adapter.run_installer.assert_not_called()
+
+    def test_switch_branch_refuses_missing_remote_branch(self):
+        temp_dir, root, _remote, clone = self.make_repo_pair()
+        with temp_dir:
+            adapter = MagicMock()
+            manager = self.manager(root, clone, adapter=adapter)
+            manager.get_status = MagicMock(return_value={"dirty": False})
+            manager.list_remote_branches = MagicMock(return_value=["main"])
+
+            with self.assertRaises(AppUpdateError) as error:
+                manager.switch_branch_now("feature/missing")
+
+        self.assertIn("Branch is no longer available", str(error.exception))
+        adapter.run_git.assert_not_called()
+        adapter.run_installer.assert_not_called()
+
     def test_git_failure_diagnostic_includes_command_repo_return_code_and_output(self):
         temp_dir, root, _remote, clone = self.make_repo_pair()
         with temp_dir:
