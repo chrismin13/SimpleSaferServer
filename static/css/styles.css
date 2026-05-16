@@ -2443,9 +2443,21 @@ pre code {
   flex-wrap: wrap;
 }
 
+.system-updates-livepatch-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-3);
+}
+
+.system-updates-livepatch-meta .status-tile-detail {
+  margin: 0;
+}
+
 .system-updates-livepatch-form {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) max-content max-content;
+  grid-template-columns: minmax(220px, 1fr) max-content;
   gap: var(--sp-3);
   align-items: end;
   margin-top: var(--sp-3);
@@ -2453,6 +2465,12 @@ pre code {
 
 .system-updates-livepatch-form .form-group {
   min-width: 0;
+}
+
+.system-updates-livepatch-form .btn {
+  min-height: calc((1.5em * var(--text-base) / var(--text-sm)) + (2 * var(--sp-2)) + 2px);
+  padding-block: var(--sp-2);
+  font-size: var(--text-sm);
 }
 
 .system-updates-branch-form {
@@ -2604,7 +2622,6 @@ pre code {
     align-items: stretch;
   }
 
-  .system-updates-livepatch-form .system-updates-source-link,
   .system-updates-livepatch-form .btn {
     width: 100%;
     justify-content: center;
@@ -2637,6 +2654,12 @@ pre code {
   .system-updates-actions {
     display: grid;
     grid-template-columns: 1fr;
+  }
+
+  .system-updates-livepatch-meta {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: var(--sp-2);
   }
 
   .system-updates-check-row,

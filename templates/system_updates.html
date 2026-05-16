@@ -192,15 +192,17 @@
     <div class="system-updates-section-title">
       <span><i class="fas fa-shield-halved"></i> Ubuntu Livepatch</span>
     </div>
-    <p class="status-tile-detail" id="livepatch-detail">—</p>
+    <div class="system-updates-livepatch-meta">
+      <p class="status-tile-detail" id="livepatch-detail">—</p>
+      <a class="system-updates-source-link" id="livepatch-source-link" href="https://ubuntu.com/security/livepatch/docs/livepatch/how-to/status" target="_blank" rel="noopener">
+        <i class="fas fa-arrow-up-right-from-square"></i> Livepatch docs
+      </a>
+    </div>
     <form id="livepatch-form" autocomplete="off" class="system-updates-livepatch-form">
       <div class="form-group">
         <label class="form-label" for="livepatch-token">Livepatch token</label>
         <input type="password" class="form-control" id="livepatch-token" placeholder="Paste Canonical Livepatch token">
       </div>
-      <a class="system-updates-source-link" id="livepatch-source-link" href="https://ubuntu.com/security/livepatch/docs/livepatch/how-to/status" target="_blank" rel="noopener">
-        <i class="fas fa-arrow-up-right-from-square"></i> Livepatch docs
-      </a>
       <button type="submit" class="btn btn-primary btn-sm" id="livepatch-setup-btn">
         <i class="fas fa-key"></i> Enable
       </button>
