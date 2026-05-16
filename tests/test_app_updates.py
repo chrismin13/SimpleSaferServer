@@ -332,7 +332,7 @@ class AppUpdateManagerTests(unittest.TestCase):
             [
                 ["rev-parse", "--verify", "--quiet", "refs/heads/main"],
                 ["branch", "--set-upstream-to", "origin/main", "main"],
-                ["switch", "main"],
+                ["checkout", "main"],
                 ["pull", "--ff-only"],
             ],
         )
@@ -376,7 +376,7 @@ class AppUpdateManagerTests(unittest.TestCase):
             [call.args[1] for call in adapter.run_git.call_args_list],
             [
                 ["rev-parse", "--verify", "--quiet", "refs/heads/feature/demo"],
-                ["switch", "--track", "-c", "feature/demo", "origin/feature/demo"],
+                ["checkout", "--track", "-b", "feature/demo", "origin/feature/demo"],
                 ["pull", "--ff-only"],
             ],
         )

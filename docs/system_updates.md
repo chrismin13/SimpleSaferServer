@@ -63,6 +63,9 @@ web app match the selected branch. Validation problems found before the task sta
 System Updates page. Git or installer failures after the task starts are shown in the `App Update`
 task journal.
 
+The branch switch implementation uses Git commands available on Debian 10-era installs, so legacy
+systems can still move between published branches even when newer Git subcommands are unavailable.
+
 When changed or extra files in `/opt/SimpleSaferServer` block the normal update path, the page shows
 **Clean Up and Update**. That action resets tracked app files to the selected branch, removes
 untracked files from the app folder, fetches the remote, fast-forwards the branch, and reruns the

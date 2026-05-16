@@ -458,14 +458,17 @@ class AppUpdateManager:
                     ["branch", "--set-upstream-to", f"origin/{branch}", branch],
                     ["git", "branch", "--set-upstream-to", f"origin/{branch}", branch],
                 ),
-                (["switch", branch], ["git", "switch", branch]),
+                # Debian 10 installs can have Git versions before git-switch was added.
+                # Keep this path on checkout so branch changes work in the legacy lane.
+                (["checkout", branch], ["git", "checkout", branch]),
                 (["pull", "--ff-only"], ["git", "pull", "--ff-only"]),
             ]
         else:
             commands = [
                 (
-                    ["switch", "--track", "-c", branch, f"origin/{branch}"],
-                    ["git", "switch", "--track", "-c", branch, f"origin/{branch}"],
+                    # checkout -b is the legacy-compatible spelling of switch -c.
+                    ["checkout", "--track", "-b", branch, f"origin/{branch}"],
+                    ["git", "checkout", "--track", "-b", branch, f"origin/{branch}"],
                 ),
                 (["pull", "--ff-only"], ["git", "pull", "--ff-only"]),
             ]
