@@ -23,7 +23,7 @@
     <strong id="auto-updates-summary">—</strong>
     <span class="badge badge-neutral d-none" id="auto-updates-badge">Loading...</span>
   </div>
-  <div class="system-updates-summary-item">
+  <div class="system-updates-summary-item d-none" id="livepatch-summary-item">
     <span>Livepatch</span>
     <strong id="livepatch-title">—</strong>
     <span class="badge badge-neutral d-none" id="livepatch-badge">Loading...</span>
@@ -161,7 +161,7 @@
   <pre class="log-viewer system-updates-log" id="apt-log">Loading logs…</pre>
 </section>
 
-<section class="system-updates-settings">
+<section class="system-updates-panel system-updates-settings">
   <div class="system-updates-settings-section">
     <div class="system-updates-section-title">
       <span><i class="fas fa-calendar-check"></i> Automatic Apt Updates</span>
@@ -185,8 +185,10 @@
     </form>
     <p class="form-hint" id="auto-updates-hint">Showing current apt periodic settings.</p>
   </div>
+</section>
 
-  <div class="system-updates-settings-section" id="livepatch-section">
+<section class="system-updates-panel system-updates-livepatch-panel d-none" id="livepatch-section">
+  <div class="system-updates-settings-section">
     <div class="system-updates-section-title">
       <span><i class="fas fa-shield-halved"></i> Ubuntu Livepatch</span>
     </div>

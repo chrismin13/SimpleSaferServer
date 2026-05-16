@@ -2330,7 +2330,7 @@ pre code {
 
 .system-updates-summary {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
 }
 
 .system-updates-summary-item {
@@ -2426,14 +2426,7 @@ pre code {
 }
 
 .system-updates-settings {
-  display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.65fr);
-  gap: var(--sp-6);
-}
-
-.system-updates-settings-section + .system-updates-settings-section {
-  border-left: 1px solid var(--border-subtle);
-  padding-left: var(--sp-6);
+  display: block;
 }
 
 .system-updates-section-title {
@@ -2452,10 +2445,14 @@ pre code {
 
 .system-updates-livepatch-form {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) max-content max-content;
+  grid-template-columns: minmax(220px, 1fr) max-content max-content;
   gap: var(--sp-3);
   align-items: end;
   margin-top: var(--sp-3);
+}
+
+.system-updates-livepatch-form .form-group {
+  min-width: 0;
 }
 
 .system-updates-branch-form {
@@ -2602,16 +2599,15 @@ pre code {
     min-height: 340px;
   }
 
-  .system-updates-settings {
-    grid-template-columns: 1fr;
-    gap: var(--sp-4);
+  .system-updates-livepatch-form {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
   }
 
-  .system-updates-settings-section + .system-updates-settings-section {
-    border-left: 0;
-    border-top: 1px solid var(--border-subtle);
-    padding-left: 0;
-    padding-top: var(--sp-4);
+  .system-updates-livepatch-form .system-updates-source-link,
+  .system-updates-livepatch-form .btn {
+    width: 100%;
+    justify-content: center;
   }
 }
 

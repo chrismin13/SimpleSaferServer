@@ -162,7 +162,8 @@ The advanced action removes stale apt lock files only when SimpleSaferServer can
 
 ## Ubuntu Livepatch
 
-Livepatch status is shown only on Ubuntu.
+Livepatch status and setup controls are shown only on Ubuntu. Non-Ubuntu hosts keep the Livepatch
+summary hidden because Canonical Livepatch is not actionable there.
 
 - If `canonical-livepatch` is installed, the page runs `canonical-livepatch status --format json`.
 - Setup requires the Ubuntu Pro Client (`pro`) and a Canonical Ubuntu Pro token.

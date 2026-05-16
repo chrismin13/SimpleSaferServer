@@ -35,8 +35,10 @@
       'auto-autoclean',
       'auto-updates-hint',
       'auto-updates-save-btn',
+      'livepatch-summary-item',
       'livepatch-badge',
       'livepatch-title',
+      'livepatch-section',
       'livepatch-detail',
       'livepatch-form',
       'livepatch-token',
@@ -163,6 +165,8 @@
     els['livepatch-source-link'].href = livepatch.source_url || 'https://ubuntu.com/security/livepatch/docs/livepatch/how-to/status';
 
     if (!livepatch.supported_distro) {
+      els['livepatch-summary-item'].classList.add('d-none');
+      els['livepatch-section'].classList.add('d-none');
       setBadge(els['livepatch-badge'], 'Ubuntu only', 'neutral');
       els['livepatch-title'].textContent = 'Not available';
       els['livepatch-badge'].classList.add('d-none');
@@ -172,6 +176,8 @@
       return;
     }
 
+    els['livepatch-summary-item'].classList.remove('d-none');
+    els['livepatch-section'].classList.remove('d-none');
     els['livepatch-token'].disabled = false;
     els['livepatch-setup-btn'].disabled = false;
     if (livepatch.enabled) {
