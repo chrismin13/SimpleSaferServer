@@ -505,19 +505,28 @@ def test_source_switch_static_copy_avoids_jargon():
     assert '<label class="form-label" for="app-branch-select">Branch</label>' in template
     assert '<i class="fas fa-code-branch"></i> Switch Branch' in template
 
-    assert "Switch to an origin branch only when testing or recovering the installed app." not in template
+    assert (
+        "Switch to an origin branch only when testing or recovering the installed app."
+        not in template
+    )
     assert "Remote branch" not in template
     assert "Switch Source" not in template
 
     assert "Switch SimpleSaferServer to ${branch} and apply it immediately?" in script
     assert "Danger: switch away from main?" in script
     assert "Only do this if you are testing a specific fix or recovering this install." in script
-    assert "Non-main branches can be unfinished, temporary, outdated, or removed without notice." in script
+    assert (
+        "Non-main branches can be unfinished, temporary, outdated, or removed without notice."
+        in script
+    )
     assert "This will rerun the installer from that branch." in script
     assert "I understand, switch branch" in script
     assert "app-branch-advanced-summary" not in script
     assert "Recovery" not in script
     assert "On main" not in script
     assert "run the installer now" not in script
-    assert "confirmLabel: branch === STABLE_BRANCH ? 'Switch to main' : 'I understand, switch branch'" in script
+    assert (
+        "confirmLabel: branch === STABLE_BRANCH ? 'Switch to main' : 'I understand, switch branch'"
+        in script
+    )
     assert "Switch Source" not in script

@@ -169,9 +169,9 @@ def test_dashboard_task_context_menu_uses_shared_action_menu():
 
 def test_dashboard_passive_task_refresh_keeps_open_context_menu():
     dashboard_template = Path("templates/dashboard.html").read_text(encoding="utf-8")
-    update_task_schedule = dashboard_template.split("async function updateTaskSchedule()", 1)[1].split(
-        "function renderDriveActionForm", 1
-    )[0]
+    update_task_schedule = dashboard_template.split("async function updateTaskSchedule()", 1)[
+        1
+    ].split("function renderDriveActionForm", 1)[0]
 
     assert "ActionContextMenu.hide()" not in update_task_schedule
     assert "setInterval(updateTaskSchedule, 5000)" in dashboard_template
