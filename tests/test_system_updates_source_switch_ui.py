@@ -1,6 +1,25 @@
 import json
+import shutil
 import subprocess
 from pathlib import Path
+
+import pytest
+
+
+def _run_node_script(script):
+    node_binary = shutil.which("node")
+    if node_binary is None:
+        # These are lightweight browserless JavaScript checks; Python-only CI
+        # lanes may not install Node.
+        pytest.skip("Node.js is required for the system updates JavaScript harness.")
+
+    return subprocess.run(
+        [node_binary, "-e", script],
+        cwd=Path(__file__).resolve().parents[1],
+        check=True,
+        text=True,
+        capture_output=True,
+    )
 
 
 def test_dirty_source_switching_stays_visible_but_disabled():
@@ -164,13 +183,7 @@ vm.runInContext(fs.readFileSync('static/js/system_updates.js', 'utf8'), context)
   console.log(JSON.stringify({ dirtyResults, cleanResult }));
 })();
 """
-    completed = subprocess.run(
-        ["node", "-e", script],
-        cwd=Path(__file__).resolve().parents[1],
-        check=True,
-        text=True,
-        capture_output=True,
-    )
+    completed = _run_node_script(script)
     result = json.loads(completed.stdout)
 
     assert result["dirtyResults"] == [
@@ -338,13 +351,7 @@ vm.runInContext(fs.readFileSync('static/js/system_updates.js', 'utf8'), context)
   console.log(JSON.stringify({ detached, emptyBranches }));
 })();
 """
-    completed = subprocess.run(
-        ["node", "-e", script],
-        cwd=Path(__file__).resolve().parents[1],
-        check=True,
-        text=True,
-        capture_output=True,
-    )
+    completed = _run_node_script(script)
     result = json.loads(completed.stdout)
 
     assert result == {
@@ -478,13 +485,7 @@ console.log(JSON.stringify({
   }))
 }));
 """
-    completed = subprocess.run(
-        ["node", "-e", script],
-        cwd=Path(__file__).resolve().parents[1],
-        check=True,
-        text=True,
-        capture_output=True,
-    )
+    completed = _run_node_script(script)
     result = json.loads(completed.stdout)
 
     assert result == {

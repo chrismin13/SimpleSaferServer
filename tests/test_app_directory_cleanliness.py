@@ -101,10 +101,13 @@ def test_normal_app_state_writes_do_not_dirty_installed_git_checkout():
 
 def test_gitignore_keeps_install_artifacts_ignored_without_hiding_known_state_files():
     repo_root = Path(__file__).resolve().parents[1]
+    # CI can mount the checkout with a different owner than the test process.
+    # Keep this test focused on ignore rules, not Git's repository trust gate.
+    safe_git = ["git", "-c", f"safe.directory={repo_root}"]
 
     ignored = subprocess.run(
         [
-            "git",
+            *safe_git,
             "check-ignore",
             "venv/bin/python",
             "simple_safer_server/__pycache__/module.pyc",
@@ -118,7 +121,7 @@ def test_gitignore_keeps_install_artifacts_ignored_without_hiding_known_state_fi
         text=True,
     )
     not_ignored = subprocess.run(
-        ["git", "check-ignore", "hdsentinel_state.json", "20auto-upgrades"],
+        [*safe_git, "check-ignore", "hdsentinel_state.json", "20auto-upgrades"],
         cwd=str(repo_root),
         check=False,
         capture_output=True,
