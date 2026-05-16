@@ -47,10 +47,10 @@ recovery. It lists branches from `origin` only. It does not show tags, detached 
 local-only branches, or `origin/HEAD`. Switching to a non-`main` branch uses a deliberately strong
 confirmation because branch switching is an escape hatch for testing a specific fix or recovering an
 install, not a routine update path. Non-`main` branches can be unfinished, temporary, outdated, or
-removed without notice, and the switch reruns the installer from that branch. The collapsed
-**Advanced** row does not include a dynamic branch-relationship summary; the current source, update
-status, and **Switch to main** action provide the useful scan points, while GitHub remains the
-detailed branch comparison surface.
+removed without notice. The switch reruns the installer from that branch. The collapsed **Advanced**
+row does not include a dynamic branch-relationship summary; the current source, update status, and
+**Switch to main** action provide the useful scan points, while GitHub remains the detailed branch
+comparison surface.
 
 Branch switching requires a clean app checkout. If Git reports changed tracked files or untracked
 files in `/opt/SimpleSaferServer`, clean up or review those files before switching branches. The

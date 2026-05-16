@@ -516,11 +516,18 @@
     message.textContent = `Switch SimpleSaferServer to ${branch} and apply it immediately?`;
     body.appendChild(message);
     if (branch !== STABLE_BRANCH) {
-      const caution = document.createElement('p');
+      const purposeWarning = document.createElement('p');
       // Keep this warning blunt: branch switching is an escape hatch, not a routine update path.
-      caution.textContent =
-        'Only do this if you are testing a specific fix or recovering this install. Non-main branches can be unfinished, temporary, outdated, or removed without notice, and this will rerun the installer from that branch.';
-      body.appendChild(caution);
+      purposeWarning.textContent = 'Only do this if you are testing a specific fix or recovering this install.';
+      body.appendChild(purposeWarning);
+
+      const branchWarning = document.createElement('p');
+      branchWarning.textContent = 'Non-main branches can be unfinished, temporary, outdated, or removed without notice.';
+      body.appendChild(branchWarning);
+
+      const installerWarning = document.createElement('p');
+      installerWarning.textContent = 'This will rerun the installer from that branch.';
+      body.appendChild(installerWarning);
     }
     return body;
   }

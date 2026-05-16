@@ -512,6 +512,8 @@ def test_source_switch_static_copy_avoids_jargon():
     assert "Switch SimpleSaferServer to ${branch} and apply it immediately?" in script
     assert "Danger: switch away from main?" in script
     assert "Only do this if you are testing a specific fix or recovering this install." in script
+    assert "Non-main branches can be unfinished, temporary, outdated, or removed without notice." in script
+    assert "This will rerun the installer from that branch." in script
     assert "I understand, switch branch" in script
     assert "app-branch-advanced-summary" not in script
     assert "Recovery" not in script
