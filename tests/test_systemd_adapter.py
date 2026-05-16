@@ -10,7 +10,7 @@ def test_journal_uses_all_output_so_ansi_color_sequences_survive():
 
     assert adapter.journal("app_update.service", 50) == "log"
 
-    command = runner.run.call_args.args[0]
+    command = runner.run.call_args[0][0]
     assert command[:2] == ["journalctl", "-a"]
     assert command[2:] == ["-u", "app_update.service", "-n", "50", "--no-pager"]
 
@@ -22,13 +22,13 @@ def test_timer_disable_and_enable_use_systemd_timer_unit_only():
     adapter.disable_timer_now("backup_cloud.timer")
     adapter.enable_timer_now("backup_cloud.timer")
 
-    assert runner.run.call_args_list[0].args[0] == [
+    assert runner.run.call_args_list[0][0][0] == [
         "systemctl",
         "disable",
         "--now",
         "backup_cloud.timer",
     ]
-    assert runner.run.call_args_list[1].args[0] == [
+    assert runner.run.call_args_list[1][0][0] == [
         "systemctl",
         "enable",
         "--now",

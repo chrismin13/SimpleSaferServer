@@ -1,3 +1,4 @@
+import os
 import subprocess
 import tempfile
 from pathlib import Path
@@ -102,31 +103,40 @@ def test_normal_app_state_writes_do_not_dirty_installed_git_checkout():
 def test_gitignore_keeps_install_artifacts_ignored_without_hiding_known_state_files():
     repo_root = Path(__file__).resolve().parents[1]
     # CI can mount the checkout with a different owner than the test process.
-    # Keep this test focused on ignore rules, not Git's repository trust gate.
-    safe_git = ["git", "-c", f"safe.directory={repo_root}"]
+    # safe.directory is only honored from protected config scopes, so use an
+    # isolated global config instead of `git -c` to keep this focused on ignore rules.
+    with tempfile.NamedTemporaryFile() as global_config:
+        git_env = {**os.environ, "GIT_CONFIG_GLOBAL": global_config.name}
+        subprocess.run(
+            ["git", "config", "--global", "--add", "safe.directory", str(repo_root)],
+            check=True,
+            env=git_env,
+        )
 
-    ignored = subprocess.run(
-        [
-            *safe_git,
-            "check-ignore",
-            "venv/bin/python",
-            "simple_safer_server/__pycache__/module.pyc",
-            "app.log",
-            ".dev-data/config/config.conf",
-            "telemetry.csv",
-        ],
-        cwd=str(repo_root),
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    not_ignored = subprocess.run(
-        [*safe_git, "check-ignore", "hdsentinel_state.json", "20auto-upgrades"],
-        cwd=str(repo_root),
-        check=False,
-        capture_output=True,
-        text=True,
-    )
+        ignored = subprocess.run(
+            [
+                "git",
+                "check-ignore",
+                "venv/bin/python",
+                "simple_safer_server/__pycache__/module.pyc",
+                "app.log",
+                ".dev-data/config/config.conf",
+                "telemetry.csv",
+            ],
+            cwd=str(repo_root),
+            check=False,
+            capture_output=True,
+            text=True,
+            env=git_env,
+        )
+        not_ignored = subprocess.run(
+            ["git", "check-ignore", "hdsentinel_state.json", "20auto-upgrades"],
+            cwd=str(repo_root),
+            check=False,
+            capture_output=True,
+            text=True,
+            env=git_env,
+        )
 
     assert ignored.returncode == 0
     assert not_ignored.returncode == 1

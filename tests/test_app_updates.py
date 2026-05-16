@@ -253,7 +253,7 @@ class AppUpdateManagerTests(unittest.TestCase):
 
         self.assertEqual(result["message"], "Up to date.")
         self.assertEqual(
-            [call.args[1] for call in adapter.run_git.call_args_list],
+            [call[0][1] for call in adapter.run_git.call_args_list],
             [
                 ["reset", "--hard", "HEAD"],
                 ["clean", "-fd"],
@@ -261,7 +261,7 @@ class AppUpdateManagerTests(unittest.TestCase):
                 ["pull", "--ff-only"],
             ],
         )
-        self.assertNotIn("-x", adapter.run_git.call_args_list[1].args[1])
+        self.assertNotIn("-x", adapter.run_git.call_args_list[1][0][1])
         adapter.run_installer.assert_called_once_with(clone)
 
     def test_cleanup_update_request_is_volatile_and_consumed_once(self):
@@ -339,7 +339,7 @@ class AppUpdateManagerTests(unittest.TestCase):
 
         self.assertEqual(result["source_name"], "main")
         self.assertEqual(
-            [call.args[1] for call in adapter.run_git.call_args_list],
+            [call[0][1] for call in adapter.run_git.call_args_list],
             [
                 ["rev-parse", "--verify", "--quiet", "refs/heads/main"],
                 ["branch", "--set-upstream-to", "origin/main", "main"],
@@ -384,7 +384,7 @@ class AppUpdateManagerTests(unittest.TestCase):
 
         self.assertEqual(result["source_name"], "feature/demo")
         self.assertEqual(
-            [call.args[1] for call in adapter.run_git.call_args_list],
+            [call[0][1] for call in adapter.run_git.call_args_list],
             [
                 ["rev-parse", "--verify", "--quiet", "refs/heads/feature/demo"],
                 ["checkout", "--track", "-b", "feature/demo", "origin/feature/demo"],

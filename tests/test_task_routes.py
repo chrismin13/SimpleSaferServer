@@ -49,8 +49,8 @@ def test_task_detail_loads_maximum_log_window():
 
     assert response.status_code == 200
     task.get_logs.assert_called_once_with(TASK_LOG_LINE_LIMIT)
-    assert render.call_args.kwargs["log_lines"] == TASK_LOG_LINE_LIMIT
-    assert render.call_args.kwargs["task_summary"] == {"schedule": {"state": "active"}}
+    assert render.call_args[1]["log_lines"] == TASK_LOG_LINE_LIMIT
+    assert render.call_args[1]["task_summary"] == {"schedule": {"state": "active"}}
 
 
 def test_task_logs_defaults_to_global_log_window():
