@@ -54,7 +54,6 @@
       'app-update-switch-main-tooltip',
       'app-update-switch-main-btn',
       'app-branch-advanced-trigger',
-      'app-branch-advanced-summary',
       'app-branch-advanced-hint',
       'app-branch-switch-form',
       'app-branch-select',
@@ -258,17 +257,6 @@
     return application.source_type === 'tag' || application.source_type === 'detached';
   }
 
-  function updateBranchAdvancedSummary(application) {
-    if (!els['app-branch-advanced-summary']) return;
-    if (!canOfferBranchSwitch(application)) {
-      els['app-branch-advanced-summary'].textContent = 'Unavailable';
-    } else if (application.source_type === 'branch' && application.source_name === STABLE_BRANCH) {
-      els['app-branch-advanced-summary'].textContent = 'On main';
-    } else {
-      els['app-branch-advanced-summary'].textContent = 'Recovery';
-    }
-  }
-
   function renderBranchChoices(branches) {
     const select = els['app-branch-select'];
     select.textContent = '';
@@ -351,7 +339,6 @@
       els['app-update-switch-main-btn'].classList.add('d-none');
       els['app-update-switch-main-btn'].disabled = true;
     }
-    updateBranchAdvancedSummary(application);
     renderBranchSwitchAvailability(application);
   }
 
@@ -526,11 +513,13 @@
   function branchSwitchBody(branch) {
     const body = document.createElement('div');
     const message = document.createElement('p');
-    message.textContent = `Switch to ${branch} and apply it now?`;
+    message.textContent = `Switch SimpleSaferServer to ${branch} and apply it immediately?`;
     body.appendChild(message);
     if (branch !== STABLE_BRANCH) {
       const caution = document.createElement('p');
-      caution.textContent = 'Non-main branches may be temporary or outdated.';
+      // Keep this warning blunt: branch switching is an escape hatch, not a routine update path.
+      caution.textContent =
+        'Only do this if you are testing a specific fix or recovering this install. Non-main branches can be unfinished, temporary, outdated, or removed without notice, and this will rerun the installer from that branch.';
       body.appendChild(caution);
     }
     return body;
@@ -538,9 +527,9 @@
 
   async function confirmBranchSwitch(branch) {
     return window.showConfirmationDialog({
-      title: branch === STABLE_BRANCH ? 'Switch to main?' : 'Switch application source?',
+      title: branch === STABLE_BRANCH ? 'Switch to main?' : 'Danger: switch away from main?',
       body: branchSwitchBody(branch),
-      confirmLabel: branch === STABLE_BRANCH ? 'Switch to main' : 'Switch Branch',
+      confirmLabel: branch === STABLE_BRANCH ? 'Switch to main' : 'I understand, switch branch',
       confirmClass: branch === STABLE_BRANCH ? 'btn-primary' : 'btn-warning'
     });
   }

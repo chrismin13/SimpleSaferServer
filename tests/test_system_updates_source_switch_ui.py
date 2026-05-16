@@ -66,8 +66,8 @@ const ids = [
   'app-update-source', 'app-update-commit', 'app-update-checked',
   'app-update-refresh-btn', 'app-update-now-btn', 'app-update-force-btn',
   'app-update-switch-main-tooltip', 'app-update-switch-main-btn',
-  'app-branch-advanced-trigger', 'app-branch-advanced-summary',
-  'app-branch-advanced-hint', 'app-branch-switch-form', 'app-branch-select',
+  'app-branch-advanced-trigger', 'app-branch-advanced-hint',
+  'app-branch-switch-form', 'app-branch-select',
   'app-branch-switch-btn', 'remove-locks-btn'
 ];
 
@@ -273,8 +273,8 @@ const ids = [
   'app-update-source', 'app-update-commit', 'app-update-checked',
   'app-update-refresh-btn', 'app-update-now-btn', 'app-update-force-btn',
   'app-update-switch-main-tooltip', 'app-update-switch-main-btn',
-  'app-branch-advanced-trigger', 'app-branch-advanced-summary',
-  'app-branch-advanced-hint', 'app-branch-switch-form', 'app-branch-select',
+  'app-branch-advanced-trigger', 'app-branch-advanced-hint',
+  'app-branch-switch-form', 'app-branch-select',
   'app-branch-switch-btn', 'remove-locks-btn'
 ];
 
@@ -424,8 +424,8 @@ const ids = [
   'app-update-source', 'app-update-commit', 'app-update-checked',
   'app-update-refresh-btn', 'app-update-now-btn', 'app-update-force-btn',
   'app-update-switch-main-tooltip', 'app-update-switch-main-btn',
-  'app-branch-advanced-trigger', 'app-branch-advanced-summary',
-  'app-branch-advanced-hint', 'app-branch-switch-form', 'app-branch-select',
+  'app-branch-advanced-trigger', 'app-branch-advanced-hint',
+  'app-branch-switch-form', 'app-branch-select',
   'app-branch-switch-btn', 'remove-locks-btn'
 ];
 
@@ -501,6 +501,7 @@ def test_source_switch_static_copy_avoids_jargon():
     script = Path("static/js/system_updates.js").read_text(encoding="utf-8")
 
     assert '<span><i class="fas fa-code-branch"></i> Advanced</span>' in template
+    assert "app-branch-advanced-summary" not in template
     assert '<label class="form-label" for="app-branch-select">Branch</label>' in template
     assert '<i class="fas fa-code-branch"></i> Switch Branch' in template
 
@@ -508,7 +509,13 @@ def test_source_switch_static_copy_avoids_jargon():
     assert "Remote branch" not in template
     assert "Switch Source" not in template
 
-    assert "Switch to ${branch} and apply it now?" in script
+    assert "Switch SimpleSaferServer to ${branch} and apply it immediately?" in script
+    assert "Danger: switch away from main?" in script
+    assert "Only do this if you are testing a specific fix or recovering this install." in script
+    assert "I understand, switch branch" in script
+    assert "app-branch-advanced-summary" not in script
+    assert "Recovery" not in script
+    assert "On main" not in script
     assert "run the installer now" not in script
-    assert "confirmLabel: branch === STABLE_BRANCH ? 'Switch to main' : 'Switch Branch'" in script
+    assert "confirmLabel: branch === STABLE_BRANCH ? 'Switch to main' : 'I understand, switch branch'" in script
     assert "Switch Source" not in script
