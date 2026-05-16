@@ -1,11 +1,11 @@
 import tempfile
 from contextlib import suppress
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from simple_safer_server.services.disabled_timers import DisabledTimerService
+from simple_safer_server.services.disabled_timers import DisabledTimerService, parse_timestamp
 
 
 class FakeSystemd:
@@ -36,7 +36,7 @@ def test_disable_writes_state_after_systemd_success_and_replaces_existing_state(
     with tempfile.TemporaryDirectory() as temp_dir:
         systemd = FakeSystemd()
         service = DisabledTimerService(_runtime(temp_dir), systemd)
-        expires_at = datetime(2026, 5, 13, 18, 0, 0)
+        expires_at = datetime(2026, 5, 13, 18, 0, 0, tzinfo=timezone.utc)
 
         service.disable(
             "Cloud Backup", "backup_cloud.timer", mode="temporary", expires_at=expires_at
@@ -47,7 +47,26 @@ def test_disable_writes_state_after_systemd_success_and_replaces_existing_state(
         record = service.get_record("backup_cloud.timer")
         assert record is not None
         assert record["mode"] == "permanent"
+        assert record["created_at"].endswith("+00:00")
         assert "expires_at" not in record
+
+
+def test_disable_rejects_naive_temporary_expiration():
+    with tempfile.TemporaryDirectory() as temp_dir:
+        systemd = FakeSystemd()
+        service = DisabledTimerService(_runtime(temp_dir), systemd)
+
+        try:
+            service.disable(
+                "Cloud Backup",
+                "backup_cloud.timer",
+                mode="temporary",
+                expires_at=datetime(2026, 5, 13, 18, 0, 0),
+            )
+            raise AssertionError("naive temporary expiration was accepted")
+        except ValueError as exc:
+            assert "timezone offset" in str(exc)
+        assert systemd.disabled == []
 
 
 def test_disable_failure_does_not_write_state():
@@ -90,7 +109,7 @@ def test_restore_expired_temporary_records_and_leaves_future_and_permanent_recor
     with tempfile.TemporaryDirectory() as temp_dir:
         systemd = FakeSystemd()
         service = DisabledTimerService(_runtime(temp_dir), systemd)
-        now = datetime(2026, 5, 13, 12, 0, 0)
+        now = datetime(2026, 5, 13, 12, 0, 0, tzinfo=timezone.utc)
 
         service.disable(
             "Cloud Backup",
@@ -121,7 +140,7 @@ def test_restore_failures_retry_three_times_then_alert_once_and_stop_retrying():
         systemd.fail_enable.add("backup_cloud.timer")
         alert_notifier = MagicMock()
         service = DisabledTimerService(_runtime(temp_dir), systemd, alert_notifier=alert_notifier)
-        now = datetime(2026, 5, 13, 12, 0, 0)
+        now = datetime(2026, 5, 13, 12, 0, 0, tzinfo=timezone.utc)
 
         service.disable("Cloud Backup", "backup_cloud.timer", mode="temporary", expires_at=now)
 
@@ -134,5 +153,14 @@ def test_restore_failures_retry_three_times_then_alert_once_and_stop_retrying():
         assert record is not None
         assert record["restore_failed"] is True
         assert record["restore_attempts"] == 3
+        assert record["last_restore_attempt_at"].endswith("+00:00")
         assert len(systemd.enable_attempts) == 3
         alert_notifier.notify.assert_called_once()
+
+
+def test_parse_timestamp_rejects_naive_state_values():
+    try:
+        parse_timestamp("2026-05-13T12:00:00")
+        raise AssertionError("naive timestamp was accepted")
+    except ValueError as exc:
+        assert "timezone offset" in str(exc)

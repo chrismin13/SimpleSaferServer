@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from simple_safer_server.services.file_persistence import locked_json_update, read_json
@@ -7,17 +7,28 @@ DISABLED_TIMERS_FILENAME = "disabled_timers.json"
 RESTORE_RETRY_LIMIT = 3
 
 
-def parse_timestamp(value: Optional[str]) -> Optional[datetime]:
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def parse_timestamp(value: Optional[str]) -> datetime:
     if not value:
-        return None
+        raise ValueError("disabled timer timestamp is required")
     try:
-        return datetime.strptime(value, "%Y-%m-%dT%H:%M:%S")
-    except ValueError:
-        return None
+        parsed = datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise ValueError("disabled timer timestamp must be ISO 8601") from exc
+    if parsed.tzinfo is None:
+        raise ValueError("disabled timer timestamp must include a timezone offset")
+    return parsed.astimezone(timezone.utc)
 
 
 def format_timestamp(value: datetime) -> str:
-    return value.replace(microsecond=0).strftime("%Y-%m-%dT%H:%M:%S")
+    if value.tzinfo is None:
+        raise ValueError("disabled timer timestamp must include a timezone offset")
+    # The restore helper runs outside the web request path, so persisted timer state
+    # carries its own UTC basis instead of depending on the machine's local timezone.
+    return value.astimezone(timezone.utc).replace(microsecond=0).isoformat()
 
 
 class DisabledTimerService:
@@ -61,19 +72,19 @@ class DisabledTimerService:
         if mode == "temporary" and expires_at is None:
             raise ValueError("temporary disables require expires_at")
 
-        if not self.runtime.is_fake:
-            self.systemd_adapter.disable_timer_now(timer_name)
-
         record = {
             "task_name": task_name,
             "timer_name": timer_name,
             "mode": mode,
-            "created_at": format_timestamp(datetime.now()),
+            "created_at": format_timestamp(utc_now()),
             "restore_attempts": 0,
             "restore_failed": False,
         }
         if mode == "temporary" and expires_at is not None:
             record["expires_at"] = format_timestamp(expires_at)
+
+        if not self.runtime.is_fake:
+            self.systemd_adapter.disable_timer_now(timer_name)
 
         def update(records: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
             if not isinstance(records, dict):
@@ -110,7 +121,10 @@ class DisabledTimerService:
         )
 
     def restore_expired(self, *, now: Optional[datetime] = None) -> Dict[str, List[str]]:
-        now = now or datetime.utcnow()
+        now = now or utc_now()
+        if now.tzinfo is None:
+            raise ValueError("restore timestamp must include a timezone offset")
+        now = now.astimezone(timezone.utc)
         restored = []  # type: List[str]
         failed = []  # type: List[str]
 
@@ -159,7 +173,7 @@ class DisabledTimerService:
             current = records.get(timer_name, record) if isinstance(records, dict) else record
             current["restore_attempts"] = next_attempts
             current["last_restore_error"] = str(exc)
-            current["last_restore_attempt_at"] = format_timestamp(datetime.now())
+            current["last_restore_attempt_at"] = format_timestamp(utc_now())
             current["restore_failed"] = restore_failed
             records[timer_name] = current
             return records

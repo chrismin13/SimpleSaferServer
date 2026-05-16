@@ -14,7 +14,11 @@ from simple_safer_server.adapters.command_runner import (
 )
 from simple_safer_server.adapters.rclone import RcloneAdapter
 from simple_safer_server.adapters.systemd import CalledProcessError, SystemdAdapter
-from simple_safer_server.services.disabled_timers import DisabledTimerService, parse_timestamp
+from simple_safer_server.services.disabled_timers import (
+    DisabledTimerService,
+    parse_timestamp,
+    utc_now,
+)
 from simple_safer_server.services.drive_health import run_scheduled_drive_health_check
 
 
@@ -255,7 +259,7 @@ class TaskService:
         if mode == "temporary":
             if hours is None:
                 raise ValueError("temporary schedule disable requires hours")
-            expires_at = datetime.now() + timedelta(hours=hours)
+            expires_at = utc_now() + timedelta(hours=hours)
         self.disabled_timer_service.disable(
             task.name,
             task.timer_name,
@@ -273,9 +277,13 @@ class TaskService:
             state = "restore_failed" if record.get("restore_failed") else record.get("mode")
             label = "Restore failed" if state == "restore_failed" else "Disabled"
             if state == "temporary":
-                label = "Disabled until {}".format(
-                    self._format_compact_datetime(parse_timestamp(record.get("expires_at")))
-                )
+                try:
+                    label = "Disabled until {}".format(
+                        self._format_compact_datetime(parse_timestamp(record.get("expires_at")))
+                    )
+                except ValueError:
+                    # Malformed state still means systemd is disabled; keep the recovery action visible.
+                    label = "Disabled"
             return {
                 "state": state,
                 "label": label,
@@ -357,6 +365,10 @@ class TaskService:
         return output.strip()
 
     def _format_compact_datetime(self, value: Optional[datetime]) -> str:
+        if value is not None and value.tzinfo is not None:
+            # Disabled-timer state is stored in UTC, but schedule labels should match
+            # the local clock admins use when choosing a temporary disable duration.
+            value = value.astimezone().replace(tzinfo=None)
         return format_compact_schedule_datetime(value, datetime.now())
 
     def get_next_run(self, task: Task) -> str:

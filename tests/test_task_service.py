@@ -1,7 +1,9 @@
+import json
+import os
 import threading
 import time
 import unittest
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -353,8 +355,58 @@ class TaskServiceTests(unittest.TestCase):
 
         self.assertTrue(service.schedule_state(task)["label"].startswith("Disabled until "))
 
+    def test_malformed_temporary_schedule_state_still_allows_reenable(self):
+        systemd_adapter = FakeSystemdAdapter()
+        service, _fake_state = self.build_service(is_fake=False, systemd_adapter=systemd_adapter)
+        task = service.get_task("Cloud Backup")
+        assert task is not None
+        service.disabled_timer_service.path.parent.mkdir(parents=True, exist_ok=True)
+        service.disabled_timer_service.path.write_text(
+            json.dumps(
+                {
+                    "backup_cloud.timer": {
+                        "task_name": "Cloud Backup",
+                        "timer_name": "backup_cloud.timer",
+                        "mode": "temporary",
+                        "created_at": "2026-05-13T12:00:00+00:00",
+                        "expires_at": "2026-05-13T18:00:00",
+                        "restore_attempts": 0,
+                        "restore_failed": False,
+                    }
+                }
+            )
+        )
+
+        state = service.schedule_state(task)
+
+        self.assertEqual(state["label"], "Disabled")
+        self.assertTrue(state["can_enable"])
+
+    def test_utc_disabled_timer_label_uses_local_clock(self):
+        if not hasattr(time, "tzset"):
+            self.skipTest("tzset is required for local timezone label checks")
+        original_tz = os.environ.get("TZ")
+        os.environ["TZ"] = "America/New_York"
+        time.tzset()
+        try:
+            service, _fake_state = self.build_service()
+            local_target = (
+                datetime.now().astimezone().replace(hour=8, minute=0, second=0, microsecond=0)
+            )
+
+            self.assertEqual(
+                service._format_compact_datetime(local_target.astimezone(timezone.utc)),
+                "08:00",
+            )
+        finally:
+            if original_tz is None:
+                os.environ.pop("TZ", None)
+            else:
+                os.environ["TZ"] = original_tz
+            time.tzset()
+
     def test_schedule_datetime_labels_cover_today_tomorrow_and_later_dates(self):
-        now = datetime(2026, 5, 13, 9, 0, 0)
+        now = datetime(2026, 5, 13, 9, 0, 0, tzinfo=timezone.utc)
 
         self.assertEqual(
             format_compact_schedule_datetime(datetime(2026, 5, 13, 18, 0, 0), now),
