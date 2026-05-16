@@ -164,7 +164,7 @@ def stop_task(task_name):
 
 
 @tasks.route("/task/<task_name>/disable-schedule", methods=["POST"])
-@admin_required
+@api_admin_required
 def disable_schedule(task_name):
     task = _get_services().task_service.get_task(task_name)
     if not task:
@@ -198,7 +198,7 @@ def disable_schedule(task_name):
 
 
 @tasks.route("/task/<task_name>/enable-schedule", methods=["POST"])
-@admin_required
+@api_admin_required
 def enable_schedule(task_name):
     task = _get_services().task_service.get_task(task_name)
     if not task:

@@ -16,6 +16,11 @@ def _build_app(task_service):
         config_manager=MagicMock(),
         system_utils=MagicMock(),
     )
+
+    @app.route("/login")
+    def login():
+        return "login"
+
     app.register_blueprint(tasks)
     return app
 
@@ -243,6 +248,52 @@ def test_disable_schedule_route_returns_not_found_for_unknown_task():
 
     assert response.status_code == 404
     assert response.get_json()["type"].endswith("#task-not-found")
+
+
+def test_disable_schedule_route_returns_json_login_required_for_anonymous_fetch():
+    task_service = MagicMock()
+    app = _build_app(task_service)
+
+    with app.test_client() as client:
+        response = client.post(
+            "/task/Cloud%20Backup/disable-schedule",
+            json={"mode": "temporary", "hours": 6},
+            headers={"Accept": "application/json"},
+            follow_redirects=True,
+        )
+
+    assert response.status_code == 401
+    assert response.is_json
+    assert response.get_json()["type"].endswith("#api-login-required")
+
+
+def test_enable_schedule_route_returns_json_admin_required_for_demoted_fetch_session():
+    task_service = MagicMock()
+    app = _build_app(task_service)
+    user_manager = MagicMock()
+    user_manager.is_admin.return_value = False
+
+    with patch(
+        "simple_safer_server.services.user_manager.UserManager", return_value=user_manager
+    ), app.test_client() as client:
+        with client.session_transaction() as session:
+            session["username"] = "operator"
+
+        response = client.post(
+            "/task/Cloud%20Backup/enable-schedule",
+            headers={"Accept": "application/json"},
+            follow_redirects=True,
+        )
+
+        # A role change after login leaves a valid signed cookie, so JSON
+        # callers need a 403 Problem Details response instead of a login page.
+        with client.session_transaction() as session:
+            assert "username" not in session
+
+    assert response.status_code == 403
+    assert response.is_json
+    assert response.get_json()["type"].endswith("#api-admin-required")
+    user_manager.is_admin.assert_called_once_with("operator")
 
 
 def test_enable_schedule_route_reports_operation_failure():
