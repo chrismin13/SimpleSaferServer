@@ -199,6 +199,81 @@ def test_disable_schedule_route_calls_task_and_returns_updated_summary():
     assert response.get_json()["data"]["task"]["schedule"]["state"] == "permanent"
 
 
+def test_disable_schedule_route_rejects_invalid_mode_before_calling_task():
+    task = MagicMock()
+    task_service = MagicMock()
+    task_service.get_task.return_value = task
+    app = _build_app(task_service)
+    user_manager = MagicMock()
+    user_manager.is_admin.return_value = True
+
+    with patch(
+        "simple_safer_server.services.user_manager.UserManager", return_value=user_manager
+    ), app.test_client() as client:
+        with client.session_transaction() as session:
+            session["username"] = "admin"
+
+        response = client.post(
+            "/task/Cloud%20Backup/disable-schedule",
+            json={"mode": "", "hours": 6},
+            headers={"Accept": "application/json"},
+        )
+
+    assert response.status_code == 400
+    assert response.get_json()["type"].endswith("#task-schedule-validation-error")
+    task.disable_schedule.assert_not_called()
+
+
+def test_disable_schedule_route_rejects_invalid_hours_before_calling_task():
+    task = MagicMock()
+    task_service = MagicMock()
+    task_service.get_task.return_value = task
+    app = _build_app(task_service)
+    user_manager = MagicMock()
+    user_manager.is_admin.return_value = True
+
+    with patch(
+        "simple_safer_server.services.user_manager.UserManager", return_value=user_manager
+    ), app.test_client() as client:
+        with client.session_transaction() as session:
+            session["username"] = "admin"
+
+        response = client.post(
+            "/task/Cloud%20Backup/disable-schedule",
+            json={"mode": "temporary", "hours": "abc"},
+            headers={"Accept": "application/json"},
+        )
+
+    assert response.status_code == 400
+    assert response.get_json()["type"].endswith("#task-schedule-validation-error")
+    task.disable_schedule.assert_not_called()
+
+
+def test_disable_schedule_route_rejects_non_positive_hours_before_calling_task():
+    task = MagicMock()
+    task_service = MagicMock()
+    task_service.get_task.return_value = task
+    app = _build_app(task_service)
+    user_manager = MagicMock()
+    user_manager.is_admin.return_value = True
+
+    with patch(
+        "simple_safer_server.services.user_manager.UserManager", return_value=user_manager
+    ), app.test_client() as client:
+        with client.session_transaction() as session:
+            session["username"] = "admin"
+
+        response = client.post(
+            "/task/Cloud%20Backup/disable-schedule",
+            json={"mode": "temporary", "hours": 0},
+            headers={"Accept": "application/json"},
+        )
+
+    assert response.status_code == 400
+    assert response.get_json()["type"].endswith("#task-schedule-validation-error")
+    task.disable_schedule.assert_not_called()
+
+
 def test_enable_schedule_route_calls_task_and_returns_updated_summary():
     task = MagicMock()
     task_service = MagicMock()

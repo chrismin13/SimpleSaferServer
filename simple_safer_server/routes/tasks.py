@@ -14,7 +14,7 @@ from flask import (
 from simple_safer_server.services.task_service import TASK_LOG_LINE_LIMIT, clamp_task_log_lines
 from simple_safer_server.services.user_manager import admin_required, api_admin_required
 from simple_safer_server.web.api import json_data, json_problem
-from simple_safer_server.web.problems import NotFoundProblem, OperationProblem
+from simple_safer_server.web.problems import NotFoundProblem, OperationProblem, ValidationProblem
 
 tasks = Blueprint("task_routes", __name__)
 
@@ -22,6 +22,12 @@ tasks = Blueprint("task_routes", __name__)
 def _get_services() -> Any:
     """Return app-level services registered during Flask startup."""
     return current_app.extensions["simple_safer_server"]
+
+
+def _bad_disable_schedule_request(message: str):
+    if request.accept_mimetypes.best == "application/json":
+        return json_problem(ValidationProblem(message, slug="task-schedule-validation-error"))
+    abort(400)
 
 
 @tasks.route("/dashboard")
@@ -176,10 +182,24 @@ def disable_schedule(task_name):
     data = request.get_json(silent=True) or request.form
     mode = (data.get("mode") or "").strip()
     hours = data.get("hours")
+    if mode not in {"temporary", "permanent"}:
+        return _bad_disable_schedule_request(
+            "Schedule disable mode must be temporary or permanent."
+        )
+
+    parsed_hours = None
+    if mode == "temporary":
+        if hours is None or hours == "":
+            return _bad_disable_schedule_request("Temporary schedule disables require hours.")
+        hours_text = str(hours).strip()
+        # The browser sends positive whole hours; direct API callers get the same contract.
+        if not hours_text.isdigit():
+            return _bad_disable_schedule_request("Schedule disable hours must contain only digits.")
+        parsed_hours = int(hours_text)
+        if parsed_hours <= 0:
+            return _bad_disable_schedule_request("Schedule disable hours must be greater than 0.")
+
     try:
-        parsed_hours = None
-        if hours is not None and hours != "":
-            parsed_hours = int(hours)
         task.disable_schedule(mode, hours=parsed_hours)
         if request.accept_mimetypes.best == "application/json":
             summary = _get_services().task_service.task_summary(task)
