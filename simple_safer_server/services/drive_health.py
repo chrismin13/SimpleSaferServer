@@ -18,17 +18,38 @@ from simple_safer_server.services.alert_notifications import AlertNotifier
 from simple_safer_server.services.file_persistence import atomic_write_json
 from simple_safer_server.services.runtime import get_runtime
 
+LOGGER = logging.getLogger(__name__)
+NUMPY_X86_V2_PREDICTION_UNAVAILABLE_MESSAGE = (
+    "SMART prediction is unavailable because this machine's CPU cannot run "
+    "the installed NumPy package. SMART and HDSentinel checks can still run."
+)
+GENERAL_PREDICTION_UNAVAILABLE_MESSAGE = (
+    "SMART prediction is unavailable because the prediction dependencies could not be loaded. "
+    "SMART and HDSentinel checks can still run."
+)
+
 try:
     import joblib
     import pandas as pd
     from xgboost import XGBClassifier
-except (ImportError, OSError):
+
+    PREDICTION_DEPENDENCIES_AVAILABLE = True
+    PREDICTION_UNAVAILABLE_MESSAGE = None
+except Exception as exc:
+    # Native extension loaders can raise RuntimeError or OSError before Python
+    # gets an ImportError. Keep SMART/HDSentinel usable when prediction is the
+    # only unavailable part of Drive Health.
     pd = None
     XGBClassifier = None
     joblib = None
+    PREDICTION_DEPENDENCIES_AVAILABLE = False
+    if "X86_V2" in str(exc):
+        PREDICTION_UNAVAILABLE_MESSAGE = NUMPY_X86_V2_PREDICTION_UNAVAILABLE_MESSAGE
+    else:
+        PREDICTION_UNAVAILABLE_MESSAGE = GENERAL_PREDICTION_UNAVAILABLE_MESSAGE
+    LOGGER.warning("SMART prediction dependencies could not be loaded: %s", exc)
 
 
-LOGGER = logging.getLogger(__name__)
 DRIVE_HEALTH_TIMEOUT_MESSAGE = (
     "The drive health check timed out before the device responded. "
     "A sleeping USB drive, adapter, or dock may need another check after it spins up."
@@ -213,7 +234,7 @@ def build_drive_health_summary(
             )
             summary["detail"] = "SMART prediction completed."
         else:
-            summary["detail"] = "Drive health model is unavailable."
+            summary["detail"] = get_prediction_unavailable_message()
             summary["error"] = summary["detail"]
     else:
         # Timeouts and missing data are operationally common with sleeping USB
@@ -272,7 +293,7 @@ def get_smartctl_json_support():
 
 @lru_cache(maxsize=1)
 def _load_model_and_threshold(model_path: str, threshold_path: str):
-    if XGBClassifier is None or joblib is None:
+    if not PREDICTION_DEPENDENCIES_AVAILABLE:
         return None, 0.5
 
     model = XGBClassifier()
@@ -285,7 +306,14 @@ def _load_model_and_threshold(model_path: str, threshold_path: str):
         return None, 0.5
 
 
+def get_prediction_unavailable_message():
+    return PREDICTION_UNAVAILABLE_MESSAGE or GENERAL_PREDICTION_UNAVAILABLE_MESSAGE
+
+
 def get_optimal_threshold(runtime=None):
+    if not PREDICTION_DEPENDENCIES_AVAILABLE:
+        return 0.5
+
     runtime = runtime or get_runtime()
     _, threshold = _load_model_and_threshold(
         str(runtime.model_dir / "xgb_model.json"),
@@ -295,6 +323,9 @@ def get_optimal_threshold(runtime=None):
 
 
 def predict_failure_probability(smart, runtime=None):
+    if not PREDICTION_DEPENDENCIES_AVAILABLE:
+        return None
+
     runtime = runtime or get_runtime()
     model, _ = _load_model_and_threshold(
         str(runtime.model_dir / "xgb_model.json"),
@@ -917,16 +948,22 @@ def run_scheduled_drive_health_check(config_manager, system_utils, runtime=None)
 
     probability = predict_failure_probability(smart, runtime=runtime)
     if probability is None:
-        message = "Drive health model is unavailable."
-        _log_and_email_alert(
-            config_manager,
-            runtime,
-            "Drive Health Check Failed - Prediction Error",
-            message,
-            alert_type="error",
-            source="check_health",
+        message = get_prediction_unavailable_message()
+        LOGGER.warning("Scheduled Drive Health completed without prediction: %s", message)
+        hdsentinel_result = run_hdsentinel_health_monitor(
+            config_manager, system_utils, runtime=runtime
         )
-        raise RuntimeError(message)
+        return {
+            "device": device,
+            "smart": smart,
+            "missing_attrs": missing_attrs,
+            "probability": None,
+            "prediction": None,
+            # No threshold is returned here because a threshold only has
+            # operational meaning when the model produced a probability.
+            "prediction_warning": message,
+            "hdsentinel": hdsentinel_result,
+        }
 
     threshold = get_optimal_threshold(runtime)
     prediction = int(probability >= threshold)

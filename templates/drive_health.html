@@ -34,6 +34,13 @@
     </div>
   {% endif %}
 
+  {% if prediction_warning %}
+    <div class="alert alert-warning">
+      <i class="fas fa-triangle-exclamation"></i>
+      <span>{{ prediction_warning }}</span>
+    </div>
+  {% endif %}
+
   {% if settings_message %}
     <div class="alert alert-success">
       <i class="fas fa-circle-check"></i>

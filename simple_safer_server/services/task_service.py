@@ -625,6 +625,8 @@ class TaskService:
         probability = result.get("probability")
         if probability is not None:
             fake_state.append_task_log(task_name, f"Drive health probability: {probability:.4f}")
+        elif result.get("prediction_warning"):
+            fake_state.append_task_log(task_name, result["prediction_warning"])
         else:
             fake_state.append_task_log(
                 task_name, "Model unavailable; using sample SMART data only."

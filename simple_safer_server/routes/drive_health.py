@@ -13,6 +13,7 @@ from simple_safer_server.services.drive_health import (
     get_hdsentinel_display_snapshot,
     get_hdsentinel_settings,
     get_optimal_threshold,
+    get_prediction_unavailable_message,
     get_smart_attributes,
     get_smartctl_json_support,
     predict_failure_probability,
@@ -39,6 +40,7 @@ def drives():
     prediction = None
     probability = None
     error = None
+    prediction_warning = None
     smart = None
     missing_attrs = []
     settings_message = None
@@ -106,7 +108,7 @@ def drives():
                     probability = prob
                     append_telemetry(smart, prediction, runtime=services.runtime)
                 else:
-                    error = "Model not loaded"
+                    prediction_warning = get_prediction_unavailable_message()
 
             if hdsentinel_settings["enabled"]:
                 hdsentinel_snapshot = collect_hdsentinel_snapshot(
@@ -124,7 +126,7 @@ def drives():
                 "temperature": smart.get("smart_194_raw") if smart else None,
                 "hdsentinel_health": None,
                 "hdsentinel_performance": None,
-                "detail": error or "Drive health data is not available.",
+                "detail": prediction_warning or error or "Drive health data is not available.",
                 "error": error,
             }
             if probability is not None:
@@ -151,6 +153,7 @@ def drives():
         hdsentinel_snapshot=hdsentinel_snapshot,
         drive_config=drive_config,
         smart_support_warning=smart_support_warning,
+        prediction_warning=prediction_warning,
         settings_message=settings_message,
         settings_error=settings_error,
     )

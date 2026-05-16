@@ -114,6 +114,45 @@ def test_drive_health_page_renders_warning_when_smartctl_support_check_fails():
     assert "timed out" in warning
 
 
+def test_drive_health_manual_check_warns_when_prediction_is_unavailable():
+    app, cleanup = _create_fake_app()
+    message = (
+        "SMART prediction is unavailable because the prediction dependencies could not be loaded."
+    )
+    smart = {"smart_194_raw": 32.0}
+    try:
+        with patch(
+            "simple_safer_server.routes.drive_health.get_smart_attributes",
+            return_value=(smart, [], None),
+        ):
+            with patch(
+                "simple_safer_server.routes.drive_health.predict_failure_probability",
+                return_value=None,
+            ):
+                with patch(
+                    "simple_safer_server.routes.drive_health.get_prediction_unavailable_message",
+                    return_value=message,
+                ):
+                    with patch(
+                        "simple_safer_server.routes.drive_health.append_telemetry",
+                    ) as mock_append:
+                        with app.test_client() as client:
+                            response = client.post(
+                                "/drives", data={"form_action": "run_health_check"}
+                            )
+
+        html = response.get_data(as_text=True)
+        assert response.status_code == 200
+        assert message in html
+        assert '<div class="alert alert-warning">' in html
+        assert '<div class="alert alert-danger">' not in html
+        assert "SMART Data" in html
+        assert "smart_194_raw" in html
+        mock_append.assert_not_called()
+    finally:
+        cleanup()
+
+
 def test_drive_health_refresh_probes_and_updates_ram_summary():
     app, cleanup = _create_fake_app()
     try:
@@ -169,6 +208,47 @@ def test_drive_health_timeout_summary_stays_neutral():
         assert response.status_code == 200
         assert data["status"] == "unknown"
         assert data["detail"] == "The drive health check timed out."
+    finally:
+        cleanup()
+
+
+def test_drive_health_refresh_stays_neutral_when_prediction_is_unavailable():
+    app, cleanup = _create_fake_app()
+    message = (
+        "SMART prediction is unavailable because the prediction dependencies could not be loaded."
+    )
+    try:
+        with patch(
+            "simple_safer_server.services.drive_health.get_smart_attributes",
+            return_value=({"smart_194_raw": 32.0}, [], None),
+        ):
+            with patch(
+                "simple_safer_server.services.drive_health.predict_failure_probability",
+                return_value=None,
+            ):
+                with patch(
+                    "simple_safer_server.services.drive_health.get_prediction_unavailable_message",
+                    return_value=message,
+                ):
+                    with patch(
+                        "simple_safer_server.services.drive_health.collect_hdsentinel_snapshot",
+                        return_value={
+                            "available": True,
+                            "health_pct": 42,
+                            "performance_pct": 91,
+                            "temperature_c": 31,
+                        },
+                    ):
+                        with app.test_client() as client:
+                            response = client.post("/api/drive_health/refresh")
+
+        data = response.get_json()["data"]
+        assert response.status_code == 200
+        assert data["status"] == "unknown"
+        assert data["probability"] is None
+        assert data["detail"] == message
+        assert data["error"] == message
+        assert data["hdsentinel_health"] == 42
     finally:
         cleanup()
 

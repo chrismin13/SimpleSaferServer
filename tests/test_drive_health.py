@@ -212,6 +212,61 @@ class DriveHealthTests(unittest.TestCase):
                 root / "var-lib" / "hdsentinel_state.json",
             )
 
+    @patch("simple_safer_server.services.drive_health._log_and_email_alert")
+    @patch("simple_safer_server.services.drive_health.run_hdsentinel_health_monitor")
+    @patch("simple_safer_server.services.drive_health.predict_failure_probability")
+    @patch("simple_safer_server.services.drive_health.get_smart_attributes")
+    @patch("simple_safer_server.services.drive_health.resolve_backup_parent_device")
+    def test_scheduled_check_succeeds_without_alerts_when_prediction_is_unavailable(
+        self,
+        mock_resolve_device,
+        mock_smart_attributes,
+        mock_predict,
+        mock_hdsentinel_monitor,
+        mock_alert,
+    ):
+        config_manager = SimpleNamespace(
+            get_value=lambda section, key, default=None: {
+                ("backup", "mount_point"): "/media/backup",
+            }.get((section, key), default)
+        )
+        system_utils = SimpleNamespace(is_mounted=lambda mount_point: mount_point == "/media/backup")
+        runtime = SimpleNamespace(is_fake=False, default_mount_point="/media/backup")
+        smart = {"smart_194_raw": 31.0}
+        hdsentinel_result = {
+            "snapshot": {"available": True, "health_pct": 100},
+            "alert_sent": False,
+        }
+
+        mock_resolve_device.return_value = ("/dev/sdb", "/dev/sdb1", None)
+        mock_smart_attributes.return_value = (smart, [], None)
+        mock_predict.return_value = None
+        mock_hdsentinel_monitor.return_value = hdsentinel_result
+
+        with self.assertLogs(drive_health.LOGGER.name, level="WARNING") as captured:
+            result = drive_health.run_scheduled_drive_health_check(
+                config_manager,
+                system_utils,
+                runtime=runtime,
+            )
+
+        self.assertEqual(result["device"], "/dev/sdb")
+        self.assertEqual(result["smart"], smart)
+        self.assertEqual(result["missing_attrs"], [])
+        self.assertIsNone(result["probability"])
+        self.assertIsNone(result["prediction"])
+        self.assertNotIn("threshold", result)
+        self.assertEqual(
+            result["prediction_warning"],
+            drive_health.get_prediction_unavailable_message(),
+        )
+        self.assertEqual(result["hdsentinel"], hdsentinel_result)
+        self.assertIn("SMART prediction is unavailable", captured.output[0])
+        mock_alert.assert_not_called()
+        mock_hdsentinel_monitor.assert_called_once_with(
+            config_manager, system_utils, runtime=runtime
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

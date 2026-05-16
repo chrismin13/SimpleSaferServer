@@ -6,7 +6,7 @@ import unittest
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from simple_safer_server.services.task_service import (
     TASK_LOG_LINE_LIMIT,
@@ -258,6 +258,23 @@ class TaskServiceTests(unittest.TestCase):
             ("Cloud Backup", "copied"),
             fake_state.logs,
         )
+
+    @patch("simple_safer_server.services.task_service.run_scheduled_drive_health_check")
+    def test_fake_drive_health_logs_prediction_warning_for_degraded_success(
+        self, mock_health_check
+    ):
+        service, fake_state = self.build_service(mount_point=".")
+        warning = "SMART prediction is unavailable because the prediction dependencies could not be loaded."
+        mock_health_check.return_value = {
+            "probability": None,
+            "prediction": None,
+            "prediction_warning": warning,
+            "hdsentinel": {"snapshot": {"available": False}},
+        }
+
+        service._run_fake_drive_health_check("Drive Health", threading.Event())
+
+        self.assertIn(("Drive Health", warning), fake_state.logs)
 
     def test_fake_ddns_update_runs_provider_script_for_parity(self):
         service, fake_state = self.build_service()

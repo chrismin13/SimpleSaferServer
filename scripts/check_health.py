@@ -39,6 +39,8 @@ def main():
     device = result.get('device')
     if probability is not None and device:
         print(f"Drive health probability for {device}: {probability:.4f}")
+    elif result.get('prediction_warning'):
+        print(result['prediction_warning'])
 
     hdsentinel_snapshot = result.get('hdsentinel', {}).get('snapshot')
     if hdsentinel_snapshot and hdsentinel_snapshot.get('available'):
