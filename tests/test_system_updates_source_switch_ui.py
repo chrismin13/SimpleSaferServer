@@ -1,9 +1,8 @@
 import json
 import shutil
 import subprocess
+import unittest
 from pathlib import Path
-
-import pytest
 
 
 def _run_node_script(script):
@@ -11,7 +10,7 @@ def _run_node_script(script):
     if node_binary is None:
         # These are lightweight browserless JavaScript checks; Python-only CI
         # lanes may not install Node.
-        pytest.skip("Node.js is required for the system updates JavaScript harness.")
+        raise unittest.SkipTest("Node.js is required for the system updates JavaScript harness.")
 
     return subprocess.run(
         [node_binary, "-e", script],

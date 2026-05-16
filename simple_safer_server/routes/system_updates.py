@@ -21,22 +21,27 @@ def _manager() -> Any:
     return _get_services().system_updates_manager
 
 
-def _get_app_update_task():
+def _app_update_task_missing_problem():
+    return json_problem(
+        OperationProblem(
+            "Application update task is not installed.",
+            slug="application-update-task-missing",
+        )
+    )
+
+
+def _start_app_update_task():
     task = _get_services().task_service.get_task("App Update")
     if task is None:
-        return None, json_problem(
-            OperationProblem(
-                "Application update task is not installed.",
-                slug="application-update-task-missing",
-            )
-        )
-    return task, None
+        return _app_update_task_missing_problem()
+    task.start()
+    return None
 
 
 def _start_app_update_task_with_request(app_update_manager, queue_request):
-    task, problem_response = _get_app_update_task()
-    if problem_response is not None:
-        return problem_response
+    task = _get_services().task_service.get_task("App Update")
+    if task is None:
+        return _app_update_task_missing_problem()
 
     # app_update.service consumes this one-shot request at process startup, so
     # it must exist before systemd starts the task. Clear it if systemd refuses
@@ -100,15 +105,9 @@ def api_system_updates_application_update():
                     slug="application-update-not-available",
                 )
             )
-        task = _get_services().task_service.get_task("App Update")
-        if task is None:
-            return json_problem(
-                OperationProblem(
-                    "Application update task is not installed.",
-                    slug="application-update-task-missing",
-                )
-            )
-        task.start()
+        problem_response = _start_app_update_task()
+        if problem_response is not None:
+            return problem_response
         return json_data(
             {
                 "application": status,
