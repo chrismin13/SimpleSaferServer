@@ -21,6 +21,35 @@ def _manager() -> Any:
     return _get_services().system_updates_manager
 
 
+def _get_app_update_task():
+    task = _get_services().task_service.get_task("App Update")
+    if task is None:
+        return None, json_problem(
+            OperationProblem(
+                "Application update task is not installed.",
+                slug="application-update-task-missing",
+            )
+        )
+    return task, None
+
+
+def _start_app_update_task_with_request(app_update_manager, queue_request):
+    task, problem_response = _get_app_update_task()
+    if problem_response is not None:
+        return problem_response
+
+    # app_update.service consumes this one-shot request at process startup, so
+    # it must exist before systemd starts the task. Clear it if systemd refuses
+    # the start so a later scheduled update cannot replay a stale admin intent.
+    queue_request()
+    try:
+        task.start()
+    except Exception:
+        app_update_manager.clear_update_request()
+        raise
+    return None
+
+
 @system_updates.route("/system_updates")
 @admin_required
 def system_updates_page():
@@ -107,16 +136,12 @@ def api_system_updates_application_force_update():
                     slug="application-force-update-not-available",
                 )
             )
-        app_update_manager.request_cleanup_update()
-        task = _get_services().task_service.get_task("App Update")
-        if task is None:
-            return json_problem(
-                OperationProblem(
-                    "Application update task is not installed.",
-                    slug="application-update-task-missing",
-                )
-            )
-        task.start()
+        problem_response = _start_app_update_task_with_request(
+            app_update_manager,
+            app_update_manager.request_cleanup_update,
+        )
+        if problem_response is not None:
+            return problem_response
         return json_data(
             {
                 "application": status,
@@ -179,16 +204,12 @@ def api_system_updates_application_switch_branch():
                 )
             )
 
-        app_update_manager.request_branch_switch(branch)
-        task = _get_services().task_service.get_task("App Update")
-        if task is None:
-            return json_problem(
-                OperationProblem(
-                    "Application update task is not installed.",
-                    slug="application-update-task-missing",
-                )
-            )
-        task.start()
+        problem_response = _start_app_update_task_with_request(
+            app_update_manager,
+            lambda: app_update_manager.request_branch_switch(branch),
+        )
+        if problem_response is not None:
+            return problem_response
         return json_data(
             {
                 "task_url": "/task/App%20Update",

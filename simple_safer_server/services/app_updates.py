@@ -139,6 +139,11 @@ class AppUpdateManager:
             durable=False,
         )
 
+    def clear_update_request(self) -> None:
+        """Remove any queued one-shot app update request."""
+        with suppress(FileNotFoundError):
+            self.request_path.unlink()
+
     def consume_update_request(self) -> Dict[str, str]:
         """Return the queued update request and clear the volatile request.
 

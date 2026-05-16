@@ -276,6 +276,17 @@ class AppUpdateManagerTests(unittest.TestCase):
         self.assertEqual(first_mode, "cleanup")
         self.assertEqual(second_mode, "normal")
 
+    def test_clear_update_request_removes_queued_request(self):
+        temp_dir, root, _remote, clone = self.make_repo_pair()
+        with temp_dir:
+            manager = self.manager(root, clone)
+
+            manager.request_cleanup_update()
+            manager.clear_update_request()
+            request = manager.consume_update_request()
+
+        self.assertEqual(request, {"mode": "normal"})
+
     def test_branch_switch_request_is_volatile_and_consumed_once(self):
         temp_dir, root, _remote, clone = self.make_repo_pair()
         with temp_dir:

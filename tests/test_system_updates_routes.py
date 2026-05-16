@@ -128,6 +128,62 @@ def test_application_force_update_starts_task_and_returns_task_url():
     task.start.assert_called_once_with()
 
 
+def test_application_force_update_does_not_queue_request_when_task_is_missing():
+    manager = MagicMock()
+    app_update_manager = MagicMock()
+    app_update_manager.get_status.return_value = {
+        "can_force_update": True,
+        "message": "Changed app files are blocking the update.",
+    }
+    app = _build_app(manager)
+    app.extensions["simple_safer_server"].app_update_manager = app_update_manager
+    app.extensions["simple_safer_server"].task_service.get_task.return_value = None
+    user_manager = MagicMock()
+    user_manager.is_admin.return_value = True
+
+    with patch(
+        "simple_safer_server.services.user_manager.UserManager", return_value=user_manager
+    ), app.test_client() as client:
+        with client.session_transaction() as session:
+            session["username"] = "admin"
+
+        response = client.post("/api/system_updates/application/force_update")
+
+    assert response.status_code == 500
+    assert response.get_json()["detail"] == "Application update task is not installed."
+    app_update_manager.request_cleanup_update.assert_not_called()
+
+
+def test_application_force_update_clears_request_when_task_start_fails():
+    manager = MagicMock()
+    app_update_manager = MagicMock()
+    app_update_manager.get_status.return_value = {
+        "can_force_update": True,
+        "message": "Changed app files are blocking the update.",
+    }
+    task = MagicMock()
+    task.start.side_effect = RuntimeError("systemd refused app_update.service")
+    app = _build_app(manager)
+    app.extensions["simple_safer_server"].app_update_manager = app_update_manager
+    app.extensions["simple_safer_server"].task_service.get_task.return_value = task
+    user_manager = MagicMock()
+    user_manager.is_admin.return_value = True
+
+    with patch(
+        "simple_safer_server.services.user_manager.UserManager", return_value=user_manager
+    ), app.test_client() as client:
+        with client.session_transaction() as session:
+            session["username"] = "admin"
+
+        response = client.post("/api/system_updates/application/force_update")
+
+    assert response.status_code == 500
+    assert response.get_json()["detail"] == "Could not clean up and update application."
+    app_update_manager.request_cleanup_update.assert_called_once_with()
+    task.start.assert_called_once_with()
+    app_update_manager.clear_update_request.assert_called_once_with()
+
+
 def test_application_branches_returns_remote_branch_choices():
     manager = MagicMock()
     app_update_manager = MagicMock()
@@ -177,6 +233,62 @@ def test_application_switch_branch_starts_task_and_returns_task_url():
     assert payload["data"]["task_url"] == "/task/App%20Update"
     app_update_manager.request_branch_switch.assert_called_once_with("main")
     task.start.assert_called_once_with()
+
+
+def test_application_switch_branch_does_not_queue_request_when_task_is_missing():
+    manager = MagicMock()
+    app_update_manager = MagicMock()
+    app_update_manager.get_status.return_value = {"dirty": False}
+    app_update_manager.list_remote_branches.return_value = ["main"]
+    app = _build_app(manager)
+    app.extensions["simple_safer_server"].app_update_manager = app_update_manager
+    app.extensions["simple_safer_server"].task_service.get_task.return_value = None
+    user_manager = MagicMock()
+    user_manager.is_admin.return_value = True
+
+    with patch(
+        "simple_safer_server.services.user_manager.UserManager", return_value=user_manager
+    ), app.test_client() as client:
+        with client.session_transaction() as session:
+            session["username"] = "admin"
+
+        response = client.post(
+            "/api/system_updates/application/switch_branch", json={"branch": "main"}
+        )
+
+    assert response.status_code == 500
+    assert response.get_json()["detail"] == "Application update task is not installed."
+    app_update_manager.request_branch_switch.assert_not_called()
+
+
+def test_application_switch_branch_clears_request_when_task_start_fails():
+    manager = MagicMock()
+    app_update_manager = MagicMock()
+    app_update_manager.get_status.return_value = {"dirty": False}
+    app_update_manager.list_remote_branches.return_value = ["main"]
+    task = MagicMock()
+    task.start.side_effect = RuntimeError("systemd refused app_update.service")
+    app = _build_app(manager)
+    app.extensions["simple_safer_server"].app_update_manager = app_update_manager
+    app.extensions["simple_safer_server"].task_service.get_task.return_value = task
+    user_manager = MagicMock()
+    user_manager.is_admin.return_value = True
+
+    with patch(
+        "simple_safer_server.services.user_manager.UserManager", return_value=user_manager
+    ), app.test_client() as client:
+        with client.session_transaction() as session:
+            session["username"] = "admin"
+
+        response = client.post(
+            "/api/system_updates/application/switch_branch", json={"branch": "main"}
+        )
+
+    assert response.status_code == 500
+    assert response.get_json()["detail"] == "Could not switch application branch."
+    app_update_manager.request_branch_switch.assert_called_once_with("main")
+    task.start.assert_called_once_with()
+    app_update_manager.clear_update_request.assert_called_once_with()
 
 
 def test_application_switch_branch_rejects_dirty_checkout():
