@@ -21,10 +21,22 @@ The uninstaller removes:
 - Disable Schedule restore timer state, helper script, and disabled-timer data
 - the SimpleSaferServer-managed `/etc/fstab` entry
 - Samba users synced from SimpleSaferServer accounts
-- marker-wrapped SimpleSaferServer-managed Samba share blocks
+- SimpleSaferServer include blocks in `/etc/samba/smb.conf`
+- SimpleSaferServer-owned Samba files:
+  `/etc/samba/simple_safer_server_globals.conf` and
+  `/etc/samba/simple_safer_server_shares.conf`
 
-The uninstaller does not remove shared system packages such as Samba, Python, or rclone. It also
-leaves unmanaged or legacy untagged Samba share blocks in `/etc/samba/smb.conf` for safety.
+The owned Samba files are deleted even if `/etc/samba/smb.conf` is missing or has malformed
+SimpleSaferServer include markers. Malformed markers prevent the uninstaller from rewriting
+`smb.conf`, but they do not block cleanup of files that SimpleSaferServer owns by path. When
+markers are malformed, the uninstaller prints a warning with exact manual recovery steps.
+
+After successful cleanup, the uninstaller restarts `smbd` so the running service matches the
+rewritten config. Active Samba file transfers will be interrupted. Discovery services (`nmbd`,
+`wsdd2`) are not restarted because they are shared system services.
+
+The uninstaller does not remove shared system packages or services such as Samba, `wsdd2`, Python,
+or rclone. It also leaves unmanaged Samba share blocks in `/etc/samba/smb.conf` for safety.
 
 If SimpleSaferServer configured Ubuntu Pro Livepatch, uninstall warns that Ubuntu Pro and Livepatch
 state are retained. Review that host-level subscription/security state manually after uninstall.

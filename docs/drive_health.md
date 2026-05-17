@@ -175,7 +175,7 @@ Manual recovery rules:
 - Update `/etc/SimpleSaferServer/config.conf` only if you know the correct `mount_point`, `uuid`, and `usb_id`.
 - Update only the SimpleSaferServer-managed `/etc/fstab` entry.
 - Run `sudo systemctl daemon-reload` after manually changing `/etc/fstab` so systemd forgets the old generated mount unit state.
-- If the mount point changes, also check `/etc/samba/smb.conf`.
+- If the mount point changes, also check `/etc/samba/simple_safer_server_shares.conf` (see [Network File Sharing](network_file_sharing.md)).
 - Do not modify unrelated `/etc/fstab` entries.
 - Back up `/etc/fstab` before editing it manually.
 
@@ -183,7 +183,8 @@ Important file locations:
 
 - App config: `/etc/SimpleSaferServer/config.conf`
 - Managed mount entry: `/etc/fstab`
-- Samba share config: `/etc/samba/smb.conf`
+- Samba main config: `/etc/samba/smb.conf` (includes SimpleSaferServer wiring)
+- Managed share config: `/etc/samba/simple_safer_server_shares.conf`
 
 Example managed `/etc/fstab` entry:
 

@@ -9,7 +9,6 @@ from flask import Flask
 
 from simple_safer_server.services.cloud_backup_service import MegaFolderList
 from simple_safer_server.services.server_identity import ServerIdentityError
-from simple_safer_server.services.smb_manager import SMB_DOCS_URL
 
 
 class FakeCloudBackupService:
@@ -466,7 +465,7 @@ class SetupWizardTests(unittest.TestCase):
     def test_setup_smb_share_surfaces_unmanaged_backup_guidance(self):
         smb_manager = MagicMock()
         smb_manager.ensure_default_backup_share.side_effect = ValueError(
-            f"An unmanaged Samba share named 'backup' already exists. See {SMB_DOCS_URL}"
+            'Samba share "backup" already exists. Rename or remove it, then retry.'
         )
         user_manager = MagicMock()
         user_manager.users = {'admin': {}}
@@ -482,7 +481,9 @@ class SetupWizardTests(unittest.TestCase):
                 )
 
         self.assertFalse(ok)
-        self.assertIn(SMB_DOCS_URL, err)
+        self.assertEqual(
+            err, 'Samba share "backup" already exists. Rename or remove it, then retry.'
+        )
         user_manager.reload_users.assert_called_once_with()
 
     # ------------------------------------------------------------------

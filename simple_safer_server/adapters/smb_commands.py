@@ -15,14 +15,7 @@ class SmbCommandAdapter:
     def _command(self, *parts: str):
         return list(parts)
 
-    def copy_config(self, source: str, backup_path: str) -> None:
-        self._command_runner.run(
-            self._command("cp", source, backup_path),
-            check=True,
-            timeout=SMB_COMMAND_TIMEOUT_SECONDS,
-        )
-
-    def validate_config(self, validator: str, candidate_path: Path):
+    def validate_config(self, validator: str, candidate_path: Path, cwd: Optional[Path] = None):
         if Path(validator).name == "testparm":
             command = self._command(validator, "-s", str(candidate_path))
         else:
@@ -32,6 +25,7 @@ class SmbCommandAdapter:
             capture_output=True,
             text=True,
             timeout=SMB_COMMAND_TIMEOUT_SECONDS,
+            cwd=str(cwd) if cwd is not None else None,
         )
 
     def restart_unit(self, unit_name: str) -> None:

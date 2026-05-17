@@ -27,6 +27,15 @@ curl -fsSL https://sss.chrismin13.com/install.sh | sudo bash -s -- --unsupported
 That override only bypasses the OS-family block. Missing APT/systemd tools, package install
 failures, and service setup failures still stop the install.
 
+The installer prepares SimpleSaferServer-owned Samba include files in `/etc/samba` and starts
+`smbd` as the required file-serving daemon. It also tries to enable `nmbd` for older Windows
+NetBIOS discovery and installs `wsdd2` when the package is available for modern Windows Network
+discovery. Discovery-service problems are reported in the installer summary but do not block Samba
+file serving when `smbd` is active. If `smbd` enable or start commands fail but the service is
+active afterward, the installer continues with a warning so you can fix reboot persistence or
+service state before relying on the server. If `smbd` is not active, the installer stops and points
+you to `systemctl status smbd` and `journalctl -u smbd --no-pager`.
+
 After the installer finishes, open the printed Web UI URL and complete the setup wizard.
 
 For step-by-step installation without the automated installer, use the

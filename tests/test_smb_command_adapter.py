@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 
 from simple_safer_server.adapters.command_runner import CommandRunner
@@ -15,18 +16,23 @@ class RecordingRunner(CommandRunner):
 
 
 class SmbCommandAdapterTests(unittest.TestCase):
-    def test_copy_config_defaults_to_no_sudo(self):
+    def test_validate_config_passes_optional_working_directory(self):
         runner = RecordingRunner()
         adapter = SmbCommandAdapter(command_runner=runner)
 
-        adapter.copy_config("/etc/samba/smb.conf", "/tmp/smb.conf.backup")
+        adapter.validate_config("testparm", Path("/tmp/candidate.conf"), cwd=Path("/etc/samba"))
 
         self.assertEqual(
             runner.calls,
             [
                 (
-                    ["cp", "/etc/samba/smb.conf", "/tmp/smb.conf.backup"],
-                    {"check": True, "timeout": SMB_COMMAND_TIMEOUT_SECONDS},
+                    ["testparm", "-s", "/tmp/candidate.conf"],
+                    {
+                        "capture_output": True,
+                        "text": True,
+                        "timeout": SMB_COMMAND_TIMEOUT_SECONDS,
+                        "cwd": "/etc/samba",
+                    },
                 )
             ],
         )

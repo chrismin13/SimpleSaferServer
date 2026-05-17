@@ -8,6 +8,9 @@ This guide explains how to manually install SimpleSaferServer on a clean Debian 
 
 - Run `sudo apt-get update`.
 - Run `sudo apt-get install -y git python3 python3-pip python3-venv smartmontools samba msmtp rsync curl unzip fdisk ntfs-3g unattended-upgrades`.
+- Optionally run `sudo apt-get install -y wsdd2` for modern Windows Network discovery. Continue
+  without it if your distro release does not provide the package; `smbd` is the required
+  file-serving daemon, while `nmbd` and `wsdd2` are discovery helpers.
 
 ## 2. Install rclone
 
@@ -93,6 +96,23 @@ Install the extracted binary:
 
 ## 8. Set Up the Systemd Service
 
+- Prepare the SimpleSaferServer-owned Samba include layout before starting the web service:
+  ```bash
+  cd /opt/SimpleSaferServer
+  sudo ./venv/bin/python -c "import sys; sys.path.insert(0, '/opt/SimpleSaferServer'); from simple_safer_server.services.samba_layout import SambaLayoutService; SambaLayoutService().ensure_layout()"
+  ```
+  The explicit working directory and import path match the automated installer because the app is
+  copied into `/opt/SimpleSaferServer` rather than installed as a Python package.
+  This creates or refreshes `/etc/samba/simple_safer_server_globals.conf` and
+  `/etc/samba/simple_safer_server_shares.conf` without creating the default `backup` share. The Web
+  UI setup flow creates that share later after it knows the backup mount point.
+- Enable and start Samba file serving: `sudo systemctl enable smbd && sudo systemctl start smbd`.
+- Confirm `smbd` is active with `sudo systemctl is-active smbd`. Do not continue until it reports
+  `active`; SimpleSaferServer depends on this daemon to serve files.
+- Best-effort discovery services can be started with `sudo systemctl enable nmbd wsdd2` and
+  `sudo systemctl start nmbd wsdd2`. Warnings or inactive states for these services mean network
+  discovery may be degraded, but existing SMB clients can still connect directly when `smbd` is
+  active.
 - Copy `simple_safer_server_web.service` to `/etc/systemd/system/simple_safer_server_web.service`.
 - `simple_safer_server_web.service` runs the package module entrypoint with `ExecStart=/opt/SimpleSaferServer/venv/bin/python -m simple_safer_server --host=0.0.0.0 --port=5000 --no-debug`, so `/opt/SimpleSaferServer/venv` must exist before you start the service.
 - The module entrypoint is `simple_safer_server/__main__.py`; it starts the built-in Flask server path, so the `WEB_THREADS` variable has no effect on this systemd unit.

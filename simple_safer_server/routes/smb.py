@@ -3,7 +3,7 @@ from typing import Any
 
 from flask import Blueprint, current_app, request
 
-from simple_safer_server.services.smb_manager import SMB_DOCS_URL
+from simple_safer_server.services.smb_manager import SMB_DOCS_URL, SMBConfigError, SMBOperationError
 from simple_safer_server.services.user_manager import api_admin_required
 from simple_safer_server.web.api import json_data, json_problem, json_request_data
 from simple_safer_server.web.problems import OperationProblem, ValidationProblem
@@ -54,15 +54,31 @@ def api_list_smb_shares():
     try:
         manager = _get_services().smb_manager
         shares = manager.list_managed_shares()
-        unmanaged_shares = manager.list_unmanaged_shares()
+        unmanaged_shares = []
+        unmanaged_shares_verified = True
+        unmanaged_share_verification_error = None
+        try:
+            unmanaged_shares = manager.list_unmanaged_shares()
+        except SMBConfigError as exc:
+            # Managed-share listing is still useful on page load. Treat only
+            # the Effective Samba Config read as unverifiable so the UI can
+            # warn without pretending the unmanaged set is empty.
+            unmanaged_shares_verified = False
+            unmanaged_share_verification_error = str(exc)
         return json_data(
             {
                 "shares": shares,
+                "unmanaged_shares_verified": unmanaged_shares_verified,
                 "unmanaged_shares_detected": bool(unmanaged_shares),
-                "unmanaged_share_count": len(unmanaged_shares),
+                "unmanaged_share_count": (
+                    len(unmanaged_shares) if unmanaged_shares_verified else None
+                ),
                 "unmanaged_share_names": [share["name"] for share in unmanaged_shares],
+                "unmanaged_share_verification_error": unmanaged_share_verification_error,
             }
         )
+    except SMBConfigError as exc:
+        return json_problem(ValidationProblem(str(exc), slug="smb-validation-error"))
     except Exception as exc:
         current_app.logger.error("Error reading SMB shares: %s", exc)
         return json_problem(OperationProblem("Failed to read SMB shares."))
@@ -96,6 +112,8 @@ def api_add_smb_share():
         return json_data({}, message=f"Share {share_name} added successfully.")
     except ValueError as exc:
         return json_problem(ValidationProblem(str(exc), slug="smb-validation-error"))
+    except SMBOperationError as exc:
+        return json_problem(OperationProblem(str(exc), slug="smb-operation-failed"))
     except Exception as exc:
         current_app.logger.error("Error adding SMB share: %s", exc)
         return json_problem(
@@ -131,6 +149,8 @@ def api_edit_smb_share(share_name):
         return json_data({}, message=f"Share {share_name} updated successfully.")
     except ValueError as exc:
         return json_problem(ValidationProblem(str(exc), slug="smb-validation-error"))
+    except SMBOperationError as exc:
+        return json_problem(OperationProblem(str(exc), slug="smb-operation-failed"))
     except Exception as exc:
         current_app.logger.error("Error editing SMB share: %s", exc)
         return json_problem(
@@ -146,6 +166,8 @@ def api_delete_smb_share(share_name):
         return json_data({}, message=f"Share {share_name} deleted successfully.")
     except ValueError as exc:
         return json_problem(ValidationProblem(str(exc), slug="smb-validation-error"))
+    except SMBOperationError as exc:
+        return json_problem(OperationProblem(str(exc), slug="smb-operation-failed"))
     except Exception as exc:
         current_app.logger.error("Error deleting SMB share: %s", exc)
         return json_problem(

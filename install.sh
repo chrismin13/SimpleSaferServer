@@ -386,6 +386,103 @@ install_hdsentinel() {
     echo -e "${GREEN}✔ HDSentinel installed to $HDSENTINEL_BIN.${NC}\n"
 }
 
+install_optional_wsdd2() {
+    echo -e "${YELLOW}Installing optional wsdd2 discovery support...${NC}"
+    if DEBIAN_FRONTEND=noninteractive apt-get install -y wsdd2; then
+        echo -e "${GREEN}✔ wsdd2 installed for modern Windows Network discovery.${NC}\n"
+    else
+        # wsdd2 is absent on some supported Debian-family releases. Samba file
+        # serving must still install cleanly when only discovery is degraded.
+        echo -e "${YELLOW}wsdd2 is unavailable or could not be installed. Continuing without modern Windows discovery.${NC}\n"
+    fi
+}
+
+configure_samba_discovery_services() {
+    local smbd_state=""
+    local nmbd_state=""
+    local wsdd2_state=""
+    local smbd_enable_failed=0
+    local smbd_start_failed=0
+    local nmbd_enable_failed=0
+    local nmbd_start_failed=0
+    local wsdd2_enable_failed=0
+    local wsdd2_start_failed=0
+
+    echo -e "${YELLOW}Configuring Samba file sharing and discovery services...${NC}"
+
+    # smbd is the required file-serving daemon. Enable/start failures are not
+    # fatal by themselves because a unit can still be active after a manual
+    # start or distro-specific boot policy; the final active state is the gate.
+    if ! systemctl enable smbd; then
+        smbd_enable_failed=1
+    fi
+    if ! systemctl start smbd; then
+        smbd_start_failed=1
+    fi
+    if ! systemctl is-active --quiet smbd; then
+        echo -e "${RED}ERROR: smbd is not active after start.${NC}"
+        echo -e "${RED}Samba file serving is required, so installation cannot continue safely.${NC}"
+        echo -e "${RED}Run 'systemctl status smbd' and 'journalctl -u smbd --no-pager' to inspect the failure, then rerun the installer after smbd can start.${NC}"
+        return 1
+    fi
+    if [ "$smbd_enable_failed" -eq 1 ]; then
+        echo -e "${YELLOW}WARNING: smbd is active, but systemctl enable smbd failed. File sharing works now, but it may not survive reboot until boot enablement is fixed.${NC}"
+    fi
+    if [ "$smbd_start_failed" -eq 1 ]; then
+        echo -e "${YELLOW}WARNING: smbd is active, but systemctl start smbd failed. File sharing works now, but review the service state before relying on it.${NC}"
+    fi
+
+    if ! systemctl enable nmbd; then
+        nmbd_enable_failed=1
+    fi
+    if ! systemctl start nmbd; then
+        nmbd_start_failed=1
+    fi
+    if [ "$nmbd_enable_failed" -eq 1 ] || [ "$nmbd_start_failed" -eq 1 ]; then
+        echo -e "${YELLOW}nmbd could not be enabled or started. Continuing with legacy NetBIOS discovery degraded.${NC}"
+    fi
+    if ! systemctl is-active --quiet nmbd; then
+        echo -e "${YELLOW}nmbd is not active. Legacy NetBIOS discovery may be unavailable.${NC}"
+    fi
+
+    # Try the packaged unit directly. Missing wsdd2 units are non-fatal because
+    # wsdd2 is optional and package availability varies by distro release.
+    if ! systemctl enable wsdd2; then
+        wsdd2_enable_failed=1
+    fi
+    if ! systemctl start wsdd2; then
+        wsdd2_start_failed=1
+    fi
+    if [ "$wsdd2_enable_failed" -eq 1 ] || [ "$wsdd2_start_failed" -eq 1 ]; then
+        echo -e "${YELLOW}wsdd2 could not be enabled or started. Continuing with modern Windows discovery degraded.${NC}"
+    fi
+    if ! systemctl is-active --quiet wsdd2; then
+        echo -e "${YELLOW}wsdd2 is not active or unavailable. Modern Windows Network discovery may be unavailable.${NC}"
+    fi
+
+    if systemctl is-active --quiet smbd; then
+        smbd_state="active"
+    else
+        smbd_state="inactive"
+    fi
+    if systemctl is-active --quiet nmbd; then
+        nmbd_state="active"
+    else
+        nmbd_state="inactive"
+    fi
+    if systemctl is-active --quiet wsdd2; then
+        wsdd2_state="active"
+    else
+        wsdd2_state="inactive"
+    fi
+
+    echo -e "${BLUE}Samba service summary:${NC}"
+    echo -e "  smbd: ${smbd_state}"
+    echo -e "  nmbd: ${nmbd_state}"
+    echo -e "  wsdd2: ${wsdd2_state}"
+    echo -e "${GREEN}✔ Samba service setup complete.${NC}\n"
+}
+
 # 1. Install system dependencies and the base Python runtime using apt.
 #    The app itself runs from a dedicated virtualenv so older Debian releases
 #    are not blocked by missing distro packages like python3-flask-socketio.
@@ -396,6 +493,7 @@ echo "msmtp msmtp/apply_apparmor boolean true" | debconf-set-selections
 DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-pip python3-venv python3-flask python3-psutil python3-cryptography smartmontools samba msmtp curl unzip rsync fdisk ntfs-3g unattended-upgrades
 
 echo -e "${GREEN}✔ System and Python dependencies installed.${NC}\n"
+install_optional_wsdd2
 
 PYTHON_RUNTIME_VERSION="$(python_runtime_version)"
 if python_requires_legacy_requirements; then
@@ -457,7 +555,7 @@ install_hdsentinel
 echo -e "${YELLOW}Step 4: Copying application files...${NC}"
 mkdir -p "$APP_DIR"
 mkdir -p "$DATA_DIR"
-rsync -a --delete --exclude='venv' --exclude='__pycache__' --exclude='*.pyc' --exclude='*.pyo' --exclude='*.log' --exclude='telemetry.csv' --exclude='harddrive_model' --exclude='static' --exclude='templates' ./ "$APP_DIR/"
+rsync -a --delete --exclude='venv' --exclude='__pycache__' --exclude='*.pyc' --exclude='*.pyo' --exclude='*.log' --exclude='telemetry.csv' --exclude='harddrive_model' --exclude='/static' --exclude='/templates' ./ "$APP_DIR/"
 echo -e "${GREEN}✔ Application files copied.${NC}\n"
 
 # 5. Copy static and templates directories
@@ -505,16 +603,41 @@ if ! same_file harddrive_model "$MODEL_DIR"; then
 fi
 echo -e "${GREEN}✔ Model files copied.${NC}\n"
 
-# 9. Install/refresh systemd service for Flask app
-echo -e "${YELLOW}Step 9: Setting up systemd service...${NC}"
+# 9. Prepare the SSS-owned Samba include layout and discovery services.
+echo -e "${YELLOW}Step 9: Preparing Samba file sharing and discovery...${NC}"
+if "$VENV_DIR/bin/python3" -c "
+import sys
+sys.path.insert(0, '$APP_DIR')
+from simple_safer_server.services.runtime import get_runtime
+from simple_safer_server.services.samba_layout import SambaLayoutService
+
+rt = get_runtime()
+SambaLayoutService(runtime=rt).ensure_layout()
+"; then
+  echo -e "${GREEN}✔ Samba include layout prepared.${NC}"
+else
+  echo -e "${RED}ERROR: Failed to prepare the SimpleSaferServer Samba include layout.${NC}"
+  echo -e "${RED}Samba must validate before installation can continue safely.${NC}"
+  exit 1
+fi
+if configure_samba_discovery_services; then
+  echo -e "${GREEN}✔ Required Samba file serving is active.${NC}"
+else
+  echo -e "${RED}ERROR: Failed to start required Samba file serving.${NC}"
+  echo -e "${RED}Fix smbd with 'systemctl status smbd' and 'journalctl -u smbd --no-pager', then rerun the installer.${NC}"
+  exit 1
+fi
+
+# 10. Install/refresh systemd service for Flask app
+echo -e "${YELLOW}Step 10: Setting up systemd service...${NC}"
 cp simple_safer_server_web.service "$SERVICE_FILE"
 systemctl daemon-reload
 systemctl enable simple_safer_server_web.service
 systemctl restart simple_safer_server_web.service
 echo -e "${GREEN}✔ Systemd service enabled and started.${NC}\n"
 
-# 10. Refresh procedurally generated background services
-echo -e "${YELLOW}Step 10: Refreshing procedural background services...${NC}"
+# 11. Refresh procedurally generated background services
+echo -e "${YELLOW}Step 11: Refreshing procedural background services...${NC}"
 if "$VENV_DIR/bin/python3" -c "
 import sys
 sys.path.insert(0, '$APP_DIR')
@@ -547,8 +670,8 @@ else
   exit 1
 fi
 
-# 11. Open port 5000 in firewall if active
-echo -e "${YELLOW}Step 11: Configuring firewall (if active)...${NC}"
+# 12. Open port 5000 in firewall if active
+echo -e "${YELLOW}Step 12: Configuring firewall (if active)...${NC}"
 if command -v ufw >/dev/null 2>&1 && ufw status | grep -q 'Status: active'; then
   ufw allow 5000/tcp
 echo -e "${GREEN}✔ Port 5000 opened in ufw.${NC}"
@@ -564,7 +687,7 @@ echo -e "${YELLOW}No active firewall detected or configured. Skipping firewall s
 fi
 echo
 
-# 12. Print all network interface IPs for user access
+# 13. Print all network interface IPs for user access
 echo -e "${BLUE}===============================================${NC}"
 echo -e "${BLUE}  SimpleSaferServer Web UI Access URLs${NC}"
 echo -e "${BLUE}===============================================${NC}"

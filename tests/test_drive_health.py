@@ -230,7 +230,9 @@ class DriveHealthTests(unittest.TestCase):
                 ("backup", "mount_point"): "/media/backup",
             }.get((section, key), default)
         )
-        system_utils = SimpleNamespace(is_mounted=lambda mount_point: mount_point == "/media/backup")
+        system_utils = SimpleNamespace(
+            is_mounted=lambda mount_point: mount_point == "/media/backup"
+        )
         runtime = SimpleNamespace(is_fake=False, default_mount_point="/media/backup")
         smart = {"smart_194_raw": 31.0}
         hdsentinel_result = {

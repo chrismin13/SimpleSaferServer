@@ -23,7 +23,6 @@ class Runtime:
     tasks_log_dir: Path
     rclone_config_dir: Path
     samba_dir: Path
-    samba_backup_dir: Path
     systemd_dir: Path
     bin_dir: Path
     backup_drive_dir: Path
@@ -70,7 +69,6 @@ class FakeState:
         self.runtime.tasks_log_dir.mkdir(parents=True, exist_ok=True)
         self.runtime.rclone_config_dir.mkdir(parents=True, exist_ok=True)
         self.runtime.samba_dir.mkdir(parents=True, exist_ok=True)
-        self.runtime.samba_backup_dir.mkdir(parents=True, exist_ok=True)
         self.runtime.systemd_dir.mkdir(parents=True, exist_ok=True)
         self.runtime.bin_dir.mkdir(parents=True, exist_ok=True)
         self.runtime.backup_drive_dir.mkdir(parents=True, exist_ok=True)
@@ -86,7 +84,7 @@ class FakeState:
             "selected_drive": "/dev/fakebackup1",
             "uuid": "FAKE-UUID-0001",
             "usb_id": "FAKE:0001",
-            "smb_services": {"smbd": "active", "nmbd": "active"},
+            "smb_services": {"smbd": "active", "nmbd": "active", "wsdd2": "active"},
             "tasks": {
                 task_name: {
                     "status": "Not Run Yet",
@@ -154,14 +152,24 @@ class FakeState:
             return False
         return bool(state.get("mounted"))
 
-    def set_smb_services(self, smbd: str, nmbd: str) -> None:
+    def set_smb_services(self, smbd: str, nmbd: str, wsdd2: str = "active") -> None:
         with self._lock:
             state = self.load()
-            state["smb_services"] = {"smbd": smbd, "nmbd": nmbd}
+            state["smb_services"] = {"smbd": smbd, "nmbd": nmbd, "wsdd2": wsdd2}
             self.save(state)
 
     def get_smb_services(self) -> Dict[str, str]:
-        return self.load().get("smb_services", {"smbd": "active", "nmbd": "active"})
+        services = self.load().get(
+            "smb_services",
+            {"smbd": "active", "nmbd": "active", "wsdd2": "active"},
+        )
+        # Fake state can survive across branch changes; normalize old two-unit
+        # snapshots so UI tests and manual fake-mode sessions match real status.
+        return {
+            "smbd": services.get("smbd", "active"),
+            "nmbd": services.get("nmbd", "active"),
+            "wsdd2": services.get("wsdd2", "active"),
+        }
 
     def set_task_state(
         self,
@@ -355,7 +363,6 @@ def get_runtime() -> Runtime:
             tasks_log_dir=data_dir / "logs" / "tasks",
             rclone_config_dir=data_dir / "rclone",
             samba_dir=data_dir / "samba",
-            samba_backup_dir=data_dir / "samba" / "backups",
             systemd_dir=data_dir / "systemd",
             bin_dir=data_dir / "bin",
             backup_drive_dir=data_dir / "backup-drive",
@@ -381,7 +388,6 @@ def get_runtime() -> Runtime:
             tasks_log_dir=Path("/var/log/SimpleSaferServer"),
             rclone_config_dir=Path.home() / ".config" / "rclone",
             samba_dir=Path("/etc/samba"),
-            samba_backup_dir=Path("/etc/samba/backups"),
             systemd_dir=Path("/etc/systemd/system"),
             bin_dir=Path("/usr/local/bin"),
             backup_drive_dir=Path("/media/backup"),

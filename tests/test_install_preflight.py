@@ -358,6 +358,216 @@ class InstallPreflightTests(unittest.TestCase):
         self.assertIn("rsync -a --delete templates", text)
         self.assertIn("rsync -a --delete harddrive_model/", text)
 
+    def test_core_dependency_install_does_not_include_optional_wsdd_daemons(self):
+        text = INSTALL_SCRIPT.read_text()
+        core_install_line = next(
+            line for line in text.splitlines() if "apt-get install -y python3 " in line
+        )
+
+        self.assertIn("samba", core_install_line)
+        self.assertNotIn("wsdd2", core_install_line)
+        self.assertNotIn("wsdd", core_install_line)
+
+    def test_optional_wsdd2_install_warns_and_continues(self):
+        snippet = textwrap.dedent(
+            f"""\
+            set -e
+            {self.installer_function("install_optional_wsdd2")}
+            apt-get() {{
+                printf '%s\\n' "$*" >> "$CALLS_PATH"
+                return 42
+            }}
+            export CALLS_PATH="{Path(tempfile.gettempdir()) / "sss-wsdd2-install-calls"}"
+            rm -f "$CALLS_PATH"
+            install_optional_wsdd2
+            cat "$CALLS_PATH"
+            """
+        )
+
+        result = subprocess.run(
+            ["bash", "-lc", snippet],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertIn("install -y wsdd2", result.stdout)
+        self.assertIn("Continuing without modern Windows discovery", result.stdout)
+
+    def test_samba_layout_helper_invoked_without_creating_backup_share(self):
+        text = INSTALL_SCRIPT.read_text()
+
+        self.assertIn("SambaLayoutService(runtime=rt).ensure_layout()", text)
+        self.assertNotIn("create_share('backup'", text)
+        self.assertNotIn('create_share("backup"', text)
+
+    def test_samba_services_fail_for_smbd_and_continue_for_discovery(self):
+        snippet = textwrap.dedent(
+            f"""\
+            set -e
+            {self.installer_function("configure_samba_discovery_services")}
+            systemctl() {{
+                printf '%s\\n' "$*" >> "$CALLS_PATH"
+                if [ "$1" = "is-active" ] && [ "$2" = "--quiet" ] && [ "$3" = "smbd" ]; then
+                    return 1
+                fi
+                return 0
+            }}
+            command() {{
+                if [ "$1" = "-v" ] && [ "$2" = "systemctl" ]; then
+                    return 0
+                fi
+                builtin command "$@"
+            }}
+            export CALLS_PATH="{Path(tempfile.gettempdir()) / "sss-samba-service-calls"}"
+            rm -f "$CALLS_PATH"
+            configure_samba_discovery_services
+            """
+        )
+
+        result = subprocess.run(
+            ["bash", "-lc", snippet],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("ERROR: smbd is not active", result.stdout)
+        self.assertIn("systemctl status smbd", result.stdout)
+
+    def test_top_level_installer_honors_samba_service_setup_failure(self):
+        text = INSTALL_SCRIPT.read_text()
+        samba_step = text[
+            text.index("# 9. Prepare the SSS-owned Samba include layout") : text.index(
+                "# 10. Install/refresh systemd service for Flask app"
+            )
+        ]
+
+        self.assertIn("if configure_samba_discovery_services; then", samba_step)
+        self.assertIn("ERROR: Failed to start required Samba file serving.", samba_step)
+        self.assertIn("exit 1", samba_step)
+
+    def test_samba_service_setup_warns_when_smbd_enable_fails_but_active(self):
+        snippet = textwrap.dedent(
+            f"""\
+            set -e
+            {self.installer_function("configure_samba_discovery_services")}
+            systemctl() {{
+                printf '%s\\n' "$*" >> "$CALLS_PATH"
+                case "$*" in
+                    "enable smbd") return 1 ;;
+                    "is-active --quiet smbd") return 0 ;;
+                    *) return 0 ;;
+                esac
+            }}
+            command() {{
+                if [ "$1" = "-v" ] && [ "$2" = "systemctl" ]; then
+                    return 0
+                fi
+                builtin command "$@"
+            }}
+            export CALLS_PATH="{Path(tempfile.gettempdir()) / "sss-smbd-enable-warning-calls"}"
+            rm -f "$CALLS_PATH"
+            configure_samba_discovery_services
+            cat "$CALLS_PATH"
+            """
+        )
+
+        result = subprocess.run(
+            ["bash", "-lc", snippet],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertIn("WARNING: smbd is active, but systemctl enable smbd failed", result.stdout)
+        self.assertIn("smbd: active", result.stdout)
+
+    def test_samba_service_setup_warns_when_smbd_start_fails_but_active(self):
+        snippet = textwrap.dedent(
+            f"""\
+            set -e
+            {self.installer_function("configure_samba_discovery_services")}
+            systemctl() {{
+                printf '%s\\n' "$*" >> "$CALLS_PATH"
+                case "$*" in
+                    "start smbd") return 1 ;;
+                    "is-active --quiet smbd") return 0 ;;
+                    *) return 0 ;;
+                esac
+            }}
+            command() {{
+                if [ "$1" = "-v" ] && [ "$2" = "systemctl" ]; then
+                    return 0
+                fi
+                builtin command "$@"
+            }}
+            export CALLS_PATH="{Path(tempfile.gettempdir()) / "sss-smbd-start-warning-calls"}"
+            rm -f "$CALLS_PATH"
+            configure_samba_discovery_services
+            cat "$CALLS_PATH"
+            """
+        )
+
+        result = subprocess.run(
+            ["bash", "-lc", snippet],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertIn("WARNING: smbd is active, but systemctl start smbd failed", result.stdout)
+        self.assertIn("smbd: active", result.stdout)
+
+    def test_samba_services_summary_reports_best_effort_discovery(self):
+        snippet = textwrap.dedent(
+            f"""\
+            set -e
+            {self.installer_function("configure_samba_discovery_services")}
+            systemctl() {{
+                printf '%s\\n' "$*" >> "$CALLS_PATH"
+                case "$*" in
+                    "is-active --quiet smbd") return 0 ;;
+                    "is-active --quiet nmbd") return 1 ;;
+                    "is-active --quiet wsdd2") return 1 ;;
+                    *) return 0 ;;
+                esac
+            }}
+            command() {{
+                if [ "$1" = "-v" ] && [ "$2" = "systemctl" ]; then
+                    return 0
+                fi
+                builtin command "$@"
+            }}
+            export CALLS_PATH="{Path(tempfile.gettempdir()) / "sss-samba-summary-calls"}"
+            rm -f "$CALLS_PATH"
+            configure_samba_discovery_services
+            cat "$CALLS_PATH"
+            """
+        )
+
+        result = subprocess.run(
+            ["bash", "-lc", snippet],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertIn("enable smbd", result.stdout)
+        self.assertIn("start smbd", result.stdout)
+        self.assertIn("enable nmbd", result.stdout)
+        self.assertIn("start nmbd", result.stdout)
+        self.assertIn("enable wsdd2", result.stdout)
+        self.assertIn("start wsdd2", result.stdout)
+        self.assertIn("smbd: active", result.stdout)
+        self.assertIn("nmbd: inactive", result.stdout)
+        self.assertIn("wsdd2: inactive", result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

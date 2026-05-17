@@ -18,11 +18,16 @@ VOLATILE_DIR="/run/SimpleSaferServer"
 LOG_DIR="/var/log/SimpleSaferServer"
 SYSTEMD_DIR="/etc/systemd/system"
 SMB_CONF="/etc/samba/smb.conf"
+SSS_SAMBA_GLOBALS_FILE="/etc/samba/simple_safer_server_globals.conf"
+SSS_SAMBA_SHARES_FILE="/etc/samba/simple_safer_server_shares.conf"
+SSS_SAMBA_BACKUP_DIR="/etc/samba/backups"
 APT_AUTO_UPGRADES_CONF="/etc/apt/apt.conf.d/20auto-upgrades"
 FSTAB_MARKER="SimpleSaferServer managed backup drive"
 LEGACY_FSTAB_MARKER="SimpleSaferServer"
-MANAGED_SHARE_BEGIN_PREFIX="# BEGIN SimpleSaferServer share: "
-MANAGED_SHARE_END_PREFIX="# END SimpleSaferServer share: "
+SSS_GLOBALS_INCLUDE_BEGIN="# BEGIN SimpleSaferServer global include"
+SSS_GLOBALS_INCLUDE_END="# END SimpleSaferServer global include"
+SSS_SHARES_INCLUDE_BEGIN="# BEGIN SimpleSaferServer shares include"
+SSS_SHARES_INCLUDE_END="# END SimpleSaferServer shares include"
 SCRIPT_FILES=(
   check_mount.sh
   check_health.sh
@@ -246,60 +251,85 @@ PY
     fi
 }
 
+remove_owned_samba_include_files() {
+    # These files are app-owned by path, so they are safe to remove even when
+    # smb.conf is absent or too malformed for an automated rewrite.
+    rm -f "$SSS_SAMBA_GLOBALS_FILE" "$SSS_SAMBA_SHARES_FILE"
+    # Legacy installs created a backup directory for smb.conf snapshots.
+    # Remove it only if empty; preserve old backups the admin might want.
+    rmdir "$SSS_SAMBA_BACKUP_DIR" 2>/dev/null || true
+}
+
 cleanup_managed_smb_shares() {
     local cleaned=""
 
+    echo "Removing SimpleSaferServer-owned Samba include files..."
+
     if [ ! -f "$SMB_CONF" ]; then
+        remove_owned_samba_include_files
         return 0
     fi
 
     cleaned="$(make_atomic_temp_file "$SMB_CONF")"
 
-    echo "Removing SimpleSaferServer-managed Samba shares..."
     backup_file_if_present "$SMB_CONF" "uninstall_backup"
-    require_python3 "remove managed Samba shares" || return 1
+    require_python3 "remove SimpleSaferServer Samba include blocks" || return 1
 
-    if ! python3 - "$SMB_CONF" "$cleaned" "$MANAGED_SHARE_BEGIN_PREFIX" "$MANAGED_SHARE_END_PREFIX" <<'PY'
+    if ! python3 - "$SMB_CONF" "$cleaned" "$SSS_GLOBALS_INCLUDE_BEGIN" "$SSS_GLOBALS_INCLUDE_END" "$SSS_SHARES_INCLUDE_BEGIN" "$SSS_SHARES_INCLUDE_END" <<'PY'
 import sys
 
-source, cleaned, begin_prefix, end_prefix = sys.argv[1:]
+(
+    source,
+    cleaned,
+    globals_begin,
+    globals_end,
+    shares_begin,
+    shares_end,
+) = sys.argv[1:]
 with open(source, "r", encoding="utf-8") as handle:
     lines = handle.readlines()
 
+plain_blocks = {
+    globals_begin: globals_end,
+    shares_begin: shares_end,
+}
+
 output = []
-in_managed_share = False
-current_share_name = ""
+index = 0
 
-for line in lines:
-    stripped = line.lstrip()
-    if stripped.startswith(begin_prefix):
-        share_name = stripped[len(begin_prefix):].strip()
-        if in_managed_share or not share_name:
+while index < len(lines):
+    stripped = lines[index].strip()
+
+    if stripped in plain_blocks.values():
+        raise SystemExit(1)
+
+    if stripped in plain_blocks:
+        end_marker = plain_blocks[stripped]
+        index += 1
+        while index < len(lines):
+            inner_stripped = lines[index].strip()
+            if inner_stripped == stripped:
+                raise SystemExit(1)
+            if inner_stripped == end_marker:
+                index += 1
+                break
+            index += 1
+        else:
             raise SystemExit(1)
-        in_managed_share = True
-        current_share_name = share_name
         continue
 
-    if stripped.startswith(end_prefix):
-        share_name = stripped[len(end_prefix):].strip()
-        if not in_managed_share or not share_name or share_name != current_share_name:
-            raise SystemExit(1)
-        in_managed_share = False
-        current_share_name = ""
-        continue
-
-    if not in_managed_share:
-        output.append(line)
-
-if in_managed_share:
-    raise SystemExit(1)
+    output.append(lines[index])
+    index += 1
 
 with open(cleaned, "w", encoding="utf-8") as handle:
     handle.writelines(output)
 PY
     then
         rm -f "$cleaned"
-        echo "ERROR: Refusing to rewrite $SMB_CONF because the SimpleSaferServer share markers are malformed."
+        remove_owned_samba_include_files
+        echo "ERROR: Refusing to rewrite $SMB_CONF because the SimpleSaferServer include markers are malformed."
+        echo "WARNING: The owned include files were deleted, but $SMB_CONF may still contain include lines referencing them."
+        echo "To fix Samba manually, remove lines referencing simple_safer_server_globals.conf and simple_safer_server_shares.conf from $SMB_CONF, then run: systemctl restart smbd"
         return 1
     fi
 
@@ -322,8 +352,13 @@ PY
         return 1
     fi
 
-    systemctl restart smbd 2>/dev/null || true
-    systemctl restart nmbd 2>/dev/null || true
+    remove_owned_samba_include_files
+
+    # Restart smbd so the running service matches the rewritten smb.conf.
+    # Best-effort: warn and continue if it fails.
+    if ! systemctl restart smbd 2>/dev/null; then
+        echo "WARNING: Could not restart smbd. The running Samba service may still reference removed configuration until the next reboot or manual restart."
+    fi
 }
 
 remove_git_safe_directory() {
@@ -350,6 +385,7 @@ main() {
     fi
 
     echo "Starting SimpleSaferServer uninstallation..."
+    echo -e "${YELLOW}Active Samba file transfers will be interrupted.${NC}"
 
     # Read this before CONFIG_DIR is removed so the final report can tell the
     # admin about OS-level apt settings that intentionally survive uninstall.
@@ -437,10 +473,10 @@ main() {
 
     echo -e "${GREEN}Uninstallation complete!${NC}"
     echo "SimpleSaferServer application files, services, timers, data, and managed mount entries have been removed."
-    echo "Shared system packages such as Samba, Python, and rclone were left installed."
+    echo "Shared system packages and services such as Samba, wsdd2, Python, and rclone were left installed."
     echo "Samba user accounts created from SimpleSaferServer users were removed."
-    echo "Marker-wrapped SimpleSaferServer-managed Samba share blocks were removed from $SMB_CONF."
-    echo "Unmanaged or legacy untagged Samba share blocks were left untouched."
+    echo "SimpleSaferServer-owned Samba include files and include blocks were removed."
+    echo "Unmanaged Samba share blocks in $SMB_CONF were left untouched."
     if [ "$apt_updates_managed" = "true" ]; then
         echo "SimpleSaferServer had managed apt periodic settings in $APT_AUTO_UPGRADES_CONF."
         echo "That file was left in place. Review it manually if you want to disable automatic apt updates."

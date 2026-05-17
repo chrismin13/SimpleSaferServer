@@ -35,14 +35,21 @@
       <div class="d-flex items-center gap-2">
         <span class="badge badge-neutral" id="smbdStatus">Checking…</span>
         <span style="font-size: var(--text-sm);">SMB Daemon (smbd)</span>
-        <span class="tooltip-trigger text-muted" data-tooltip="Handles file and printer sharing between Windows and Linux systems">
+        <span class="tooltip-trigger text-muted" data-tooltip="serves file shares to SMB clients.">
           <i class="fas fa-info-circle"></i>
         </span>
       </div>
       <div class="d-flex items-center gap-2">
         <span class="badge badge-neutral" id="nmbdStatus">Checking…</span>
-        <span style="font-size: var(--text-sm);">NetBIOS Daemon (nmbd)</span>
-        <span class="tooltip-trigger text-muted" data-tooltip="Handles network discovery and name resolution for Windows compatibility">
+        <span style="font-size: var(--text-sm);">NetBIOS Discovery (nmbd)</span>
+        <span class="tooltip-trigger text-muted" data-tooltip="helps older Windows network browsing find this server.">
+          <i class="fas fa-info-circle"></i>
+        </span>
+      </div>
+      <div class="d-flex items-center gap-2">
+        <span class="badge badge-neutral" id="wsdd2Status">Checking…</span>
+        <span style="font-size: var(--text-sm);">Windows Discovery (wsdd2)</span>
+        <span class="tooltip-trigger text-muted" data-tooltip="helps modern Windows network browsing find this server.">
           <i class="fas fa-info-circle"></i>
         </span>
       </div>
@@ -305,8 +312,8 @@
     </div>
     <div class="modal-body">
       <p class="text-secondary mb-4">
-        SimpleSaferServer found Samba share definitions in <code>/etc/samba/smb.conf</code> that are still active,
-        but are not marked as SimpleSaferServer-managed. They remain read-only here.
+        SimpleSaferServer found active Samba shares in the Effective Samba Config that are not
+        SimpleSaferServer-managed. They remain read-only here.
       </p>
 
       <div class="table-container mb-4">
@@ -559,22 +566,38 @@ function loadShares() {
       shares = data.shares;
       unmanagedShareNames = data.unmanaged_share_names || [];
       renderUnmanagedShareState(
+        data.unmanaged_shares_verified !== false,
         Boolean(data.unmanaged_shares_detected),
         data.unmanaged_share_count || unmanagedShareNames.length,
-        unmanagedShareNames
+        unmanagedShareNames,
+        data.unmanaged_share_verification_error || ''
       );
       renderSharesTable();
     })
     .catch(() => showAlert('Failed to load shares', 'danger'));
 }
 
-function renderUnmanagedShareState(hasUnmanagedShares, count, names) {
+function renderUnmanagedShareState(isVerified, hasUnmanagedShares, count, names, verificationError) {
   const button = document.getElementById('unmanagedSharesBtn');
   const label = document.getElementById('unmanagedSharesBtnLabel');
   const list = document.getElementById('unmanagedSharesList');
   if (!button || !label || !list) return;
 
   list.innerHTML = '';
+
+  if (!isVerified) {
+    label.textContent = 'Unmanaged share verification failed';
+    button.classList.remove('d-none');
+    list.innerHTML = '';
+
+    const row = document.createElement('tr');
+    const cell = document.createElement('td');
+    cell.className = 'text-warning';
+    cell.textContent = verificationError || 'Could not verify unmanaged Samba shares.';
+    row.appendChild(cell);
+    list.appendChild(row);
+    return;
+  }
 
   if (!hasUnmanagedShares || !count) {
     button.classList.add('d-none');
@@ -818,6 +841,15 @@ function deleteShare() {
     .catch((error) => { window.AsyncButtonState.error(deleteBtn); showAlert(error.message || 'Failed to delete share', 'danger'); });
 }
 
+// Three-tier badge for discovery services: active → green, inactive → yellow,
+// unavailable (package not installed) → grey. Keeps the UI from alarming admins
+// about best-effort services that simply aren't present on the system.
+function discoveryBadgeClass(status) {
+  if (status === 'active') return 'badge-success';
+  if (status === 'inactive') return 'badge-warning';
+  return 'badge-neutral';
+}
+
 function loadSMBStatus() {
   window.ApiClient.fetchJson('/api/smb/status')
     .then(({ data }) => {
@@ -826,10 +858,18 @@ function loadSMBStatus() {
       smbdSt.className = data.smbd === 'active' ? 'badge badge-success' : 'badge badge-danger';
       const nmbdSt = document.getElementById('nmbdStatus');
       nmbdSt.textContent = data.nmbd;
-      nmbdSt.className = data.nmbd === 'active' ? 'badge badge-success' : 'badge badge-danger';
-      if (data.smbd === 'active' && data.nmbd === 'active') updateOverallStatus('success', 'Operational', 'File sharing is working properly');
-      else if (data.smbd === 'active' || data.nmbd === 'active') updateOverallStatus('warning', 'Partial', 'Some services not running');
-      else updateOverallStatus('danger', 'Down', 'File sharing services are not running');
+      nmbdSt.className = 'badge ' + discoveryBadgeClass(data.nmbd);
+      const wsdd2St = document.getElementById('wsdd2Status');
+      wsdd2St.textContent = data.wsdd2;
+      wsdd2St.className = 'badge ' + discoveryBadgeClass(data.wsdd2);
+
+      // smbd is the file-serving path; discovery daemons only decide whether
+      // Windows network browsing is complete or degraded.
+      // 'unavailable' means the package is not installed — not degradation.
+      const discoveryOk = (s) => s === 'active' || s === 'unavailable';
+      if (data.smbd === 'active' && discoveryOk(data.nmbd) && discoveryOk(data.wsdd2)) updateOverallStatus('success', 'Operational', 'File sharing and discovery are working');
+      else if (data.smbd === 'active') updateOverallStatus('warning', 'Partial', 'File sharing is active, but discovery is incomplete');
+      else updateOverallStatus('danger', 'Down', 'File sharing is not running');
     })
     .catch(() => updateOverallStatus('error', 'Error', 'Unable to check status'));
 }
