@@ -472,8 +472,10 @@ configure_samba_discovery_services() {
     fi
     if systemctl is-active --quiet wsdd2; then
         wsdd2_state="active"
-    else
+    elif systemctl cat wsdd2 >/dev/null 2>&1; then
         wsdd2_state="inactive"
+    else
+        wsdd2_state="unavailable"
     fi
 
     echo -e "${BLUE}Samba service summary:${NC}"

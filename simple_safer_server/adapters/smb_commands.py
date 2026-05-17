@@ -36,10 +36,29 @@ class SmbCommandAdapter:
         )
 
     def unit_status(self, unit_name: str) -> str:
+        """Return 'active', 'inactive', or 'unavailable' for a systemd unit.
+
+        'unavailable' means the unit file does not exist on this system (e.g.
+        wsdd2 on distros that don't package it).  We distinguish this from
+        'inactive' (unit exists but is stopped) by probing with systemctl cat.
+        """
         result = self._command_runner.run(
             self._command("systemctl", "is-active", unit_name),
             capture_output=True,
             text=True,
             timeout=SMB_COMMAND_TIMEOUT_SECONDS,
         )
-        return result.stdout.strip()
+        status = result.stdout.strip()
+        if status == "active":
+            return "active"
+        # 'inactive' from is-active covers both stopped units and missing units.
+        # Check whether the unit file actually exists on disk.
+        cat_result = self._command_runner.run(
+            self._command("systemctl", "cat", unit_name),
+            capture_output=True,
+            text=True,
+            timeout=SMB_COMMAND_TIMEOUT_SECONDS,
+        )
+        if cat_result.returncode != 0:
+            return "unavailable"
+        return status

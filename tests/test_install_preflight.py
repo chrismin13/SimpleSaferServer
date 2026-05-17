@@ -568,6 +568,46 @@ class InstallPreflightTests(unittest.TestCase):
         self.assertIn("nmbd: inactive", result.stdout)
         self.assertIn("wsdd2: inactive", result.stdout)
 
+    def test_samba_services_summary_reports_unavailable_when_unit_missing(self):
+        snippet = textwrap.dedent(
+            f"""\
+            set -e
+            {self.installer_function("configure_samba_discovery_services")}
+            systemctl() {{
+                printf '%s\\n' "$*" >> "$CALLS_PATH"
+                case "$*" in
+                    "is-active --quiet smbd") return 0 ;;
+                    "is-active --quiet nmbd") return 0 ;;
+                    "is-active --quiet wsdd2") return 1 ;;
+                    "cat wsdd2") return 1 ;;
+                    *) return 0 ;;
+                esac
+            }}
+            command() {{
+                if [ "$1" = "-v" ] && [ "$2" = "systemctl" ]; then
+                    return 0
+                fi
+                builtin command "$@"
+            }}
+            export CALLS_PATH="{Path(tempfile.gettempdir()) / "sss-samba-unavailable-calls"}"
+            rm -f "$CALLS_PATH"
+            configure_samba_discovery_services
+            cat "$CALLS_PATH"
+            """
+        )
+
+        result = subprocess.run(
+            ["bash", "-lc", snippet],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertIn("smbd: active", result.stdout)
+        self.assertIn("nmbd: active", result.stdout)
+        self.assertIn("wsdd2: unavailable", result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()
