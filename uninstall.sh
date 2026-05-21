@@ -510,6 +510,10 @@ main() {
     fi
 }
 
-if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+# Execute main if the script is run directly or piped into bash (e.g. via curl).
+# We use "${BASH_SOURCE[0]:-}" to avoid "unbound variable" errors under "set -u"
+# when BASH_SOURCE is empty (which happens when reading from standard input).
+if [ -z "${BASH_SOURCE[0]:-}" ] || [ "${BASH_SOURCE[0]:-}" = "$0" ]; then
     main "$@"
 fi
+

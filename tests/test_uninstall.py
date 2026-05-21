@@ -830,6 +830,22 @@ class UninstallScriptTests(unittest.TestCase):
 
         self.assertEqual(remaining.stdout.strip().splitlines(), ["/srv/other"])
 
+    def test_uninstall_piped_to_bash_does_not_raise_unbound_variable(self):
+        # Piping the script to bash (simulating curl ... | bash) should not crash
+        # with 'BASH_SOURCE[0]: unbound variable' error under 'set -u'.
+        # Since it is run as non-root in tests, it should fail at the root check
+        # in main(), returning exit code 1 and the expected error message.
+        script_content = UNINSTALL_SCRIPT.read_text(encoding="utf-8")
+        result = subprocess.run(
+            ["bash"],
+            input=script_content,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Please run as root", result.stderr or result.stdout)
+        self.assertNotIn("unbound variable", result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

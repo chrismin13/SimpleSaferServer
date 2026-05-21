@@ -33,27 +33,41 @@ class ConfigurableRunner(CommandRunner):
 
 class UnitStatusTests(unittest.TestCase):
     def test_unit_status_returns_active_when_running(self):
-        runner = ConfigurableRunner(results={
-            ("systemctl", "is-active"): SimpleNamespace(returncode=0, stdout="active\n", stderr=""),
-        })
+        runner = ConfigurableRunner(
+            results={
+                ("systemctl", "is-active"): SimpleNamespace(
+                    returncode=0, stdout="active\n", stderr=""
+                ),
+            }
+        )
         adapter = SmbCommandAdapter(command_runner=runner)
 
         self.assertEqual(adapter.unit_status("smbd"), "active")
 
     def test_unit_status_returns_inactive_when_stopped_but_unit_exists(self):
-        runner = ConfigurableRunner(results={
-            ("systemctl", "is-active"): SimpleNamespace(returncode=3, stdout="inactive\n", stderr=""),
-            ("systemctl", "cat"): SimpleNamespace(returncode=0, stdout="[Unit]\n", stderr=""),
-        })
+        runner = ConfigurableRunner(
+            results={
+                ("systemctl", "is-active"): SimpleNamespace(
+                    returncode=3, stdout="inactive\n", stderr=""
+                ),
+                ("systemctl", "cat"): SimpleNamespace(returncode=0, stdout="[Unit]\n", stderr=""),
+            }
+        )
         adapter = SmbCommandAdapter(command_runner=runner)
 
         self.assertEqual(adapter.unit_status("wsdd2"), "inactive")
 
     def test_unit_status_returns_unavailable_when_unit_file_missing(self):
-        runner = ConfigurableRunner(results={
-            ("systemctl", "is-active"): SimpleNamespace(returncode=3, stdout="inactive\n", stderr=""),
-            ("systemctl", "cat"): SimpleNamespace(returncode=1, stdout="", stderr="No files found\n"),
-        })
+        runner = ConfigurableRunner(
+            results={
+                ("systemctl", "is-active"): SimpleNamespace(
+                    returncode=3, stdout="inactive\n", stderr=""
+                ),
+                ("systemctl", "cat"): SimpleNamespace(
+                    returncode=1, stdout="", stderr="No files found\n"
+                ),
+            }
+        )
         adapter = SmbCommandAdapter(command_runner=runner)
 
         self.assertEqual(adapter.unit_status("wsdd2"), "unavailable")
