@@ -841,6 +841,7 @@ class UninstallScriptTests(unittest.TestCase):
             input=script_content,
             capture_output=True,
             text=True,
+            env={"SSS_FORCE_NON_ROOT_CHECK": "true"},
         )
         self.assertEqual(result.returncode, 1)
         self.assertIn("Please run as root", result.stderr or result.stdout)

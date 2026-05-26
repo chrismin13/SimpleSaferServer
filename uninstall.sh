@@ -379,7 +379,7 @@ main() {
     echo -e "${BLUE}   SimpleSaferServer Uninstaller${NC}"
     echo -e "${BLUE}===============================================${NC}\n"
 
-    if [ "$EUID" -ne 0 ]; then
+    if [ "${SSS_FORCE_NON_ROOT_CHECK:-}" = "true" ] || [ "$EUID" -ne 0 ]; then
         echo -e "${RED}ERROR:${NC} Please run as root (sudo)"
         exit 1
     fi
