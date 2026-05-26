@@ -3,7 +3,6 @@ import os
 import re
 import shutil
 import tempfile
-import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -11,6 +10,11 @@ from typing import List, Optional, Tuple
 from simple_safer_server.adapters.command_runner import CalledProcessError
 from simple_safer_server.adapters.smb_commands import SmbCommandAdapter
 from simple_safer_server.services.runtime import get_fake_state, get_runtime
+from simple_safer_server.services.samba_layout import (
+    SSS_SHARES_FILENAME,
+    SambaLayoutError,
+    SambaLayoutService,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -18,14 +22,16 @@ SMB_DOCS_URL = (
     "https://github.com/chrismin13/SimpleSaferServer/blob/main/docs/network_file_sharing.md"
     "#manual-conversion-unmanaged-share-to-simplesaferserver-managed-share"
 )
-MANAGED_SHARE_BEGIN_PREFIX = "# BEGIN SimpleSaferServer share: "
-MANAGED_SHARE_END_PREFIX = "# END SimpleSaferServer share: "
 SYSTEM_SHARE_NAMES = {"global", "homes", "printers", "print$"}
 VALID_SHARE_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
 
 
 class SMBConfigError(ValueError):
-    """Raised when smb.conf contains ownership markers that SimpleSaferServer cannot trust."""
+    """Raised when Samba share configuration cannot be parsed or published safely."""
+
+
+class SMBOperationError(RuntimeError):
+    """Raised when a Samba operation fails after validation has already passed."""
 
 
 @dataclass
@@ -69,23 +75,8 @@ class SMBManager:
         self.runtime = runtime or get_runtime()
         self.command_adapter = command_adapter or SmbCommandAdapter()
         self.smb_conf_path = str(self.runtime.samba_dir / "smb.conf")
-        self.backup_dir = str(self.runtime.samba_backup_dir)
+        self.sss_shares_path = self.runtime.samba_dir / SSS_SHARES_FILENAME
         self.fake_state = get_fake_state(self.runtime) if self.runtime.is_fake else None
-
-        # The backup directory is intentionally outside smb.conf itself so a
-        # parse failure never prevents us from preserving the last good file.
-        Path(self.backup_dir).mkdir(parents=True, exist_ok=True)
-
-    def _create_backup(self):
-        """Create a backup of the current smb.conf."""
-        timestamp = time.strftime("%Y%m%d_%H%M%S")
-        backup_path = f"{self.backup_dir}/smb.conf.backup.{timestamp}"
-        if self.runtime.is_fake:
-            Path(backup_path).write_text(self._read_smb_conf())
-        else:
-            self.command_adapter.copy_config(self.smb_conf_path, backup_path)
-        logger.info("Created backup of smb.conf at %s", backup_path)
-        return backup_path
 
     def _read_smb_conf(self):
         """Read the current smb.conf file."""
@@ -303,102 +294,179 @@ class SMBManager:
    guest ok = no
 """
 
-    def _write_smb_conf(self, content):
-        """Write content to smb.conf."""
-        self._create_backup()
-        with open(self.smb_conf_path, "w", encoding="utf-8") as handle:
-            handle.write(content)
-        os.chmod(self.smb_conf_path, 0o644)
+    def _ensure_layout_for_share_write(self):
+        SambaLayoutService(
+            runtime=self.runtime,
+            command_adapter=self.command_adapter,
+        ).ensure_layout()
 
-    def _validate_smb_conf_candidate(self, candidate_path: Path):
-        validator = shutil.which("testparm")
-        if not validator:
-            validator = shutil.which("smbd")
-            if not validator:
-                raise RuntimeError(
-                    "Could not validate smb.conf because neither 'testparm' nor 'smbd' is available."
-                )
-
-        result = self.command_adapter.validate_config(validator, candidate_path)
+    def _validate_effective_smb_config(self):
+        validator = shutil.which("testparm") or shutil.which("smbd") or "testparm"
+        result = self.command_adapter.validate_config(validator, Path(self.smb_conf_path))
         if result.returncode != 0:
             details = result.stderr.strip() or result.stdout.strip() or "unknown validation error"
             raise SMBConfigError(f"Samba configuration validation failed: {details}")
 
-    def _restore_smb_conf_backup(self, backup_path: Path):
-        shutil.copy2(backup_path, self.smb_conf_path)
-        os.chmod(self.smb_conf_path, 0o644)
-
-    def _commit_smb_conf(self, content: str):
-        if self.runtime.is_fake:
-            self._write_smb_conf(content)
-            if not self._restart_services():
-                raise Exception("Failed to restart SMB services")
-            return
-
-        live_path = Path(self.smb_conf_path)
-        backup_path = Path(self._create_backup())
-        temp_path = None
-        replaced_live_config = False
-
+    def _strip_sss_include_blocks(self, content: str):
+        layout = SambaLayoutService(runtime=self.runtime, command_adapter=self.command_adapter)
         try:
+            return layout.strip_owned_include_blocks(content)
+        except SambaLayoutError as exc:
+            raise SMBConfigError(str(exc)) from exc
+
+    def _inspect_unmanaged_effective_shares(self):
+        candidate_path = None
+        try:
+            # Effective-config inspection intentionally uses volatile runtime
+            # storage so routine write-safety checks do not touch durable media.
+            self.runtime.volatile_dir.mkdir(parents=True, exist_ok=True)
             with tempfile.NamedTemporaryFile(
                 "w",
                 delete=False,
-                dir=str(live_path.parent),
-                prefix=f"{live_path.name}.",
+                dir=str(self.runtime.volatile_dir),
+                prefix="smb-unmanaged-candidate.",
+                suffix=".conf",
+                encoding="utf-8",
+            ) as handle:
+                handle.write(self._strip_sss_include_blocks(self._read_smb_conf()))
+                candidate_path = Path(handle.name)
+            os.chmod(str(candidate_path), 0o644)
+
+            validator = shutil.which("testparm") or shutil.which("smbd") or "testparm"
+            # Keep the inspection candidate on volatile storage, but run testparm
+            # from Samba's config directory so relative admin includes keep the
+            # same meaning they have when Samba reads smb.conf normally.
+            result = self.command_adapter.validate_config(
+                validator,
+                candidate_path,
+                cwd=self.runtime.samba_dir,
+            )
+            if result.returncode != 0:
+                details = (
+                    result.stderr.strip() or result.stdout.strip() or "unknown inspection error"
+                )
+                raise SMBConfigError(f"Could not inspect the effective Samba config: {details}")
+
+            _, shares = self._parse_smb_conf(result.stdout)
+            return shares
+        except SMBConfigError:
+            raise
+        except Exception as exc:
+            raise SMBConfigError(f"Could not inspect the effective Samba config: {exc}") from exc
+        finally:
+            if candidate_path is not None and candidate_path.exists():
+                candidate_path.unlink()
+
+    def _commit_sss_shares_file(self, content: str):
+        # The shares include is the ownership boundary. Snapshot this file
+        # separately so a bad publish never rewrites administrator-owned smb.conf.
+        original_exists = self.sss_shares_path.exists()
+        original_content = (
+            self.sss_shares_path.read_text(encoding="utf-8") if original_exists else ""
+        )
+        original_mode = self.sss_shares_path.stat().st_mode & 0o777 if original_exists else 0o644
+
+        try:
+            self._write_sss_shares_file(content, 0o644)
+            self._validate_effective_smb_config()
+            if not self._restart_services():
+                raise RuntimeError("Failed to restart SMB services")
+        except Exception as publish_error:
+            if original_exists:
+                self._write_sss_shares_file(original_content, original_mode)
+            elif self.sss_shares_path.exists():
+                self.sss_shares_path.unlink()
+            if not self._restart_required_smbd_after_rollback():
+                raise SMBOperationError(
+                    "Samba share update failed and rollback could not restart smbd. "
+                    "Check systemd status and the Samba journal before retrying."
+                ) from publish_error
+            raise
+
+    def _write_sss_shares_file(self, content: str, mode: int):
+        temp_path = None
+        try:
+            self.sss_shares_path.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(
+                "w",
+                delete=False,
+                dir=str(self.sss_shares_path.parent),
+                prefix=f"{self.sss_shares_path.name}.",
                 suffix=".tmp",
+                encoding="utf-8",
             ) as handle:
                 handle.write(content)
                 temp_path = Path(handle.name)
-
-            os.chmod(temp_path, 0o644)
-            # Validate the candidate before replacing the live file so Samba is
-            # never pointed at a config we already know is broken.
-            self._validate_smb_conf_candidate(temp_path)
-            os.replace(temp_path, live_path)
-            replaced_live_config = True
+            os.chmod(str(temp_path), mode)
+            if not self.runtime.is_fake:
+                os.chown(str(temp_path), 0, 0)
+            os.replace(str(temp_path), str(self.sss_shares_path))
             temp_path = None
-
-            if not self._restart_services():
-                raise RuntimeError("Failed to restart SMB services")
-        except Exception as original_error:
+        finally:
             if temp_path is not None and temp_path.exists():
                 temp_path.unlink()
 
-            if replaced_live_config:
-                try:
-                    self._restore_smb_conf_backup(backup_path)
-                    if not self._restart_services():
-                        raise RuntimeError(
-                            "Failed to restart SMB services after restoring smb.conf backup"
-                        )
-                except Exception as rollback_error:
-                    logger.error(
-                        "Failed to restore smb.conf after SMB update error: %s",
-                        rollback_error,
-                    )
-                    raise RuntimeError(
-                        f"Failed to roll back smb.conf after SMB update error: {rollback_error}. Original error: {original_error}"
-                    ) from rollback_error
+    def _reload_or_restart_smbd(self) -> bool:
+        """Apply new configuration to smbd gracefully, with a hard fallback restart.
 
-            raise original_error
+        If smbd is active, we attempt to reload the config dynamically via smbcontrol
+        so active TCP connections are not disrupted. If that fails, or if smbd is
+        inactive, we fall back to a full systemd restart to ensure the daemon is
+        running and configuration takes effect.
+        """
+        if self.runtime.is_fake:
+            return True
+
+        try:
+            if self.command_adapter.unit_status("smbd") == "active":
+                logger.info("Attempting graceful config reload for smbd...")
+                self.command_adapter.reload_config()
+                return True
+            else:
+                logger.info("smbd is inactive; directly starting/restarting service...")
+        except Exception as exc:
+            logger.warning("Graceful smbd config reload failed; falling back to restart: %s", exc)
+
+        try:
+            self.command_adapter.restart_unit("smbd")
+            return True
+        except CalledProcessError as exc:
+            logger.error("Failed to restart required SMB service smbd: %s", exc)
+            return False
 
     def _restart_services(self):
-        """Restart SMB services."""
+        """Restart or reload SMB services."""
         if self.runtime.is_fake:
             if self.fake_state is None:
                 raise RuntimeError("Fake runtime is missing fake state.")
-            self.fake_state.set_smb_services("active", "active")
+            self.fake_state.set_smb_services("active", "active", "active")
             logger.info("Fake mode: marked SMB services as active")
             return True
-        try:
-            self.command_adapter.restart_unit("smbd")
-            self.command_adapter.restart_unit("nmbd")
-            logger.info("SMB services restarted successfully")
-            return True
-        except CalledProcessError as exc:
-            logger.error("Failed to restart SMB services: %s", exc)
+
+        # Handle smbd via graceful reload / fallback restart
+        if not self._reload_or_restart_smbd():
             return False
+
+        for unit_name in ("nmbd", "wsdd2"):
+            try:
+                self.command_adapter.restart_unit(unit_name)
+            except CalledProcessError as exc:
+                # Discovery restarts are best-effort. The status API reports
+                # the resulting partial state without rolling back share writes.
+                logger.warning("Failed to restart discovery service %s: %s", unit_name, exc)
+
+        logger.info("SMB services reload/restart completed successfully")
+        return True
+
+    def _restart_required_smbd_after_rollback(self):
+        if self.runtime.is_fake:
+            if self.fake_state is None:
+                raise RuntimeError("Fake runtime is missing fake state.")
+            self.fake_state.set_smb_services("active", "active", "active")
+            return True
+        # Rollback has just restored the owned shares file. Only smbd is
+        # required for direct file serving; try graceful reload/fallback restart.
+        return self._reload_or_restart_smbd()
 
     def restart_services(self):
         """Restart SMB services through the public service boundary."""
@@ -423,7 +491,7 @@ class SMBManager:
             if section_name is not None:
                 if share_name is not None:
                     raise SMBConfigError(
-                        "SimpleSaferServer only supports one share section per managed block."
+                        "SimpleSaferServer only supports one share section per parsed share block."
                     )
                 share_name = section_name
                 continue
@@ -450,7 +518,7 @@ class SMBManager:
                 share_data["valid_users"] = [user for user in value.split() if user != "%S"]
 
         if share_name is None:
-            raise SMBConfigError("Failed to find a Samba share section inside a managed block.")
+            raise SMBConfigError("Failed to find a Samba share section inside a parsed block.")
 
         if marker_name is not None and share_name != marker_name:
             raise SMBConfigError(
@@ -467,48 +535,6 @@ class SMBManager:
         while index < len(lines):
             stripped = lines[index].strip()
 
-            if stripped.startswith(MANAGED_SHARE_BEGIN_PREFIX):
-                marker_name = stripped[len(MANAGED_SHARE_BEGIN_PREFIX) :].strip()
-                if not marker_name:
-                    raise SMBConfigError("Managed share marker is missing a share name.")
-
-                start_line = index
-                index += 1
-
-                while index < len(lines):
-                    end_line = lines[index].strip()
-                    if end_line.startswith(MANAGED_SHARE_BEGIN_PREFIX):
-                        raise SMBConfigError(
-                            "Nested SimpleSaferServer share markers were found in smb.conf."
-                        )
-                    if end_line == f"{MANAGED_SHARE_END_PREFIX}{marker_name}":
-                        break
-                    index += 1
-
-                if index >= len(lines):
-                    raise SMBConfigError(
-                        f"Managed share '{marker_name}' is missing its END marker in smb.conf."
-                    )
-
-                block_end = index + 1
-                share = self._parse_share_block(
-                    lines[start_line + 1 : index],
-                    managed=True,
-                    marker_name=marker_name,
-                )
-                share.start_line = start_line
-                share.end_line = block_end
-                share.raw_text = "".join(lines[start_line:block_end])
-                shares.append(share)
-                index = block_end
-                continue
-
-            if stripped.startswith(MANAGED_SHARE_END_PREFIX):
-                marker_name = stripped[len(MANAGED_SHARE_END_PREFIX) :].strip() or stripped
-                raise SMBConfigError(
-                    f"Unexpected SimpleSaferServer END marker was found in smb.conf for '{marker_name}'."
-                )
-
             section_name = _extract_section_name(stripped)
             if section_name and section_name.lower() not in SYSTEM_SHARE_NAMES:
                 start_line = index
@@ -516,8 +542,6 @@ class SMBManager:
 
                 while index < len(lines):
                     current = lines[index].strip()
-                    if current.startswith(MANAGED_SHARE_BEGIN_PREFIX):
-                        break
                     if _extract_section_name(current) is not None:
                         break
                     index += 1
@@ -534,7 +558,59 @@ class SMBManager:
         return lines, shares
 
     def _load_shares(self):
-        return self._parse_smb_conf(self._read_smb_conf())
+        unmanaged = self._inspect_unmanaged_effective_shares()
+        managed_lines, managed = self._load_managed_shares_file()
+        return managed_lines, managed + unmanaged
+
+    def _find_unmanaged_share_record(self, name):
+        unmanaged = self._inspect_unmanaged_effective_shares()
+        return self._find_share_record(unmanaged, name)
+
+    def _read_sss_shares_file(self):
+        try:
+            return self.sss_shares_path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            return ""
+
+    def _load_managed_shares_file(self):
+        lines, shares = self._parse_plain_share_file(self._read_sss_shares_file(), managed=True)
+        seen = set()
+        for share in shares:
+            if share.name in seen:
+                raise SMBConfigError(
+                    f"The SimpleSaferServer shares file is unsupported or malformed: duplicate share '{share.name}'."
+                )
+            seen.add(share.name)
+        return lines, shares
+
+    def _parse_plain_share_file(self, content: str, *, managed: bool):
+        lines = content.splitlines(keepends=True)
+        shares = []
+        index = 0
+
+        while index < len(lines):
+            section_name = _extract_section_name(lines[index].strip())
+            if section_name is None:
+                index += 1
+                continue
+
+            if section_name.lower() in SYSTEM_SHARE_NAMES:
+                raise SMBConfigError(
+                    f"The SimpleSaferServer shares file is unsupported or malformed: [{section_name}] is not a managed share section."
+                )
+
+            start_line = index
+            index += 1
+            while index < len(lines) and _extract_section_name(lines[index].strip()) is None:
+                index += 1
+
+            share = self._parse_share_block(lines[start_line:index], managed=managed)
+            share.start_line = start_line
+            share.end_line = index
+            share.raw_text = "".join(lines[start_line:index])
+            shares.append(share)
+
+        return lines, shares
 
     def _find_share_record(self, shares, name, *, managed=None):
         matches = [
@@ -603,7 +679,6 @@ class SMBManager:
         valid_users = self._validate_valid_users(valid_users or [])
 
         lines = [
-            f"{MANAGED_SHARE_BEGIN_PREFIX}{name}\n",
             f"[{name}]\n",
             f"   path = {path}\n",
             f"   writeable = {'Yes' if writable else 'No'}\n",
@@ -614,7 +689,6 @@ class SMBManager:
         ]
         if valid_users:
             lines.append(f"   valid users = {' '.join(valid_users)}\n")
-        lines.append(f"{MANAGED_SHARE_END_PREFIX}{name}\n")
         return lines
 
     def _append_managed_block(self, lines, block_lines):
@@ -627,23 +701,30 @@ class SMBManager:
         return new_lines
 
     def list_managed_shares(self):
-        _, shares = self._load_shares()
-        return [share.as_dict() for share in shares if share.managed]
+        _, shares = self._load_managed_shares_file()
+        return [share.as_dict() for share in shares]
 
     def list_unmanaged_shares(self):
         _, shares = self._load_shares()
         return [share.as_dict() for share in shares if not share.managed]
 
     def get_managed_share(self, name):
-        _, shares = self._load_shares()
+        _, shares = self._load_managed_shares_file()
         share = self._find_share_record(shares, name, managed=True)
         return share.as_dict() if share else None
 
     def create_managed_share(self, name, path, writable=True, comment="", valid_users=None):
         self._validate_share_input(name, path)
+        self._ensure_layout_for_share_write()
 
-        lines, shares = self._load_shares()
-        if self._find_share_record(shares, name) is not None:
+        lines, managed_shares = self._load_managed_shares_file()
+        # The owned shares file stays authoritative for SimpleSaferServer
+        # ownership, while the effective config check catches administrator
+        # shares loaded from smb.conf or its non-SSS includes.
+        if (
+            self._find_share_record(managed_shares, name, managed=True) is not None
+            or self._find_unmanaged_share_record(name) is not None
+        ):
             raise ValueError(
                 f"Share '{name}' already exists. SimpleSaferServer will not overwrite an existing share "
                 f"with the same name. See {SMB_DOCS_URL} for manual conversion guidance."
@@ -651,7 +732,7 @@ class SMBManager:
 
         block_lines = self._render_managed_share_block(name, path, writable, comment, valid_users)
         new_lines = self._append_managed_block(lines, block_lines)
-        self._commit_smb_conf("".join(new_lines))
+        self._commit_sss_shares_file("".join(new_lines))
 
         return True
 
@@ -659,19 +740,28 @@ class SMBManager:
         self, old_name, new_name, path, writable=True, comment="", valid_users=None
     ):
         self._validate_share_input(new_name, path)
+        self._ensure_layout_for_share_write()
 
-        lines, shares = self._load_shares()
-        share = self._find_share_record(shares, old_name, managed=True)
+        lines, managed_shares = self._load_managed_shares_file()
+        share = self._find_share_record(managed_shares, old_name, managed=True)
         if share is None:
-            if self._find_share_record(shares, old_name, managed=False) is not None:
+            if self._find_unmanaged_share_record(old_name) is not None:
                 raise ValueError(
                     f"Share '{old_name}' is not managed by SimpleSaferServer, so it cannot be edited here. "
                     f"See {SMB_DOCS_URL} for manual conversion guidance."
                 )
             raise ValueError(f"Share {old_name} not found")
 
-        conflict = self._find_share_record(shares, new_name)
-        if conflict is not None and not (conflict.managed and conflict.name == old_name):
+        managed_conflict = self._find_share_record(managed_shares, new_name, managed=True)
+        unmanaged_conflict = None
+        if new_name != old_name:
+            unmanaged_conflict = self._find_unmanaged_share_record(new_name)
+        if managed_conflict is not None and managed_conflict.name != old_name:
+            raise ValueError(
+                f"Share '{new_name}' already exists. SimpleSaferServer will not overwrite an existing share "
+                f"with the same name. See {SMB_DOCS_URL} for manual conversion guidance."
+            )
+        if unmanaged_conflict is not None:
             raise ValueError(
                 f"Share '{new_name}' already exists. SimpleSaferServer will not overwrite an existing share "
                 f"with the same name. See {SMB_DOCS_URL} for manual conversion guidance."
@@ -682,15 +772,16 @@ class SMBManager:
             new_name, path, writable, comment, valid_users
         )
         new_lines[share.start_line : share.end_line] = replacement
-        self._commit_smb_conf("".join(new_lines))
+        self._commit_sss_shares_file("".join(new_lines))
 
         return True
 
     def delete_managed_share(self, name):
-        lines, shares = self._load_shares()
-        share = self._find_share_record(shares, name, managed=True)
+        self._ensure_layout_for_share_write()
+        lines, managed_shares = self._load_managed_shares_file()
+        share = self._find_share_record(managed_shares, name, managed=True)
         if share is None:
-            if self._find_share_record(shares, name, managed=False) is not None:
+            if self._find_unmanaged_share_record(name) is not None:
                 raise ValueError(
                     f"Share '{name}' is not managed by SimpleSaferServer, so it cannot be deleted here. "
                     f"See {SMB_DOCS_URL} for manual conversion guidance."
@@ -699,7 +790,7 @@ class SMBManager:
 
         new_lines = list(lines)
         del new_lines[share.start_line : share.end_line]
-        self._commit_smb_conf("".join(new_lines))
+        self._commit_sss_shares_file("".join(new_lines))
 
         return True
 
@@ -713,11 +804,10 @@ class SMBManager:
         elif comment is None:
             comment = "Default backup share created by SimpleSaferServer setup"
 
-        unmanaged_backup = self._find_share_record(self._load_shares()[1], "backup", managed=False)
+        unmanaged_backup = self._find_unmanaged_share_record("backup")
         if unmanaged_backup is not None:
             raise ValueError(
-                "An unmanaged Samba share named 'backup' already exists. SimpleSaferServer will not overwrite it. "
-                f"Convert it manually or remove it first. See {SMB_DOCS_URL} for manual conversion guidance."
+                'Samba share "backup" already exists. Rename or remove it, then retry.'
             )
 
         managed_backup = self.get_managed_share("backup")
@@ -740,18 +830,28 @@ class SMBManager:
         )
 
     def _get_managed_share_or_raise(self, share_name):
-        # Keep the unmanaged-share rejection in one place so helper methods do
-        # not drift apart and accidentally expose raw Samba state.
-        _, shares = self._load_shares()
-        share = self._find_share_record(shares, share_name)
-        if share is None:
-            raise ValueError(f"Share {share_name} not found")
-        if not share.managed:
-            raise ValueError(
-                f"Share '{share_name}' is not managed by SimpleSaferServer, so it cannot be edited here. "
-                f"See {SMB_DOCS_URL} for manual conversion guidance."
-            )
-        return share.as_dict()
+        # Check the owned shares file first so that a broken admin-owned Samba
+        # include never blocks routine management of SimpleSaferServer shares.
+        _, managed_shares = self._load_managed_shares_file()
+        share = self._find_share_record(managed_shares, share_name, managed=True)
+        if share is not None:
+            return share.as_dict()
+
+        # Share not in the owned file. Inspect unmanaged shares to distinguish
+        # "exists but not managed" from "does not exist anywhere".
+        try:
+            unmanaged = self._inspect_unmanaged_effective_shares()
+            if self._find_share_record(unmanaged, share_name) is not None:
+                raise ValueError(
+                    f"Share '{share_name}' is not managed by SimpleSaferServer, so it cannot be edited here. "
+                    f"See {SMB_DOCS_URL} for manual conversion guidance."
+                )
+        except SMBConfigError:
+            # Effective config inspection failed — we already know the share is
+            # not in the owned file, so report it as not found.
+            pass
+
+        raise ValueError(f"Share {share_name} not found")
 
     def get_share_users(self, share_name):
         # Callers use this to populate edit flows, so unmanaged shares need an
@@ -776,11 +876,21 @@ class SMBManager:
             if self.fake_state is None:
                 raise RuntimeError("Fake runtime is missing fake state.")
             return self.fake_state.get_smb_services()
+
+        statuses = {}
+        for unit_name in ("smbd", "nmbd"):
+            try:
+                statuses[unit_name] = self.command_adapter.unit_status(unit_name)
+            except Exception as exc:
+                logger.error("Error getting %s status: %s", unit_name, exc)
+                statuses[unit_name] = "error"
+
         try:
-            return {
-                "smbd": self.command_adapter.unit_status("smbd"),
-                "nmbd": self.command_adapter.unit_status("nmbd"),
-            }
+            statuses["wsdd2"] = self.command_adapter.unit_status("wsdd2")
         except Exception as exc:
-            logger.error("Error getting service status: %s", exc)
-            return {"smbd": "error", "nmbd": "error"}
+            # wsdd2 is optional on older distributions, so a missing unit is
+            # surfaced as unavailable instead of collapsing the whole response.
+            logger.info("wsdd2 status unavailable: %s", exc)
+            statuses["wsdd2"] = "unavailable"
+
+        return statuses

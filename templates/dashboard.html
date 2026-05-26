@@ -710,22 +710,26 @@ Remove the drive now if you do not want it mounted again.`;
         const badge = document.getElementById('sharing-status-badge');
         const val = document.getElementById('sharing-status');
         const detail = document.getElementById('sharing-detail');
+        // 'unavailable' means the package is not installed — not degradation.
+        const discoveryOk = (s) => s === 'active' || s === 'unavailable';
 
-        if (data.smbd === 'active' && data.nmbd === 'active') {
+        if (data.smbd === 'active' && discoveryOk(data.nmbd) && discoveryOk(data.wsdd2)) {
           badge.className = 'badge badge-success';
-          badge.textContent = 'Active';
+          badge.textContent = 'Operational';
           val.textContent = 'Running';
-          detail.textContent = 'SMB and NetBIOS services active';
-        } else if (data.smbd === 'active' || data.nmbd === 'active') {
+          detail.textContent = 'File sharing services operational';
+        } else if (data.smbd === 'active') {
           badge.className = 'badge badge-warning';
           badge.textContent = 'Partial';
           val.textContent = 'Degraded';
-          detail.textContent = `smbd: ${data.smbd}, nmbd: ${data.nmbd}`;
+          // Keep the compact detail explicit so the dashboard matches the
+          // File Sharing page without adding another explanatory panel.
+          detail.textContent = `smbd: ${data.smbd}, nmbd: ${data.nmbd}, wsdd2: ${data.wsdd2}`;
         } else {
           badge.className = 'badge badge-danger';
-          badge.textContent = 'Stopped';
+          badge.textContent = 'Down';
           val.textContent = 'Not Running';
-          detail.textContent = 'File sharing services are down';
+          detail.textContent = `smbd: ${data.smbd}, nmbd: ${data.nmbd}, wsdd2: ${data.wsdd2}`;
         }
       })
       .catch(() => {

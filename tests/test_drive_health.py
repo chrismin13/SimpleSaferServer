@@ -230,7 +230,9 @@ class DriveHealthTests(unittest.TestCase):
                 ("backup", "mount_point"): "/media/backup",
             }.get((section, key), default)
         )
-        system_utils = SimpleNamespace(is_mounted=lambda mount_point: mount_point == "/media/backup")
+        system_utils = SimpleNamespace(
+            is_mounted=lambda mount_point: mount_point == "/media/backup"
+        )
         runtime = SimpleNamespace(is_fake=False, default_mount_point="/media/backup")
         smart = {"smart_194_raw": 31.0}
         hdsentinel_result = {
@@ -261,7 +263,10 @@ class DriveHealthTests(unittest.TestCase):
             drive_health.get_prediction_unavailable_message(),
         )
         self.assertEqual(result["hdsentinel"], hdsentinel_result)
-        self.assertIn("SMART prediction is unavailable", captured.output[0])
+        # Pyright may infer 'captured' as None in some environments due to type stub limitations.
+        # We assert it is not None to satisfy runtime checks and use type: ignore for static analysis.
+        self.assertIsNotNone(captured)
+        self.assertIn("SMART prediction is unavailable", captured.output[0])  # type: ignore
         mock_alert.assert_not_called()
         mock_hdsentinel_monitor.assert_called_once_with(
             config_manager, system_utils, runtime=runtime

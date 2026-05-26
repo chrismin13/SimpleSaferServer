@@ -314,7 +314,7 @@ class UninstallScriptTests(unittest.TestCase):
         self.assertNotIn("UUID=drop /media/backup", content)
         self.assertNotIn("UUID=legacy /media/legacy", content)
 
-    def test_cleanup_managed_smb_shares_leaves_unmanaged_blocks(self):
+    def test_cleanup_managed_smb_shares_leaves_unmanaged_and_legacy_inline_blocks(self):
         with tempfile.TemporaryDirectory() as tempdir:
             smb_conf_path = Path(tempdir) / "smb.conf"
             smb_conf_path.write_text(
@@ -347,20 +347,148 @@ class UninstallScriptTests(unittest.TestCase):
 
             content = smb_conf_path.read_text()
 
-        self.assertNotIn("[backup]", content)
+        self.assertIn("# BEGIN SimpleSaferServer share: backup", content)
+        self.assertIn("[backup]", content)
+        self.assertIn("# END SimpleSaferServer share: backup", content)
         self.assertIn("[media]", content)
         self.assertIn("guest ok = yes", content)
 
-    def test_cleanup_managed_smb_shares_allows_empty_result_when_only_managed_blocks_exist(self):
+    def test_cleanup_managed_smb_shares_removes_sss_include_blocks_and_owned_files(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            samba_dir = Path(tempdir)
+            smb_conf_path = samba_dir / "smb.conf"
+            globals_path = samba_dir / "simple_safer_server_globals.conf"
+            shares_path = samba_dir / "simple_safer_server_shares.conf"
+            globals_path.write_text("map to guest = never\n")
+            shares_path.write_text("# managed shares\n")
+            smb_conf_path.write_text(
+                textwrap.dedent(
+                    f"""\
+                    [global]
+                       workgroup = WORKGROUP
+                    # BEGIN SimpleSaferServer global include
+                       include = {globals_path}
+                    # END SimpleSaferServer global include
+
+                    [media]
+                       path = /srv/media
+
+                    # BEGIN SimpleSaferServer shares include
+                    include = {shares_path}
+                    # END SimpleSaferServer shares include
+                    """
+                )
+            )
+
+            self.run_bash(
+                textwrap.dedent(
+                    f"""\
+                    source "{UNINSTALL_SCRIPT}"
+                    SMB_CONF="{smb_conf_path}"
+                    SSS_SAMBA_GLOBALS_FILE="{globals_path}"
+                    SSS_SAMBA_SHARES_FILE="{shares_path}"
+                    cleanup_managed_smb_shares
+                    """
+                )
+            )
+
+            content = smb_conf_path.read_text()
+            globals_exists = globals_path.exists()
+            shares_exists = shares_path.exists()
+
+        self.assertIn("[global]", content)
+        self.assertIn("[media]", content)
+        self.assertNotIn("SimpleSaferServer global include", content)
+        self.assertNotIn("SimpleSaferServer shares include", content)
+        self.assertFalse(globals_exists)
+        self.assertFalse(shares_exists)
+
+    def test_cleanup_managed_smb_shares_deletes_owned_files_when_main_config_missing(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            samba_dir = Path(tempdir)
+            smb_conf_path = samba_dir / "smb.conf"
+            globals_path = samba_dir / "simple_safer_server_globals.conf"
+            shares_path = samba_dir / "simple_safer_server_shares.conf"
+            globals_path.write_text("map to guest = never\n")
+            shares_path.write_text("# managed shares\n")
+
+            self.run_bash(
+                textwrap.dedent(
+                    f"""\
+                    source "{UNINSTALL_SCRIPT}"
+                    SMB_CONF="{smb_conf_path}"
+                    SSS_SAMBA_GLOBALS_FILE="{globals_path}"
+                    SSS_SAMBA_SHARES_FILE="{shares_path}"
+                    cleanup_managed_smb_shares
+                    """
+                )
+            )
+
+            self.assertFalse(globals_path.exists())
+            self.assertFalse(shares_path.exists())
+
+    def test_cleanup_managed_smb_shares_does_not_restart_discovery_services(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            samba_dir = root / "samba"
+            fake_bin = root / "bin"
+            calls_path = root / "systemctl-calls"
+            samba_dir.mkdir()
+            fake_bin.mkdir()
+            smb_conf_path = samba_dir / "smb.conf"
+            smb_conf_path.write_text(
+                textwrap.dedent(
+                    """\
+                    [global]
+                       workgroup = WORKGROUP
+                    # BEGIN SimpleSaferServer shares include
+                    include = /etc/samba/simple_safer_server_shares.conf
+                    # END SimpleSaferServer shares include
+                    """
+                )
+            )
+            systemctl = fake_bin / "systemctl"
+            systemctl.write_text(
+                textwrap.dedent(
+                    f"""\
+                    #!/bin/sh
+                    printf '%s\\n' "$*" >> "{calls_path}"
+                    exit 0
+                    """
+                )
+            )
+            systemctl.chmod(0o755)
+
+            self.run_bash(
+                textwrap.dedent(
+                    f"""\
+                    source "{UNINSTALL_SCRIPT}"
+                    export PATH="{fake_bin}:$PATH"
+                    SMB_CONF="{smb_conf_path}"
+                    cleanup_managed_smb_shares
+                    """
+                )
+            )
+
+            calls = calls_path.read_text()
+
+        self.assertIn("restart smbd", calls)
+        self.assertNotIn("restart nmbd", calls)
+        self.assertNotIn("restart wsdd2", calls)
+
+    def test_cleanup_managed_smb_shares_allows_empty_result_when_only_include_blocks_exist(self):
         with tempfile.TemporaryDirectory() as tempdir:
             smb_conf_path = Path(tempdir) / "smb.conf"
             smb_conf_path.write_text(
                 textwrap.dedent(
                     """\
-                    # BEGIN SimpleSaferServer share: backup
-                    [backup]
-                       path = /media/backup
-                    # END SimpleSaferServer share: backup
+                    # BEGIN SimpleSaferServer global include
+                       include = /etc/samba/simple_safer_server_globals.conf
+                    # END SimpleSaferServer global include
+
+                    # BEGIN SimpleSaferServer shares include
+                    include = /etc/samba/simple_safer_server_shares.conf
+                    # END SimpleSaferServer shares include
                     """
                 )
             )
@@ -377,20 +505,27 @@ class UninstallScriptTests(unittest.TestCase):
 
             content = smb_conf_path.read_text()
 
-        self.assertEqual(content, "")
+        self.assertNotIn("SimpleSaferServer global include", content)
+        self.assertNotIn("SimpleSaferServer shares include", content)
 
-    def test_cleanup_managed_smb_shares_rejects_malformed_markers(self):
+    def test_cleanup_managed_smb_shares_rejects_malformed_include_markers(self):
         with tempfile.TemporaryDirectory() as tempdir:
-            smb_conf_path = Path(tempdir) / "smb.conf"
+            samba_dir = Path(tempdir)
+            smb_conf_path = samba_dir / "smb.conf"
+            globals_path = samba_dir / "simple_safer_server_globals.conf"
+            shares_path = samba_dir / "simple_safer_server_shares.conf"
+            globals_path.write_text("map to guest = never\n")
+            shares_path.write_text("# managed shares\n")
             original = textwrap.dedent(
                 """\
                 [global]
                    workgroup = WORKGROUP
 
-                  # BEGIN SimpleSaferServer share: backup
-                [backup]
-                   path = /media/backup
-                  # END SimpleSaferServer share: media
+                  # BEGIN SimpleSaferServer global include
+                   include = /etc/samba/simple_safer_server_globals.conf
+
+                [media]
+                   path = /srv/media
                 """
             )
             smb_conf_path.write_text(original)
@@ -400,16 +535,241 @@ class UninstallScriptTests(unittest.TestCase):
                     f"""\
                     source "{UNINSTALL_SCRIPT}"
                     SMB_CONF="{smb_conf_path}"
+                    SSS_SAMBA_GLOBALS_FILE="{globals_path}"
+                    SSS_SAMBA_SHARES_FILE="{shares_path}"
                     cleanup_managed_smb_shares
                     """
                 )
             )
 
             content = smb_conf_path.read_text()
+            globals_exists = globals_path.exists()
+            shares_exists = shares_path.exists()
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("markers are malformed", result.stdout)
         self.assertEqual(content, original)
+        self.assertFalse(globals_exists)
+        self.assertFalse(shares_exists)
+
+    def test_cleanup_managed_smb_shares_restarts_smbd_after_successful_cleanup(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            samba_dir = root / "samba"
+            fake_bin = root / "bin"
+            calls_path = root / "systemctl-calls"
+            samba_dir.mkdir()
+            fake_bin.mkdir()
+            smb_conf_path = samba_dir / "smb.conf"
+            globals_path = samba_dir / "simple_safer_server_globals.conf"
+            shares_path = samba_dir / "simple_safer_server_shares.conf"
+            globals_path.write_text("map to guest = never\n")
+            shares_path.write_text("# managed shares\n")
+            smb_conf_path.write_text(
+                textwrap.dedent(
+                    """\
+                    [global]
+                       workgroup = WORKGROUP
+                    # BEGIN SimpleSaferServer global include
+                       include = /etc/samba/simple_safer_server_globals.conf
+                    # END SimpleSaferServer global include
+
+                    # BEGIN SimpleSaferServer shares include
+                    include = /etc/samba/simple_safer_server_shares.conf
+                    # END SimpleSaferServer shares include
+                    """
+                )
+            )
+            systemctl = fake_bin / "systemctl"
+            systemctl.write_text(
+                textwrap.dedent(
+                    f"""\
+                    #!/bin/sh
+                    printf '%s\\n' "$*" >> "{calls_path}"
+                    exit 0
+                    """
+                )
+            )
+            systemctl.chmod(0o755)
+
+            self.run_bash(
+                textwrap.dedent(
+                    f"""\
+                    source "{UNINSTALL_SCRIPT}"
+                    export PATH="{fake_bin}:$PATH"
+                    SMB_CONF="{smb_conf_path}"
+                    SSS_SAMBA_GLOBALS_FILE="{globals_path}"
+                    SSS_SAMBA_SHARES_FILE="{shares_path}"
+                    cleanup_managed_smb_shares
+                    """
+                )
+            )
+
+            calls = calls_path.read_text()
+
+        self.assertIn("restart smbd", calls)
+        self.assertNotIn("restart nmbd", calls)
+        self.assertNotIn("restart wsdd2", calls)
+
+    def test_cleanup_managed_smb_shares_warns_on_smbd_restart_failure(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            samba_dir = root / "samba"
+            fake_bin = root / "bin"
+            samba_dir.mkdir()
+            fake_bin.mkdir()
+            smb_conf_path = samba_dir / "smb.conf"
+            globals_path = samba_dir / "simple_safer_server_globals.conf"
+            shares_path = samba_dir / "simple_safer_server_shares.conf"
+            globals_path.write_text("map to guest = never\n")
+            shares_path.write_text("# managed shares\n")
+            smb_conf_path.write_text(
+                textwrap.dedent(
+                    """\
+                    [global]
+                       workgroup = WORKGROUP
+                    # BEGIN SimpleSaferServer shares include
+                    include = /etc/samba/simple_safer_server_shares.conf
+                    # END SimpleSaferServer shares include
+                    """
+                )
+            )
+            systemctl = fake_bin / "systemctl"
+            systemctl.write_text(
+                textwrap.dedent(
+                    """\
+                    #!/bin/sh
+                    exit 1
+                    """
+                )
+            )
+            systemctl.chmod(0o755)
+
+            # Should NOT fail even though smbd restart fails
+            result = self.run_bash_raw(
+                textwrap.dedent(
+                    f"""\
+                    source "{UNINSTALL_SCRIPT}"
+                    export PATH="{fake_bin}:$PATH"
+                    SMB_CONF="{smb_conf_path}"
+                    SSS_SAMBA_GLOBALS_FILE="{globals_path}"
+                    SSS_SAMBA_SHARES_FILE="{shares_path}"
+                    cleanup_managed_smb_shares
+                    """
+                )
+            )
+
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("WARNING", result.stdout)
+        self.assertIn("smbd", result.stdout)
+
+    def test_cleanup_managed_smb_shares_malformed_markers_warns_about_broken_includes(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            samba_dir = Path(tempdir)
+            smb_conf_path = samba_dir / "smb.conf"
+            globals_path = samba_dir / "simple_safer_server_globals.conf"
+            shares_path = samba_dir / "simple_safer_server_shares.conf"
+            globals_path.write_text("map to guest = never\n")
+            shares_path.write_text("# managed shares\n")
+            smb_conf_path.write_text(
+                textwrap.dedent(
+                    """\
+                    [global]
+                       workgroup = WORKGROUP
+
+                      # BEGIN SimpleSaferServer global include
+                       include = /etc/samba/simple_safer_server_globals.conf
+
+                    [media]
+                       path = /srv/media
+                    """
+                )
+            )
+
+            result = self.run_bash_raw(
+                textwrap.dedent(
+                    f"""\
+                    source "{UNINSTALL_SCRIPT}"
+                    SMB_CONF="{smb_conf_path}"
+                    SSS_SAMBA_GLOBALS_FILE="{globals_path}"
+                    SSS_SAMBA_SHARES_FILE="{shares_path}"
+                    cleanup_managed_smb_shares
+                    """
+                )
+            )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("simple_safer_server_globals.conf", result.stdout)
+        self.assertIn("simple_safer_server_shares.conf", result.stdout)
+        self.assertIn("systemctl restart smbd", result.stdout)
+
+    def test_cleanup_managed_smb_shares_removes_empty_legacy_backup_directory(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            samba_dir = root / "samba"
+            samba_dir.mkdir()
+            backup_dir = samba_dir / "backups"
+            backup_dir.mkdir()
+            smb_conf_path = samba_dir / "smb.conf"
+            smb_conf_path.write_text(
+                textwrap.dedent(
+                    """\
+                    [global]
+                       workgroup = WORKGROUP
+                    # BEGIN SimpleSaferServer shares include
+                    include = /etc/samba/simple_safer_server_shares.conf
+                    # END SimpleSaferServer shares include
+                    """
+                )
+            )
+
+            self.run_bash(
+                textwrap.dedent(
+                    f"""\
+                    source "{UNINSTALL_SCRIPT}"
+                    SMB_CONF="{smb_conf_path}"
+                    SSS_SAMBA_BACKUP_DIR="{backup_dir}"
+                    cleanup_managed_smb_shares
+                    """
+                )
+            )
+
+            self.assertFalse(backup_dir.exists())
+
+    def test_cleanup_managed_smb_shares_leaves_nonempty_legacy_backup_directory(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            samba_dir = root / "samba"
+            samba_dir.mkdir()
+            backup_dir = samba_dir / "backups"
+            backup_dir.mkdir()
+            (backup_dir / "smb.conf.backup.20250101_120000").write_text("[global]\n")
+            smb_conf_path = samba_dir / "smb.conf"
+            smb_conf_path.write_text(
+                textwrap.dedent(
+                    """\
+                    [global]
+                       workgroup = WORKGROUP
+                    # BEGIN SimpleSaferServer shares include
+                    include = /etc/samba/simple_safer_server_shares.conf
+                    # END SimpleSaferServer shares include
+                    """
+                )
+            )
+
+            self.run_bash(
+                textwrap.dedent(
+                    f"""\
+                    source "{UNINSTALL_SCRIPT}"
+                    SMB_CONF="{smb_conf_path}"
+                    SSS_SAMBA_BACKUP_DIR="{backup_dir}"
+                    cleanup_managed_smb_shares
+                    """
+                )
+            )
+
+            self.assertTrue(backup_dir.exists())
+            self.assertTrue((backup_dir / "smb.conf.backup.20250101_120000").exists())
 
     def test_remove_git_safe_directory_removes_only_matching_entries(self):
         with tempfile.TemporaryDirectory() as tempdir:
@@ -469,6 +829,23 @@ class UninstallScriptTests(unittest.TestCase):
             )
 
         self.assertEqual(remaining.stdout.strip().splitlines(), ["/srv/other"])
+
+    def test_uninstall_piped_to_bash_does_not_raise_unbound_variable(self):
+        # Piping the script to bash (simulating curl ... | bash) should not crash
+        # with 'BASH_SOURCE[0]: unbound variable' error under 'set -u'.
+        # Since it is run as non-root in tests, it should fail at the root check
+        # in main(), returning exit code 1 and the expected error message.
+        script_content = UNINSTALL_SCRIPT.read_text(encoding="utf-8")
+        result = subprocess.run(
+            ["bash"],
+            input=script_content,
+            capture_output=True,
+            text=True,
+            env={"SSS_FORCE_NON_ROOT_CHECK": "true"},
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Please run as root", result.stderr or result.stdout)
+        self.assertNotIn("unbound variable", result.stderr)
 
 
 if __name__ == "__main__":

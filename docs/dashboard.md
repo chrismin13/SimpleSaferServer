@@ -5,7 +5,10 @@ The Dashboard is the main interface for monitoring and managing the system. It p
 ## Status Indicators
 Four cards display real-time status:
 - **Storage**: Shows drive connection status, used/total storage, and usage percentage.
-- **Network File Sharing**: Shows if network file sharing is enabled (SMB status).
+- **Network File Sharing**: Summarizes `smbd`, `nmbd`, and `wsdd2`. The tile is operational when
+  `smbd` is active and discovery services are either active or unavailable (not installed), partial
+  when `smbd` is active but at least one discovery service is inactive, and down
+  when `smbd` is not active.
 - **Hard Drive Health**: Shows the last drive-health summary remembered by the running web process.
   Dashboard load does not probe SMART or HDSentinel. Use the tile refresh button when you want a
   live drive-health probe. When both SMART failure risk and drive temperature are available, the

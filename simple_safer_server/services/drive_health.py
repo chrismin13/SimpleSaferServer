@@ -296,6 +296,11 @@ def _load_model_and_threshold(model_path: str, threshold_path: str):
     if not PREDICTION_DEPENDENCIES_AVAILABLE:
         return None, 0.5
 
+    # Pyright does not connect the availability flag to the optional imports
+    # above, so keep the runtime invariant explicit where the model is loaded.
+    if XGBClassifier is None or joblib is None:
+        raise RuntimeError("Prediction dependencies not available")
+
     model = XGBClassifier()
     try:
         model.load_model(model_path)
