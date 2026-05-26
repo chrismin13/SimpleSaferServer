@@ -406,18 +406,45 @@ class SMBManager:
             if temp_path is not None and temp_path.exists():
                 temp_path.unlink()
 
+    def _reload_or_restart_smbd(self) -> bool:
+        """Apply new configuration to smbd gracefully, with a hard fallback restart.
+
+        If smbd is active, we attempt to reload the config dynamically via smbcontrol
+        so active TCP connections are not disrupted. If that fails, or if smbd is
+        inactive, we fall back to a full systemd restart to ensure the daemon is
+        running and configuration takes effect.
+        """
+        if self.runtime.is_fake:
+            return True
+
+        try:
+            if self.command_adapter.unit_status("smbd") == "active":
+                logger.info("Attempting graceful config reload for smbd...")
+                self.command_adapter.reload_config()
+                return True
+            else:
+                logger.info("smbd is inactive; directly starting/restarting service...")
+        except Exception as exc:
+            logger.warning("Graceful smbd config reload failed; falling back to restart: %s", exc)
+
+        try:
+            self.command_adapter.restart_unit("smbd")
+            return True
+        except CalledProcessError as exc:
+            logger.error("Failed to restart required SMB service smbd: %s", exc)
+            return False
+
     def _restart_services(self):
-        """Restart SMB services."""
+        """Restart or reload SMB services."""
         if self.runtime.is_fake:
             if self.fake_state is None:
                 raise RuntimeError("Fake runtime is missing fake state.")
             self.fake_state.set_smb_services("active", "active", "active")
             logger.info("Fake mode: marked SMB services as active")
             return True
-        try:
-            self.command_adapter.restart_unit("smbd")
-        except CalledProcessError as exc:
-            logger.error("Failed to restart required SMB service smbd: %s", exc)
+
+        # Handle smbd via graceful reload / fallback restart
+        if not self._reload_or_restart_smbd():
             return False
 
         for unit_name in ("nmbd", "wsdd2"):
@@ -428,7 +455,7 @@ class SMBManager:
                 # the resulting partial state without rolling back share writes.
                 logger.warning("Failed to restart discovery service %s: %s", unit_name, exc)
 
-        logger.info("SMB services restart requested successfully")
+        logger.info("SMB services reload/restart completed successfully")
         return True
 
     def _restart_required_smbd_after_rollback(self):
@@ -437,15 +464,9 @@ class SMBManager:
                 raise RuntimeError("Fake runtime is missing fake state.")
             self.fake_state.set_smb_services("active", "active", "active")
             return True
-        try:
-            # Rollback has just restored the owned shares file. Only smbd is
-            # required for direct file serving; discovery remains best-effort
-            # and should not mask the publish failure we are reporting.
-            self.command_adapter.restart_unit("smbd")
-        except CalledProcessError as exc:
-            logger.error("Failed to restart required SMB service smbd after rollback: %s", exc)
-            return False
-        return True
+        # Rollback has just restored the owned shares file. Only smbd is
+        # required for direct file serving; try graceful reload/fallback restart.
+        return self._reload_or_restart_smbd()
 
     def restart_services(self):
         """Restart SMB services through the public service boundary."""

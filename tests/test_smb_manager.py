@@ -16,6 +16,7 @@ class FakeSmbCommandAdapter:
         validation_returncodes=None,
         unit_statuses=None,
         restart_failures=None,
+        reload_failures=None,
     ):
         self.validation_returncode = validation_returncode
         self.validation_returncodes = list(validation_returncodes or [])
@@ -25,6 +26,8 @@ class FakeSmbCommandAdapter:
         self.unit_statuses = unit_statuses or {}
         self.restart_failures = set(restart_failures or [])
         self.restarted_units = []
+        self.reload_failures = set(reload_failures or [])
+        self.reloaded_units = []
 
     def validate_config(self, validator, candidate_path, cwd=None):
         self.validated_paths.append(Path(candidate_path))
@@ -51,6 +54,11 @@ class FakeSmbCommandAdapter:
         self.restarted_units.append(unit_name)
         if unit_name in self.restart_failures:
             raise smb_manager.CalledProcessError(1, ["systemctl", "restart", unit_name])
+
+    def reload_config(self):
+        self.reloaded_units.append("smbd")
+        if "smbd" in self.reload_failures:
+            raise smb_manager.CalledProcessError(1, ["smbcontrol", "smbd", "reload-config"])
 
 
 class SMBManagerTests(unittest.TestCase):
@@ -682,6 +690,37 @@ class SMBManagerTests(unittest.TestCase):
 
         self.assertTrue(manager.restart_services())
         self.assertEqual(adapter.restarted_units, ["smbd", "nmbd", "wsdd2"])
+
+    def test_reload_or_restart_smbd_reloads_when_active(self):
+        self.runtime.is_fake = False
+        adapter = FakeSmbCommandAdapter(unit_statuses={"smbd": "active"})
+        manager = smb_manager.SMBManager(runtime=self.runtime, command_adapter=adapter)
+
+        self.assertTrue(manager._reload_or_restart_smbd())
+        self.assertEqual(adapter.reloaded_units, ["smbd"])
+        self.assertEqual(adapter.restarted_units, [])
+
+    def test_reload_or_restart_smbd_restarts_when_inactive(self):
+        self.runtime.is_fake = False
+        adapter = FakeSmbCommandAdapter(unit_statuses={"smbd": "inactive"})
+        manager = smb_manager.SMBManager(runtime=self.runtime, command_adapter=adapter)
+
+        self.assertTrue(manager._reload_or_restart_smbd())
+        self.assertEqual(adapter.reloaded_units, [])
+        self.assertEqual(adapter.restarted_units, ["smbd"])
+
+    def test_reload_or_restart_smbd_restarts_when_reload_fails(self):
+        self.runtime.is_fake = False
+        adapter = FakeSmbCommandAdapter(
+            unit_statuses={"smbd": "active"},
+            reload_failures={"smbd"},
+        )
+        manager = smb_manager.SMBManager(runtime=self.runtime, command_adapter=adapter)
+
+        self.assertTrue(manager._reload_or_restart_smbd())
+        # Reload was attempted, but failed, so we fall back to restart
+        self.assertEqual(adapter.reloaded_units, ["smbd"])
+        self.assertEqual(adapter.restarted_units, ["smbd"])
 
     def test_parse_smb_conf_does_not_treat_marker_comments_as_share_boundaries(self):
         """_parse_smb_conf should parse through old marker-like comments without

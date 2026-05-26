@@ -494,10 +494,13 @@ class InstallPreflightTests(unittest.TestCase):
             systemctl() {{
                 printf '%s\\n' "$*" >> "$CALLS_PATH"
                 case "$*" in
-                    "start smbd") return 1 ;;
+                    "restart smbd") return 1 ;;
                     "is-active --quiet smbd") return 0 ;;
                     *) return 0 ;;
                 esac
+            }}
+            smbcontrol() {{
+                return 1
             }}
             command() {{
                 if [ "$1" = "-v" ] && [ "$2" = "systemctl" ]; then
@@ -520,7 +523,7 @@ class InstallPreflightTests(unittest.TestCase):
         )
 
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
-        self.assertIn("WARNING: smbd is active, but systemctl start smbd failed", result.stdout)
+        self.assertIn("WARNING: smbd is active, but reload/restart failed", result.stdout)
         self.assertIn("smbd: active", result.stdout)
 
     def test_samba_services_summary_reports_best_effort_discovery(self):

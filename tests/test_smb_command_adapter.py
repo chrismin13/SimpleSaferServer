@@ -111,6 +111,22 @@ class SmbCommandAdapterTests(unittest.TestCase):
             ],
         )
 
+    def test_reload_config_uses_smbcontrol_command(self):
+        runner = RecordingRunner()
+        adapter = SmbCommandAdapter(command_runner=runner)
+
+        adapter.reload_config()
+
+        self.assertEqual(
+            runner.calls,
+            [
+                (
+                    ["smbcontrol", "smbd", "reload-config"],
+                    {"check": True, "timeout": SMB_COMMAND_TIMEOUT_SECONDS},
+                )
+            ],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

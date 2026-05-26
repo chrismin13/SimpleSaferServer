@@ -416,8 +416,20 @@ configure_samba_discovery_services() {
     if ! systemctl enable smbd; then
         smbd_enable_failed=1
     fi
-    if ! systemctl start smbd; then
-        smbd_start_failed=1
+    # If smbd is already active, we attempt a graceful config reload first
+    # using smbcontrol. This avoids dropping active user connections.
+    # If the reload fails, we fall back to systemctl restart.
+    # If smbd is inactive, we perform a normal systemctl start.
+    if systemctl is-active --quiet smbd; then
+        if ! smbcontrol smbd reload-config >/dev/null 2>&1; then
+            if ! systemctl restart smbd; then
+                smbd_start_failed=1
+            fi
+        fi
+    else
+        if ! systemctl start smbd; then
+            smbd_start_failed=1
+        fi
     fi
     if ! systemctl is-active --quiet smbd; then
         echo -e "${RED}ERROR: smbd is not active after start.${NC}"
@@ -429,7 +441,7 @@ configure_samba_discovery_services() {
         echo -e "${YELLOW}WARNING: smbd is active, but systemctl enable smbd failed. File sharing works now, but it may not survive reboot until boot enablement is fixed.${NC}"
     fi
     if [ "$smbd_start_failed" -eq 1 ]; then
-        echo -e "${YELLOW}WARNING: smbd is active, but systemctl start smbd failed. File sharing works now, but review the service state before relying on it.${NC}"
+        echo -e "${YELLOW}WARNING: smbd is active, but reload/restart failed. File sharing works now, but review the service state before relying on it.${NC}"
     fi
 
     if ! systemctl enable nmbd; then

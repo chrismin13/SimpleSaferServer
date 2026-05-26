@@ -35,6 +35,19 @@ class SmbCommandAdapter:
             timeout=SMB_COMMAND_TIMEOUT_SECONDS,
         )
 
+    def reload_config(self) -> None:
+        """Reload running smbd configuration gracefully using smbcontrol.
+
+        This notifies active daemons via Samba's messaging interface to re-read
+        their configuration files immediately, preventing active file transfers
+        and TCP connections from dropping (unlike systemctl restart).
+        """
+        self._command_runner.run(
+            self._command("smbcontrol", "smbd", "reload-config"),
+            check=True,
+            timeout=SMB_COMMAND_TIMEOUT_SECONDS,
+        )
+
     def unit_status(self, unit_name: str) -> str:
         """Return 'active', 'inactive', or 'unavailable' for a systemd unit.
 

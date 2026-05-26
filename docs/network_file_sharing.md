@@ -12,9 +12,10 @@ SimpleSaferServer distinguishes between two kinds of Samba shares:
 
 That ownership split matters because SimpleSaferServer only edits shares that it can identify safely.
 Use the Web UI for normal SimpleSaferServer share changes so the app can validate Samba, publish
-the owned file safely, and restart the required service path.
+the owned file safely, and gracefully reload the configuration (falling back to a full restart 
+only if the reload fails or the daemon is inactive).
 If a publish fails after the owned shares file is replaced, SimpleSaferServer restores the previous
-owned shares file and restarts `smbd` so Samba is asked to return to the last known-good share set.
+owned shares file and reloads or restarts `smbd` so Samba returns to the last known-good share set.
 
 ## What the Page Shows
 
