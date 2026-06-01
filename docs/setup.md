@@ -58,6 +58,7 @@ This step is partition-oriented.
 - The wizard intentionally does not offer that broader retry based on UUID alone, because cloned replacement disks can legitimately share a filesystem UUID and would make the safety check ambiguous.
 - The mount button mounts that selected NTFS partition at the chosen mount point.
 - Advanced options allow changing the mount point and whether the managed `/etc/fstab` entry should be present.
+- The app stores the NTFS mount driver as `backup.ntfs_driver`. `ntfs-3g` is the default because it works across older Debian installs; `ntfs3` can be selected later on systems with kernel support.
 
 Persistent backup-drive state changes only when the mount/configure step succeeds:
 
@@ -74,6 +75,7 @@ agree about which partitions are selectable, especially for already-mounted
 Boot behavior:
 
 - The managed `/etc/fstab` entry uses `defaults,nofail`.
+- The managed `/etc/fstab` filesystem type is the configured NTFS driver, either `ntfs-3g` or `ntfs3`.
 - That means the system should still boot if the backup drive is disconnected.
 
 ## Step 4: Backup Configuration
@@ -122,6 +124,8 @@ If the backup drive changes after setup:
 - use the advanced backup-drive section on the Drive Health page
 - select the correct NTFS partition there
 - rerun only the backup-drive configuration portion
+- change the NTFS driver there when you want future mounts to use `ntfs-3g` or `ntfs3`
 
 That rerun flow is intentionally partition-oriented and does not behave like the whole-disk format step.
 If the selected partition is still the live configured backup share, the rerun flow can temporarily disconnect SMB access before unmounting it.
+Driver-only changes update the app config and the managed `/etc/fstab` entry, then take effect after the backup drive is unmounted and mounted again.

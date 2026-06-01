@@ -2,6 +2,7 @@ import os
 from typing import Any
 
 from simple_safer_server.adapters.command_runner import CalledProcessError
+from simple_safer_server.services.backup_drive_setup import get_configured_ntfs_mount_driver
 from simple_safer_server.web.problems import OperationProblem, ValidationProblem
 
 
@@ -67,7 +68,8 @@ class StorageService:
                     slug="storage-validation-error",
                 )
             os.makedirs(mount_point, exist_ok=True)
-            self._command_adapter.mount(partition_device, mount_point)
+            ntfs_driver = get_configured_ntfs_mount_driver(self._config_manager)
+            self._command_adapter.mount(partition_device, mount_point, ntfs_driver=ntfs_driver)
             # Start mount-dependent checks/backups only after the volume exists;
             # smbd/nmbd expose Samba shares after the mounted paths are available.
             for unit_name in [

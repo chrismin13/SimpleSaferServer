@@ -1,12 +1,15 @@
 from typing import Any
 
 import psutil
-from flask import Blueprint, current_app
+from flask import Blueprint, current_app, request
 
 from simple_safer_server.services.backup_drive_setup import (
     BackupDriveSetupError,
     apply_backup_drive_configuration,
+    get_configured_ntfs_mount_driver,
+    list_ntfs_mount_driver_options,
     list_available_drives,
+    update_backup_drive_ntfs_driver,
     unmount_selected_partition,
 )
 from simple_safer_server.services.backup_drive_unmount import (
@@ -270,6 +273,7 @@ def api_backup_drive_configure():
             config_manager=services.config_manager,
             smb_manager=services.smb_manager,
             runtime=services.runtime,
+            ntfs_driver=data.get("ntfs_driver"),
         )
         return json_data({"result": result})
     except BackupDriveSetupError as exc:
@@ -283,3 +287,35 @@ def api_backup_drive_configure():
     except Exception as exc:
         current_app.logger.error("Error configuring backup drive: %s", exc)
         return json_problem(OperationProblem("Could not configure the backup drive."))
+
+
+@storage.route("/api/backup_drive/ntfs-driver", methods=["GET", "POST"])
+@api_admin_required
+def api_backup_drive_ntfs_driver():
+    services = _get_services()
+    try:
+        if request.method == "POST":
+            data = json_request_data()
+            result = update_backup_drive_ntfs_driver(
+                data.get("ntfs_driver"),
+                services.config_manager,
+                runtime=services.runtime,
+            )
+            return json_data({"result": result}, message=result["message"])
+        return json_data(
+            {
+                "ntfs_driver": get_configured_ntfs_mount_driver(services.config_manager),
+                "options": list_ntfs_mount_driver_options(),
+            }
+        )
+    except BackupDriveSetupError as exc:
+        return json_problem(
+            ValidationProblem(
+                str(exc),
+                slug="backup-drive-validation-error",
+                extra={"details": exc.details},
+            )
+        )
+    except Exception as exc:
+        current_app.logger.error("Error updating backup drive NTFS driver: %s", exc)
+        return json_problem(OperationProblem("Could not update the NTFS driver."))

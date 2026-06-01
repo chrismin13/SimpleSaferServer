@@ -1,3 +1,4 @@
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -33,7 +34,15 @@ class RuntimeCommandAdapterTests(unittest.TestCase):
             [
                 ["systemctl", "reboot"],
                 ["systemctl", "poweroff"],
-                ["mount", "/dev/sdb1", "/media/backup"],
+                [
+                    "mount",
+                    "-t",
+                    "ntfs-3g",
+                    "-o",
+                    "rw,uid={},gid={}".format(os.getuid(), os.getgid()),
+                    "/dev/sdb1",
+                    "/media/backup",
+                ],
                 ["systemctl", "start", "smbd"],
             ],
         )

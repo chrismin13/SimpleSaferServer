@@ -227,6 +227,10 @@
               <th>Configured USB ID</th>
               <td><code id="configuredUsbIdValue">{{ drive_config.usb_id or '—' }}</code></td>
             </tr>
+            <tr>
+              <th>NTFS Driver</th>
+              <td><code id="configuredNtfsDriverValue">{{ drive_config.ntfs_driver }}</code></td>
+            </tr>
           </tbody>
         </table>
       </div>
@@ -255,14 +259,24 @@
           <label class="form-label" for="backupDriveMountPoint">Mount Point</label>
           <input type="text" class="form-control text-mono" id="backupDriveMountPoint" value="{{ drive_config.mount_point }}" placeholder="/media/backup">
         </div>
+        <div class="form-group">
+          <label class="form-label" for="backupDriveNtfsDriver">NTFS Driver</label>
+          <select class="form-control" id="backupDriveNtfsDriver">
+            {% for option in ntfs_driver_options %}
+              <option value="{{ option.value }}" {% if option.value == drive_config.ntfs_driver %}selected{% endif %}>{{ option.label }}</option>
+            {% endfor %}
+          </select>
+          <div class="form-hint">Use ntfs3 on newer kernels; keep ntfs-3g for widest compatibility.</div>
+        </div>
       </div>
 
       <div class="text-muted mb-4" style="font-size: var(--text-sm); line-height: 1.6;">
-        Scan drives, select the correct backup partition, unmount it first if needed, then apply the updated backup drive setup. This always refreshes the SimpleSaferServer-managed <code>/etc/fstab</code> entry using the boot-safe <code>nofail</code> configuration. Do not use this for unrelated system storage changes.
+        Scan drives, select the correct backup partition, unmount it first if needed, then apply the updated backup drive setup. This always refreshes the SimpleSaferServer-managed <code>/etc/fstab</code> entry using the boot-safe <code>nofail</code> configuration and the selected NTFS driver. Driver-only changes take effect after the next mount or remount. Do not use this for unrelated system storage changes.
       </div>
 
       <div class="d-flex gap-2 justify-end flex-wrap">
         <button type="button" id="unmountBackupDriveBtn" class="btn btn-secondary btn-sm">Unmount Selected Drive</button>
+        <button type="button" id="saveNtfsDriverBtn" class="btn btn-secondary btn-sm">Save NTFS Driver</button>
         <button type="button" id="applyBackupDriveBtn" class="btn btn-primary btn-sm">Apply Backup Drive Setup</button>
       </div>
     </div>
@@ -299,7 +313,7 @@
         <ul style="list-style: disc; padding-left: var(--sp-5); margin: var(--sp-2) 0 0 0;">
           <li>the backup drive mount point in <code>/etc/SimpleSaferServer/config.conf</code></li>
           <li>the stored backup drive UUID and USB ID</li>
-          <li>the SimpleSaferServer-managed line in <code>/etc/fstab</code> for the backup drive</li>
+          <li>the NTFS driver used by the SimpleSaferServer-managed line in <code>/etc/fstab</code></li>
           <li>the Samba backup share path in <code>/etc/samba/smb.conf</code> if the mount point changed</li>
         </ul>
       </div>
@@ -320,7 +334,7 @@
         </p>
         <div class="mt-2">
           <strong>Example:</strong>
-          <div class="mt-2"><code>UUID=2CD49023D48FED80 /media/backup ntfs-3g defaults,nofail 0 0 # SimpleSaferServer managed backup drive</code></div>
+          <div class="mt-2"><code>UUID=2CD49023D48FED80 /media/backup ntfs3 defaults,nofail 0 0 # SimpleSaferServer managed backup drive</code></div>
         </div>
       </div>
     </div>
@@ -463,12 +477,15 @@
     const errorDetailsTextEl = document.getElementById('backupDriveSetupErrorDetailsText');
     const scanBtn = document.getElementById('scanBackupDrivesBtn');
     const unmountBtn = document.getElementById('unmountBackupDriveBtn');
+    const saveNtfsDriverBtn = document.getElementById('saveNtfsDriverBtn');
     const applyBtn = document.getElementById('applyBackupDriveBtn');
     const driveSelect = document.getElementById('backupDriveSelect');
     const mountPointInput = document.getElementById('backupDriveMountPoint');
+    const ntfsDriverSelect = document.getElementById('backupDriveNtfsDriver');
     const configuredMountPointValue = document.getElementById('configuredMountPointValue');
     const configuredUuidValue = document.getElementById('configuredUuidValue');
     const configuredUsbIdValue = document.getElementById('configuredUsbIdValue');
+    const configuredNtfsDriverValue = document.getElementById('configuredNtfsDriverValue');
     let currentDriveSetupErrorDetails = '';
 
     function setDriveSetupStatus(message, type) {
@@ -600,7 +617,8 @@ Note: SMB access will briefly disconnect while unmounting.`;
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             partition: driveSelect.value,
-            mount_point: mountPointInput.value.trim()
+            mount_point: mountPointInput.value.trim(),
+            ntfs_driver: ntfsDriverSelect ? ntfsDriverSelect.value : undefined
           })
         });
         const result = data.result || {};
@@ -608,6 +626,7 @@ Note: SMB access will briefly disconnect while unmounting.`;
         if (configuredMountPointValue) configuredMountPointValue.textContent = result.mount_point || mountPointInput.value.trim();
         if (configuredUuidValue) configuredUuidValue.textContent = result.uuid || '—';
         if (configuredUsbIdValue) configuredUsbIdValue.textContent = result.usb_id || '—';
+        if (configuredNtfsDriverValue && ntfsDriverSelect) configuredNtfsDriverValue.textContent = ntfsDriverSelect.value;
         if (window.showAlert) {
           window.showAlert(result.message || 'Backup drive setup updated successfully.', 'success');
         }
@@ -615,6 +634,47 @@ Note: SMB access will briefly disconnect while unmounting.`;
       } catch (error) {
         showDriveSetupError(error.message || 'Failed to apply backup drive setup.', error.details);
         if (window.AsyncButtonState && applyBtn) window.AsyncButtonState.error(applyBtn);
+      }
+    }
+
+    async function saveNtfsDriver() {
+      hideDriveSetupError();
+      if (!ntfsDriverSelect || !ntfsDriverSelect.value) {
+        showDriveSetupError('Select an NTFS driver first.');
+        return;
+      }
+
+      const confirmed = await window.showConfirmationDialog({
+        title: 'Save NTFS Driver',
+        message: `This updates the SimpleSaferServer-managed backup drive driver to ${ntfsDriverSelect.value}.
+
+The current live mount keeps using its existing driver until the drive is unmounted and mounted again.`,
+        confirmLabel: 'Save Driver',
+        confirmClass: 'btn-primary'
+      });
+      if (!confirmed) {
+        return;
+      }
+
+      setDriveSetupStatus('Saving NTFS driver…', 'info');
+      if (window.AsyncButtonState && saveNtfsDriverBtn) window.AsyncButtonState.start(saveNtfsDriverBtn);
+      try {
+        const { data, message } = await window.ApiClient.fetchJson('/api/backup_drive/ntfs-driver', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ntfs_driver: ntfsDriverSelect.value })
+        });
+        const result = data.result || {};
+        const driver = result.ntfs_driver || ntfsDriverSelect.value;
+        if (configuredNtfsDriverValue) configuredNtfsDriverValue.textContent = driver;
+        setDriveSetupStatus(result.message || message || 'NTFS driver saved.', 'success');
+        if (window.showAlert) {
+          window.showAlert(result.message || message || 'NTFS driver saved.', 'success');
+        }
+        if (window.AsyncButtonState && saveNtfsDriverBtn) window.AsyncButtonState.success(saveNtfsDriverBtn);
+      } catch (error) {
+        showDriveSetupError(error.message || 'Failed to save the NTFS driver.', error.details);
+        if (window.AsyncButtonState && saveNtfsDriverBtn) window.AsyncButtonState.error(saveNtfsDriverBtn);
       }
     }
 
@@ -629,6 +689,7 @@ Note: SMB access will briefly disconnect while unmounting.`;
 
     if (scanBtn) scanBtn.addEventListener('click', scanDrives);
     if (unmountBtn) unmountBtn.addEventListener('click', unmountSelectedDrive);
+    if (saveNtfsDriverBtn) saveNtfsDriverBtn.addEventListener('click', saveNtfsDriver);
     if (applyBtn) applyBtn.addEventListener('click', applyDriveSetup);
   })();
 </script>

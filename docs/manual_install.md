@@ -8,6 +8,7 @@ This guide explains how to manually install SimpleSaferServer on a clean Debian 
 
 - Run `sudo apt-get update`.
 - Run `sudo apt-get install -y git python3 python3-pip python3-venv smartmontools samba msmtp rsync curl unzip fdisk ntfs-3g unattended-upgrades`.
+- `ntfs-3g` is still installed because it is the default backup-drive driver. The `ntfs3` driver is kernel-provided on newer systems and can be selected later from the Drive Health backup-drive setup panel when the running kernel supports it.
 - Optionally run `sudo apt-get install -y wsdd2` for modern Windows Network discovery. Continue
   without it if your distro release does not provide the package; `smbd` is the required
   file-serving daemon, while `nmbd` and `wsdd2` are discovery helpers.

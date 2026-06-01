@@ -56,11 +56,18 @@ class BackupDriveCommandAdapter:
             timeout=BACKUP_DRIVE_MOUNT_TIMEOUT_SECONDS,
         )
 
-    def mount_ntfs(self, partition: str, mount_point: str):
+    def mount_ntfs(self, partition: str, mount_point: str, ntfs_driver: str = "ntfs-3g"):
         uid = os.getuid()
         gid = os.getgid()
+        options = f"rw,uid={uid},gid={gid}"
+        if ntfs_driver == "ntfs-3g":
+            command = ["ntfs-3g", partition, mount_point, "-o", options]
+        else:
+            # ntfs3 is a kernel filesystem type, so it goes through mount(8)
+            # instead of the ntfs-3g helper binary.
+            command = ["mount", "-t", ntfs_driver, "-o", options, partition, mount_point]
         return self._command_runner.run(
-            ["ntfs-3g", partition, mount_point, "-o", f"rw,uid={uid},gid={gid}"],
+            command,
             capture_output=True,
             text=True,
             timeout=BACKUP_DRIVE_MOUNT_TIMEOUT_SECONDS,

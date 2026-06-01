@@ -109,6 +109,8 @@ This flow is partition-oriented.
 - The selector uses the same NTFS-partition scan as setup wizard step 3.
 - If `lsblk` reports a mounted `ntfs-3g` partition as `fuseblk`, the app double-checks the on-disk type with `blkid` before showing it.
 - Partitions reported as `ntfs3`, `ntfs-3g`, or confirmed-NTFS `fuseblk` are treated as NTFS backup targets by the picker.
+- The NTFS driver selector controls the driver written to the managed `/etc/fstab` line and used by later manual mounts. `ntfs-3g` remains the compatibility default; `ntfs3` is available for newer kernels.
+- A driver-only save is intentionally non-disruptive. The current live mount keeps its existing driver until the drive is unmounted and mounted again.
 - The unmount action unmounts only the exact selected partition.
 - That unmount action only clears the live mount so the selected partition can be validated and configured again.
 - If the selected partition is still the configured backup drive and it is currently mounted at the managed backup mount point, the app first disconnects SMB access and stops the related background tasks so the unmount is not blocked by busy share handles.
@@ -189,7 +191,7 @@ Important file locations:
 Example managed `/etc/fstab` entry:
 
 ```fstab
-UUID=2CD49023D48FED80    /media/backup    ntfs-3g    defaults,nofail    0    0 # SimpleSaferServer managed backup drive
+UUID=2CD49023D48FED80    /media/backup    ntfs3    defaults,nofail    0    0 # SimpleSaferServer managed backup drive
 ```
 
 After manual changes, verify the result:

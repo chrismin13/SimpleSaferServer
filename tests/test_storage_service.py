@@ -10,14 +10,21 @@ from simple_safer_server.web.problems import OperationProblem, ValidationProblem
 
 
 class FakeConfigManager:
-    def __init__(self, mount_point, uuid: Optional[str] = "drive-uuid"):
+    def __init__(
+        self,
+        mount_point,
+        uuid: Optional[str] = "drive-uuid",
+        ntfs_driver: str = "ntfs-3g",
+    ):
         self.mount_point = mount_point
         self.uuid = uuid
+        self.ntfs_driver = ntfs_driver
 
     def get_value(self, section, key, default=None):
         values = {
             ("backup", "mount_point"): self.mount_point,
             ("backup", "uuid"): self.uuid,
+            ("backup", "ntfs_driver"): self.ntfs_driver,
         }
         return values.get((section, key), default)
 
@@ -52,10 +59,10 @@ class FakeStorageCommandAdapter:
     def find_device_by_uuid(self, uuid):
         return self.device
 
-    def mount(self, device, mount_point):
+    def mount(self, device, mount_point, ntfs_driver="ntfs-3g"):
         if self.raise_on_mount:
             raise self.raise_on_mount
-        self.mounted.append((device, mount_point))
+        self.mounted.append((device, mount_point, ntfs_driver))
 
     def start_unit(self, unit_name):
         self.started.append(unit_name)
@@ -107,7 +114,7 @@ class StorageServiceTests(unittest.TestCase):
             self.assertEqual(
                 service.mount_dashboard_drive(), "Drive mounted and available for use."
             )
-            self.assertEqual(adapter.mounted, [("/dev/sdb1", mount_point)])
+            self.assertEqual(adapter.mounted, [("/dev/sdb1", mount_point, "ntfs-3g")])
         self.assertEqual(
             adapter.started,
             [

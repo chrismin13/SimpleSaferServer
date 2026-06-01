@@ -45,8 +45,8 @@ class FakeBackupDriveCommandAdapter:
             return self.unmount_results.pop(0)
         return SimpleNamespace(returncode=0, stderr='', stdout='')
 
-    def mount_ntfs(self, partition, mount_point):
-        self.mounted_ntfs.append((partition, mount_point))
+    def mount_ntfs(self, partition, mount_point, ntfs_driver='ntfs-3g'):
+        self.mounted_ntfs.append((partition, mount_point, ntfs_driver))
         return self.mount_ntfs_result
 
     def cleanup_unmount(self, device):
@@ -375,6 +375,64 @@ class BackupDriveSetupTests(unittest.TestCase):
 
         self.assertEqual(mount, {'device': '/dev/sdb1', 'mount_point': '/media/one'})
 
+    def test_update_managed_fstab_can_render_ntfs3_driver(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            runtime = SimpleNamespace(
+                is_fake=True,
+                config_dir=Path(tempdir) / 'config',
+            )
+            fstab_path = Path(tempdir) / 'fstab'
+
+            backup_drive_setup.update_managed_fstab(
+                'UUID-1',
+                '/media/backup',
+                True,
+                runtime=runtime,
+                fstab_path=fstab_path,
+                ntfs_driver='ntfs3',
+            )
+
+            self.assertIn(
+                'UUID=UUID-1\t\t/media/backup\tntfs3\tdefaults,nofail\t0\t0',
+                fstab_path.read_text(),
+            )
+
+    def test_update_backup_drive_ntfs_driver_rewrites_existing_managed_fstab(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            runtime = SimpleNamespace(
+                is_fake=True,
+                default_mount_point='/media/backup',
+                config_dir=Path(tempdir) / 'config',
+            )
+            fstab_path = Path(tempdir) / 'fstab'
+            fstab_path.write_text(
+                'UUID=UUID-1 /media/backup ntfs-3g defaults,nofail 0 0 '
+                '# SimpleSaferServer managed backup drive\n'
+            )
+
+            config_manager = MagicMock()
+            config_manager.get_value.side_effect = [
+                'ntfs-3g',
+                '/media/backup',
+                'UUID-1',
+            ]
+
+            with patch(
+                'simple_safer_server.services.backup_drive_setup._get_fstab_path',
+                return_value=fstab_path,
+            ):
+                result = backup_drive_setup.update_backup_drive_ntfs_driver(
+                    'ntfs3',
+                    config_manager,
+                    runtime=runtime,
+                )
+
+            self.assertEqual(result['ntfs_driver'], 'ntfs3')
+            self.assertIn('/media/backup\tntfs3\t', fstab_path.read_text())
+            config_manager.set_value.assert_called_once_with(
+                'backup', 'ntfs_driver', 'ntfs3'
+            )
+
     @patch('simple_safer_server.services.backup_drive_setup._get_mounted_partitions_for_disk')
     def test_unmount_disk_partitions_unmounts_all_members(self, mock_get_mounted):
         runtime = SimpleNamespace(is_fake=False)
@@ -426,7 +484,7 @@ class BackupDriveSetupTests(unittest.TestCase):
         runtime = SimpleNamespace(is_fake=False, default_mount_point='/media/backup')
         command_adapter = FakeBackupDriveCommandAdapter()
         config_manager = MagicMock()
-        config_manager.get_value.side_effect = ['/media/backup', '', '']
+        config_manager.get_value.side_effect = ['/media/backup', '', '', 'ntfs-3g']
         smb_manager = MagicMock()
         smb_manager.get_managed_share.return_value = None
 
@@ -451,7 +509,10 @@ class BackupDriveSetupTests(unittest.TestCase):
         mock_reload_mount_units.assert_called_once_with(
             runtime=runtime, command_adapter=command_adapter
         )
-        self.assertEqual(command_adapter.mounted_ntfs, [('/dev/sdb1', '/media/backup')])
+        self.assertEqual(
+            command_adapter.mounted_ntfs,
+            [('/dev/sdb1', '/media/backup', 'ntfs-3g')],
+        )
 
     @patch('simple_safer_server.services.backup_drive_setup.restore_fstab_backup')
     @patch('simple_safer_server.services.backup_drive_setup.os.makedirs')
@@ -475,7 +536,12 @@ class BackupDriveSetupTests(unittest.TestCase):
         runtime = SimpleNamespace(is_fake=False, default_mount_point='/media/backup')
         command_adapter = FakeBackupDriveCommandAdapter()
         config_manager = MagicMock()
-        config_manager.get_value.side_effect = ['/media/backup', 'OLD-UUID', '1234:5678']
+        config_manager.get_value.side_effect = [
+            '/media/backup',
+            'OLD-UUID',
+            '1234:5678',
+            'ntfs-3g',
+        ]
         smb_manager = MagicMock()
         smb_manager.get_managed_share.return_value = None
 
@@ -524,7 +590,12 @@ class BackupDriveSetupTests(unittest.TestCase):
         runtime = SimpleNamespace(is_fake=False, default_mount_point='/media/backup')
         command_adapter = FakeBackupDriveCommandAdapter()
         config_manager = MagicMock()
-        config_manager.get_value.side_effect = ['/media/backup', 'OLD-UUID', '1234:5678']
+        config_manager.get_value.side_effect = [
+            '/media/backup',
+            'OLD-UUID',
+            '1234:5678',
+            'ntfs-3g',
+        ]
         smb_manager = MagicMock()
         smb_manager.get_managed_share.return_value = None
 
@@ -584,7 +655,12 @@ class BackupDriveSetupTests(unittest.TestCase):
             mock_update_fstab.return_value = '/tmp/fstab.backup'
 
             config_manager = MagicMock()
-            config_manager.get_value.side_effect = ['/media/backup', 'OLD-UUID', 'OLD-USB']
+            config_manager.get_value.side_effect = [
+                '/media/backup',
+                'OLD-UUID',
+                'OLD-USB',
+                'ntfs-3g',
+            ]
             config_manager.set_value.side_effect = [None, None, RuntimeError('boom')]
 
             smb_manager = MagicMock()
@@ -648,7 +724,12 @@ class BackupDriveSetupTests(unittest.TestCase):
             mock_update_fstab.return_value = '/tmp/fstab.backup'
 
             config_manager = MagicMock()
-            config_manager.get_value.side_effect = ['/media/backup', 'OLD-UUID', 'OLD-USB']
+            config_manager.get_value.side_effect = [
+                '/media/backup',
+                'OLD-UUID',
+                'OLD-USB',
+                'ntfs-3g',
+            ]
             config_manager.set_value.side_effect = [None, None, RuntimeError('boom')]
 
             managed_share = {

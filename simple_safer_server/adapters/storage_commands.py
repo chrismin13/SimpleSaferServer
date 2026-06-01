@@ -1,3 +1,4 @@
+import os
 from typing import Optional
 
 from simple_safer_server.adapters.command_runner import CommandRunner
@@ -29,9 +30,19 @@ class StorageCommandAdapter:
         )
         return result.stdout.strip()
 
-    def mount(self, device: str, mount_point: str) -> None:
+    def mount(self, device: str, mount_point: str, ntfs_driver: str = "ntfs-3g") -> None:
+        uid = os.getuid()
+        gid = os.getgid()
         self._command_runner.run(
-            ["mount", device, mount_point],
+            [
+                "mount",
+                "-t",
+                ntfs_driver,
+                "-o",
+                f"rw,uid={uid},gid={gid}",
+                device,
+                mount_point,
+            ],
             check=True,
             timeout=STORAGE_MOUNT_TIMEOUT_SECONDS,
         )
