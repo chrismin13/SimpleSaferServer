@@ -167,6 +167,30 @@ def _normalize_device_path(device_path):
     return os.path.realpath(device_path)
 
 
+def split_uuid_device_lookup(device_lookup_output):
+    return [line.strip() for line in (device_lookup_output or '').splitlines() if line.strip()]
+
+
+def _validate_uuid_maps_to_selected_device(uuid, selected_partition, command_adapter=None):
+    matching_devices = split_uuid_device_lookup(
+        _command_adapter(command_adapter).find_device_by_uuid(uuid)
+    )
+    if len(matching_devices) != 1:
+        if matching_devices:
+            raise BackupDriveSetupError(
+                'Multiple connected devices have the selected backup drive UUID. Disconnect cloned drives or assign a unique filesystem UUID before configuring the backup drive.'
+            )
+        raise BackupDriveSetupError('Could not verify the selected backup drive UUID.')
+
+    if _normalize_device_path(matching_devices[0]) != _normalize_device_path(selected_partition):
+        # The immediate mount uses the selected partition path, but fstab uses
+        # UUID=. Stop if those disagree so future boot/dashboard remounts do not
+        # target a different block device than the one the admin selected.
+        raise BackupDriveSetupError(
+            'The selected partition does not match the device found for its filesystem UUID.'
+        )
+
+
 def _lsblk_flag_is_true(value):
     if isinstance(value, bool):
         return value
@@ -843,6 +867,7 @@ def apply_backup_drive_configuration(
         )
 
     uuid = get_drive_uuid(partition, command_adapter=command_adapter)
+    _validate_uuid_maps_to_selected_device(uuid, partition, command_adapter=command_adapter)
     usb_id = get_drive_usb_id(partition)
     filesystem_type = _get_partition_filesystem_type(partition, command_adapter=command_adapter)
     if not _is_ntfs_filesystem(filesystem_type):

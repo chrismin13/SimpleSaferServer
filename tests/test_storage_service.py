@@ -155,6 +155,17 @@ class StorageServiceTests(unittest.TestCase):
             self.assertEqual(adapter.managed_mounted, [])
             self.assertEqual(adapter.mounted, [])
 
+    def test_real_mount_rejects_ambiguous_uuid_matches(self):
+        with tempfile.TemporaryDirectory() as mount_point:
+            service, _fake_state, adapter = self.build_service(mount_point=mount_point)
+            adapter.device = "/dev/sdb1\n/dev/sdc1\n"
+
+            with self.assertRaisesRegex(ValidationProblem, "Multiple connected drives"):
+                service.mount_dashboard_drive()
+
+            self.assertEqual(adapter.mounted, [])
+            self.assertEqual(adapter.managed_mounted, [])
+
     def test_real_mount_reports_missing_uuid_without_system_commands(self):
         service, _fake_state, adapter = self.build_service(uuid=None)
 

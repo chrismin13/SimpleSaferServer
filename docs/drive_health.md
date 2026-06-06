@@ -135,7 +135,7 @@ It is also different from the main Dashboard `Unmount Drive` action.
 - the SimpleSaferServer-managed `/etc/fstab` entry for the backup drive, including the selected NTFS driver
 - the Samba backup share path if the mount point changed
 
-The rerun flow always refreshes the managed `/etc/fstab` entry with the selected NTFS driver and `defaults,nofail`.
+The rerun flow always refreshes the managed `/etc/fstab` entry with driver-specific mount options. `ntfs-3g` entries use `defaults,nofail`; `ntfs3` entries use `rw,uid=0,gid=0,dmask=000,fmask=000,nofail` so existing NTFS folders stay writable through Samba.
 After rewriting the managed `/etc/fstab` entry, the app also runs `systemctl daemon-reload` so the next `Check Mount` run sees the updated systemd-generated mount units immediately.
 
 Persistent backup-drive state changes happen only when the rerun configure step succeeds.

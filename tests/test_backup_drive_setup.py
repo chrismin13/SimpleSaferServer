@@ -25,6 +25,7 @@ class FakeBackupDriveCommandAdapter:
         )
         self.current_mounts_result = SimpleNamespace(returncode=0, stderr='', stdout='')
         self.system_drive_result = SimpleNamespace(returncode=0, stderr='', stdout='/dev/sda\n')
+        self.find_device_by_uuid_result = '/dev/sdb1\n'
 
     def lsblk_devices_json(self):
         return self.lsblk_devices_json_result
@@ -38,6 +39,10 @@ class FakeBackupDriveCommandAdapter:
 
     def system_drive(self):
         return self.system_drive_result
+
+    def find_device_by_uuid(self, uuid):
+        del uuid
+        return self.find_device_by_uuid_result
 
     def unmount_partition(self, device):
         self.unmounted_partitions.append(device)
@@ -573,6 +578,48 @@ class BackupDriveSetupTests(unittest.TestCase):
             ntfs_driver='ntfs3',
         )
         self.assertEqual(command_adapter.mounted_ntfs, [('/dev/sdb1', '/media/backup', 'ntfs3')])
+
+    @patch('simple_safer_server.services.backup_drive_setup.os.makedirs')
+    @patch('simple_safer_server.services.backup_drive_setup.update_managed_fstab')
+    @patch('simple_safer_server.services.backup_drive_setup._get_partition_filesystem_type')
+    @patch('simple_safer_server.services.backup_drive_setup.get_drive_uuid')
+    @patch('simple_safer_server.services.backup_drive_setup._get_mount_for_partition')
+    def test_apply_backup_drive_configuration_rejects_duplicate_uuid_devices(
+        self,
+        mock_get_mount,
+        mock_get_uuid,
+        mock_get_fstype,
+        mock_update_fstab,
+        mock_makedirs,
+    ):
+        del mock_get_fstype
+        del mock_makedirs
+        runtime = SimpleNamespace(is_fake=False, default_mount_point='/media/backup')
+        command_adapter = FakeBackupDriveCommandAdapter()
+        command_adapter.find_device_by_uuid_result = '/dev/sdb1\n/dev/sdc1\n'
+        config_manager = MagicMock()
+        config_manager.get_value.side_effect = ['/media/backup', '', '']
+        smb_manager = MagicMock()
+
+        mock_get_mount.return_value = None
+        mock_get_uuid.return_value = 'UUID-1'
+
+        with self.assertRaisesRegex(
+            backup_drive_setup.BackupDriveSetupError,
+            'Multiple connected devices have the selected backup drive UUID',
+        ):
+            backup_drive_setup.apply_backup_drive_configuration(
+                '/dev/sdb1',
+                '/media/backup',
+                True,
+                config_manager,
+                smb_manager,
+                runtime=runtime,
+                command_adapter=command_adapter,
+            )
+
+        mock_update_fstab.assert_not_called()
+        self.assertEqual(command_adapter.mounted_ntfs, [])
 
     @patch('simple_safer_server.services.backup_drive_setup.restore_fstab_backup')
     @patch('simple_safer_server.services.backup_drive_setup.os.makedirs')
