@@ -71,7 +71,7 @@ class BackupDriveCommandAdapterTests(unittest.TestCase):
             runner.calls[0][0][0:5], ["mount", "-t", "ntfs3", "/dev/sdb1", "/media/backup"]
         )
         self.assertEqual(runner.calls[0][0][5], "-o")
-        self.assertIn("rw,uid=", runner.calls[0][0][6])
+        self.assertEqual(runner.calls[0][0][6], "rw,uid=0,gid=0,dmask=000,fmask=000")
 
 
 if __name__ == "__main__":

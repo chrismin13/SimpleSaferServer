@@ -350,9 +350,20 @@ def _validate_fstab_file(path):
     return True, None, None
 
 
+def _managed_ntfs_mount_options(ntfs_driver):
+    ntfs_driver = normalize_ntfs_driver(ntfs_driver)
+    if ntfs_driver == 'ntfs3':
+        # ntfs3 otherwise exposes existing NTFS directories as root-owned 0755
+        # on common kernels, which makes authenticated Samba users hit Linux
+        # permission denials even though the share itself is writable.
+        return 'rw,uid=0,gid=0,dmask=000,fmask=000,nofail'
+    return 'defaults,nofail'
+
+
 def _render_managed_fstab_entry(uuid, mount_point, ntfs_driver=DEFAULT_NTFS_DRIVER):
     ntfs_driver = normalize_ntfs_driver(ntfs_driver)
-    return f'UUID={uuid}\t\t{mount_point}\t{ntfs_driver}\tdefaults,nofail\t0\t0 {FSTAB_MARKER}\n'
+    mount_options = _managed_ntfs_mount_options(ntfs_driver)
+    return f'UUID={uuid}\t\t{mount_point}\t{ntfs_driver}\t{mount_options}\t0\t0 {FSTAB_MARKER}\n'
 
 
 def get_managed_ntfs_driver(runtime=None, fstab_path=None):

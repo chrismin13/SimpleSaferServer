@@ -265,7 +265,7 @@
             <option value="ntfs-3g" {% if drive_config.ntfs_driver == 'ntfs-3g' %}selected{% endif %}>ntfs-3g (default)</option>
             <option value="ntfs3" {% if drive_config.ntfs_driver == 'ntfs3' %}selected{% endif %}>ntfs3 (kernel driver)</option>
           </select>
-          <div class="form-hint">Use ntfs3 only when this kernel supports it.</div>
+          <div class="form-hint">Use ntfs3 only when this kernel supports it. The app gives ntfs3 mounts broad backup-share permissions.</div>
         </div>
       </div>
 

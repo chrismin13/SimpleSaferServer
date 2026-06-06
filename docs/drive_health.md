@@ -115,6 +115,7 @@ This flow is partition-oriented.
 - The app intentionally does not escalate to that broader SMB-safe path based on UUID alone, because cloned replacement disks can legitimately share a filesystem UUID and would make the selected physical device ambiguous.
 - The configure action mounts only the exact selected partition.
 - The NTFS driver selector controls the filesystem type written to the managed `/etc/fstab` entry. `ntfs-3g` remains the default; `ntfs3` uses the kernel NTFS driver on kernels that support it.
+- Managed `ntfs3` entries use explicit `dmask=000,fmask=000` permissions so existing NTFS folders remain writable through the authenticated Samba share.
 
 This is different from setup wizard step 2, which is disk-oriented for formatting.
 
@@ -192,9 +193,9 @@ Important file locations:
 Example managed `/etc/fstab` entry:
 
 ```fstab
-UUID=2CD49023D48FED80    /media/backup    ntfs-3g    defaults,nofail    0    0 # SimpleSaferServer managed backup drive
+UUID=2CD49023D48FED80    /media/backup    ntfs-3g    defaults,nofail                                 0    0 # SimpleSaferServer managed backup drive
 # or, when the kernel NTFS driver is deliberately selected:
-UUID=2CD49023D48FED80    /media/backup    ntfs3       defaults,nofail    0    0 # SimpleSaferServer managed backup drive
+UUID=2CD49023D48FED80    /media/backup    ntfs3       rw,uid=0,gid=0,dmask=000,fmask=000,nofail    0    0 # SimpleSaferServer managed backup drive
 ```
 
 After manual changes, verify the result:

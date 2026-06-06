@@ -402,7 +402,10 @@ class BackupDriveSetupTests(unittest.TestCase):
             )
 
             content = (data_dir / 'fstab').read_text()
-            self.assertIn('/media/backup\tntfs3\tdefaults,nofail', content)
+            self.assertIn(
+                '/media/backup\tntfs3\trw,uid=0,gid=0,dmask=000,fmask=000,nofail',
+                content,
+            )
             self.assertEqual(
                 backup_drive_setup.get_managed_ntfs_driver(runtime=runtime),
                 'ntfs3',
