@@ -227,6 +227,10 @@
               <th>Configured USB ID</th>
               <td><code id="configuredUsbIdValue">{{ drive_config.usb_id or '—' }}</code></td>
             </tr>
+            <tr>
+              <th>Configured NTFS Driver</th>
+              <td><code id="configuredNtfsDriverValue">{{ drive_config.ntfs_driver }}</code></td>
+            </tr>
           </tbody>
         </table>
       </div>
@@ -255,10 +259,18 @@
           <label class="form-label" for="backupDriveMountPoint">Mount Point</label>
           <input type="text" class="form-control text-mono" id="backupDriveMountPoint" value="{{ drive_config.mount_point }}" placeholder="/media/backup">
         </div>
+        <div class="form-group">
+          <label class="form-label" for="backupDriveNtfsDriver">NTFS Driver</label>
+          <select class="form-control" id="backupDriveNtfsDriver">
+            <option value="ntfs-3g" {% if drive_config.ntfs_driver == 'ntfs-3g' %}selected{% endif %}>ntfs-3g (default)</option>
+            <option value="ntfs3" {% if drive_config.ntfs_driver == 'ntfs3' %}selected{% endif %}>ntfs3 (kernel driver)</option>
+          </select>
+          <div class="form-hint">Use ntfs3 only when this kernel supports it.</div>
+        </div>
       </div>
 
       <div class="text-muted mb-4" style="font-size: var(--text-sm); line-height: 1.6;">
-        Scan drives, select the correct backup partition, unmount it first if needed, then apply the updated backup drive setup. This always refreshes the SimpleSaferServer-managed <code>/etc/fstab</code> entry using the boot-safe <code>nofail</code> configuration. Do not use this for unrelated system storage changes.
+        Scan drives, select the correct backup partition, unmount it first if needed, then apply the updated backup drive setup. This always refreshes the SimpleSaferServer-managed <code>/etc/fstab</code> entry using the selected NTFS driver and boot-safe <code>nofail</code> configuration. Do not use this for unrelated system storage changes.
       </div>
 
       <div class="d-flex gap-2 justify-end flex-wrap">
@@ -299,7 +311,7 @@
         <ul style="list-style: disc; padding-left: var(--sp-5); margin: var(--sp-2) 0 0 0;">
           <li>the backup drive mount point in <code>/etc/SimpleSaferServer/config.conf</code></li>
           <li>the stored backup drive UUID and USB ID</li>
-          <li>the SimpleSaferServer-managed line in <code>/etc/fstab</code> for the backup drive</li>
+          <li>the SimpleSaferServer-managed line in <code>/etc/fstab</code> for the backup drive, including the selected NTFS driver</li>
           <li>the Samba backup share path in <code>/etc/samba/smb.conf</code> if the mount point changed</li>
         </ul>
       </div>
@@ -466,9 +478,11 @@
     const applyBtn = document.getElementById('applyBackupDriveBtn');
     const driveSelect = document.getElementById('backupDriveSelect');
     const mountPointInput = document.getElementById('backupDriveMountPoint');
+    const ntfsDriverSelect = document.getElementById('backupDriveNtfsDriver');
     const configuredMountPointValue = document.getElementById('configuredMountPointValue');
     const configuredUuidValue = document.getElementById('configuredUuidValue');
     const configuredUsbIdValue = document.getElementById('configuredUsbIdValue');
+    const configuredNtfsDriverValue = document.getElementById('configuredNtfsDriverValue');
     let currentDriveSetupErrorDetails = '';
 
     function setDriveSetupStatus(message, type) {
@@ -600,7 +614,8 @@ Note: SMB access will briefly disconnect while unmounting.`;
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             partition: driveSelect.value,
-            mount_point: mountPointInput.value.trim()
+            mount_point: mountPointInput.value.trim(),
+            ntfs_driver: ntfsDriverSelect.value
           })
         });
         const result = data.result || {};
@@ -608,6 +623,7 @@ Note: SMB access will briefly disconnect while unmounting.`;
         if (configuredMountPointValue) configuredMountPointValue.textContent = result.mount_point || mountPointInput.value.trim();
         if (configuredUuidValue) configuredUuidValue.textContent = result.uuid || '—';
         if (configuredUsbIdValue) configuredUsbIdValue.textContent = result.usb_id || '—';
+        if (configuredNtfsDriverValue) configuredNtfsDriverValue.textContent = result.ntfs_driver || ntfsDriverSelect.value;
         if (window.showAlert) {
           window.showAlert(result.message || 'Backup drive setup updated successfully.', 'success');
         }

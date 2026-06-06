@@ -57,7 +57,8 @@ This step is partition-oriented.
 - If the exact unmount fails and the selected partition is still the live configured backup drive mounted at the managed backup mount point, the wizard offers a second explicit SMB-safe retry that may temporarily stop SMB access and the related background backup tasks before retrying the unmount.
 - The wizard intentionally does not offer that broader retry based on UUID alone, because cloned replacement disks can legitimately share a filesystem UUID and would make the safety check ambiguous.
 - The mount button mounts that selected NTFS partition at the chosen mount point.
-- Advanced options allow changing the mount point and whether the managed `/etc/fstab` entry should be present.
+- Advanced options allow changing the mount point.
+- A successful mount step always writes the managed `/etc/fstab` entry so the backup drive can be remounted at boot and by scheduled mount checks.
 
 Persistent backup-drive state changes only when the mount/configure step succeeds:
 
@@ -73,7 +74,7 @@ agree about which partitions are selectable, especially for already-mounted
 
 Boot behavior:
 
-- The managed `/etc/fstab` entry uses `defaults,nofail`.
+- The managed `/etc/fstab` entry uses `ntfs-3g` with `defaults,nofail`.
 - That means the system should still boot if the backup drive is disconnected.
 
 ## Step 4: Backup Configuration

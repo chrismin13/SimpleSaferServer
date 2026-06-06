@@ -36,6 +36,13 @@ class StorageCommandAdapter:
             timeout=STORAGE_MOUNT_TIMEOUT_SECONDS,
         )
 
+    def mount_managed(self, mount_point: str) -> None:
+        self._command_runner.run(
+            ["mount", mount_point],
+            check=True,
+            timeout=STORAGE_MOUNT_TIMEOUT_SECONDS,
+        )
+
     def start_unit(self, unit_name: str) -> None:
         # These service restarts are best-effort after a successful mount so
         # one unavailable helper does not hide the drive from the dashboard.

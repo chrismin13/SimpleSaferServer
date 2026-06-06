@@ -575,7 +575,9 @@ def mount_drive():
         if not partition:
             return _validation_problem('partition is required')
         mount_point = data.get('mount_point') or runtime.default_mount_point
-        auto_mount = data.get('auto_mount', True)
+        # SimpleSaferServer-managed backup drives are always registered for boot
+        # remounts; the UI no longer exposes a non-persistent mount mode.
+        auto_mount = True
         result = apply_backup_drive_configuration(
             partition,
             mount_point,

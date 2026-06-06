@@ -45,8 +45,8 @@ class FakeBackupDriveCommandAdapter:
             return self.unmount_results.pop(0)
         return SimpleNamespace(returncode=0, stderr='', stdout='')
 
-    def mount_ntfs(self, partition, mount_point):
-        self.mounted_ntfs.append((partition, mount_point))
+    def mount_ntfs(self, partition, mount_point, ntfs_driver='ntfs-3g'):
+        self.mounted_ntfs.append((partition, mount_point, ntfs_driver))
         return self.mount_ntfs_result
 
     def cleanup_unmount(self, device):
@@ -375,6 +375,65 @@ class BackupDriveSetupTests(unittest.TestCase):
 
         self.assertEqual(mount, {'device': '/dev/sdb1', 'mount_point': '/media/one'})
 
+    def test_managed_fstab_driver_defaults_to_ntfs_3g(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            fstab_path = Path(tempdir) / 'fstab'
+
+            self.assertEqual(
+                backup_drive_setup.get_managed_ntfs_driver(fstab_path=fstab_path),
+                'ntfs-3g',
+            )
+
+    def test_update_managed_fstab_can_write_ntfs3_driver(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            data_dir = Path(tempdir)
+            runtime = SimpleNamespace(
+                is_fake=True,
+                data_dir=data_dir,
+                config_dir=data_dir / 'config',
+            )
+
+            backup_drive_setup.update_managed_fstab(
+                'UUID-1',
+                '/media/backup',
+                True,
+                runtime=runtime,
+                ntfs_driver='ntfs3',
+            )
+
+            content = (data_dir / 'fstab').read_text()
+            self.assertIn('/media/backup\tntfs3\tdefaults,nofail', content)
+            self.assertEqual(
+                backup_drive_setup.get_managed_ntfs_driver(runtime=runtime),
+                'ntfs3',
+            )
+            self.assertTrue(
+                backup_drive_setup.has_managed_fstab_entry_for_mount_point(
+                    '/media/backup', runtime=runtime
+                )
+            )
+
+    def test_update_managed_fstab_rejects_unknown_ntfs_driver(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            data_dir = Path(tempdir)
+            runtime = SimpleNamespace(
+                is_fake=True,
+                data_dir=data_dir,
+                config_dir=data_dir / 'config',
+            )
+
+            with self.assertRaisesRegex(
+                backup_drive_setup.BackupDriveSetupError,
+                'Unsupported NTFS driver',
+            ):
+                backup_drive_setup.update_managed_fstab(
+                    'UUID-1',
+                    '/media/backup',
+                    True,
+                    runtime=runtime,
+                    ntfs_driver='ntfs4',
+                )
+
     @patch('simple_safer_server.services.backup_drive_setup._get_mounted_partitions_for_disk')
     def test_unmount_disk_partitions_unmounts_all_members(self, mock_get_mounted):
         runtime = SimpleNamespace(is_fake=False)
@@ -451,7 +510,60 @@ class BackupDriveSetupTests(unittest.TestCase):
         mock_reload_mount_units.assert_called_once_with(
             runtime=runtime, command_adapter=command_adapter
         )
-        self.assertEqual(command_adapter.mounted_ntfs, [('/dev/sdb1', '/media/backup')])
+        self.assertEqual(command_adapter.mounted_ntfs, [('/dev/sdb1', '/media/backup', 'ntfs-3g')])
+
+    @patch('simple_safer_server.services.backup_drive_setup.os.makedirs')
+    @patch('simple_safer_server.services.backup_drive_setup._reload_systemd_mount_units')
+    @patch('simple_safer_server.services.backup_drive_setup.update_managed_fstab')
+    @patch('simple_safer_server.services.backup_drive_setup._get_partition_filesystem_type')
+    @patch('simple_safer_server.services.backup_drive_setup.get_drive_usb_id')
+    @patch('simple_safer_server.services.backup_drive_setup.get_drive_uuid')
+    @patch('simple_safer_server.services.backup_drive_setup._get_mount_for_partition')
+    def test_apply_backup_drive_configuration_uses_selected_ntfs_driver(
+        self,
+        mock_get_mount,
+        mock_get_uuid,
+        mock_get_usb_id,
+        mock_get_fstype,
+        mock_update_fstab,
+        mock_reload_mount_units,
+        mock_makedirs,
+    ):
+        del mock_makedirs
+        del mock_reload_mount_units
+        runtime = SimpleNamespace(is_fake=False, default_mount_point='/media/backup')
+        command_adapter = FakeBackupDriveCommandAdapter()
+        config_manager = MagicMock()
+        config_manager.get_value.side_effect = ['/media/backup', '', '']
+        smb_manager = MagicMock()
+        smb_manager.get_managed_share.return_value = None
+
+        mock_get_mount.return_value = None
+        mock_get_uuid.return_value = 'UUID-1'
+        mock_get_usb_id.return_value = '1234:5678'
+        mock_get_fstype.return_value = 'ntfs'
+        mock_update_fstab.return_value = None
+
+        result = backup_drive_setup.apply_backup_drive_configuration(
+            '/dev/sdb1',
+            '/media/backup',
+            True,
+            config_manager,
+            smb_manager,
+            runtime=runtime,
+            command_adapter=command_adapter,
+            ntfs_driver='ntfs3',
+        )
+
+        self.assertEqual(result['ntfs_driver'], 'ntfs3')
+        mock_update_fstab.assert_called_once_with(
+            'UUID-1',
+            '/media/backup',
+            True,
+            runtime=runtime,
+            ntfs_driver='ntfs3',
+        )
+        self.assertEqual(command_adapter.mounted_ntfs, [('/dev/sdb1', '/media/backup', 'ntfs3')])
 
     @patch('simple_safer_server.services.backup_drive_setup.restore_fstab_backup')
     @patch('simple_safer_server.services.backup_drive_setup.os.makedirs')

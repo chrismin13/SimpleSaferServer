@@ -2,6 +2,7 @@ import os
 from typing import Any
 
 from simple_safer_server.adapters.command_runner import CalledProcessError
+from simple_safer_server.services.backup_drive_setup import has_managed_fstab_entry_for_mount_point
 from simple_safer_server.web.problems import OperationProblem, ValidationProblem
 
 
@@ -67,7 +68,12 @@ class StorageService:
                     slug="storage-validation-error",
                 )
             os.makedirs(mount_point, exist_ok=True)
-            self._command_adapter.mount(partition_device, mount_point)
+            if has_managed_fstab_entry_for_mount_point(mount_point, runtime=self._runtime):
+                # Prefer the managed fstab entry when it exists so dashboard
+                # remounts keep the admin-selected NTFS driver and mount options.
+                self._command_adapter.mount_managed(mount_point)
+            else:
+                self._command_adapter.mount(partition_device, mount_point)
             # Start mount-dependent checks/backups only after the volume exists;
             # smbd/nmbd expose Samba shares after the mounted paths are available.
             for unit_name in [

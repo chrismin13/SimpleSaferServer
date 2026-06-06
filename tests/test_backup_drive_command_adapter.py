@@ -51,6 +51,28 @@ class BackupDriveCommandAdapterTests(unittest.TestCase):
         self.assertFalse(runner.calls[0][1]["check"])
         self.assertTrue(runner.calls[0][1]["capture_output"])
 
+    def test_mount_ntfs_defaults_to_ntfs_3g_binary(self):
+        runner = FakeCommandRunner()
+        adapter = BackupDriveCommandAdapter(command_runner=cast(Any, runner))
+
+        adapter.mount_ntfs("/dev/sdb1", "/media/backup")
+
+        self.assertEqual(runner.calls[0][0][0:3], ["ntfs-3g", "/dev/sdb1", "/media/backup"])
+        self.assertEqual(runner.calls[0][0][3], "-o")
+        self.assertIn("rw,uid=", runner.calls[0][0][4])
+
+    def test_mount_ntfs3_uses_kernel_mount_type(self):
+        runner = FakeCommandRunner()
+        adapter = BackupDriveCommandAdapter(command_runner=cast(Any, runner))
+
+        adapter.mount_ntfs("/dev/sdb1", "/media/backup", ntfs_driver="ntfs3")
+
+        self.assertEqual(
+            runner.calls[0][0][0:5], ["mount", "-t", "ntfs3", "/dev/sdb1", "/media/backup"]
+        )
+        self.assertEqual(runner.calls[0][0][5], "-o")
+        self.assertIn("rw,uid=", runner.calls[0][0][6])
+
 
 if __name__ == "__main__":
     unittest.main()

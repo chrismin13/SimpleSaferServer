@@ -167,10 +167,7 @@ This removes all files on the selected drive and prepares it as one backup drive
                                         <label class="form-label">Mount Point</label>
                                         <input type="text" id="mountPoint" value="{{ default_mount_point }}" class="form-control">
                                     </div>
-                                    <div class="form-check">
-                                        <input type="checkbox" id="autoMount" class="form-check-input" checked>
-                                        <label class="form-check-label" for="autoMount">Mount automatically at boot</label>
-                                    </div>
+                                    <div class="form-hint">The backup drive is registered for automatic remounts during boot and scheduled mount checks.</div>
                                 </div>
                             </div>
                             <div class="d-flex gap-2 justify-end mb-4">
@@ -651,12 +648,11 @@ unmount the share, then restart SMB automatically."
             const mountBtn = document.getElementById('mountDriveBtn');
             const partition = document.getElementById('mountDriveSelect').value;
             const mountPoint = document.getElementById('mountPoint').value;
-            const autoMount = document.getElementById('autoMount').checked;
             if (!partition) { showMountError('Please select a drive to mount'); setMountStatus('Please select a drive.', 'warning'); return; }
             window.AsyncButtonState.start(mountBtn);
             setMountStatus('Mounting drive…', 'info');
             try {
-                await window.ApiClient.fetchJson('/api/setup/mount', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ partition, mount_point: mountPoint, auto_mount: autoMount }) });
+                await window.ApiClient.fetchJson('/api/setup/mount', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ partition, mount_point: mountPoint }) });
                 window.AsyncButtonState.success(mountBtn); localStorage.setItem('mountSuccess', '1'); nextStep(); hideMountError(); setMountStatus('Drive mounted successfully.', 'success'); await loadDrives();
             } catch (error) { window.AsyncButtonState.error(mountBtn); setMountStatus('Failed to mount drive.', 'error'); showMountError(error.message || 'An error occurred while mounting the drive', error.details); }
         }
