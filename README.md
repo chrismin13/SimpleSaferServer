@@ -4,6 +4,10 @@
 > **Want to see it in action?**  
 > Check out the [Live Management Demo](https://sssdemo.chrismin13.com) to explore the dashboard and features in a simulated environment!
 
+> [!WARNING]
+> **Repo has breaking changes**
+> If you are actually using the software, please leave a comment in the issue here so I stop making breaking changes: https://github.com/chrismin13/SimpleSaferServer/issues/57
+
 SimpleSaferServer is my vibe-coded experimentation project for helping with backing up your files on your home or small-business server using a 3-2-1 backup strategy. Over time, I have been working towards adding all the features and services that I would want in my own server when I set up from scratch, as well as experimenting with the latest hotness in vibe coding at that period in time. 
 
 I always try to keep the project as stable as possible, especially in the main branch, but the whole point of it is to be fun and experimental. I will try out new things and add things that I mostly care about for my use case. If you see this works for you, you are more than welcome to install it for your own server at your own risk! I will be happy to help you out if you run into issues.
