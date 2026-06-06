@@ -375,24 +375,36 @@ def get_managed_ntfs_driver(runtime=None, fstab_path=None):
     return DEFAULT_NTFS_DRIVER
 
 
-def has_managed_fstab_entry_for_mount_point(mount_point, runtime=None, fstab_path=None):
+def get_managed_fstab_entry_for_mount_point(mount_point, runtime=None, fstab_path=None):
     mount_point = (mount_point or '').strip()
     if not mount_point:
-        return False
+        return None
 
     runtime = runtime or get_runtime()
     path = _get_fstab_path(runtime, fstab_path=fstab_path)
     if not path.exists():
-        return False
+        return None
 
     normalized_mount_point = os.path.realpath(mount_point)
     for line in path.read_text().splitlines():
         if not _is_managed_fstab_line(line):
             continue
         entry = _parse_fstab_entry(line)
-        if entry and os.path.realpath(entry['mount_point']) == normalized_mount_point:
-            return True
-    return False
+        if not entry or os.path.realpath(entry['mount_point']) != normalized_mount_point:
+            continue
+        spec = entry.get('spec', '')
+        # Dashboard remounts may delegate to `mount <mount_point>`, so expose the
+        # UUID from fstab and let callers verify it still matches config.conf.
+        entry['uuid'] = spec.split('=', 1)[1] if spec.startswith('UUID=') else ''
+        return entry
+    return None
+
+
+def has_managed_fstab_entry_for_mount_point(mount_point, runtime=None, fstab_path=None):
+    return (
+        get_managed_fstab_entry_for_mount_point(mount_point, runtime=runtime, fstab_path=fstab_path)
+        is not None
+    )
 
 
 def update_managed_fstab(

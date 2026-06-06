@@ -2,7 +2,7 @@ import os
 from typing import Any
 
 from simple_safer_server.adapters.command_runner import CalledProcessError
-from simple_safer_server.services.backup_drive_setup import has_managed_fstab_entry_for_mount_point
+from simple_safer_server.services.backup_drive_setup import get_managed_fstab_entry_for_mount_point
 from simple_safer_server.web.problems import OperationProblem, ValidationProblem
 
 
@@ -68,9 +68,19 @@ class StorageService:
                     slug="storage-validation-error",
                 )
             os.makedirs(mount_point, exist_ok=True)
-            if has_managed_fstab_entry_for_mount_point(mount_point, runtime=self._runtime):
-                # Prefer the managed fstab entry when it exists so dashboard
-                # remounts keep the admin-selected NTFS driver and mount options.
+            managed_fstab_entry = get_managed_fstab_entry_for_mount_point(
+                mount_point, runtime=self._runtime
+            )
+            if managed_fstab_entry:
+                if managed_fstab_entry.get("uuid") != uuid:
+                    raise ValidationProblem(
+                        "Managed fstab entry does not match the configured backup drive UUID. "
+                        "Re-run backup drive setup from Drive Health before mounting.",
+                        slug="storage-validation-error",
+                    )
+                # Prefer the managed fstab entry only after the UUID matches so
+                # remounts keep the admin-selected NTFS driver without letting a
+                # stale fstab line mount a different backup disk.
                 self._command_adapter.mount_managed(mount_point)
             else:
                 self._command_adapter.mount(partition_device, mount_point)

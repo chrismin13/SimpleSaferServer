@@ -131,14 +131,28 @@ class StorageServiceTests(unittest.TestCase):
             service, _fake_state, adapter = self.build_service(mount_point=mount_point)
 
             with patch(
-                "simple_safer_server.services.storage_service.has_managed_fstab_entry_for_mount_point",
-                return_value=True,
+                "simple_safer_server.services.storage_service.get_managed_fstab_entry_for_mount_point",
+                return_value={"uuid": "drive-uuid"},
             ):
                 self.assertEqual(
                     service.mount_dashboard_drive(), "Drive mounted and available for use."
                 )
 
             self.assertEqual(adapter.managed_mounted, [mount_point])
+            self.assertEqual(adapter.mounted, [])
+
+    def test_real_mount_rejects_stale_managed_fstab_uuid(self):
+        with tempfile.TemporaryDirectory() as mount_point:
+            service, _fake_state, adapter = self.build_service(mount_point=mount_point)
+
+            with patch(
+                "simple_safer_server.services.storage_service.get_managed_fstab_entry_for_mount_point",
+                return_value={"uuid": "stale-uuid"},
+            ):
+                with self.assertRaisesRegex(ValidationProblem, "fstab entry does not match"):
+                    service.mount_dashboard_drive()
+
+            self.assertEqual(adapter.managed_mounted, [])
             self.assertEqual(adapter.mounted, [])
 
     def test_real_mount_reports_missing_uuid_without_system_commands(self):
