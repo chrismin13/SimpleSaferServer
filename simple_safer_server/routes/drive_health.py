@@ -4,6 +4,7 @@ from typing import Any
 
 from flask import Blueprint, abort, current_app, render_template, request, send_file
 
+from simple_safer_server.services.backup_drive_setup import get_managed_ntfs_driver
 from simple_safer_server.services.drive_health import (
     SMART_FIELDS,
     SMARTCTL_JSON_UPGRADE_MESSAGE,
@@ -57,6 +58,7 @@ def drives():
         ),
         "uuid": services.config_manager.get_value("backup", "uuid", ""),
         "usb_id": services.config_manager.get_value("backup", "usb_id", ""),
+        "ntfs_driver": get_managed_ntfs_driver(runtime=services.runtime),
     }
 
     smart_support_warning = None

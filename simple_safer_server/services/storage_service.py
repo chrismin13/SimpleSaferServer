@@ -2,6 +2,10 @@ import os
 from typing import Any
 
 from simple_safer_server.adapters.command_runner import CalledProcessError
+from simple_safer_server.services.backup_drive_setup import (
+    get_managed_fstab_entry_for_mount_point,
+    split_uuid_device_lookup,
+)
 from simple_safer_server.web.problems import OperationProblem, ValidationProblem
 
 
@@ -60,14 +64,38 @@ class StorageService:
             raise ValidationProblem("No drive UUID configured.", slug="storage-validation-error")
 
         try:
-            partition_device = self._command_adapter.find_device_by_uuid(uuid)
-            if not partition_device:
+            matching_devices = split_uuid_device_lookup(
+                self._command_adapter.find_device_by_uuid(uuid)
+            )
+            if not matching_devices:
                 raise ValidationProblem(
                     "Drive not found. Please check the connection.",
                     slug="storage-validation-error",
                 )
+            if len(matching_devices) > 1:
+                raise ValidationProblem(
+                    "Multiple connected drives have the configured backup drive UUID. "
+                    "Disconnect cloned drives or re-run backup drive setup before mounting.",
+                    slug="storage-validation-error",
+                )
+            partition_device = matching_devices[0]
             os.makedirs(mount_point, exist_ok=True)
-            self._command_adapter.mount(partition_device, mount_point)
+            managed_fstab_entry = get_managed_fstab_entry_for_mount_point(
+                mount_point, runtime=self._runtime
+            )
+            if managed_fstab_entry:
+                if managed_fstab_entry.get("uuid") != uuid:
+                    raise ValidationProblem(
+                        "Managed fstab entry does not match the configured backup drive UUID. "
+                        "Re-run backup drive setup from Drive Health before mounting.",
+                        slug="storage-validation-error",
+                    )
+                # Prefer the managed fstab entry only after the UUID matches so
+                # remounts keep the admin-selected NTFS driver without letting a
+                # stale fstab line mount a different backup disk.
+                self._command_adapter.mount_managed(mount_point)
+            else:
+                self._command_adapter.mount(partition_device, mount_point)
             # Start mount-dependent checks/backups only after the volume exists;
             # smbd/nmbd expose Samba shares after the mounted paths are available.
             for unit_name in [

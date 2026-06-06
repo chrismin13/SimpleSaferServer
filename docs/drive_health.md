@@ -114,6 +114,8 @@ This flow is partition-oriented.
 - If the selected partition is still the configured backup drive and it is currently mounted at the managed backup mount point, the app first disconnects SMB access and stops the related background tasks so the unmount is not blocked by busy share handles.
 - The app intentionally does not escalate to that broader SMB-safe path based on UUID alone, because cloned replacement disks can legitimately share a filesystem UUID and would make the selected physical device ambiguous.
 - The configure action mounts only the exact selected partition.
+- The NTFS driver selector controls the filesystem type written to the managed `/etc/fstab` entry. `ntfs-3g` remains the default; `ntfs3` uses the kernel NTFS driver on kernels that support it.
+- Managed `ntfs3` entries use explicit `dmask=000,fmask=000` permissions so existing NTFS folders remain writable through the authenticated Samba share.
 
 This is different from setup wizard step 2, which is disk-oriented for formatting.
 
@@ -130,10 +132,10 @@ It is also different from the main Dashboard `Unmount Drive` action.
 - the stored backup `mount_point`
 - the stored backup `uuid`
 - the stored backup `usb_id`
-- the SimpleSaferServer-managed `/etc/fstab` entry for the backup drive
+- the SimpleSaferServer-managed `/etc/fstab` entry for the backup drive, including the selected NTFS driver
 - the Samba backup share path if the mount point changed
 
-The rerun flow always refreshes the managed `/etc/fstab` entry with `defaults,nofail`.
+The rerun flow always refreshes the managed `/etc/fstab` entry with driver-specific mount options. `ntfs-3g` entries use `defaults,nofail`; `ntfs3` entries use `rw,uid=0,gid=0,dmask=000,fmask=000,nofail` so existing NTFS folders stay writable through Samba.
 After rewriting the managed `/etc/fstab` entry, the app also runs `systemctl daemon-reload` so the next `Check Mount` run sees the updated systemd-generated mount units immediately.
 
 Persistent backup-drive state changes happen only when the rerun configure step succeeds.
@@ -153,6 +155,7 @@ The app does not treat unrelated `/etc/fstab` lines as its own unless they use t
 
 - The rerun flow does not edit unrelated `/etc/fstab` entries.
 - If the app finds multiple managed entries, it stops and asks for manual cleanup.
+- If `ntfs3` is selected on a kernel that cannot mount `ntfs3`, the configure step fails and restores the previous managed `/etc/fstab` entry.
 - If a non-SimpleSaferServer entry already uses the same UUID or mount point, it stops and asks for manual cleanup.
 - If the selected partition is already mounted, it stops and asks the user to unmount it first.
 
@@ -174,6 +177,7 @@ Manual recovery rules:
 
 - Update `/etc/SimpleSaferServer/config.conf` only if you know the correct `mount_point`, `uuid`, and `usb_id`.
 - Update only the SimpleSaferServer-managed `/etc/fstab` entry.
+- Use `ntfs-3g` or `ntfs3` as the filesystem type for the managed backup-drive line.
 - Run `sudo systemctl daemon-reload` after manually changing `/etc/fstab` so systemd forgets the old generated mount unit state.
 - If the mount point changes, also check `/etc/samba/simple_safer_server_shares.conf` (see [Network File Sharing](network_file_sharing.md)).
 - Do not modify unrelated `/etc/fstab` entries.
@@ -189,7 +193,9 @@ Important file locations:
 Example managed `/etc/fstab` entry:
 
 ```fstab
-UUID=2CD49023D48FED80    /media/backup    ntfs-3g    defaults,nofail    0    0 # SimpleSaferServer managed backup drive
+UUID=2CD49023D48FED80    /media/backup    ntfs-3g    defaults,nofail                                 0    0 # SimpleSaferServer managed backup drive
+# or, when the kernel NTFS driver is deliberately selected:
+UUID=2CD49023D48FED80    /media/backup    ntfs3       rw,uid=0,gid=0,dmask=000,fmask=000,nofail    0    0 # SimpleSaferServer managed backup drive
 ```
 
 After manual changes, verify the result:

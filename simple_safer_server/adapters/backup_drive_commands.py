@@ -56,11 +56,21 @@ class BackupDriveCommandAdapter:
             timeout=BACKUP_DRIVE_MOUNT_TIMEOUT_SECONDS,
         )
 
-    def mount_ntfs(self, partition: str, mount_point: str):
+    def mount_ntfs(self, partition: str, mount_point: str, ntfs_driver: str = "ntfs-3g"):
         uid = os.getuid()
         gid = os.getgid()
+        if ntfs_driver == "ntfs3":
+            # Match the managed fstab entry so the immediate validation mount
+            # has the same Samba-friendly permission view as later remounts.
+            mount_options = "rw,uid=0,gid=0,dmask=000,fmask=000"
+            command = ["mount", "-t", "ntfs3", partition, mount_point, "-o", mount_options]
+        else:
+            mount_options = f"rw,uid={uid},gid={gid}"
+            # ntfs-3g stays the default because it has the longest compatibility
+            # history across the Debian/Ubuntu releases SimpleSaferServer supports.
+            command = ["ntfs-3g", partition, mount_point, "-o", mount_options]
         return self._command_runner.run(
-            ["ntfs-3g", partition, mount_point, "-o", f"rw,uid={uid},gid={gid}"],
+            command,
             capture_output=True,
             text=True,
             timeout=BACKUP_DRIVE_MOUNT_TIMEOUT_SECONDS,

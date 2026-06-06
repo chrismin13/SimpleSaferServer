@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Optional
+from unittest.mock import patch
 
 from simple_safer_server.services.storage_service import StorageService
 from simple_safer_server.web.problems import OperationProblem, ValidationProblem
@@ -40,6 +41,7 @@ class FakeStorageCommandAdapter:
         self.powered_off = False
         self.device = "/dev/sdb1"
         self.mounted = []
+        self.managed_mounted = []
         self.started = []
         self.raise_on_mount = None  # type: Optional[Exception]
 
@@ -56,6 +58,11 @@ class FakeStorageCommandAdapter:
         if self.raise_on_mount:
             raise self.raise_on_mount
         self.mounted.append((device, mount_point))
+
+    def mount_managed(self, mount_point):
+        if self.raise_on_mount:
+            raise self.raise_on_mount
+        self.managed_mounted.append(mount_point)
 
     def start_unit(self, unit_name):
         self.started.append(unit_name)
@@ -118,6 +125,46 @@ class StorageServiceTests(unittest.TestCase):
                 "nmbd",
             ],
         )
+
+    def test_real_mount_prefers_managed_fstab_entry(self):
+        with tempfile.TemporaryDirectory() as mount_point:
+            service, _fake_state, adapter = self.build_service(mount_point=mount_point)
+
+            with patch(
+                "simple_safer_server.services.storage_service.get_managed_fstab_entry_for_mount_point",
+                return_value={"uuid": "drive-uuid"},
+            ):
+                self.assertEqual(
+                    service.mount_dashboard_drive(), "Drive mounted and available for use."
+                )
+
+            self.assertEqual(adapter.managed_mounted, [mount_point])
+            self.assertEqual(adapter.mounted, [])
+
+    def test_real_mount_rejects_stale_managed_fstab_uuid(self):
+        with tempfile.TemporaryDirectory() as mount_point:
+            service, _fake_state, adapter = self.build_service(mount_point=mount_point)
+
+            with patch(
+                "simple_safer_server.services.storage_service.get_managed_fstab_entry_for_mount_point",
+                return_value={"uuid": "stale-uuid"},
+            ):
+                with self.assertRaisesRegex(ValidationProblem, "fstab entry does not match"):
+                    service.mount_dashboard_drive()
+
+            self.assertEqual(adapter.managed_mounted, [])
+            self.assertEqual(adapter.mounted, [])
+
+    def test_real_mount_rejects_ambiguous_uuid_matches(self):
+        with tempfile.TemporaryDirectory() as mount_point:
+            service, _fake_state, adapter = self.build_service(mount_point=mount_point)
+            adapter.device = "/dev/sdb1\n/dev/sdc1\n"
+
+            with self.assertRaisesRegex(ValidationProblem, "Multiple connected drives"):
+                service.mount_dashboard_drive()
+
+            self.assertEqual(adapter.mounted, [])
+            self.assertEqual(adapter.managed_mounted, [])
 
     def test_real_mount_reports_missing_uuid_without_system_commands(self):
         service, _fake_state, adapter = self.build_service(uuid=None)

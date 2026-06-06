@@ -15,6 +15,8 @@ from simple_safer_server.services.runtime import get_fake_state, get_runtime
 LOGGER = logging.getLogger(__name__)
 FSTAB_MARKER = "# SimpleSaferServer managed backup drive"
 LEGACY_FSTAB_MARKER = "SimpleSaferServer"
+DEFAULT_NTFS_DRIVER = 'ntfs-3g'
+SUPPORTED_NTFS_DRIVERS = {DEFAULT_NTFS_DRIVER, 'ntfs3'}
 NTFS_FILESYSTEM_TYPES = {'ntfs', 'ntfs3', 'ntfs-3g'}
 
 
@@ -96,6 +98,7 @@ def _parse_fstab_entry(line):
     return {
         'spec': parts[0],
         'mount_point': parts[1],
+        'fstype': parts[2] if len(parts) >= 3 else '',
     }
 
 
@@ -106,6 +109,13 @@ def _backup_file(path, runtime, prefix):
     backup_path = backup_dir / f'{prefix}.{timestamp}'
     shutil.copy2(path, backup_path)
     return backup_path
+
+
+def normalize_ntfs_driver(ntfs_driver):
+    normalized_driver = (ntfs_driver or DEFAULT_NTFS_DRIVER).strip().lower()
+    if normalized_driver not in SUPPORTED_NTFS_DRIVERS:
+        raise BackupDriveSetupError('Unsupported NTFS driver. Choose ntfs-3g or ntfs3.')
+    return normalized_driver
 
 
 def _is_ntfs_filesystem(filesystem_type):
@@ -155,6 +165,30 @@ def _normalize_device_path(device_path):
     if not device_path:
         return ''
     return os.path.realpath(device_path)
+
+
+def split_uuid_device_lookup(device_lookup_output):
+    return [line.strip() for line in (device_lookup_output or '').splitlines() if line.strip()]
+
+
+def _validate_uuid_maps_to_selected_device(uuid, selected_partition, command_adapter=None):
+    matching_devices = split_uuid_device_lookup(
+        _command_adapter(command_adapter).find_device_by_uuid(uuid)
+    )
+    if len(matching_devices) != 1:
+        if matching_devices:
+            raise BackupDriveSetupError(
+                'Multiple connected devices have the selected backup drive UUID. Disconnect cloned drives or assign a unique filesystem UUID before configuring the backup drive.'
+            )
+        raise BackupDriveSetupError('Could not verify the selected backup drive UUID.')
+
+    if _normalize_device_path(matching_devices[0]) != _normalize_device_path(selected_partition):
+        # The immediate mount uses the selected partition path, but fstab uses
+        # UUID=. Stop if those disagree so future boot/dashboard remounts do not
+        # target a different block device than the one the admin selected.
+        raise BackupDriveSetupError(
+            'The selected partition does not match the device found for its filesystem UUID.'
+        )
 
 
 def _lsblk_flag_is_true(value):
@@ -328,7 +362,7 @@ def _validate_fstab_file(path):
                 )
             if not spec.startswith('UUID='):
                 issues.append(f'line {line_number} has an invalid managed UUID spec: {spec}')
-            if fstype != 'ntfs-3g':
+            if fstype not in SUPPORTED_NTFS_DRIVERS:
                 issues.append(
                     f'line {line_number} has unexpected managed filesystem type: {fstype}'
                 )
@@ -340,11 +374,83 @@ def _validate_fstab_file(path):
     return True, None, None
 
 
-def _render_managed_fstab_entry(uuid, mount_point):
-    return f'UUID={uuid}\t\t{mount_point}\tntfs-3g\tdefaults,nofail\t0\t0 {FSTAB_MARKER}\n'
+def _managed_ntfs_mount_options(ntfs_driver):
+    ntfs_driver = normalize_ntfs_driver(ntfs_driver)
+    if ntfs_driver == 'ntfs3':
+        # ntfs3 otherwise exposes existing NTFS directories as root-owned 0755
+        # on common kernels, which makes authenticated Samba users hit Linux
+        # permission denials even though the share itself is writable.
+        return 'rw,uid=0,gid=0,dmask=000,fmask=000,nofail'
+    return 'defaults,nofail'
 
 
-def update_managed_fstab(uuid, mount_point, auto_mount, runtime=None, fstab_path=None):
+def _render_managed_fstab_entry(uuid, mount_point, ntfs_driver=DEFAULT_NTFS_DRIVER):
+    ntfs_driver = normalize_ntfs_driver(ntfs_driver)
+    mount_options = _managed_ntfs_mount_options(ntfs_driver)
+    return f'UUID={uuid}\t\t{mount_point}\t{ntfs_driver}\t{mount_options}\t0\t0 {FSTAB_MARKER}\n'
+
+
+def get_managed_ntfs_driver(runtime=None, fstab_path=None):
+    runtime = runtime or get_runtime()
+    path = _get_fstab_path(runtime, fstab_path=fstab_path)
+    if not path.exists():
+        return DEFAULT_NTFS_DRIVER
+
+    for line in path.read_text().splitlines():
+        if not _is_managed_fstab_line(line):
+            continue
+        entry = _parse_fstab_entry(line)
+        if not entry:
+            continue
+        # The managed fstab line is the durable source of truth for the driver;
+        # config.conf intentionally does not duplicate this filesystem detail.
+        fstype = (entry.get('fstype') or '').strip().lower()
+        if fstype in SUPPORTED_NTFS_DRIVERS:
+            return fstype
+    return DEFAULT_NTFS_DRIVER
+
+
+def get_managed_fstab_entry_for_mount_point(mount_point, runtime=None, fstab_path=None):
+    mount_point = (mount_point or '').strip()
+    if not mount_point:
+        return None
+
+    runtime = runtime or get_runtime()
+    path = _get_fstab_path(runtime, fstab_path=fstab_path)
+    if not path.exists():
+        return None
+
+    normalized_mount_point = os.path.realpath(mount_point)
+    for line in path.read_text().splitlines():
+        if not _is_managed_fstab_line(line):
+            continue
+        entry = _parse_fstab_entry(line)
+        if not entry or os.path.realpath(entry['mount_point']) != normalized_mount_point:
+            continue
+        spec = entry.get('spec', '')
+        # Dashboard remounts may delegate to `mount <mount_point>`, so expose the
+        # UUID from fstab and let callers verify it still matches config.conf.
+        entry['uuid'] = spec.split('=', 1)[1] if spec.startswith('UUID=') else ''
+        return entry
+    return None
+
+
+def has_managed_fstab_entry_for_mount_point(mount_point, runtime=None, fstab_path=None):
+    return (
+        get_managed_fstab_entry_for_mount_point(mount_point, runtime=runtime, fstab_path=fstab_path)
+        is not None
+    )
+
+
+def update_managed_fstab(
+    uuid,
+    mount_point,
+    auto_mount,
+    runtime=None,
+    fstab_path=None,
+    ntfs_driver=DEFAULT_NTFS_DRIVER,
+):
+    ntfs_driver = normalize_ntfs_driver(ntfs_driver)
     runtime = runtime or get_runtime()
     path = _get_fstab_path(runtime, fstab_path=fstab_path)
 
@@ -386,7 +492,7 @@ def update_managed_fstab(uuid, mount_point, auto_mount, runtime=None, fstab_path
     for line in existing:
         if _is_managed_fstab_line(line):
             if auto_mount:
-                new_lines.append(_render_managed_fstab_entry(uuid, mount_point))
+                new_lines.append(_render_managed_fstab_entry(uuid, mount_point, ntfs_driver))
                 managed_written = True
             continue
         new_lines.append(line)
@@ -394,7 +500,7 @@ def update_managed_fstab(uuid, mount_point, auto_mount, runtime=None, fstab_path
     if auto_mount and not managed_written:
         if new_lines and not new_lines[-1].endswith('\n'):
             new_lines[-1] = new_lines[-1] + '\n'
-        new_lines.append(_render_managed_fstab_entry(uuid, mount_point))
+        new_lines.append(_render_managed_fstab_entry(uuid, mount_point, ntfs_driver))
 
     path.parent.mkdir(parents=True, exist_ok=True)
     with NamedTemporaryFile(
@@ -663,9 +769,11 @@ def apply_backup_drive_configuration(
     smb_manager,
     runtime=None,
     command_adapter=None,
+    ntfs_driver=DEFAULT_NTFS_DRIVER,
 ):
     runtime = runtime or get_runtime()
     command_adapter = _command_adapter(command_adapter)
+    ntfs_driver = normalize_ntfs_driver(ntfs_driver)
     fake_state = get_fake_state(runtime) if runtime.is_fake else None
 
     mount_point = (mount_point or '').strip()
@@ -702,7 +810,11 @@ def apply_backup_drive_configuration(
 
         try:
             fstab_backup = update_managed_fstab(
-                uuid, selected_path_str, bool(auto_mount), runtime=runtime
+                uuid,
+                selected_path_str,
+                bool(auto_mount),
+                runtime=runtime,
+                ntfs_driver=ntfs_driver,
             )
             _reload_systemd_mount_units(runtime=runtime, command_adapter=command_adapter)
 
@@ -722,6 +834,7 @@ def apply_backup_drive_configuration(
                 'uuid': uuid,
                 'usb_id': usb_id,
                 'mount_point': selected_path_str,
+                'ntfs_driver': ntfs_driver,
             }
         except Exception:
             if fstab_backup:
@@ -754,6 +867,7 @@ def apply_backup_drive_configuration(
         )
 
     uuid = get_drive_uuid(partition, command_adapter=command_adapter)
+    _validate_uuid_maps_to_selected_device(uuid, partition, command_adapter=command_adapter)
     usb_id = get_drive_usb_id(partition)
     filesystem_type = _get_partition_filesystem_type(partition, command_adapter=command_adapter)
     if not _is_ntfs_filesystem(filesystem_type):
@@ -767,10 +881,16 @@ def apply_backup_drive_configuration(
     config_updated = False
 
     try:
-        fstab_backup = update_managed_fstab(uuid, mount_point, bool(auto_mount), runtime=runtime)
+        fstab_backup = update_managed_fstab(
+            uuid,
+            mount_point,
+            bool(auto_mount),
+            runtime=runtime,
+            ntfs_driver=ntfs_driver,
+        )
         _reload_systemd_mount_units(runtime=runtime, command_adapter=command_adapter)
 
-        mount_result = command_adapter.mount_ntfs(partition, mount_point)
+        mount_result = command_adapter.mount_ntfs(partition, mount_point, ntfs_driver=ntfs_driver)
         if mount_result.returncode != 0:
             error_msg = (
                 mount_result.stderr.strip() if mount_result.stderr else 'Unknown error occurred'
@@ -790,6 +910,7 @@ def apply_backup_drive_configuration(
             'uuid': uuid,
             'usb_id': usb_id,
             'mount_point': mount_point,
+            'ntfs_driver': ntfs_driver,
         }
     except Exception:
         if mounted:

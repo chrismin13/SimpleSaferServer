@@ -26,6 +26,7 @@ class RuntimeCommandAdapterTests(unittest.TestCase):
         adapter.reboot()
         adapter.poweroff()
         adapter.mount("/dev/sdb1", "/media/backup")
+        adapter.mount_managed("/media/backup")
         adapter.start_unit("smbd")
 
         self.assertEqual(
@@ -34,6 +35,7 @@ class RuntimeCommandAdapterTests(unittest.TestCase):
                 ["systemctl", "reboot"],
                 ["systemctl", "poweroff"],
                 ["mount", "/dev/sdb1", "/media/backup"],
+                ["mount", "/media/backup"],
                 ["systemctl", "start", "smbd"],
             ],
         )

@@ -270,6 +270,7 @@ def api_backup_drive_configure():
             config_manager=services.config_manager,
             smb_manager=services.smb_manager,
             runtime=services.runtime,
+            ntfs_driver=data.get("ntfs_driver", "ntfs-3g"),
         )
         return json_data({"result": result})
     except BackupDriveSetupError as exc:
