@@ -420,12 +420,12 @@ class BackupDriveSetupTests(unittest.TestCase):
                     '/media/backup', runtime=runtime
                 )
             )
-            self.assertEqual(
-                backup_drive_setup.get_managed_fstab_entry_for_mount_point(
-                    '/media/backup', runtime=runtime
-                )['uuid'],
-                'UUID-1',
+            managed_entry = backup_drive_setup.get_managed_fstab_entry_for_mount_point(
+                '/media/backup', runtime=runtime
             )
+            if managed_entry is None:
+                self.fail('Expected a managed fstab entry for /media/backup.')
+            self.assertEqual(managed_entry['uuid'], 'UUID-1')
 
     def test_update_managed_fstab_rejects_unknown_ntfs_driver(self):
         with tempfile.TemporaryDirectory() as tempdir:
