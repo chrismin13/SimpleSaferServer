@@ -60,7 +60,7 @@ class InstallPreflightTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
         self.assertIn("Ubuntu 24.04 LTS", result.stdout)
 
-    def test_legacy_platform_warns_but_passes(self):
+    def test_older_platform_warns_but_passes(self):
         result = self.run_preflight(
             """
             ID=debian
@@ -70,7 +70,51 @@ class InstallPreflightTests(unittest.TestCase):
         )
 
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
-        self.assertIn("legacy compatibility platform", result.stdout)
+        self.assertIn("older OS compatibility platform", result.stdout)
+
+    def test_armhf_platform_is_rejected(self):
+        result = self.run_preflight(
+            """
+            ID=debian
+            VERSION_ID="13"
+            PRETTY_NAME="Debian GNU/Linux 13 (trixie)"
+            """,
+            fake_commands="apt-get,dpkg,systemctl",
+        )
+        # The default test host architecture should pass; this keeps the arch
+        # override test below focused on the unsupported userspace.
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            os_release_path = Path(temp_dir) / "os-release"
+            os_release_path.write_text(
+                textwrap.dedent(
+                    """
+                    ID=debian
+                    VERSION_ID="13"
+                    PRETTY_NAME="Debian GNU/Linux 13 (trixie)"
+                    """
+                )
+            )
+            env = {
+                **os.environ,
+                "SSS_INSTALLER_PREFLIGHT_ONLY": "1",
+                "SSS_INSTALLER_TEST_COMMANDS": "apt-get,dpkg,systemctl",
+                "SSS_INSTALLER_TEST_SYSTEMD": "1",
+                "SSS_INSTALLER_TEST_ARCH": "armhf",
+                "SSS_OS_RELEASE_PATH": str(os_release_path),
+            }
+            armhf_result = subprocess.run(
+                ["bash", str(INSTALL_SCRIPT)],
+                cwd=str(REPO_ROOT),
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertNotEqual(armhf_result.returncode, 0)
+        self.assertIn("Unsupported 32-bit ARM architecture", armhf_result.stdout)
 
     def test_linux_mint_style_derivative_warns_but_passes(self):
         result = self.run_preflight(
@@ -167,6 +211,55 @@ class InstallPreflightTests(unittest.TestCase):
         self.assertIn(
             "systemd does not appear to be running as the host init system", result.stdout
         )
+
+    def test_ensure_uv_installs_pinned_uv_when_existing_uv_differs(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            old_bin = root / "old-bin"
+            install_bin = root / "install-bin"
+            old_bin.mkdir()
+            install_bin.mkdir()
+            (old_bin / "uv").write_text('#!/bin/sh\necho "uv 0.11.18"\n')
+            (old_bin / "uv").chmod(0o755)
+            calls_path = root / "calls.log"
+
+            snippet = textwrap.dedent(
+                f"""\
+                set -e
+                {self.installer_function("ensure_uv")}
+                RED=""; GREEN=""; YELLOW=""; NC=""
+                UV_VERSION="0.11.19"
+                UV_INSTALL_DIR="{install_bin}"
+                export PATH="{old_bin}:$PATH"
+                curl() {{
+                  printf 'curl %s\\n' "$*" >> "{calls_path}"
+                  output_path="${{@: -1}}"
+                  {{
+                    printf '%s\\n' 'mkdir -p "$UV_INSTALL_DIR"'
+                    printf '%s\\n' 'cat > "$UV_INSTALL_DIR/uv" <<'"'"'UVBIN'"'"''
+                    printf '%s\\n' '#!/bin/sh'
+                    printf '%s\\n' 'echo "uv 0.11.19"'
+                    printf '%s\\n' 'UVBIN'
+                    printf '%s\\n' 'chmod +x "$UV_INSTALL_DIR/uv"'
+                  }} > "$output_path"
+                }}
+                ensure_uv
+                command -v uv
+                uv --version
+                """
+            )
+
+            result = subprocess.run(
+                ["bash", "-lc", snippet],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+            self.assertIn(str(install_bin / "uv"), result.stdout)
+            self.assertIn("uv 0.11.19", result.stdout)
+            self.assertIn("curl -fLsS https://astral.sh/uv/install.sh", calls_path.read_text())
 
     def test_script_install_loop_skips_same_app_destination(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -316,55 +409,27 @@ class InstallPreflightTests(unittest.TestCase):
                 ["config --system --add safe.directory /opt/SimpleSaferServer"],
             )
 
-    def test_model_install_loop_skips_same_app_destination(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            model_dir = root / "harddrive_model"
-            model_dir.mkdir()
-            model = model_dir / "xgb_model.json"
-            model.write_text('{"model": true}\n')
-
-            snippet = textwrap.dedent(
-                f"""\
-                set -e
-                {self.installer_function("same_file")}
-                {self.installer_function("copy_unless_same_file")}
-                MODEL_DIR="{model_dir}"
-                cd "{root}"
-                for model_file in harddrive_model/*; do
-                  model_name="$(basename "$model_file")"
-                  model_dest_path="$MODEL_DIR/$model_name"
-                  copy_unless_same_file "$model_file" "$model_dest_path"
-                done
-                """
-            )
-
-            result = subprocess.run(
-                ["bash", "-lc", snippet],
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-
-            self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
-            self.assertEqual(model.read_text(), '{"model": true}\n')
-
     def test_app_rsyncs_prune_removed_app_owned_files(self):
         text = INSTALL_SCRIPT.read_text()
 
         self.assertIn("rsync -a --delete", text)
-        self.assertIn("--exclude='venv'", text)
+        self.assertIn("--exclude='.venv'", text)
+        self.assertNotIn("--exclude='venv'", text)
         self.assertIn("rsync -a --delete static", text)
         self.assertIn("rsync -a --delete templates", text)
-        self.assertIn("rsync -a --delete harddrive_model/", text)
+        self.assertNotIn("rsync -a --delete harddrive_model/", text)
+        self.assertNotIn("LEGACY_VENV_DIR", text)
 
     def test_core_dependency_install_does_not_include_optional_wsdd_daemons(self):
         text = INSTALL_SCRIPT.read_text()
         core_install_line = next(
-            line for line in text.splitlines() if "apt-get install -y python3 " in line
+            line for line in text.splitlines() if "apt-get install -y git ca-certificates" in line
         )
 
         self.assertIn("samba", core_install_line)
+        self.assertNotIn("python3-flask", core_install_line)
+        self.assertNotIn("python3-psutil", core_install_line)
+        self.assertNotIn("python3-cryptography", core_install_line)
         self.assertNotIn("wsdd2", core_install_line)
         self.assertNotIn("wsdd", core_install_line)
 
@@ -440,8 +505,8 @@ class InstallPreflightTests(unittest.TestCase):
     def test_top_level_installer_honors_samba_service_setup_failure(self):
         text = INSTALL_SCRIPT.read_text()
         samba_step = text[
-            text.index("# 9. Prepare the SSS-owned Samba include layout") : text.index(
-                "# 10. Install/refresh systemd service for Flask app"
+            text.index("# 8. Prepare the SSS-owned Samba include layout") : text.index(
+                "# 9. Install/refresh systemd service for Flask app"
             )
         ]
 

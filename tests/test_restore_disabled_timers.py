@@ -1,13 +1,13 @@
 import logging
-from typing import ClassVar, Dict, List, Optional
+from typing import ClassVar
 from unittest.mock import patch
 
 from scripts import restore_disabled_timers
 
 
 class FakeService:
-    result: ClassVar[Optional[Dict[str, List[str]]]] = None
-    exception: ClassVar[Optional[Exception]] = None
+    result: ClassVar[dict[str, list[str]] | None] = None
+    exception: ClassVar[Exception | None] = None
 
     def __init__(self, runtime, systemd_adapter, alert_notifier=None):
         self.runtime = runtime

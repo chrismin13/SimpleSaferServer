@@ -5,7 +5,6 @@ import shutil
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional, Tuple
 
 from simple_safer_server.adapters.command_runner import CalledProcessError
 from simple_safer_server.adapters.smb_commands import SmbCommandAdapter
@@ -42,7 +41,7 @@ class ParsedShare:
     writable: bool = False
     public: bool = False
     comment: str = ""
-    valid_users: List[str] = field(default_factory=list)
+    valid_users: list[str] = field(default_factory=list)
     start_line: int = 0
     end_line: int = 0
     raw_text: str = ""
@@ -59,7 +58,7 @@ class ParsedShare:
         }
 
 
-def _extract_section_name(line: str) -> Optional[str]:
+def _extract_section_name(line: str) -> str | None:
     stripped = line.strip()
     if stripped.startswith("[") and stripped.endswith("]") and len(stripped) > 2:
         return stripped[1:-1].strip()
@@ -474,13 +473,11 @@ class SMBManager:
 
     def _parse_share_block(self, block_lines, *, managed, marker_name=None):
         share_name = None
-        share_data = {
-            "path": "",
-            "writable": False,
-            "public": False,
-            "comment": "",
-            "valid_users": [],
-        }
+        path = ""
+        writable = False
+        public = False
+        comment = ""
+        valid_users: list[str] = []
 
         for raw_line in block_lines:
             stripped = raw_line.strip()
@@ -507,15 +504,15 @@ class SMBManager:
             value = value.strip()
 
             if key in {"writeable", "writable"}:
-                share_data["writable"] = value.lower() in {"yes", "true", "1"}
+                writable = value.lower() in {"yes", "true", "1"}
             elif key == "public":
-                share_data["public"] = value.lower() in {"yes", "true", "1"}
+                public = value.lower() in {"yes", "true", "1"}
             elif key == "path":
-                share_data["path"] = value
+                path = value
             elif key == "comment":
-                share_data["comment"] = value.strip('"')
+                comment = value.strip('"')
             elif key == "valid users":
-                share_data["valid_users"] = [user for user in value.split() if user != "%S"]
+                valid_users = [user for user in value.split() if user != "%S"]
 
         if share_name is None:
             raise SMBConfigError("Failed to find a Samba share section inside a parsed block.")
@@ -525,9 +522,20 @@ class SMBManager:
                 f"Managed share markers do not match the enclosed share name for '{marker_name}'."
             )
 
-        return ParsedShare(name=share_name, managed=managed, **share_data)
+        # Keep the dataclass construction explicit. The parsed values are
+        # heterogeneous, and type checkers cannot prove a **dict splat maps each
+        # Samba field to the intended ParsedShare attribute type.
+        return ParsedShare(
+            name=share_name,
+            managed=managed,
+            path=path,
+            writable=writable,
+            public=public,
+            comment=comment,
+            valid_users=valid_users,
+        )
 
-    def _parse_smb_conf(self, content: str) -> Tuple[List[str], List[ParsedShare]]:
+    def _parse_smb_conf(self, content: str) -> tuple[list[str], list[ParsedShare]]:
         lines = content.splitlines(keepends=True)
         shares = []
         index = 0

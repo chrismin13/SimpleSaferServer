@@ -1,5 +1,4 @@
 import os
-from typing import Optional
 
 from simple_safer_server.adapters.command_runner import CommandRunner
 
@@ -10,7 +9,7 @@ BACKUP_DRIVE_MOUNT_TIMEOUT_SECONDS = 120
 class BackupDriveCommandAdapter:
     """Wraps commands used while detaching the managed backup drive."""
 
-    def __init__(self, command_runner: Optional[CommandRunner] = None) -> None:
+    def __init__(self, command_runner: CommandRunner | None = None) -> None:
         self._command_runner = command_runner or CommandRunner()
 
     # These service-control calls are intentionally best-effort: the caller

@@ -99,6 +99,14 @@ contains_os_family() {
     return 1
 }
 
+installer_architecture() {
+    if [ "$PREFLIGHT_ONLY" = "1" ] && [ -n "${SSS_INSTALLER_TEST_ARCH:-}" ]; then
+        printf '%s\n' "$SSS_INSTALLER_TEST_ARCH"
+        return 0
+    fi
+    dpkg --print-architecture 2>/dev/null || uname -m
+}
+
 same_file() {
     local source_path="$1"
     local dest_path="$2"
@@ -148,6 +156,7 @@ run_installer_preflight() {
     local missing_tools=""
     local is_debian_family=0
     local is_direct_supported_family=0
+    local host_arch=""
 
     echo -e "${YELLOW}Preflight: Checking install platform...${NC}"
 
@@ -171,6 +180,15 @@ run_installer_preflight() {
         echo -e "This usually means the installer is running inside a chroot, build container, or other non-booted environment. Run it on the target Debian/Ubuntu server instead."
         exit 1
     fi
+
+    host_arch=$(installer_architecture)
+    case "$host_arch" in
+        armhf|armel|armv6*|armv7*|armv8l*)
+            echo -e "${RED}ERROR:${NC} Unsupported 32-bit ARM architecture detected: ${host_arch}."
+            echo -e "SimpleSaferServer requires a 64-bit OS/userspace for uv-managed Python and binary Python dependencies. Use amd64 or arm64."
+            exit 1
+            ;;
+    esac
 
     if release_file=$(os_release_file); then
         os_id=$(os_release_value "$release_file" ID | tr '[:upper:]' '[:lower:]')
@@ -209,7 +227,7 @@ run_installer_preflight() {
         echo -e "${GREEN}✔ Detected ${pretty_name:-$os_id $version_id}.${NC}"
         case "$os_id:$version_id" in
             debian:10*|ubuntu:20.04*)
-                echo -e "${YELLOW}This is a legacy compatibility platform. The installer will use older Python dependencies if the installed Python runtime requires them.${NC}"
+                echo -e "${YELLOW}This is an older OS compatibility platform. The app still uses uv-managed Python, but OS package versions may differ from newer Debian/Ubuntu releases.${NC}"
                 ;;
         esac
     else
@@ -258,31 +276,50 @@ APP_DIR="/opt/SimpleSaferServer"
 DATA_DIR="/var/lib/SimpleSaferServer"
 SCRIPTS_DIR="$APP_DIR/scripts"
 BIN_DIR="/usr/local/bin"
-MODEL_DIR="/opt/SimpleSaferServer/harddrive_model"
-VENV_DIR="$APP_DIR/venv"
+VENV_DIR="$APP_DIR/.venv"
+UV_VERSION="0.11.19"
+UV_INSTALL_DIR="/usr/local/bin"
 SERVICE_FILE="/etc/systemd/system/simple_safer_server_web.service"
 HDSENTINEL_BIN="/usr/local/bin/hdsentinel"
 HDSENTINEL_ASSET_DIR="$SRC_DIR/third_party/hdsentinel"
-REQUIREMENTS_FILE="requirements.txt"
-PIP_UPGRADE_SPEC=(pip wheel)
 
-python_runtime_version() {
-    python3 - <<'PY'
-import sys
+ensure_uv() {
+    if command -v uv >/dev/null 2>&1; then
+        current_uv_version=$(uv --version | awk '{print $2}')
+        if [ "$current_uv_version" = "$UV_VERSION" ]; then
+            echo -e "${GREEN}✔ uv ${current_uv_version} available.${NC}"
+            return 0
+        fi
+        echo -e "${YELLOW}uv ${current_uv_version} found. Installing pinned uv ${UV_VERSION}...${NC}"
+    else
+        echo -e "${YELLOW}uv is not installed. Installing pinned uv ${UV_VERSION}...${NC}"
+    fi
 
-print("{}.{}".format(sys.version_info.major, sys.version_info.minor))
-PY
-}
+    TMPFILE=$(mktemp)
+    if curl -fLsS https://astral.sh/uv/install.sh -o "$TMPFILE"; then
+        UV_INSTALL_DIR="$UV_INSTALL_DIR" INSTALLER_NO_MODIFY_PATH=1 UV_VERSION="$UV_VERSION" sh "$TMPFILE"
+        rm -f "$TMPFILE"
+    else
+        rm -f "$TMPFILE"
+        echo -e "${RED}ERROR: Failed to download uv installer.${NC}"
+        exit 1
+    fi
 
-python_requires_legacy_requirements() {
-    python3 - <<'PY'
-import sys
+    # Put the pinned binary first for the rest of this installer even if sudo
+    # preserved a user PATH with another uv earlier in the search order.
+    export PATH="$UV_INSTALL_DIR:$PATH"
+    hash -r
 
-# Flask 3.1 and several audited dependency fixes require Python 3.9+.
-# Choose by interpreter version so Ubuntu 20.04/Python 3.8 and similar
-# platforms do not attempt to install the modern security baseline.
-raise SystemExit(0 if sys.version_info < (3, 9) else 1)
-PY
+    if ! command -v uv >/dev/null 2>&1; then
+        echo -e "${RED}ERROR: uv installation completed but uv is not on PATH.${NC}"
+        exit 1
+    fi
+    installed_uv_version=$(uv --version | awk '{print $2}')
+    if [ "$installed_uv_version" != "$UV_VERSION" ]; then
+        echo -e "${RED}ERROR: expected uv ${UV_VERSION}, but found uv ${installed_uv_version}.${NC}"
+        exit 1
+    fi
+    echo -e "${GREEN}✔ uv ${installed_uv_version} installed.${NC}"
 }
 
 detect_hdsentinel_arch() {
@@ -310,12 +347,6 @@ detect_hdsentinel_arch() {
         aarch64*|arm64*)
             printf '%s\n' "arm64"
             ;;
-        armv7*|armv8l*|armhf*)
-            # The vendored 32-bit ARM build is the ARMv7 hard-float variant.
-            # Matching armv8l here is intentional because it is commonly a
-            # 32-bit userspace on newer ARM hardware.
-            printf '%s\n' "armhf"
-            ;;
         *)
             printf '%s\n' "$machine"
             ;;
@@ -337,11 +368,6 @@ install_hdsentinel() {
             ;;
         arm64)
             asset_path="$HDSENTINEL_ASSET_DIR/hdsentinel-linux-arm64.zip"
-            ;;
-        armhf)
-            # This asset is repackaged from the vendor's ARMv7 release, so we
-            # deliberately do not pretend older ARM variants are compatible.
-            asset_path="$HDSENTINEL_ASSET_DIR/hdsentinel-linux-armv7.zip"
             ;;
         *)
             echo -e "${YELLOW}HDSentinel auto-install skipped: unsupported architecture '${arch:-unknown}'.${NC}"
@@ -497,25 +523,18 @@ configure_samba_discovery_services() {
     echo -e "${GREEN}✔ Samba service setup complete.${NC}\n"
 }
 
-# 1. Install system dependencies and the base Python runtime using apt.
-#    The app itself runs from a dedicated virtualenv so older Debian releases
-#    are not blocked by missing distro packages like python3-flask-socketio.
-echo -e "${YELLOW}Step 1: Installing system and Python dependencies...${NC}"
+# 1. Install system dependencies. Python application dependencies are resolved
+#    by uv into /opt/SimpleSaferServer/.venv so distro Python packages do not
+#    decide the app runtime or dependency versions.
+echo -e "${YELLOW}Step 1: Installing system dependencies...${NC}"
 apt-get update
 # Preseed AppArmor prompt for msmtp only to ensure non-interactive install
 echo "msmtp msmtp/apply_apparmor boolean true" | debconf-set-selections
-DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-pip python3-venv python3-flask python3-psutil python3-cryptography smartmontools samba msmtp curl unzip rsync fdisk ntfs-3g unattended-upgrades
+DEBIAN_FRONTEND=noninteractive apt-get install -y git ca-certificates smartmontools samba msmtp curl unzip rsync fdisk ntfs-3g unattended-upgrades
 
-echo -e "${GREEN}✔ System and Python dependencies installed.${NC}\n"
+echo -e "${GREEN}✔ System dependencies installed.${NC}\n"
 install_optional_wsdd2
-
-PYTHON_RUNTIME_VERSION="$(python_runtime_version)"
-if python_requires_legacy_requirements; then
-    REQUIREMENTS_FILE="requirements-legacy-py37.txt"
-    PIP_UPGRADE_SPEC=("pip<24.1" wheel)
-    echo -e "${YELLOW}Python ${PYTHON_RUNTIME_VERSION} detected. Installing the legacy Python dependency set for runtimes older than 3.9.${NC}"
-    echo -e "${YELLOW}Security fixes for some Python packages require newer Python releases; use Debian 13+ or another Python 3.9+ platform for the strict security-supported baseline.${NC}\n"
-fi
+ensure_uv
 
 # 2. Install rclone using the official install script
 #    The apt version of rclone is missing support for many cloud services (e.g., MEGA, Google Drive, etc).
@@ -569,7 +588,7 @@ install_hdsentinel
 echo -e "${YELLOW}Step 4: Copying application files...${NC}"
 mkdir -p "$APP_DIR"
 mkdir -p "$DATA_DIR"
-rsync -a --delete --exclude='venv' --exclude='__pycache__' --exclude='*.pyc' --exclude='*.pyo' --exclude='*.log' --exclude='telemetry.csv' --exclude='harddrive_model' --exclude='/static' --exclude='/templates' ./ "$APP_DIR/"
+rsync -a --delete --exclude='.venv' --exclude='__pycache__' --exclude='*.pyc' --exclude='*.pyo' --exclude='*.log' --exclude='/static' --exclude='/templates' ./ "$APP_DIR/"
 echo -e "${GREEN}✔ Application files copied.${NC}\n"
 
 # 5. Copy static and templates directories
@@ -578,12 +597,14 @@ rsync -a --delete static "$APP_DIR/"
 rsync -a --delete templates "$APP_DIR/"
 echo -e "${GREEN}✔ Static assets and templates copied.${NC}\n"
 
-# 6. Create the dedicated app virtualenv and install Python packages.
-echo -e "${YELLOW}Step 6: Setting up Python virtualenv...${NC}"
-python3 -m venv --system-site-packages "$VENV_DIR"
-"$VENV_DIR/bin/pip" install --upgrade "${PIP_UPGRADE_SPEC[@]}"
-"$VENV_DIR/bin/pip" install -r "$REQUIREMENTS_FILE"
-echo -e "${GREEN}✔ Python virtualenv ready at $VENV_DIR.${NC}\n"
+# 6. Create the dedicated uv-managed app environment.
+echo -e "${YELLOW}Step 6: Syncing Python runtime and dependencies with uv...${NC}"
+(
+  cd "$APP_DIR"
+  uv python install
+  uv sync --frozen --no-dev
+)
+echo -e "${GREEN}✔ Python environment ready at $VENV_DIR.${NC}\n"
 
 # 7. Copy scripts to /opt/SimpleSaferServer/scripts and /usr/local/bin
 echo -e "${YELLOW}Step 7: Installing scripts...${NC}"
@@ -607,18 +628,8 @@ echo -e "${GREEN}✔ Scripts installed to $SCRIPTS_DIR and $BIN_DIR.${NC}\n"
 # Root-run systemd services do not inherit sudo's repository-owner trust context.
 ensure_git_safe_directory "$APP_DIR"
 
-# 8. Copy model files
-echo -e "${YELLOW}Step 8: Copying model files...${NC}"
-mkdir -p "$MODEL_DIR"
-# Model files are bundled application artifacts. Pruning here keeps removed
-# model artifacts from lingering after installs from a separate checkout.
-if ! same_file harddrive_model "$MODEL_DIR"; then
-  rsync -a --delete harddrive_model/ "$MODEL_DIR/"
-fi
-echo -e "${GREEN}✔ Model files copied.${NC}\n"
-
-# 9. Prepare the SSS-owned Samba include layout and discovery services.
-echo -e "${YELLOW}Step 9: Preparing Samba file sharing and discovery...${NC}"
+# 8. Prepare the SSS-owned Samba include layout and discovery services.
+echo -e "${YELLOW}Step 8: Preparing Samba file sharing and discovery...${NC}"
 if "$VENV_DIR/bin/python3" -c "
 import sys
 sys.path.insert(0, '$APP_DIR')
@@ -642,16 +653,16 @@ else
   exit 1
 fi
 
-# 10. Install/refresh systemd service for Flask app
-echo -e "${YELLOW}Step 10: Setting up systemd service...${NC}"
+# 9. Install/refresh systemd service for Flask app
+echo -e "${YELLOW}Step 9: Setting up systemd service...${NC}"
 cp simple_safer_server_web.service "$SERVICE_FILE"
 systemctl daemon-reload
 systemctl enable simple_safer_server_web.service
 systemctl restart simple_safer_server_web.service
 echo -e "${GREEN}✔ Systemd service enabled and started.${NC}\n"
 
-# 11. Refresh procedurally generated background services
-echo -e "${YELLOW}Step 11: Refreshing procedural background services...${NC}"
+# 10. Refresh procedurally generated background services
+echo -e "${YELLOW}Step 10: Refreshing procedural background services...${NC}"
 if "$VENV_DIR/bin/python3" -c "
 import sys
 sys.path.insert(0, '$APP_DIR')
@@ -684,8 +695,8 @@ else
   exit 1
 fi
 
-# 12. Open port 5000 in firewall if active
-echo -e "${YELLOW}Step 12: Configuring firewall (if active)...${NC}"
+# 11. Open port 5000 in firewall if active
+echo -e "${YELLOW}Step 11: Configuring firewall (if active)...${NC}"
 if command -v ufw >/dev/null 2>&1 && ufw status | grep -q 'Status: active'; then
   ufw allow 5000/tcp
 echo -e "${GREEN}✔ Port 5000 opened in ufw.${NC}"
@@ -701,7 +712,7 @@ echo -e "${YELLOW}No active firewall detected or configured. Skipping firewall s
 fi
 echo
 
-# 13. Print all network interface IPs for user access
+# 12. Print all network interface IPs for user access
 echo -e "${BLUE}===============================================${NC}"
 echo -e "${BLUE}  SimpleSaferServer Web UI Access URLs${NC}"
 echo -e "${BLUE}===============================================${NC}"

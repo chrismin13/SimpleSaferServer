@@ -3,7 +3,7 @@ import os
 import re
 from dataclasses import dataclass
 from tempfile import NamedTemporaryFile
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from simple_safer_server.adapters.command_runner import PIPE, CommandRunner
 from simple_safer_server.services.schedule_time import (
@@ -23,7 +23,7 @@ class CloudBackupStatus:
 
 @dataclass(frozen=True)
 class MegaFolderList:
-    folders: List[str]
+    folders: list[str]
     path: str
     parent: str
 
@@ -54,7 +54,7 @@ class CloudBackupService:
         system_utils: Any,
         task_service: Any,
         logger: Any,
-        command_runner: Optional[CommandRunner] = None,
+        command_runner: CommandRunner | None = None,
     ) -> None:
         self._runtime = runtime
         self._config_manager = config_manager
@@ -63,7 +63,7 @@ class CloudBackupService:
         self._logger = logger
         self._command_runner = command_runner or CommandRunner()
 
-    def get_config(self) -> Dict[str, Any]:
+    def get_config(self) -> dict[str, Any]:
         config = self._config_manager.get_all_config()
         backup = config.get("backup", {})
         schedule = config.get("schedule", {})
@@ -83,7 +83,7 @@ class CloudBackupService:
             response["rclone_config"] = ""
         return response
 
-    def save_config(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    def save_config(self, data: dict[str, Any]) -> dict[str, Any]:
         mode = data.get("cloud_mode")
         if mode == "mega":
             self._save_mega_config(data)
@@ -125,7 +125,7 @@ class CloudBackupService:
             )
         task.start()
 
-    def list_mega_folders(self, data: Dict[str, Any]) -> MegaFolderList:
+    def list_mega_folders(self, data: dict[str, Any]) -> MegaFolderList:
         path = data.get("path", "/")
         credentials = self._get_mega_credentials(data)
         if credentials is None:
@@ -158,7 +158,7 @@ class CloudBackupService:
         finally:
             os.remove(config_path)
 
-    def create_mega_folder(self, data: Dict[str, Any]) -> None:
+    def create_mega_folder(self, data: dict[str, Any]) -> None:
         folder_name = (data.get("folder_name") or "").strip()
         path = data.get("path", "/")
         if not folder_name:
@@ -192,7 +192,7 @@ class CloudBackupService:
         finally:
             os.remove(config_path)
 
-    def get_schedule(self) -> Dict[str, Any]:
+    def get_schedule(self) -> dict[str, Any]:
         config = self._config_manager.get_all_config()
         schedule = config.get("schedule", {})
         backup = config.get("backup", {})
@@ -201,7 +201,7 @@ class CloudBackupService:
             "bandwidth_limit": backup.get("bandwidth_limit", ""),
         }
 
-    def save_schedule(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    def save_schedule(self, data: dict[str, Any]) -> dict[str, Any]:
         backup_time = data.get("backup_cloud_time")
         has_bandwidth_limit = "bandwidth_limit" in data
         bandwidth_limit = normalize_bandwidth_limit(data.get("bandwidth_limit"))
@@ -237,7 +237,7 @@ class CloudBackupService:
             self._config_manager.set_value("backup", "bandwidth_limit", bandwidth_limit)
         return {}
 
-    def validate_mega(self, data: Dict[str, Any]) -> None:
+    def validate_mega(self, data: dict[str, Any]) -> None:
         email = data.get("email")
         password = data.get("password")
         if not email or not password:
@@ -266,7 +266,7 @@ class CloudBackupService:
         finally:
             os.remove(config_path)
 
-    def _save_mega_config(self, data: Dict[str, Any]) -> None:
+    def _save_mega_config(self, data: dict[str, Any]) -> None:
         email = data.get("mega_email")
         password = data.get("mega_password")
         folder = data.get("mega_folder")
@@ -303,7 +303,7 @@ class CloudBackupService:
         self._config_manager.set_value("backup", "mega_folder", folder)
         self._config_manager.set_value("backup", "rclone_dir", f"mega:{folder}")
 
-    def _save_advanced_config(self, data: Dict[str, Any]) -> None:
+    def _save_advanced_config(self, data: dict[str, Any]) -> None:
         rclone_config = data.get("rclone_config")
         remote_name = data.get("remote_name")
         if not rclone_config or not remote_name:
@@ -313,7 +313,7 @@ class CloudBackupService:
         self._config_manager.set_value("backup", "cloud_mode", "advanced")
         self._config_manager.set_value("backup", "rclone_dir", remote_name)
 
-    def _get_mega_credentials(self, data: Dict[str, Any]) -> Optional[Tuple[str, str]]:
+    def _get_mega_credentials(self, data: dict[str, Any]) -> tuple[str, str] | None:
         email = data.get("email")
         password = data.get("password")
         if email and password:

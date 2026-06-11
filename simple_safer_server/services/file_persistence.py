@@ -2,9 +2,10 @@ import fcntl
 import json
 import os
 import tempfile
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager, suppress
 from pathlib import Path
-from typing import Any, Callable, Iterator, Optional
+from typing import Any
 
 
 def _fsync_directory(path: Path) -> None:
@@ -19,7 +20,7 @@ def atomic_write_text(
     path: Path,
     content: str,
     *,
-    mode: Optional[int] = None,
+    mode: int | None = None,
     encoding: str = "utf-8",
     durable: bool = True,
 ) -> None:
@@ -58,7 +59,7 @@ def atomic_write_json(
     path: Path,
     payload: Any,
     *,
-    mode: Optional[int] = None,
+    mode: int | None = None,
     durable: bool = True,
     indent: int = 2,
 ) -> None:
@@ -71,7 +72,7 @@ def atomic_write_json(
 
 
 @contextmanager
-def locked_path(lock_path: Path, *, mode: Optional[int] = None) -> Iterator[None]:
+def locked_path(lock_path: Path, *, mode: int | None = None) -> Iterator[None]:
     """Hold an exclusive flock on a stable sidecar path."""
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with lock_path.open("a+") as lock_file:
@@ -100,8 +101,8 @@ def locked_json_update(
     default: Any,
     update_fn: Callable[[Any], Any],
     *,
-    file_mode: Optional[int] = None,
-    lock_mode: Optional[int] = None,
+    file_mode: int | None = None,
+    lock_mode: int | None = None,
     durable: bool = True,
 ) -> Any:
     """Serialize read/modify/write JSON updates across processes."""

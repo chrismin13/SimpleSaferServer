@@ -91,10 +91,6 @@ class RuntimeHelpersTests(unittest.TestCase):
         self.assertEqual(resolved_runtime.repo_root, Path(temp_dir))
         self.assertEqual(resolved_runtime.data_dir, Path("/var/lib/SimpleSaferServer"))
         self.assertEqual(resolved_runtime.volatile_dir, Path("/run/SimpleSaferServer"))
-        self.assertEqual(
-            resolved_runtime.telemetry_path,
-            Path("/var/lib/SimpleSaferServer/telemetry.csv"),
-        )
 
     def test_resolve_volatile_dir_accepts_explicit_override(self):
         with tempfile.TemporaryDirectory() as temp_dir:

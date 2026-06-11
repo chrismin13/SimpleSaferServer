@@ -161,6 +161,29 @@ class SystemUtilsTimerActivationTests(unittest.TestCase):
 
             self.assertEqual(system_utils.get_parent_device("/dev/nvme0n1p1"), "/dev/nvme0n1")
 
+    def test_restore_schedule_service_uses_uv_managed_python(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime = self._runtime(temp_dir)
+            runtime.systemd_dir.mkdir()
+            system_utils = RecordingSystemUtils(runtime)
+
+            ok, error = system_utils.install_systemd_services_and_timers(
+                self._config(),
+                activate_timers=False,
+            )
+
+            self.assertTrue(ok, error)
+            self.assertIsNone(error)
+            service_text = (
+                runtime.systemd_dir / "simple_safer_server_restore_schedules.service"
+            ).read_text()
+            self.assertIn(
+                "ExecStart=/opt/SimpleSaferServer/.venv/bin/python "
+                "/opt/SimpleSaferServer/scripts/restore_disabled_timers.py",
+                service_text,
+            )
+            self.assertNotIn("ExecStart=/usr/local/bin/restore_disabled_timers.py", service_text)
+
     def test_pre_backup_timers_keep_two_minute_spacing(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             runtime = self._runtime(temp_dir)

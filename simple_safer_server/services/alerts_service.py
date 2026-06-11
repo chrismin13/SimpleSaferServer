@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, Dict, List
+from typing import Any
 
 from simple_safer_server.web.problems import (
     ForbiddenProblem,
@@ -11,17 +11,17 @@ from simple_safer_server.web.problems import (
 
 @dataclass(frozen=True)
 class AlertsList:
-    alerts: List[Dict[str, Any]]
+    alerts: list[dict[str, Any]]
 
 
 @dataclass(frozen=True)
 class AlertDetail:
-    alert: Dict[str, Any]
+    alert: dict[str, Any]
 
 
 @dataclass(frozen=True)
 class EmailConfig:
-    config: Dict[str, str]
+    config: dict[str, str]
     has_smtp_password: bool
 
 
@@ -145,7 +145,7 @@ class AlertsService:
             has_smtp_password=bool(msmtp_config.get("smtp_password")),
         )
 
-    def save_email_config(self, data: Dict[str, Any]) -> None:
+    def save_email_config(self, data: dict[str, Any]) -> None:
         email = data.get("email_address")
         from_address = data.get("from_address")
         smtp_server = data.get("smtp_server")
@@ -174,7 +174,7 @@ class AlertsService:
         self._config_manager.set_value("backup", "from_address", from_address)
         return None
 
-    def _read_msmtp_config(self) -> Dict[str, str]:
+    def _read_msmtp_config(self) -> dict[str, str]:
         msmtp_config = {}
         try:
             with open(self._runtime.msmtp_config_path) as config_file:

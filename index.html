@@ -147,7 +147,7 @@
         <div class="note">
             <i class="fa-solid fa-circle-info"></i> <strong>Note:</strong> Run as <code>root</code> or with <code>sudo</code> on a clean Debian or Ubuntu based system.<br>
             The installer checks for APT, dpkg, systemd, and Debian/Ubuntu OS-family metadata before installing packages. Derivatives continue with a warning when they expose Debian/Ubuntu ancestry.<br>
-            The script installs core dependencies, prepares SimpleSaferServer-owned Samba include files, optionally installs <code>wsdd2</code> discovery support, sets up the service, and prints your Web UI address.<br>
+            The script installs host tools, syncs the uv-managed Python runtime from <code>uv.lock</code>, prepares SimpleSaferServer-owned Samba include files, optionally installs <code>wsdd2</code> discovery support, sets up the service, and prints your Web UI address.<br>
             The management Web UI is admin-only, and the first account created during setup becomes the initial administrator.
         </div>
         <hr>
@@ -189,7 +189,7 @@
             and the owned Samba files under <code>/etc/samba</code>. Owned Samba files are still removed when
             <code>smb.conf</code> cannot be rewritten safely.
             Active Samba file transfers will be interrupted when <code>smbd</code> is restarted.
-            Shared system packages and services such as Samba, <code>wsdd2</code>, Python, and rclone stay installed.
+            Shared system packages and services such as Samba, <code>wsdd2</code>, uv, and rclone stay installed.
             Unmanaged Samba share blocks stay in <code>/etc/samba/smb.conf</code> for safety.
             <strong>This process is irreversible.</strong>
         </p>

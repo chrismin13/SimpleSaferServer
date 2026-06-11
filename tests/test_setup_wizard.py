@@ -1,4 +1,3 @@
-# pyright: reportAttributeAccessIssue=false
 import importlib
 import sys
 import types
@@ -114,11 +113,14 @@ class SetupWizardTests(unittest.TestCase):
         return payload
 
     def test_list_format_drives_uses_broad_disk_scan(self):
-        with patch.object(
-            self.setup_wizard,
-            "get_available_backup_drives",
-            return_value=[{"path": "/dev/sdb", "partitions": []}],
-        ) as mock_get_available_backup_drives, self.app.test_client() as client:
+        with (
+            patch.object(
+                self.setup_wizard,
+                "get_available_backup_drives",
+                return_value=[{"path": "/dev/sdb", "partitions": []}],
+            ) as mock_get_available_backup_drives,
+            self.app.test_client() as client,
+        ):
             response = client.get("/api/setup/format-drives")
 
         self.assertEqual(response.status_code, 200)
@@ -129,11 +131,14 @@ class SetupWizardTests(unittest.TestCase):
         )
 
     def test_list_mount_drives_uses_ntfs_only_partition_scan(self):
-        with patch.object(
-            self.setup_wizard,
-            "get_available_backup_drives",
-            return_value=[{"path": "/dev/sdb", "partitions": []}],
-        ) as mock_get_available_backup_drives, self.app.test_client() as client:
+        with (
+            patch.object(
+                self.setup_wizard,
+                "get_available_backup_drives",
+                return_value=[{"path": "/dev/sdb", "partitions": []}],
+            ) as mock_get_available_backup_drives,
+            self.app.test_client() as client,
+        ):
             response = client.get("/api/setup/mount-drives")
 
         self.assertEqual(response.status_code, 200)

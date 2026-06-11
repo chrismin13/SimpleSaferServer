@@ -1,5 +1,5 @@
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 from simple_safer_server.services.file_persistence import locked_json_update, read_json
 
@@ -8,10 +8,10 @@ RESTORE_RETRY_LIMIT = 3
 
 
 def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
-def parse_timestamp(value: Optional[str]) -> datetime:
+def parse_timestamp(value: str | None) -> datetime:
     if not value:
         raise ValueError("disabled timer timestamp is required")
     try:
@@ -20,7 +20,7 @@ def parse_timestamp(value: Optional[str]) -> datetime:
         raise ValueError("disabled timer timestamp must be ISO 8601") from exc
     if parsed.tzinfo is None:
         raise ValueError("disabled timer timestamp must include a timezone offset")
-    return parsed.astimezone(timezone.utc)
+    return parsed.astimezone(UTC)
 
 
 def format_timestamp(value: datetime) -> str:
@@ -28,7 +28,7 @@ def format_timestamp(value: datetime) -> str:
         raise ValueError("disabled timer timestamp must include a timezone offset")
     # The restore helper runs outside the web request path, so persisted timer state
     # carries its own UTC basis instead of depending on the machine's local timezone.
-    return value.astimezone(timezone.utc).replace(microsecond=0).isoformat()
+    return value.astimezone(UTC).replace(microsecond=0).isoformat()
 
 
 class DisabledTimerService:
@@ -36,8 +36,8 @@ class DisabledTimerService:
         self,
         runtime: Any,
         systemd_adapter: Any,
-        alert_notifier: Optional[Any] = None,
-        logger: Optional[Any] = None,
+        alert_notifier: Any | None = None,
+        logger: Any | None = None,
     ) -> None:
         self.runtime = runtime
         self.systemd_adapter = systemd_adapter
@@ -46,13 +46,13 @@ class DisabledTimerService:
         self.path = runtime.data_dir / DISABLED_TIMERS_FILENAME
         self.lock_path = runtime.data_dir / ".disabled_timers.lock"
 
-    def list_records(self) -> Dict[str, Dict[str, Any]]:
+    def list_records(self) -> dict[str, dict[str, Any]]:
         records = read_json(self.path, {})
         if isinstance(records, dict):
             return records
         return {}
 
-    def get_record(self, timer_name: str) -> Optional[Dict[str, Any]]:
+    def get_record(self, timer_name: str) -> dict[str, Any] | None:
         return self.list_records().get(timer_name)
 
     def has_active_record(self, timer_name: str) -> bool:
@@ -65,8 +65,8 @@ class DisabledTimerService:
         timer_name: str,
         *,
         mode: str,
-        expires_at: Optional[datetime] = None,
-    ) -> Dict[str, Any]:
+        expires_at: datetime | None = None,
+    ) -> dict[str, Any]:
         if mode not in {"temporary", "permanent"}:
             raise ValueError("mode must be temporary or permanent")
         if mode == "temporary" and expires_at is None:
@@ -86,7 +86,7 @@ class DisabledTimerService:
         if not self.runtime.is_fake:
             self.systemd_adapter.disable_timer_now(timer_name)
 
-        def update(records: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+        def update(records: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
             if not isinstance(records, dict):
                 records = {}
             records[timer_name] = record
@@ -106,7 +106,7 @@ class DisabledTimerService:
         if not self.runtime.is_fake:
             self.systemd_adapter.enable_timer_now(timer_name)
 
-        def update(records: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+        def update(records: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
             if isinstance(records, dict):
                 records.pop(timer_name, None)
             return records if isinstance(records, dict) else {}
@@ -120,13 +120,13 @@ class DisabledTimerService:
             lock_mode=0o644,
         )
 
-    def restore_expired(self, *, now: Optional[datetime] = None) -> Dict[str, List[str]]:
+    def restore_expired(self, *, now: datetime | None = None) -> dict[str, list[str]]:
         now = now or utc_now()
         if now.tzinfo is None:
             raise ValueError("restore timestamp must include a timezone offset")
-        now = now.astimezone(timezone.utc)
-        restored = []  # type: List[str]
-        failed = []  # type: List[str]
+        now = now.astimezone(UTC)
+        restored: list[str] = []
+        failed: list[str] = []
 
         for timer_name, record in sorted(self.list_records().items()):
             if record.get("mode") != "temporary" or record.get("restore_failed"):
@@ -146,7 +146,7 @@ class DisabledTimerService:
         return {"restored": restored, "failed": failed}
 
     def _remove_record(self, timer_name: str) -> None:
-        def update(records: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+        def update(records: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
             if isinstance(records, dict):
                 records.pop(timer_name, None)
             return records if isinstance(records, dict) else {}
@@ -163,13 +163,13 @@ class DisabledTimerService:
     def _record_restore_failure(
         self,
         timer_name: str,
-        record: Dict[str, Any],
+        record: dict[str, Any],
         exc: Exception,
     ) -> None:
         next_attempts = int(record.get("restore_attempts") or 0) + 1
         restore_failed = next_attempts >= RESTORE_RETRY_LIMIT
 
-        def update(records: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+        def update(records: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
             current = records.get(timer_name, record) if isinstance(records, dict) else record
             current["restore_attempts"] = next_attempts
             current["last_restore_error"] = str(exc)

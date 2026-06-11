@@ -11,9 +11,8 @@ Four cards display real-time status:
   when `smbd` is not active.
 - **Hard Drive Health**: Shows the last drive-health summary remembered by the running web process.
   Dashboard load does not probe SMART or HDSentinel. Use the tile refresh button when you want a
-  live drive-health probe. When both SMART failure risk and drive temperature are available, the
-  tile shows them as a compact inline row so the overview does not jump taller during normal
-  refreshes.
+  live drive-health probe. The compact status is based on HDSentinel's health percentage when it is
+  available; SMART remains a detailed inspection surface on the Drive Health page.
 - **System Resources**: Displays CPU and RAM usage, and live network traffic (up/down rates).
 
 ## Task Schedule
@@ -58,9 +57,9 @@ Four cards display real-time status:
   `No check yet` until a manual dashboard refresh or an in-process health check publishes a new
   summary. This avoids extra SD-card writes and avoids waking a sleeping backup drive on every
   dashboard load.
-- When SMART data is readable but prediction cannot run, the refresh still succeeds. The tile keeps
-  a neutral health status, shows the prediction-unavailable detail, and omits failure probability
-  instead of deriving a pass/fail status from HDSentinel alone.
+- When HDSentinel returns a health percentage, the tile uses that percentage for the compact status:
+  `50%` and above is healthy, below `50%` is warning, and below `25%` is critical. If HDSentinel is
+  unavailable, disabled, or has not run yet, the compact status stays neutral.
 - Other operational status that can be rebuilt, such as DDNS provider status and System Updates
   operation state, uses volatile runtime storage rather than durable config storage.
 - Task schedule and statuses are refreshed dynamically.

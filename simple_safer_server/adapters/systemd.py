@@ -1,5 +1,4 @@
 import subprocess
-from typing import Optional
 
 from simple_safer_server.adapters.command_runner import DEVNULL, CommandRunner
 
@@ -9,7 +8,7 @@ SYSTEMD_COMMAND_TIMEOUT_SECONDS = 30
 class SystemdAdapter:
     """Wraps systemd and journalctl commands used by scheduled task views."""
 
-    def __init__(self, command_runner: Optional[CommandRunner] = None) -> None:
+    def __init__(self, command_runner: CommandRunner | None = None) -> None:
         self._command_runner = command_runner or CommandRunner()
 
     def journal(self, unit_name: str, lines: int) -> str:

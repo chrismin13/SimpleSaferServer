@@ -10,10 +10,10 @@ SSS_DATA_DIR = "/data"
 WEB_THREADS = "4"
 
 [phases.setup]
-nixPkgs = ["python311", "rclone", "msmtp", "smartmontools"]
+nixPkgs = ["python314", "uv", "rclone", "msmtp", "smartmontools"]
 
 [phases.install]
-cmds = ["python -m venv .venv", ".venv/bin/pip install -r requirements.txt"]
+cmds = ["uv sync --frozen --no-dev"]
 
 [start]
 cmd = ".venv/bin/gunicorn --worker-class gthread --threads ${WEB_THREADS:-4} -w 1 --bind 0.0.0.0:$PORT simple_safer_server.wsgi:app"

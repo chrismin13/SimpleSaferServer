@@ -1,6 +1,5 @@
 import re
 from datetime import datetime
-from typing import Optional
 
 _IGNORED_TIME_VALUES = {
     '',
@@ -13,7 +12,7 @@ _IGNORED_TIME_VALUES = {
 }
 
 
-def parse_server_datetime(value: Optional[str]) -> Optional[datetime]:
+def parse_server_datetime(value: str | None) -> datetime | None:
     """Parse the mixed timestamp formats the dashboard already shows for task times."""
     trimmed = (value or '').strip()
     if not trimmed or trimmed.lower() in _IGNORED_TIME_VALUES:
@@ -42,7 +41,7 @@ def parse_server_datetime(value: Optional[str]) -> Optional[datetime]:
     return datetime(year, month, day, hour, minute, second)
 
 
-def format_future_delay(value: Optional[str], now: Optional[datetime] = None) -> Optional[str]:
+def format_future_delay(value: str | None, now: datetime | None = None) -> str | None:
     """Return a short human-readable countdown such as 'in about 2h 13m'."""
     target_time = parse_server_datetime(value)
     if not target_time:
@@ -81,7 +80,7 @@ def format_future_delay(value: Optional[str], now: Optional[datetime] = None) ->
 
 def build_dashboard_unmount_success_message(
     base_message: str,
-    next_check_mount_run: Optional[str],
+    next_check_mount_run: str | None,
     *,
     availability_phrase: str = 'stays connected',
     remount_verb: str = 'remount',

@@ -1,5 +1,3 @@
-from typing import Optional
-
 from simple_safer_server.adapters.command_runner import (
     CalledProcessError,
     CommandRunner,
@@ -18,7 +16,7 @@ ALERT_EMAIL_TIMEOUT_SECONDS = 30
 class DriveHealthCommandAdapter:
     """Wraps SMART, HDSentinel, and alert email commands."""
 
-    def __init__(self, command_runner: Optional[CommandRunner] = None) -> None:
+    def __init__(self, command_runner: CommandRunner | None = None) -> None:
         self._command_runner = command_runner or CommandRunner()
 
     def smartctl_help(self):

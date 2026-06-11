@@ -2,35 +2,30 @@ import subprocess
 from datetime import datetime
 from typing import Any
 
-from flask import Blueprint, abort, current_app, render_template, request, send_file
+from flask import Blueprint, current_app, render_template, request
 
 from simple_safer_server.services.backup_drive_setup import get_managed_ntfs_driver
 from simple_safer_server.services.drive_health import (
     SMART_FIELDS,
     SMARTCTL_JSON_UPGRADE_MESSAGE,
-    append_telemetry,
     build_drive_health_summary,
     collect_hdsentinel_snapshot,
-    get_hdsentinel_display_snapshot,
     get_hdsentinel_settings,
-    get_optimal_threshold,
-    get_prediction_unavailable_message,
     get_smart_attributes,
     get_smartctl_json_support,
-    predict_failure_probability,
+    hdsentinel_snapshot_has_health,
+    hdsentinel_summary_status,
     save_hdsentinel_settings,
 )
 from simple_safer_server.services.user_manager import admin_required, api_admin_required
 from simple_safer_server.web.api import json_data, json_problem
-from simple_safer_server.web.problems import NotFoundProblem, OperationProblem
+from simple_safer_server.web.problems import OperationProblem
 
 drive_health = Blueprint("drive_health_routes", __name__)
 
 
 def _get_services() -> Any:
     """Return app-level services registered during Flask startup."""
-    from flask import current_app
-
     return current_app.extensions["simple_safer_server"]
 
 
@@ -38,20 +33,15 @@ def _get_services() -> Any:
 @admin_required
 def drives():
     services = _get_services()
-    prediction = None
-    probability = None
     error = None
-    prediction_warning = None
     smart = None
     missing_attrs = []
     settings_message = None
     settings_error = None
     hdsentinel_settings = get_hdsentinel_settings(services.config_manager)
-    hdsentinel_snapshot = get_hdsentinel_display_snapshot(
-        services.config_manager,
-        services.system_utils,
-        runtime=services.runtime,
-    )
+    # Page loads and settings saves must not probe disks or publish stale health.
+    # HDSentinel data appears here only after an explicit health check POST.
+    hdsentinel_snapshot = None
     drive_config = {
         "mount_point": services.config_manager.get_value(
             "backup", "mount_point", services.runtime.default_mount_point
@@ -82,12 +72,6 @@ def drives():
                     health_change_alert=request.form.get("hdsentinel_health_change_alert") == "on",
                 )
                 hdsentinel_settings = get_hdsentinel_settings(services.config_manager)
-                # Refresh after saving so the page immediately shows the new monitor state.
-                hdsentinel_snapshot = collect_hdsentinel_snapshot(
-                    services.config_manager,
-                    services.system_utils,
-                    runtime=services.runtime,
-                )
                 settings_message = "HDSentinel settings saved successfully."
             except Exception as exc:
                 settings_error = f"Failed to save HDSentinel settings: {exc}"
@@ -103,14 +87,6 @@ def drives():
                     error = smart_error
                 else:
                     error = smart_error or "Could not retrieve SMART data"
-            else:
-                prob = predict_failure_probability(smart, runtime=services.runtime)
-                if prob is not None:
-                    prediction = int(prob >= get_optimal_threshold(services.runtime))
-                    probability = prob
-                    append_telemetry(smart, prediction, runtime=services.runtime)
-                else:
-                    prediction_warning = get_prediction_unavailable_message()
 
             if hdsentinel_settings["enabled"]:
                 hdsentinel_snapshot = collect_hdsentinel_snapshot(
@@ -124,21 +100,22 @@ def drives():
                 "status": "unknown",
                 "source": "live",
                 "checked_at": datetime.now().isoformat(timespec="seconds"),
-                "probability": probability,
                 "temperature": smart.get("smart_194_raw") if smart else None,
                 "hdsentinel_health": None,
                 "hdsentinel_performance": None,
-                "detail": prediction_warning or error or "Drive health data is not available.",
+                "detail": error or "Drive health data is not available.",
                 "error": error,
             }
-            if probability is not None:
-                summary["status"] = (
-                    "good" if probability < get_optimal_threshold(services.runtime) else "warning"
-                )
-                summary["detail"] = "SMART prediction completed."
-            if hdsentinel_snapshot and hdsentinel_snapshot.get("available"):
-                summary["hdsentinel_health"] = hdsentinel_snapshot.get("health_pct")
+            if smart is not None:
+                summary["detail"] = "SMART details were collected."
+            if hdsentinel_snapshot is not None and hdsentinel_snapshot_has_health(
+                hdsentinel_snapshot
+            ):
+                health_pct = hdsentinel_snapshot.get("health_pct")
+                summary["hdsentinel_health"] = health_pct
                 summary["hdsentinel_performance"] = hdsentinel_snapshot.get("performance_pct")
+                summary["status"] = hdsentinel_summary_status(health_pct)
+                summary["detail"] = f"HDSentinel health: {health_pct}%."
                 if summary["temperature"] is None:
                     summary["temperature"] = hdsentinel_snapshot.get("temperature_c")
             services.drive_health_summary_service.publish(summary)
@@ -146,8 +123,6 @@ def drives():
     return render_template(
         "drive_health.html",
         smart=smart,
-        prediction=prediction,
-        probability=probability,
         error=error,
         missing_attrs=missing_attrs,
         smart_fields=SMART_FIELDS,
@@ -155,27 +130,9 @@ def drives():
         hdsentinel_snapshot=hdsentinel_snapshot,
         drive_config=drive_config,
         smart_support_warning=smart_support_warning,
-        prediction_warning=prediction_warning,
         settings_message=settings_message,
         settings_error=settings_error,
     )
-
-
-@drive_health.route("/download_telemetry")
-@admin_required
-def download_telemetry():
-    services = _get_services()
-    if services.runtime.telemetry_path.exists():
-        return send_file(services.runtime.telemetry_path, as_attachment=True)
-    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
-        return json_problem(
-            NotFoundProblem(
-                "Telemetry has not been generated yet. Run a health check first.",
-                title="Telemetry not found",
-                slug="drive-health-telemetry-not-found",
-            )
-        )
-    abort(404)
 
 
 @drive_health.route("/api/drive_health/summary")
@@ -191,7 +148,6 @@ def api_drive_health_summary():
                 "status": "unknown",
                 "source": "memory",
                 "checked_at": None,
-                "probability": None,
                 "temperature": None,
                 "hdsentinel_health": None,
                 "hdsentinel_performance": None,
@@ -220,7 +176,6 @@ def api_drive_health_refresh():
                 "status": "unknown",
                 "source": "live",
                 "checked_at": checked_at,
-                "probability": None,
                 "temperature": None,
                 "hdsentinel_health": None,
                 "hdsentinel_performance": None,

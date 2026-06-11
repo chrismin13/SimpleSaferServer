@@ -6,7 +6,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, ClassVar, Dict, List, Optional
+from typing import Any, ClassVar
 
 from simple_safer_server.services.file_persistence import atomic_write_json, read_json
 
@@ -27,8 +27,6 @@ class Runtime:
     bin_dir: Path
     backup_drive_dir: Path
     cloud_target_dir: Path
-    model_dir: Path
-    telemetry_path: Path
     msmtp_config_path: Path
     state_path: Path
 
@@ -44,13 +42,13 @@ class Runtime:
 
 
 class FakeState:
-    TASK_NAMES: ClassVar[List[str]] = [
+    TASK_NAMES: ClassVar[list[str]] = [
         "Check Mount",
         "Drive Health Check",
         "Cloud Backup",
         "App Update",
     ]
-    TASK_SERVICE_NAMES: ClassVar[Dict[str, str]] = {
+    TASK_SERVICE_NAMES: ClassVar[dict[str, str]] = {
         "Check Mount": "check_mount.service",
         "Drive Health Check": "check_health.service",
         "Cloud Backup": "backup_cloud.service",
@@ -77,7 +75,7 @@ class FakeState:
         if not self.runtime.state_path.exists():
             self.save(self.default_state())
 
-    def default_state(self) -> Dict[str, Any]:
+    def default_state(self) -> dict[str, Any]:
         return {
             "mounted": False,
             "mount_point": str(self.runtime.backup_drive_dir),
@@ -96,7 +94,7 @@ class FakeState:
             },
         }
 
-    def load(self) -> Dict[str, Any]:
+    def load(self) -> dict[str, Any]:
         try:
             return read_json(self.runtime.state_path, self.default_state())
         except Exception:
@@ -104,15 +102,15 @@ class FakeState:
             self.save(state)
             return state
 
-    def _write_state(self, state: Dict[str, Any]) -> None:
+    def _write_state(self, state: dict[str, Any]) -> None:
         """Write state atomically via a unique temp file and rename to avoid partial writes."""
         atomic_write_json(self.runtime.state_path, state, mode=0o644)
 
-    def save(self, state: Dict[str, Any]) -> None:
+    def save(self, state: dict[str, Any]) -> None:
         with self._lock:
             self._write_state(state)
 
-    def get_virtual_drives(self) -> List[Dict[str, Any]]:
+    def get_virtual_drives(self) -> list[dict[str, Any]]:
         state = self.load()
         mount_point = state.get("mount_point", str(self.runtime.backup_drive_dir))
         partition_mount = mount_point if state.get("mounted") else ""
@@ -135,7 +133,7 @@ class FakeState:
         ]
 
     def set_mount(
-        self, mounted: bool, mount_point: Optional[str] = None, drive: Optional[str] = None
+        self, mounted: bool, mount_point: str | None = None, drive: str | None = None
     ) -> None:
         with self._lock:
             state = self.load()
@@ -146,7 +144,7 @@ class FakeState:
                 state["selected_drive"] = drive
             self.save(state)
 
-    def is_mounted(self, mount_point: Optional[str] = None) -> bool:
+    def is_mounted(self, mount_point: str | None = None) -> bool:
         state = self.load()
         if mount_point and state.get("mount_point") != mount_point:
             return False
@@ -158,7 +156,7 @@ class FakeState:
             state["smb_services"] = {"smbd": smbd, "nmbd": nmbd, "wsdd2": wsdd2}
             self.save(state)
 
-    def get_smb_services(self) -> Dict[str, str]:
+    def get_smb_services(self) -> dict[str, str]:
         services = self.load().get(
             "smb_services",
             {"smbd": "active", "nmbd": "active", "wsdd2": "active"},
@@ -175,10 +173,10 @@ class FakeState:
         self,
         task_name: str,
         *,
-        status: Optional[str] = None,
-        last_run: Optional[str] = None,
-        last_run_duration: Optional[str] = None,
-        log: Optional[str] = None,
+        status: str | None = None,
+        last_run: str | None = None,
+        last_run_duration: str | None = None,
+        log: str | None = None,
     ) -> None:
         with self._lock:
             state = self.load()
@@ -209,7 +207,7 @@ class FakeState:
         task_state = state.setdefault("tasks", {}).setdefault(task_name, {})
         return task_state.get("log", "") or "No logs yet."
 
-    def get_task_state(self, task_name: str) -> Dict[str, Any]:
+    def get_task_state(self, task_name: str) -> dict[str, Any]:
         state = self.load()
         return state.setdefault("tasks", {}).setdefault(
             task_name,
@@ -239,8 +237,8 @@ class FakeState:
         return next_run.strftime("%Y-%m-%d %H:%M:%S")
 
 
-_runtime: Optional[Runtime] = None
-_fake_state: Optional[FakeState] = None
+_runtime: Runtime | None = None
+_fake_state: FakeState | None = None
 
 
 def _repo_root() -> Path:
@@ -250,7 +248,7 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
-def resolve_fake_data_dir(repo_root: Optional[Path] = None) -> Path:
+def resolve_fake_data_dir(repo_root: Path | None = None) -> Path:
     """Resolve the writable state directory for fake mode."""
     repo_root = repo_root or _repo_root()
     configured_data_dir = os.environ.get("SSS_DATA_DIR", "").strip()
@@ -279,7 +277,7 @@ def resolve_volatile_dir(data_dir: Path, *, is_fake: bool) -> Path:
     return Path("/run/SimpleSaferServer")
 
 
-def _read_persisted_text_secret(secret_path: Path) -> Optional[str]:
+def _read_persisted_text_secret(secret_path: Path) -> str | None:
     """Read a secret file after forcing the expected restrictive mode."""
     try:
         # Keep the permissions tight even if an older deploy or manual edit
@@ -325,7 +323,7 @@ def load_or_create_text_secret(secret_path: Path) -> str:
     return secret_value
 
 
-def get_flask_secret_key(runtime: Optional[Runtime] = None) -> str:
+def get_flask_secret_key(runtime: Runtime | None = None) -> str:
     """Return the Flask session secret, preferring an explicit env var first."""
     env_secret = os.environ.get("FLASK_SECRET_KEY", "").strip()
     if env_secret:
@@ -367,8 +365,6 @@ def get_runtime() -> Runtime:
             bin_dir=data_dir / "bin",
             backup_drive_dir=data_dir / "backup-drive",
             cloud_target_dir=data_dir / "cloud-target",
-            model_dir=repo_root / "harddrive_model",
-            telemetry_path=data_dir / "telemetry.csv",
             msmtp_config_path=data_dir / "msmtprc",
             state_path=data_dir / "state.json",
         )
@@ -392,8 +388,6 @@ def get_runtime() -> Runtime:
             bin_dir=Path("/usr/local/bin"),
             backup_drive_dir=Path("/media/backup"),
             cloud_target_dir=Path("/media/backup"),
-            model_dir=Path("/opt/SimpleSaferServer/harddrive_model"),
-            telemetry_path=data_dir / "telemetry.csv",
             msmtp_config_path=Path("/etc/msmtprc"),
             state_path=Path(tempfile.gettempdir()) / "simple_safer_server_unused_state.json",
         )
@@ -404,7 +398,7 @@ def get_runtime() -> Runtime:
     return _runtime
 
 
-def get_fake_state(runtime: Optional[Runtime] = None) -> FakeState:
+def get_fake_state(runtime: Runtime | None = None) -> FakeState:
     global _fake_state
     runtime = runtime or get_runtime()
     if _fake_state is None or _fake_state.runtime != runtime:

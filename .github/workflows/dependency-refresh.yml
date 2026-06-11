@@ -1,0 +1,29 @@
+name: Dependency Refresh
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 4 * * 1'
+
+jobs:
+  refresh-lock:
+    name: Refresh uv lock and run checks
+    runs-on: ubuntu-latest
+    container: ghcr.io/astral-sh/uv:python3.14-trixie
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Refresh lock and run checks
+        run: bash update_lock.sh
+
+      - name: Report available dependency updates
+        run: |
+          if ! git diff --exit-code -- uv.lock pyproject.toml; then
+            echo "Dependency updates are available. Run 'bash update_lock.sh' locally and commit the resulting lockfile."
+            exit 1
+          fi

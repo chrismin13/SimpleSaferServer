@@ -19,7 +19,10 @@ def _add_app_to_path():
 _add_app_to_path()
 
 from simple_safer_server.services.config_manager import ConfigManager  # noqa: E402
-from simple_safer_server.services.drive_health import run_scheduled_drive_health_check  # noqa: E402
+from simple_safer_server.services.drive_health import (  # noqa: E402
+    hdsentinel_snapshot_has_health,
+    run_scheduled_drive_health_check,
+)
 from simple_safer_server.services.runtime import get_runtime  # noqa: E402
 from simple_safer_server.services.system_utils import SystemUtils  # noqa: E402
 
@@ -35,15 +38,11 @@ def main():
         runtime=runtime,
     )
 
-    probability = result.get('probability')
-    device = result.get('device')
-    if probability is not None and device:
-        print(f"Drive health probability for {device}: {probability:.4f}")
-    elif result.get('prediction_warning'):
-        print(result['prediction_warning'])
+    if result.get('smart') is not None and result.get('device'):
+        print(f"SMART details collected for {result['device']}.")
 
     hdsentinel_snapshot = result.get('hdsentinel', {}).get('snapshot')
-    if hdsentinel_snapshot and hdsentinel_snapshot.get('available'):
+    if hdsentinel_snapshot_has_health(hdsentinel_snapshot):
         print(
             "HDSentinel: "
             f"health {hdsentinel_snapshot.get('health_pct')}%, "

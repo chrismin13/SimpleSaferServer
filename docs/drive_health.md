@@ -4,96 +4,55 @@ The Drive Health page is the main place to inspect the configured backup drive a
 
 It combines:
 
-- SMART data and, when the optional Python prediction dependencies can load,
-  the local failure-prediction result
-- HDSentinel health and performance reporting
+- SMART attribute collection and raw attribute display
+- HDSentinel health, performance, temperature, and device reporting
 
 ## Features
 
 - Run a manual health refresh from the page.
 - Refresh the Dashboard Drive Health tile explicitly when you want a live probe from the overview.
-- View the SMART prediction result and probability when prediction is available.
-- View missing SMART attributes that fell back to defaults.
-- View the HDSentinel device snapshot.
+- View SMART attributes returned by `smartctl` JSON output.
+- View missing SMART attributes that fell back to documented defaults.
+- View the HDSentinel device snapshot returned by an explicit manual refresh.
 - Enable or disable HDSentinel monitoring and change alert settings.
-- Download SMART telemetry as CSV.
 
 ## SMART Error Reporting
 
-SMART collection uses `smartctl` JSON output when the installed `smartctl`
-version supports `-j`.
+SMART collection uses `smartctl` JSON output when the installed `smartctl` version supports `-j`.
 
-- The "upgrade smartmontools" warning is reserved for the explicit case where
-  `smartctl -h` shows that JSON output is unavailable.
-- If `smartctl` advertises JSON support but the actual SMART read still fails,
-  the app preserves the original `smartctl` error instead. This matters because
-  USB bridges, controller quirks, and device read failures can all break SMART
-  collection even on newer smartmontools versions.
+- The "upgrade smartmontools" warning is reserved for the explicit case where `smartctl -h` shows that JSON output is unavailable.
+- If `smartctl` advertises JSON support but the actual SMART read still fails, the app preserves the original `smartctl` error instead. This matters because USB bridges, controller quirks, and device read failures can all break SMART collection even on newer smartmontools versions.
 
-That split is easy to forget later because both cases may surface during the
-same troubleshooting session, but they need different remediation.
+That split is easy to forget later because both cases may surface during the same troubleshooting session, but they need different remediation.
 
-## Prediction Dependencies
+## HDSentinel Monitoring And Alerts
 
-SMART prediction depends on optional Python prediction dependencies. SMART
-collection and HDSentinel monitoring are allowed to run even when that optional
-prediction stack cannot load. This matters on older CPUs where the installed
-NumPy package can fail during native-extension loading before the Drive Health
-page has a chance to run a check.
+HDSentinel is the source for the simple health meter shown on the Dashboard after a manual Dashboard refresh or Drive Health page refresh actually runs in the web app process.
 
-The operator meaning is intentionally simple: `SMART prediction unavailable`
-means no prediction probability can be calculated on this machine right now.
-It is not a drive-health alert by itself, and SMART plus HDSentinel checks can
-still run.
+- Health `50%` and above is shown as healthy.
+- Health below `50%` is shown as a warning.
+- Health below `25%` is shown as critical.
+- If HDSentinel is disabled, unavailable, or has not run yet, the Dashboard status remains unknown.
 
-- If the native loader reports the known NumPy `X86_V2` CPU-baseline failure,
-  the operator-facing message is: `SMART prediction is unavailable because this
-  machine's CPU cannot run the installed NumPy package. SMART and HDSentinel
-  checks can still run.`
-- If another optional prediction dependency fails to load, the operator-facing
-  message is: `SMART prediction is unavailable because the prediction
-  dependencies could not be loaded. SMART and HDSentinel checks can still run.`
-- The technical import failure is written to the application log once at warning
-  level during service import. The web app should still start.
-- Normal installation does not ask admins to compile NumPy from source, and the
-  installer does not block older CPUs just because SMART prediction may degrade.
+Scheduled Drive Health keeps a durable previous HDSentinel snapshot at `/var/lib/SimpleSaferServer/hdsentinel_state.json` in real mode. On each scheduled check it compares the previous successful HDSentinel health percentage with the current successful HDSentinel health percentage. Normal Drive Health page loads do not read that state as live dashboard health; the file exists for scheduled change detection.
 
-Scheduled Drive Health treats prediction unavailability as a successful degraded
-check when the backup drive is mounted and SMART data is readable.
-
-- The scheduled result has no probability, no prediction, and no prediction
-  threshold because the model did not produce a value to compare.
-- The scheduled output includes the prediction-unavailable warning so task
-  history and journal logs explain why the check is degraded.
-- Prediction unavailability by itself does not create a website alert and does
-  not send an alert email.
-- HDSentinel monitoring still runs according to the Drive Health settings.
-
-Actual SMART read failures still fail the scheduled check unless the existing
-smartctl-JSON unsupported path can report available HDSentinel data instead.
-- A manual health check still displays readable SMART attributes and the current
-  HDSentinel snapshot when prediction is unavailable. The prediction-unavailable
-  text is a warning because the raw drive data was collected, but no telemetry
-  row is appended unless a prediction label exists.
+When HDSentinel monitoring and health-change alerts are enabled, any health percentage change creates the existing HDSentinel alert. The alert does not use the Dashboard warning/critical thresholds; it is deliberately based on change detection so operators see drive-health movement even when the absolute value is still high.
 
 ## Dashboard Summary
 
-The Dashboard Drive Health tile reads only the latest summary stored in the running Flask process.
-It does not read SMART data, run HDSentinel, or load any dashboard-specific health file during a
-normal Dashboard refresh.
+The Dashboard Drive Health tile reads only the latest summary stored in the running Flask process. It does not read SMART data, run HDSentinel, read scheduled HDSentinel state, or load a dashboard-specific health file during a normal Dashboard refresh.
 
 - On web app startup, the summary is `No check yet`.
 - `GET /api/drive_health/summary` returns the RAM summary only.
-- `POST /api/drive_health/refresh` runs a live SMART/HDSentinel probe, updates RAM, and returns the
-  new summary.
-- Timeout and unavailable-drive results stay neutral on the Dashboard because sleeping USB drives,
-  docks, and adapters can need an explicit second check after spin-up.
-- If SMART data is readable but prediction cannot run, Dashboard refresh succeeds
-  and publishes a neutral summary with the prediction-unavailable detail and no
-  failure probability. HDSentinel values may still be shown, but they do not turn
-  the Dashboard health status into `good` or `warning`.
-- The app does not persist Dashboard health summaries. Existing SMART telemetry and HDSentinel
-  monitor state keep their own documented storage behavior.
+- `POST /api/drive_health/refresh` runs a live SMART/HDSentinel probe, updates RAM, and returns the new summary.
+- Timeout and unavailable-drive results stay neutral on the Dashboard unless HDSentinel returns a usable health percentage.
+- The app does not persist Dashboard health summaries. HDSentinel monitor state keeps its own documented storage behavior for scheduled health-change alerts.
+
+## Scheduled Checks
+
+Scheduled Drive Health still treats general SMART read failures as task failures because those failures can signal real device, bridge, or permission problems.
+
+The one degraded-success exception is the existing smartctl JSON unsupported path: if SMART cannot run only because the installed smartctl lacks JSON output and HDSentinel reports a usable health percentage, the scheduled check can still complete with the HDSentinel snapshot.
 
 ## Re-running Backup Drive Setup
 

@@ -1,6 +1,6 @@
 import tempfile
 from contextlib import suppress
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -36,7 +36,7 @@ def test_disable_writes_state_after_systemd_success_and_replaces_existing_state(
     with tempfile.TemporaryDirectory() as temp_dir:
         systemd = FakeSystemd()
         service = DisabledTimerService(_runtime(temp_dir), systemd)
-        expires_at = datetime(2026, 5, 13, 18, 0, 0, tzinfo=timezone.utc)
+        expires_at = datetime(2026, 5, 13, 18, 0, 0, tzinfo=UTC)
 
         service.disable(
             "Cloud Backup", "backup_cloud.timer", mode="temporary", expires_at=expires_at
@@ -109,7 +109,7 @@ def test_restore_expired_temporary_records_and_leaves_future_and_permanent_recor
     with tempfile.TemporaryDirectory() as temp_dir:
         systemd = FakeSystemd()
         service = DisabledTimerService(_runtime(temp_dir), systemd)
-        now = datetime(2026, 5, 13, 12, 0, 0, tzinfo=timezone.utc)
+        now = datetime(2026, 5, 13, 12, 0, 0, tzinfo=UTC)
 
         service.disable(
             "Cloud Backup",
@@ -140,7 +140,7 @@ def test_restore_failures_retry_three_times_then_alert_once_and_stop_retrying():
         systemd.fail_enable.add("backup_cloud.timer")
         alert_notifier = MagicMock()
         service = DisabledTimerService(_runtime(temp_dir), systemd, alert_notifier=alert_notifier)
-        now = datetime(2026, 5, 13, 12, 0, 0, tzinfo=timezone.utc)
+        now = datetime(2026, 5, 13, 12, 0, 0, tzinfo=UTC)
 
         service.disable("Cloud Backup", "backup_cloud.timer", mode="temporary", expires_at=now)
 

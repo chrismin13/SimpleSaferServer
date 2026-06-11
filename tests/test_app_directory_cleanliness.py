@@ -63,7 +63,6 @@ def test_normal_app_state_writes_do_not_dirty_installed_git_checkout():
             data_dir=data_dir,
             volatile_dir=volatile_dir,
             config_dir=root / "etc",
-            telemetry_path=data_dir / "telemetry.csv",
             default_mount_point=str(root / "backup"),
         )
         command_adapter = FakeSystemUpdatesCommandAdapter()
@@ -73,7 +72,6 @@ def test_normal_app_state_writes_do_not_dirty_installed_git_checkout():
             command_adapter=command_adapter,
         )
 
-        drive_health.append_telemetry({"smart_1_raw": 1}, 0, runtime=runtime)
         drive_health.save_hdsentinel_state({"available": True}, runtime=runtime)
         manager._write_apt_periodic_config(
             {
@@ -93,7 +91,6 @@ def test_normal_app_state_writes_do_not_dirty_installed_git_checkout():
         status = _git(app_dir, "status", "--porcelain").stdout
 
         assert status == ""
-        assert (data_dir / "telemetry.csv").exists()
         assert (data_dir / "hdsentinel_state.json").exists()
         assert command_adapter.apt_periodic_content
         assert command_adapter.attach_config_path.parent == volatile_dir
@@ -117,11 +114,11 @@ def test_gitignore_keeps_install_artifacts_ignored_without_hiding_known_state_fi
             [
                 "git",
                 "check-ignore",
+                ".venv/bin/python",
                 "venv/bin/python",
                 "simple_safer_server/__pycache__/module.pyc",
                 "app.log",
                 ".dev-data/config/config.conf",
-                "telemetry.csv",
             ],
             cwd=str(repo_root),
             check=False,

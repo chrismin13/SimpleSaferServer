@@ -37,11 +37,13 @@ def test_task_detail_loads_maximum_log_window():
     user_manager = MagicMock()
     user_manager.is_admin.return_value = True
 
-    with patch(
-        "simple_safer_server.services.user_manager.UserManager", return_value=user_manager
-    ), patch(
-        "simple_safer_server.routes.tasks.render_template", return_value="rendered"
-    ) as render, app.test_client() as client:
+    with (
+        patch("simple_safer_server.services.user_manager.UserManager", return_value=user_manager),
+        patch(
+            "simple_safer_server.routes.tasks.render_template", return_value="rendered"
+        ) as render,
+        app.test_client() as client,
+    ):
         with client.session_transaction() as session:
             session["username"] = "admin"
 
@@ -62,9 +64,10 @@ def test_task_logs_defaults_to_global_log_window():
     user_manager = MagicMock()
     user_manager.is_admin.return_value = True
 
-    with patch(
-        "simple_safer_server.services.user_manager.UserManager", return_value=user_manager
-    ), app.test_client() as client:
+    with (
+        patch("simple_safer_server.services.user_manager.UserManager", return_value=user_manager),
+        app.test_client() as client,
+    ):
         with client.session_transaction() as session:
             session["username"] = "admin"
 
@@ -84,9 +87,10 @@ def test_task_logs_clamps_invalid_and_oversized_windows_to_global_limit():
     user_manager = MagicMock()
     user_manager.is_admin.return_value = True
 
-    with patch(
-        "simple_safer_server.services.user_manager.UserManager", return_value=user_manager
-    ), app.test_client() as client:
+    with (
+        patch("simple_safer_server.services.user_manager.UserManager", return_value=user_manager),
+        app.test_client() as client,
+    ):
         with client.session_transaction() as session:
             session["username"] = "admin"
 
@@ -110,9 +114,10 @@ def test_task_logs_keeps_smaller_requested_window():
     user_manager = MagicMock()
     user_manager.is_admin.return_value = True
 
-    with patch(
-        "simple_safer_server.services.user_manager.UserManager", return_value=user_manager
-    ), app.test_client() as client:
+    with (
+        patch("simple_safer_server.services.user_manager.UserManager", return_value=user_manager),
+        app.test_client() as client,
+    ):
         with client.session_transaction() as session:
             session["username"] = "admin"
 
@@ -137,9 +142,10 @@ def test_task_status_returns_current_task_summary():
     user_manager = MagicMock()
     user_manager.is_admin.return_value = True
 
-    with patch(
-        "simple_safer_server.services.user_manager.UserManager", return_value=user_manager
-    ), app.test_client() as client:
+    with (
+        patch("simple_safer_server.services.user_manager.UserManager", return_value=user_manager),
+        app.test_client() as client,
+    ):
         with client.session_transaction() as session:
             session["username"] = "admin"
 
@@ -158,9 +164,10 @@ def test_task_status_returns_not_found_for_unknown_task():
     user_manager = MagicMock()
     user_manager.is_admin.return_value = True
 
-    with patch(
-        "simple_safer_server.services.user_manager.UserManager", return_value=user_manager
-    ), app.test_client() as client:
+    with (
+        patch("simple_safer_server.services.user_manager.UserManager", return_value=user_manager),
+        app.test_client() as client,
+    ):
         with client.session_transaction() as session:
             session["username"] = "admin"
 
@@ -182,9 +189,10 @@ def test_disable_schedule_route_calls_task_and_returns_updated_summary():
     user_manager = MagicMock()
     user_manager.is_admin.return_value = True
 
-    with patch(
-        "simple_safer_server.services.user_manager.UserManager", return_value=user_manager
-    ), app.test_client() as client:
+    with (
+        patch("simple_safer_server.services.user_manager.UserManager", return_value=user_manager),
+        app.test_client() as client,
+    ):
         with client.session_transaction() as session:
             session["username"] = "admin"
 
@@ -207,9 +215,10 @@ def test_disable_schedule_route_rejects_invalid_mode_before_calling_task():
     user_manager = MagicMock()
     user_manager.is_admin.return_value = True
 
-    with patch(
-        "simple_safer_server.services.user_manager.UserManager", return_value=user_manager
-    ), app.test_client() as client:
+    with (
+        patch("simple_safer_server.services.user_manager.UserManager", return_value=user_manager),
+        app.test_client() as client,
+    ):
         with client.session_transaction() as session:
             session["username"] = "admin"
 
@@ -232,9 +241,10 @@ def test_disable_schedule_route_rejects_invalid_hours_before_calling_task():
     user_manager = MagicMock()
     user_manager.is_admin.return_value = True
 
-    with patch(
-        "simple_safer_server.services.user_manager.UserManager", return_value=user_manager
-    ), app.test_client() as client:
+    with (
+        patch("simple_safer_server.services.user_manager.UserManager", return_value=user_manager),
+        app.test_client() as client,
+    ):
         with client.session_transaction() as session:
             session["username"] = "admin"
 
@@ -257,9 +267,10 @@ def test_disable_schedule_route_rejects_non_positive_hours_before_calling_task()
     user_manager = MagicMock()
     user_manager.is_admin.return_value = True
 
-    with patch(
-        "simple_safer_server.services.user_manager.UserManager", return_value=user_manager
-    ), app.test_client() as client:
+    with (
+        patch("simple_safer_server.services.user_manager.UserManager", return_value=user_manager),
+        app.test_client() as client,
+    ):
         with client.session_transaction() as session:
             session["username"] = "admin"
 
@@ -286,9 +297,10 @@ def test_enable_schedule_route_calls_task_and_returns_updated_summary():
     user_manager = MagicMock()
     user_manager.is_admin.return_value = True
 
-    with patch(
-        "simple_safer_server.services.user_manager.UserManager", return_value=user_manager
-    ), app.test_client() as client:
+    with (
+        patch("simple_safer_server.services.user_manager.UserManager", return_value=user_manager),
+        app.test_client() as client,
+    ):
         with client.session_transaction() as session:
             session["username"] = "admin"
 
@@ -309,9 +321,10 @@ def test_disable_schedule_route_returns_not_found_for_unknown_task():
     user_manager = MagicMock()
     user_manager.is_admin.return_value = True
 
-    with patch(
-        "simple_safer_server.services.user_manager.UserManager", return_value=user_manager
-    ), app.test_client() as client:
+    with (
+        patch("simple_safer_server.services.user_manager.UserManager", return_value=user_manager),
+        app.test_client() as client,
+    ):
         with client.session_transaction() as session:
             session["username"] = "admin"
 
@@ -348,9 +361,10 @@ def test_enable_schedule_route_returns_json_admin_required_for_demoted_fetch_ses
     user_manager = MagicMock()
     user_manager.is_admin.return_value = False
 
-    with patch(
-        "simple_safer_server.services.user_manager.UserManager", return_value=user_manager
-    ), app.test_client() as client:
+    with (
+        patch("simple_safer_server.services.user_manager.UserManager", return_value=user_manager),
+        app.test_client() as client,
+    ):
         with client.session_transaction() as session:
             session["username"] = "operator"
 
@@ -380,9 +394,10 @@ def test_enable_schedule_route_reports_operation_failure():
     user_manager = MagicMock()
     user_manager.is_admin.return_value = True
 
-    with patch(
-        "simple_safer_server.services.user_manager.UserManager", return_value=user_manager
-    ), app.test_client() as client:
+    with (
+        patch("simple_safer_server.services.user_manager.UserManager", return_value=user_manager),
+        app.test_client() as client,
+    ):
         with client.session_transaction() as session:
             session["username"] = "admin"
 

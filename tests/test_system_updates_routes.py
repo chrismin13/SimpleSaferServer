@@ -26,9 +26,10 @@ def test_livepatch_setup_returns_validation_problem_for_empty_token():
     user_manager = MagicMock()
     user_manager.is_admin.return_value = True
 
-    with patch(
-        "simple_safer_server.services.user_manager.UserManager", return_value=user_manager
-    ), app.test_client() as client:
+    with (
+        patch("simple_safer_server.services.user_manager.UserManager", return_value=user_manager),
+        app.test_client() as client,
+    ):
         with client.session_transaction() as session:
             session["username"] = "admin"
 
@@ -59,9 +60,10 @@ def test_application_update_returns_conflict_when_no_update_is_available():
     user_manager = MagicMock()
     user_manager.is_admin.return_value = True
 
-    with patch(
-        "simple_safer_server.services.user_manager.UserManager", return_value=user_manager
-    ), app.test_client() as client:
+    with (
+        patch("simple_safer_server.services.user_manager.UserManager", return_value=user_manager),
+        app.test_client() as client,
+    ):
         with client.session_transaction() as session:
             session["username"] = "admin"
 
@@ -85,9 +87,10 @@ def test_application_update_starts_task_and_returns_task_url():
     user_manager = MagicMock()
     user_manager.is_admin.return_value = True
 
-    with patch(
-        "simple_safer_server.services.user_manager.UserManager", return_value=user_manager
-    ), app.test_client() as client:
+    with (
+        patch("simple_safer_server.services.user_manager.UserManager", return_value=user_manager),
+        app.test_client() as client,
+    ):
         with client.session_transaction() as session:
             session["username"] = "admin"
 
@@ -113,9 +116,10 @@ def test_application_force_update_starts_task_and_returns_task_url():
     user_manager = MagicMock()
     user_manager.is_admin.return_value = True
 
-    with patch(
-        "simple_safer_server.services.user_manager.UserManager", return_value=user_manager
-    ), app.test_client() as client:
+    with (
+        patch("simple_safer_server.services.user_manager.UserManager", return_value=user_manager),
+        app.test_client() as client,
+    ):
         with client.session_transaction() as session:
             session["username"] = "admin"
 
@@ -141,9 +145,10 @@ def test_application_force_update_does_not_queue_request_when_task_is_missing():
     user_manager = MagicMock()
     user_manager.is_admin.return_value = True
 
-    with patch(
-        "simple_safer_server.services.user_manager.UserManager", return_value=user_manager
-    ), app.test_client() as client:
+    with (
+        patch("simple_safer_server.services.user_manager.UserManager", return_value=user_manager),
+        app.test_client() as client,
+    ):
         with client.session_transaction() as session:
             session["username"] = "admin"
 
@@ -169,9 +174,10 @@ def test_application_force_update_clears_request_when_task_start_fails():
     user_manager = MagicMock()
     user_manager.is_admin.return_value = True
 
-    with patch(
-        "simple_safer_server.services.user_manager.UserManager", return_value=user_manager
-    ), app.test_client() as client:
+    with (
+        patch("simple_safer_server.services.user_manager.UserManager", return_value=user_manager),
+        app.test_client() as client,
+    ):
         with client.session_transaction() as session:
             session["username"] = "admin"
 
@@ -193,9 +199,10 @@ def test_application_branches_returns_remote_branch_choices():
     user_manager = MagicMock()
     user_manager.is_admin.return_value = True
 
-    with patch(
-        "simple_safer_server.services.user_manager.UserManager", return_value=user_manager
-    ), app.test_client() as client:
+    with (
+        patch("simple_safer_server.services.user_manager.UserManager", return_value=user_manager),
+        app.test_client() as client,
+    ):
         with client.session_transaction() as session:
             session["username"] = "admin"
 
@@ -218,9 +225,10 @@ def test_application_switch_branch_starts_task_and_returns_task_url():
     user_manager = MagicMock()
     user_manager.is_admin.return_value = True
 
-    with patch(
-        "simple_safer_server.services.user_manager.UserManager", return_value=user_manager
-    ), app.test_client() as client:
+    with (
+        patch("simple_safer_server.services.user_manager.UserManager", return_value=user_manager),
+        app.test_client() as client,
+    ):
         with client.session_transaction() as session:
             session["username"] = "admin"
 
@@ -246,9 +254,10 @@ def test_application_switch_branch_does_not_queue_request_when_task_is_missing()
     user_manager = MagicMock()
     user_manager.is_admin.return_value = True
 
-    with patch(
-        "simple_safer_server.services.user_manager.UserManager", return_value=user_manager
-    ), app.test_client() as client:
+    with (
+        patch("simple_safer_server.services.user_manager.UserManager", return_value=user_manager),
+        app.test_client() as client,
+    ):
         with client.session_transaction() as session:
             session["username"] = "admin"
 
@@ -274,9 +283,10 @@ def test_application_switch_branch_clears_request_when_task_start_fails():
     user_manager = MagicMock()
     user_manager.is_admin.return_value = True
 
-    with patch(
-        "simple_safer_server.services.user_manager.UserManager", return_value=user_manager
-    ), app.test_client() as client:
+    with (
+        patch("simple_safer_server.services.user_manager.UserManager", return_value=user_manager),
+        app.test_client() as client,
+    ):
         with client.session_transaction() as session:
             session["username"] = "admin"
 
@@ -300,9 +310,10 @@ def test_application_switch_branch_rejects_dirty_checkout():
     user_manager = MagicMock()
     user_manager.is_admin.return_value = True
 
-    with patch(
-        "simple_safer_server.services.user_manager.UserManager", return_value=user_manager
-    ), app.test_client() as client:
+    with (
+        patch("simple_safer_server.services.user_manager.UserManager", return_value=user_manager),
+        app.test_client() as client,
+    ):
         with client.session_transaction() as session:
             session["username"] = "admin"
 

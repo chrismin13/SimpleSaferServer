@@ -1,6 +1,6 @@
 import json
 from contextlib import suppress
-from typing import Any, Dict
+from typing import Any
 
 
 class DdnsService:
@@ -12,7 +12,7 @@ class DdnsService:
         self._task_service = task_service
         self._logger = logger
 
-    def get_config_payload(self) -> Dict[str, Any]:
+    def get_config_payload(self) -> dict[str, Any]:
         status = self._read_status()
         ddns_task = self._task_service.get_task("DDNS Update")
         next_run = ddns_task.next_run if ddns_task else "Unknown"
@@ -42,7 +42,7 @@ class DdnsService:
             "next_run": next_run,
         }
 
-    def save_config(self, data: Dict[str, Any]) -> str:
+    def save_config(self, data: dict[str, Any]) -> str:
         if "duckdns" in data:
             if not isinstance(data["duckdns"], dict):
                 raise ValueError("duckdns settings must be a JSON object")
@@ -66,7 +66,7 @@ class DdnsService:
         task.start()
         return "DDNS sync started successfully."
 
-    def _read_status(self) -> Dict[str, Any]:
+    def _read_status(self) -> dict[str, Any]:
         status_file = self._runtime.volatile_dir / "ddns_status.json"
         if not status_file.exists():
             return {}
@@ -76,7 +76,7 @@ class DdnsService:
                 return status
         return {}
 
-    def _save_duckdns(self, duckdns: Dict[str, Any]) -> None:
+    def _save_duckdns(self, duckdns: dict[str, Any]) -> None:
         domain = duckdns.get("domain", "").strip()
         token = duckdns.get("token", "").strip()
         enabled = _coerce_bool(duckdns.get("enabled", False))
@@ -96,7 +96,7 @@ class DdnsService:
         if token:
             self._config_manager.store_secret("duckdns_token", token)
 
-    def _save_cloudflare(self, cloudflare: Dict[str, Any]) -> None:
+    def _save_cloudflare(self, cloudflare: dict[str, Any]) -> None:
         zone = cloudflare.get("zone", "").strip()
         record = cloudflare.get("record", "").strip()
         token = cloudflare.get("token", "").strip()

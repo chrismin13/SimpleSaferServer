@@ -400,7 +400,8 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/restore_disabled_timers.py
+# Bypass the script shebang here so systemd never falls back to distro Python.
+ExecStart=/opt/SimpleSaferServer/.venv/bin/python /opt/SimpleSaferServer/scripts/restore_disabled_timers.py
 User=root
 StandardOutput=journal
 StandardError=journal

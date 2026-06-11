@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any
 
 from flask import Blueprint, current_app, render_template, session
 
@@ -14,7 +14,7 @@ def _get_services() -> Any:
     return current_app.extensions["simple_safer_server"]
 
 
-def _optional_admin_flag(data: Dict[str, Any], default: Optional[bool] = False) -> Optional[bool]:
+def _optional_admin_flag(data: dict[str, Any], default: bool | None = False) -> bool | None:
     if "is_admin" not in data:
         return default
     if not isinstance(data["is_admin"], bool):

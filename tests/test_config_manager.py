@@ -1,4 +1,3 @@
-# pyright: reportAttributeAccessIssue=false
 import configparser
 import os
 import tempfile

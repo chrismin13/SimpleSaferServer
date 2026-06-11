@@ -1,10 +1,11 @@
 #!/bin/bash
 
 CONFIG_FILE="/etc/SimpleSaferServer/config.conf"
-PYTHON_BIN="/opt/SimpleSaferServer/venv/bin/python"
+PYTHON_BIN="/opt/SimpleSaferServer/.venv/bin/python"
 
 if [ ! -x "$PYTHON_BIN" ]; then
-    PYTHON_BIN="/usr/bin/python3"
+    echo "Missing SimpleSaferServer Python environment at $PYTHON_BIN" >&2
+    exit 1
 fi
 
 get_config_value() {

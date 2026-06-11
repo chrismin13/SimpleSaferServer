@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import Optional
 
 from simple_safer_server.adapters.command_runner import CommandRunner
 
@@ -9,13 +8,13 @@ SMB_COMMAND_TIMEOUT_SECONDS = 30
 class SmbCommandAdapter:
     """Wraps Samba validation, backup, service, and status commands."""
 
-    def __init__(self, command_runner: Optional[CommandRunner] = None) -> None:
+    def __init__(self, command_runner: CommandRunner | None = None) -> None:
         self._command_runner = command_runner or CommandRunner()
 
     def _command(self, *parts: str):
         return list(parts)
 
-    def validate_config(self, validator: str, candidate_path: Path, cwd: Optional[Path] = None):
+    def validate_config(self, validator: str, candidate_path: Path, cwd: Path | None = None):
         if Path(validator).name == "testparm":
             command = self._command(validator, "-s", str(candidate_path))
         else:

@@ -26,7 +26,7 @@ def fake_app_client():
                 runtime._fake_state = None
                 from simple_safer_server.app_factory import create_app
 
-                app, _socketio = create_app()
+                app = create_app()
                 app.config["TESTING"] = True
 
                 with app.app_context():

@@ -1,10 +1,11 @@
 #!/bin/bash
 
 APP_DIR="/opt/SimpleSaferServer"
-PYTHON_BIN="$APP_DIR/venv/bin/python"
+PYTHON_BIN="$APP_DIR/.venv/bin/python"
 
 if [ ! -x "$PYTHON_BIN" ]; then
-    PYTHON_BIN="/usr/bin/python3"
+    echo "Missing SimpleSaferServer Python environment at $PYTHON_BIN" >&2
+    exit 1
 fi
 
 cd "$APP_DIR" || exit 1

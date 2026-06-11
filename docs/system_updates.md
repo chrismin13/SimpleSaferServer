@@ -24,7 +24,7 @@ state outside that folder:
 - configuration in `/etc/SimpleSaferServer`
 - logs in `/var/log/SimpleSaferServer`
 - volatile runtime state in `/run/SimpleSaferServer`
-- durable app data, including drive-health telemetry and HDSentinel state, in `/var/lib/SimpleSaferServer`
+- durable app data, including HDSentinel state, in `/var/lib/SimpleSaferServer`
 
 **Update Now** is enabled only when the installed checkout is:
 

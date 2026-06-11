@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Any, Dict, Optional
+from typing import Any
 
 SUPPORT_INFO = {
     "debian": {
@@ -93,9 +93,9 @@ EOL_WARNING_DAYS = 183
 DEFAULT_AUTOCLEAN_INTERVAL_DAYS = 7
 
 
-def parse_os_release_text(text: str) -> Dict[str, str]:
+def parse_os_release_text(text: str) -> dict[str, str]:
     """Parse os-release without shelling out; this file is the distro source of truth."""
-    values: Dict[str, str] = {}
+    values: dict[str, str] = {}
     for raw_line in text.splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#") or "=" not in line:
@@ -116,9 +116,7 @@ def _major_ubuntu_version(version_id: str) -> str:
     return version_id
 
 
-def get_support_info(
-    distro_id: str, version_id: str, today: Optional[date] = None
-) -> Dict[str, Any]:
+def get_support_info(distro_id: str, version_id: str, today: date | None = None) -> dict[str, Any]:
     distro = (distro_id or "").lower()
     lookup_version = version_id
     if distro == "debian":

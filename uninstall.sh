@@ -422,11 +422,8 @@ main() {
         echo "Removed helper script if present: $script"
     done
 
-    echo "Removing installed binary and legacy model artifacts..."
+    echo "Removing installed HDSentinel binary..."
     rm -f /usr/local/bin/hdsentinel
-    rm -f /usr/local/bin/xgb_model.json
-    rm -f /usr/local/bin/optimal_threshold_xgb.pkl
-    rm -rf "$APP_DIR/harddrive_model"
 
     # Gather Samba usernames before deleting the config directory because the
     # app stores the source of truth in users.json rather than in a manifest.

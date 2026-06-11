@@ -13,45 +13,24 @@ class InstallDevScriptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             fake_repo = Path(temp_dir) / "repo"
             fake_repo.mkdir()
-            for filename in (
-                "install_dev.sh",
-                "requirements.txt",
-                "requirements-dev.txt",
-            ):
-                (fake_repo / filename).write_text((REPO_ROOT / filename).read_text())
+            (fake_repo / "install_dev.sh").write_text((REPO_ROOT / "install_dev.sh").read_text())
 
             fake_bin = Path(temp_dir) / "bin"
             fake_bin.mkdir()
-            fake_python3 = fake_bin / "python3"
-            venv_python = fake_repo / ".venv" / "bin" / "python"
-            venv_python.parent.mkdir(parents=True, exist_ok=True)
-
-            fake_python3.write_text(
+            fake_uv = fake_bin / "uv"
+            fake_uv.write_text(
                 textwrap.dedent(
                     f"""\
                     #!/bin/sh
-                    mkdir -p {venv_python.parent}
-                    cat > {venv_python} <<'PY'
-                    #!/bin/sh
-                    if [ "$1" = "-c" ]; then
-                      case "$2" in
-                        *version_info*legacy*) printf '%s\\n' current ;;
-                        *) printf '%s\\n' 3.13.0 ;;
-                      esac
-                      exit 0
+                    printf '%s\n' "$PWD $*" >> "{temp_dir}/uv-args.log"
+                    if [ "$1" = "run" ] && [ "$2" = "python" ]; then
+                      printf '%s\n' 3.14.4
                     fi
-                    if [ "$1" = "-m" ] && [ "$2" = "pip" ]; then
-                      shift 2
-                      printf '%s\\n' "$@" >> "{temp_dir}/pip-args.log"
-                      exit 0
-                    fi
-                    exit 1
-                    PY
-                    chmod +x {venv_python}
+                    exit 0
                     """
                 )
             )
-            fake_python3.chmod(0o755)
+            fake_uv.chmod(0o755)
 
             env = {
                 **os.environ,
@@ -67,10 +46,10 @@ class InstallDevScriptTests(unittest.TestCase):
             )
 
             self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
-            pip_args = (Path(temp_dir) / "pip-args.log").read_text()
-            self.assertIn(str(fake_repo / "requirements.txt"), pip_args)
-            self.assertIn(str(fake_repo / "requirements-dev.txt"), pip_args)
-            self.assertIn("using Python 3.13.0 and requirements.txt", result.stdout)
+            uv_args = (Path(temp_dir) / "uv-args.log").read_text()
+            self.assertIn(f"{fake_repo} sync --group dev", uv_args)
+            self.assertIn(f"{fake_repo} run python -c", uv_args)
+            self.assertIn("using Python 3.14.4", result.stdout)
 
 
 if __name__ == "__main__":

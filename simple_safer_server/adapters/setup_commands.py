@@ -1,5 +1,3 @@
-from typing import Optional
-
 from simple_safer_server.adapters.command_runner import PIPE, CommandRunner
 
 SETUP_PROBE_TIMEOUT_SECONDS = 30
@@ -10,7 +8,7 @@ SETUP_RCLONE_TIMEOUT_SECONDS = 60
 class SetupCommandAdapter:
     """Wraps setup wizard commands for disk formatting, SMB boot enable, and MEGA setup."""
 
-    def __init__(self, command_runner: Optional[CommandRunner] = None) -> None:
+    def __init__(self, command_runner: CommandRunner | None = None) -> None:
         self._command_runner = command_runner or CommandRunner()
 
     def whole_disk_type(self, disk: str):

@@ -6,7 +6,6 @@ import shutil
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Union
 
 from simple_safer_server.adapters.command_runner import (
     CalledProcessError,
@@ -39,14 +38,14 @@ class MigrationError(Exception):
 class LegacyBundle:
     bundle_dir: Path
     manifest: dict
-    config: Dict[str, str]
+    config: dict[str, str]
     config_path: Path
     msmtp_path: Path
     rclone_path: Path
 
 
-def _parse_legacy_config(path: Path) -> Dict[str, str]:
-    values: Dict[str, str] = {}
+def _parse_legacy_config(path: Path) -> dict[str, str]:
+    values: dict[str, str] = {}
     for raw_line in path.read_text().splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#") or "=" not in line:
@@ -60,8 +59,8 @@ def _parse_legacy_config(path: Path) -> Dict[str, str]:
     return values
 
 
-def _parse_msmtp_config(path: Path) -> Dict[str, str]:
-    parsed: Dict[str, str] = {}
+def _parse_msmtp_config(path: Path) -> dict[str, str]:
+    parsed: dict[str, str] = {}
     for raw_line in path.read_text().splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#"):
@@ -86,7 +85,7 @@ def normalize_legacy_backup_time(value: str) -> str:
         raise MigrationError(f"Legacy backup time '{value}' is invalid.") from exc
 
 
-def load_legacy_bundle(bundle_dir: Union[str, Path]) -> LegacyBundle:
+def load_legacy_bundle(bundle_dir: str | Path) -> LegacyBundle:
     bundle_path = Path(bundle_dir).resolve()
     if not bundle_path.is_dir():
         raise MigrationError(f"Legacy bundle directory not found: {bundle_path}")
@@ -278,7 +277,7 @@ def _restart_web_service(runtime) -> None:
 
 
 def import_legacy_bundle(
-    bundle_dir: Union[str, Path], *, admin_username: str, admin_password: str
+    bundle_dir: str | Path, *, admin_username: str, admin_password: str
 ) -> dict:
     runtime = get_runtime()
     if not runtime.is_fake and os.geteuid() != 0:
