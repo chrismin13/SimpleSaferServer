@@ -129,7 +129,7 @@ During normal development, run targeted tests for the code you changed. Before c
 bash check_ci.sh
 ```
 
-`check_ci.sh` syncs the dev environment, formats with Ruff, lints, runs pytest, and runs ty. Full-suite pytest runs use `pytest-xdist` workers by default; set `PYTEST_WORKERS=4` or another worker count if `auto` is too aggressive on your machine. Pass pytest arguments after the script options for targeted serial runs:
+`check_ci.sh` syncs the dev environment, formats Python with Ruff, formats shell scripts with shfmt, lints Python with Ruff, lints shell scripts with ShellCheck, runs pytest, and runs ty. The shell checks only look at tracked `.sh` files, so local virtualenv scripts and generated scratch files do not become part of the project quality gate. Full-suite pytest runs use `pytest-xdist` workers by default; set `PYTEST_WORKERS=4` or another worker count if `auto` is too aggressive on your machine. Pass pytest arguments after the script options for targeted serial runs:
 
 ```bash
 bash check_ci.sh tests/test_drive_health.py

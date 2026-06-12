@@ -17,228 +17,228 @@ PREFLIGHT_ONLY="${SSS_INSTALLER_PREFLIGHT_ONLY:-0}"
 OS_RELEASE_PATH="${SSS_OS_RELEASE_PATH:-}"
 
 while [ "$#" -gt 0 ]; do
-    case "$1" in
-        --unsupported-os-ok)
-            UNSUPPORTED_OS_OK=1
-            ;;
-        *)
-            echo -e "${RED}ERROR:${NC} Unknown installer option: $1"
-            exit 1
-            ;;
-    esac
-    shift
+  case "$1" in
+    --unsupported-os-ok)
+      UNSUPPORTED_OS_OK=1
+      ;;
+    *)
+      echo -e "${RED}ERROR:${NC} Unknown installer option: $1"
+      exit 1
+      ;;
+  esac
+  shift
 done
 
 installer_command_available() {
-    local command_name="$1"
-    local fake_commands=",${SSS_INSTALLER_TEST_COMMANDS:-},"
-    local missing_commands=",${SSS_INSTALLER_TEST_MISSING_COMMANDS:-},"
+  local command_name="$1"
+  local fake_commands=",${SSS_INSTALLER_TEST_COMMANDS:-},"
+  local missing_commands=",${SSS_INSTALLER_TEST_MISSING_COMMANDS:-},"
 
-    if [ "$PREFLIGHT_ONLY" = "1" ] && [ "${fake_commands}" != ",," ]; then
-        case "$fake_commands" in
-            *,"$command_name",*) return 0 ;;
-        esac
-        return 1
-    fi
+  if [ "$PREFLIGHT_ONLY" = "1" ] && [ "${fake_commands}" != ",," ]; then
+    case "$fake_commands" in
+      *,"$command_name",*) return 0 ;;
+    esac
+    return 1
+  fi
 
-    if [ "$PREFLIGHT_ONLY" = "1" ] && [ "${missing_commands}" != ",," ]; then
-        case "$missing_commands" in
-            *,"$command_name",*) return 1 ;;
-        esac
-    fi
+  if [ "$PREFLIGHT_ONLY" = "1" ] && [ "${missing_commands}" != ",," ]; then
+    case "$missing_commands" in
+      *,"$command_name",*) return 1 ;;
+    esac
+  fi
 
-    command -v "$command_name" >/dev/null 2>&1
+  command -v "$command_name" >/dev/null 2>&1
 }
 
 installer_systemd_available() {
-    if [ "$PREFLIGHT_ONLY" = "1" ] && [ -n "${SSS_INSTALLER_TEST_SYSTEMD+x}" ]; then
-        [ "$SSS_INSTALLER_TEST_SYSTEMD" = "1" ]
-        return
-    fi
-    # Normal Debian/Ubuntu server installs are systemd-booted. This catches
-    # chroots and minimal containers where systemctl exists but service setup
-    # would fail later with a much less useful error.
-    [ -d /run/systemd/system ]
+  if [ "$PREFLIGHT_ONLY" = "1" ] && [ -n "${SSS_INSTALLER_TEST_SYSTEMD+x}" ]; then
+    [ "$SSS_INSTALLER_TEST_SYSTEMD" = "1" ]
+    return
+  fi
+  # Normal Debian/Ubuntu server installs are systemd-booted. This catches
+  # chroots and minimal containers where systemctl exists but service setup
+  # would fail later with a much less useful error.
+  [ -d /run/systemd/system ]
 }
 
 os_release_file() {
-    if [ -n "$OS_RELEASE_PATH" ]; then
-        printf '%s\n' "$OS_RELEASE_PATH"
-        return 0
-    fi
-    if [ -r /etc/os-release ]; then
-        printf '%s\n' /etc/os-release
-        return 0
-    fi
-    if [ -r /usr/lib/os-release ]; then
-        printf '%s\n' /usr/lib/os-release
-        return 0
-    fi
-    return 1
+  if [ -n "$OS_RELEASE_PATH" ]; then
+    printf '%s\n' "$OS_RELEASE_PATH"
+    return 0
+  fi
+  if [ -r /etc/os-release ]; then
+    printf '%s\n' /etc/os-release
+    return 0
+  fi
+  if [ -r /usr/lib/os-release ]; then
+    printf '%s\n' /usr/lib/os-release
+    return 0
+  fi
+  return 1
 }
 
 os_release_value() {
-    local file="$1"
-    local key="$2"
-    local line=""
-    line=$(grep -E "^[[:space:]]*${key}=" "$file" 2>/dev/null | tail -n 1 || true)
-    line=${line#"${line%%[![:space:]]*}"}
-    line=${line#*=}
-    line=${line%\"}
-    line=${line#\"}
-    line=${line%\'}
-    line=${line#\'}
-    printf '%s\n' "$line"
+  local file="$1"
+  local key="$2"
+  local line=""
+  line=$(grep -E "^[[:space:]]*${key}=" "$file" 2>/dev/null | tail -n 1 || true)
+  line=${line#"${line%%[![:space:]]*}"}
+  line=${line#*=}
+  line=${line%\"}
+  line=${line#\"}
+  line=${line%\'}
+  line=${line#\'}
+  printf '%s\n' "$line"
 }
 
 contains_os_family() {
-    local value=" $1 "
-    local family="$2"
-    case "$value" in
-        *" $family "*) return 0 ;;
-    esac
-    return 1
+  local value=" $1 "
+  local family="$2"
+  case "$value" in
+    *" $family "*) return 0 ;;
+  esac
+  return 1
 }
 
 installer_architecture() {
-    if [ "$PREFLIGHT_ONLY" = "1" ] && [ -n "${SSS_INSTALLER_TEST_ARCH:-}" ]; then
-        printf '%s\n' "$SSS_INSTALLER_TEST_ARCH"
-        return 0
-    fi
-    dpkg --print-architecture 2>/dev/null || uname -m
+  if [ "$PREFLIGHT_ONLY" = "1" ] && [ -n "${SSS_INSTALLER_TEST_ARCH:-}" ]; then
+    printf '%s\n' "$SSS_INSTALLER_TEST_ARCH"
+    return 0
+  fi
+  dpkg --print-architecture 2>/dev/null || uname -m
 }
 
 same_file() {
-    local source_path="$1"
-    local dest_path="$2"
-    local source_real=""
-    local dest_real=""
+  local source_path="$1"
+  local dest_path="$2"
+  local source_real=""
+  local dest_real=""
 
-    source_real="$(readlink -f "$source_path")"
-    dest_real="$(readlink -f "$dest_path" 2>/dev/null || printf '%s' "$dest_path")"
-    [ "$source_real" = "$dest_real" ]
+  source_real="$(readlink -f "$source_path")"
+  dest_real="$(readlink -f "$dest_path" 2>/dev/null || printf '%s' "$dest_path")"
+  [ "$source_real" = "$dest_real" ]
 }
 
 copy_unless_same_file() {
-    local source_path="$1"
-    local dest_path="$2"
+  local source_path="$1"
+  local dest_path="$2"
 
-    if same_file "$source_path" "$dest_path"; then
-        return 0
-    fi
-    cp "$source_path" "$dest_path"
+  if same_file "$source_path" "$dest_path"; then
+    return 0
+  fi
+  cp "$source_path" "$dest_path"
 }
 
 ensure_git_safe_directory() {
-    local repo_path="$1"
-    local existing_paths=""
+  local repo_path="$1"
+  local existing_paths=""
 
-    if ! command -v git >/dev/null 2>&1; then
-        return 0
-    fi
+  if ! command -v git >/dev/null 2>&1; then
+    return 0
+  fi
 
-    existing_paths="$(git config --system --get-all safe.directory 2>/dev/null || true)"
-    if printf '%s\n' "$existing_paths" | grep -Fxq "$repo_path"; then
-        return 0
-    fi
+  existing_paths="$(git config --system --get-all safe.directory 2>/dev/null || true)"
+  if printf '%s\n' "$existing_paths" | grep -Fxq "$repo_path"; then
+    return 0
+  fi
 
-    # The app checkout may be owned by the installing admin while update services
-    # run as root without sudo's SUDO_UID trust hint, so root Git commands need an
-    # explicit safe.directory entry for the managed app folder.
-    git config --system --add safe.directory "$repo_path"
+  # The app checkout may be owned by the installing admin while update services
+  # run as root without sudo's SUDO_UID trust hint, so root Git commands need an
+  # explicit safe.directory entry for the managed app folder.
+  git config --system --add safe.directory "$repo_path"
 }
 
 run_installer_preflight() {
-    local release_file=""
-    local os_id=""
-    local os_like=""
-    local pretty_name=""
-    local version_id=""
-    local missing_tools=""
-    local is_debian_family=0
-    local is_direct_supported_family=0
-    local host_arch=""
+  local release_file=""
+  local os_id=""
+  local os_like=""
+  local pretty_name=""
+  local version_id=""
+  local missing_tools=""
+  local is_debian_family=0
+  local is_direct_supported_family=0
+  local host_arch=""
 
-    echo -e "${YELLOW}Preflight: Checking install platform...${NC}"
+  echo -e "${YELLOW}Preflight: Checking install platform...${NC}"
 
-    if ! installer_command_available apt-get; then
-        missing_tools="${missing_tools} apt-get"
-    fi
-    if ! installer_command_available dpkg; then
-        missing_tools="${missing_tools} dpkg"
-    fi
-    if ! installer_command_available systemctl; then
-        missing_tools="${missing_tools} systemctl"
-    fi
+  if ! installer_command_available apt-get; then
+    missing_tools="${missing_tools} apt-get"
+  fi
+  if ! installer_command_available dpkg; then
+    missing_tools="${missing_tools} dpkg"
+  fi
+  if ! installer_command_available systemctl; then
+    missing_tools="${missing_tools} systemctl"
+  fi
 
-    if [ -n "$missing_tools" ]; then
-        echo -e "${RED}ERROR:${NC} Missing required host tools:${missing_tools}"
-        echo -e "SimpleSaferServer installs Debian packages and systemd services, so this installer needs apt-get, dpkg, and systemctl."
-        exit 1
-    fi
-    if ! installer_systemd_available; then
-        echo -e "${RED}ERROR:${NC} systemctl is installed, but systemd does not appear to be running as the host init system."
-        echo -e "This usually means the installer is running inside a chroot, build container, or other non-booted environment. Run it on the target Debian/Ubuntu server instead."
-        exit 1
-    fi
+  if [ -n "$missing_tools" ]; then
+    echo -e "${RED}ERROR:${NC} Missing required host tools:${missing_tools}"
+    echo -e "SimpleSaferServer installs Debian packages and systemd services, so this installer needs apt-get, dpkg, and systemctl."
+    exit 1
+  fi
+  if ! installer_systemd_available; then
+    echo -e "${RED}ERROR:${NC} systemctl is installed, but systemd does not appear to be running as the host init system."
+    echo -e "This usually means the installer is running inside a chroot, build container, or other non-booted environment. Run it on the target Debian/Ubuntu server instead."
+    exit 1
+  fi
 
-    host_arch=$(installer_architecture)
-    case "$host_arch" in
-        amd64|x86_64|arm64|aarch64)
-            ;;
-        *)
-            echo -e "${RED}ERROR:${NC} Unsupported architecture detected: ${host_arch:-unknown}."
-            echo -e "SimpleSaferServer requires a 64-bit OS/userspace for uv-managed Python and binary Python dependencies. Use amd64 or arm64."
-            exit 1
-            ;;
-    esac
+  host_arch=$(installer_architecture)
+  case "$host_arch" in
+    amd64 | x86_64 | arm64 | aarch64)
+      ;;
+    *)
+      echo -e "${RED}ERROR:${NC} Unsupported architecture detected: ${host_arch:-unknown}."
+      echo -e "SimpleSaferServer requires a 64-bit OS/userspace for uv-managed Python and binary Python dependencies. Use amd64 or arm64."
+      exit 1
+      ;;
+  esac
 
-    if release_file=$(os_release_file); then
-        os_id=$(os_release_value "$release_file" ID | tr '[:upper:]' '[:lower:]')
-        os_like=$(os_release_value "$release_file" ID_LIKE | tr '[:upper:]' '[:lower:]')
-        pretty_name=$(os_release_value "$release_file" PRETTY_NAME)
-        version_id=$(os_release_value "$release_file" VERSION_ID)
+  if release_file=$(os_release_file); then
+    os_id=$(os_release_value "$release_file" ID | tr '[:upper:]' '[:lower:]')
+    os_like=$(os_release_value "$release_file" ID_LIKE | tr '[:upper:]' '[:lower:]')
+    pretty_name=$(os_release_value "$release_file" PRETTY_NAME)
+    version_id=$(os_release_value "$release_file" VERSION_ID)
+  else
+    echo -e "${YELLOW}Could not read /etc/os-release or /usr/lib/os-release.${NC}"
+    echo -e "${YELLOW}Continuing because the required Debian package and systemd tools are present.${NC}"
+    echo
+    return 0
+  fi
+
+  case "$os_id" in
+    debian | ubuntu)
+      is_debian_family=1
+      is_direct_supported_family=1
+      ;;
+    *)
+      if contains_os_family "$os_like" debian || contains_os_family "$os_like" ubuntu; then
+        is_debian_family=1
+      fi
+      ;;
+  esac
+
+  if [ "$is_debian_family" -ne 1 ]; then
+    if [ "$UNSUPPORTED_OS_OK" = "1" ]; then
+      echo -e "${YELLOW}Unsupported OS family detected (${pretty_name:-$os_id}); continuing because --unsupported-os-ok was set.${NC}"
     else
-        echo -e "${YELLOW}Could not read /etc/os-release or /usr/lib/os-release.${NC}"
-        echo -e "${YELLOW}Continuing because the required Debian package and systemd tools are present.${NC}"
-        echo
-        return 0
+      echo -e "${RED}ERROR:${NC} Unsupported OS family detected: ${pretty_name:-$os_id}"
+      echo -e "SimpleSaferServer expects a Debian/Ubuntu-style APT and systemd host."
+      echo -e "Use --unsupported-os-ok only if this system intentionally provides compatible APT and systemd behavior."
+      exit 1
     fi
-
-    case "$os_id" in
-        debian|ubuntu)
-            is_debian_family=1
-            is_direct_supported_family=1
-            ;;
-        *)
-            if contains_os_family "$os_like" debian || contains_os_family "$os_like" ubuntu; then
-                is_debian_family=1
-            fi
-            ;;
+  elif [ "$is_direct_supported_family" -eq 1 ]; then
+    echo -e "${GREEN}✔ Detected ${pretty_name:-$os_id $version_id}.${NC}"
+    case "$os_id:$version_id" in
+      debian:10* | ubuntu:20.04*)
+        echo -e "${YELLOW}This is an older OS compatibility platform. The app still uses uv-managed Python, but OS package versions may differ from newer Debian/Ubuntu releases.${NC}"
+        ;;
     esac
+  else
+    echo -e "${YELLOW}Detected Debian/Ubuntu-family derivative: ${pretty_name:-$os_id $version_id}.${NC}"
+    echo -e "${YELLOW}Continuing because APT and systemd are available; derivative package differences may still cause apt-get to fail later.${NC}"
+  fi
 
-    if [ "$is_debian_family" -ne 1 ]; then
-        if [ "$UNSUPPORTED_OS_OK" = "1" ]; then
-            echo -e "${YELLOW}Unsupported OS family detected (${pretty_name:-$os_id}); continuing because --unsupported-os-ok was set.${NC}"
-        else
-            echo -e "${RED}ERROR:${NC} Unsupported OS family detected: ${pretty_name:-$os_id}"
-            echo -e "SimpleSaferServer expects a Debian/Ubuntu-style APT and systemd host."
-            echo -e "Use --unsupported-os-ok only if this system intentionally provides compatible APT and systemd behavior."
-            exit 1
-        fi
-    elif [ "$is_direct_supported_family" -eq 1 ]; then
-        echo -e "${GREEN}✔ Detected ${pretty_name:-$os_id $version_id}.${NC}"
-        case "$os_id:$version_id" in
-            debian:10*|ubuntu:20.04*)
-                echo -e "${YELLOW}This is an older OS compatibility platform. The app still uses uv-managed Python, but OS package versions may differ from newer Debian/Ubuntu releases.${NC}"
-                ;;
-        esac
-    else
-        echo -e "${YELLOW}Detected Debian/Ubuntu-family derivative: ${pretty_name:-$os_id $version_id}.${NC}"
-        echo -e "${YELLOW}Continuing because APT and systemd are available; derivative package differences may still cause apt-get to fail later.${NC}"
-    fi
-
-    echo -e "${GREEN}✔ Install platform preflight passed.${NC}\n"
+  echo -e "${GREEN}✔ Install platform preflight passed.${NC}\n"
 }
 
 # Check for root
@@ -249,26 +249,26 @@ fi
 
 run_installer_preflight
 if [ "$PREFLIGHT_ONLY" = "1" ]; then
-    exit 0
+  exit 0
 fi
 
 # Determine if we are in a SimpleSaferServer repo
 if [ -f "install.sh" ] && [ -d ".git" ] && grep -q 'SimpleSaferServer' README.md 2>/dev/null; then
-    SRC_DIR="$(pwd)"
-    CLEANUP_CLONE=0
+  SRC_DIR="$(pwd)"
+  CLEANUP_CLONE=0
 else
-    # Ensure git is installed before cloning
-    if ! command -v git >/dev/null 2>&1; then
-        echo -e "${YELLOW}git is not installed. Installing git...${NC}"
-        apt-get update
-        apt-get install -y git
-        echo -e "${GREEN}✔ git installed.${NC}"
-    fi
-    echo -e "${YELLOW}Cloning SimpleSaferServer repository...${NC}"
-    TMPDIR=$(mktemp -d)
-    git clone --depth 1 https://github.com/chrismin13/SimpleSaferServer.git "$TMPDIR/SimpleSaferServer"
-    SRC_DIR="$TMPDIR/SimpleSaferServer"
-    CLEANUP_CLONE=1
+  # Ensure git is installed before cloning
+  if ! command -v git >/dev/null 2>&1; then
+    echo -e "${YELLOW}git is not installed. Installing git...${NC}"
+    apt-get update
+    apt-get install -y git
+    echo -e "${GREEN}✔ git installed.${NC}"
+  fi
+  echo -e "${YELLOW}Cloning SimpleSaferServer repository...${NC}"
+  TMPDIR=$(mktemp -d)
+  git clone --depth 1 https://github.com/chrismin13/SimpleSaferServer.git "$TMPDIR/SimpleSaferServer"
+  SRC_DIR="$TMPDIR/SimpleSaferServer"
+  CLEANUP_CLONE=1
 fi
 
 cd "$SRC_DIR"
@@ -288,286 +288,286 @@ HDSENTINEL_BIN="/usr/local/bin/hdsentinel"
 HDSENTINEL_ASSET_DIR="$SRC_DIR/third_party/hdsentinel"
 
 uv_version_number() {
-    uv --version | awk '{print $2}'
+  uv --version | awk '{print $2}'
 }
 
 version_at_least() {
-    local actual="$1"
-    local minimum="$2"
-    local actual_major=0
-    local actual_minor=0
-    local actual_patch=0
-    local minimum_major=0
-    local minimum_minor=0
-    local minimum_patch=0
+  local actual="$1"
+  local minimum="$2"
+  local actual_major=0
+  local actual_minor=0
+  local actual_patch=0
+  local minimum_major=0
+  local minimum_minor=0
+  local minimum_patch=0
 
-    IFS=. read -r actual_major actual_minor actual_patch <<EOF
+  IFS=. read -r actual_major actual_minor actual_patch <<EOF
 $actual
 EOF
-    IFS=. read -r minimum_major minimum_minor minimum_patch <<EOF
+  IFS=. read -r minimum_major minimum_minor minimum_patch <<EOF
 $minimum
 EOF
 
-    actual_major=${actual_major:-0}
-    actual_minor=${actual_minor:-0}
-    actual_patch=${actual_patch:-0}
-    minimum_major=${minimum_major:-0}
-    minimum_minor=${minimum_minor:-0}
-    minimum_patch=${minimum_patch:-0}
+  actual_major=${actual_major:-0}
+  actual_minor=${actual_minor:-0}
+  actual_patch=${actual_patch:-0}
+  minimum_major=${minimum_major:-0}
+  minimum_minor=${minimum_minor:-0}
+  minimum_patch=${minimum_patch:-0}
 
-    if [ "$actual_major" -gt "$minimum_major" ]; then
-        return 0
-    fi
-    if [ "$actual_major" -lt "$minimum_major" ]; then
-        return 1
-    fi
-    if [ "$actual_minor" -gt "$minimum_minor" ]; then
-        return 0
-    fi
-    if [ "$actual_minor" -lt "$minimum_minor" ]; then
-        return 1
-    fi
-    [ "$actual_patch" -ge "$minimum_patch" ]
+  if [ "$actual_major" -gt "$minimum_major" ]; then
+    return 0
+  fi
+  if [ "$actual_major" -lt "$minimum_major" ]; then
+    return 1
+  fi
+  if [ "$actual_minor" -gt "$minimum_minor" ]; then
+    return 0
+  fi
+  if [ "$actual_minor" -lt "$minimum_minor" ]; then
+    return 1
+  fi
+  [ "$actual_patch" -ge "$minimum_patch" ]
 }
 
 ensure_uv() {
-    if command -v uv >/dev/null 2>&1; then
-        current_uv_version=$(uv_version_number)
-        if version_at_least "$current_uv_version" "$MIN_UV_VERSION"; then
-            echo -e "${GREEN}✔ uv ${current_uv_version} available.${NC}"
-            return 0
-        fi
-        echo -e "${YELLOW}uv ${current_uv_version} found, but SimpleSaferServer needs uv ${MIN_UV_VERSION} or newer for Python 3.14 installs. Installing the latest uv...${NC}"
-    else
-        echo -e "${YELLOW}uv is not installed. Installing the latest uv...${NC}"
+  if command -v uv >/dev/null 2>&1; then
+    current_uv_version=$(uv_version_number)
+    if version_at_least "$current_uv_version" "$MIN_UV_VERSION"; then
+      echo -e "${GREEN}✔ uv ${current_uv_version} available.${NC}"
+      return 0
     fi
+    echo -e "${YELLOW}uv ${current_uv_version} found, but SimpleSaferServer needs uv ${MIN_UV_VERSION} or newer for Python 3.14 installs. Installing the latest uv...${NC}"
+  else
+    echo -e "${YELLOW}uv is not installed. Installing the latest uv...${NC}"
+  fi
 
-    TMPFILE=$(mktemp)
-    if curl -fLsS "$UV_INSTALL_URL" -o "$TMPFILE"; then
-        UV_INSTALL_DIR="$UV_INSTALL_DIR" INSTALLER_NO_MODIFY_PATH=1 sh "$TMPFILE"
-        rm -f "$TMPFILE"
-    else
-        rm -f "$TMPFILE"
-        echo -e "${RED}ERROR: Failed to download uv installer.${NC}"
-        exit 1
-    fi
+  TMPFILE=$(mktemp)
+  if curl -fLsS "$UV_INSTALL_URL" -o "$TMPFILE"; then
+    UV_INSTALL_DIR="$UV_INSTALL_DIR" INSTALLER_NO_MODIFY_PATH=1 sh "$TMPFILE"
+    rm -f "$TMPFILE"
+  else
+    rm -f "$TMPFILE"
+    echo -e "${RED}ERROR: Failed to download uv installer.${NC}"
+    exit 1
+  fi
 
-    # Put the pinned binary first for the rest of this installer even if sudo
-    # preserved a user PATH with another uv earlier in the search order.
-    export PATH="$UV_INSTALL_DIR:$PATH"
-    hash -r
+  # Put the pinned binary first for the rest of this installer even if sudo
+  # preserved a user PATH with another uv earlier in the search order.
+  export PATH="$UV_INSTALL_DIR:$PATH"
+  hash -r
 
-    if ! command -v uv >/dev/null 2>&1; then
-        echo -e "${RED}ERROR: uv installation completed but uv is not on PATH.${NC}"
-        exit 1
-    fi
-    installed_uv_version=$(uv_version_number)
-    if ! version_at_least "$installed_uv_version" "$MIN_UV_VERSION"; then
-        echo -e "${RED}ERROR: expected uv ${MIN_UV_VERSION} or newer, but found uv ${installed_uv_version}.${NC}"
-        exit 1
-    fi
-    echo -e "${GREEN}✔ uv ${installed_uv_version} installed.${NC}"
+  if ! command -v uv >/dev/null 2>&1; then
+    echo -e "${RED}ERROR: uv installation completed but uv is not on PATH.${NC}"
+    exit 1
+  fi
+  installed_uv_version=$(uv_version_number)
+  if ! version_at_least "$installed_uv_version" "$MIN_UV_VERSION"; then
+    echo -e "${RED}ERROR: expected uv ${MIN_UV_VERSION} or newer, but found uv ${installed_uv_version}.${NC}"
+    exit 1
+  fi
+  echo -e "${GREEN}✔ uv ${installed_uv_version} installed.${NC}"
 }
 
 detect_hdsentinel_arch() {
-    local arch=""
-    local machine=""
+  local arch=""
+  local machine=""
 
-    if command -v dpkg >/dev/null 2>&1; then
-        arch=$(dpkg --print-architecture 2>/dev/null || true)
-    fi
+  if command -v dpkg >/dev/null 2>&1; then
+    arch=$(dpkg --print-architecture 2>/dev/null || true)
+  fi
 
-    # Prefer Debian's package architecture when it is available because that
-    # reflects the userspace ABI we need to run, not just the kernel's CPU view.
-    if [ -n "$arch" ]; then
-        printf '%s\n' "$arch"
-        return 0
-    fi
+  # Prefer Debian's package architecture when it is available because that
+  # reflects the userspace ABI we need to run, not just the kernel's CPU view.
+  if [ -n "$arch" ]; then
+    printf '%s\n' "$arch"
+    return 0
+  fi
 
-    machine=$(uname -m 2>/dev/null || true)
-    machine=${machine,,}
+  machine=$(uname -m 2>/dev/null || true)
+  machine=${machine,,}
 
-    case "$machine" in
-        x86_64*|amd64*)
-            printf '%s\n' "amd64"
-            ;;
-        aarch64*|arm64*)
-            printf '%s\n' "arm64"
-            ;;
-        *)
-            printf '%s\n' "$machine"
-            ;;
-    esac
+  case "$machine" in
+    x86_64* | amd64*)
+      printf '%s\n' "amd64"
+      ;;
+    aarch64* | arm64*)
+      printf '%s\n' "arm64"
+      ;;
+    *)
+      printf '%s\n' "$machine"
+      ;;
+  esac
 }
 
 install_hdsentinel() {
-    local arch=""
-    local asset_path=""
-    local package_path=""
-    local tmpdir=""
-    local candidate=""
+  local arch=""
+  local asset_path=""
+  local package_path=""
+  local tmpdir=""
+  local candidate=""
 
-    arch=$(detect_hdsentinel_arch)
+  arch=$(detect_hdsentinel_arch)
 
-    case "$arch" in
-        amd64)
-            asset_path="$HDSENTINEL_ASSET_DIR/hdsentinel-linux-amd64.zip"
-            ;;
-        arm64)
-            asset_path="$HDSENTINEL_ASSET_DIR/hdsentinel-linux-arm64.zip"
-            ;;
-        *)
-            echo -e "${YELLOW}HDSentinel auto-install skipped: unsupported architecture '${arch:-unknown}'.${NC}"
-            return 0
-            ;;
-    esac
+  case "$arch" in
+    amd64)
+      asset_path="$HDSENTINEL_ASSET_DIR/hdsentinel-linux-amd64.zip"
+      ;;
+    arm64)
+      asset_path="$HDSENTINEL_ASSET_DIR/hdsentinel-linux-arm64.zip"
+      ;;
+    *)
+      echo -e "${YELLOW}HDSentinel auto-install skipped: unsupported architecture '${arch:-unknown}'.${NC}"
+      return 0
+      ;;
+  esac
 
-    tmpdir=$(mktemp -d)
-    # The automated installer only trusts vendored HDSentinel archives so the
-    # binary source stays pinned to files shipped with this repo.
-    if [ ! -f "$asset_path" ]; then
-        echo -e "${YELLOW}Bundled HDSentinel package not found for ${arch}. Skipping HDSentinel auto-install.${NC}"
-        rm -rf "$tmpdir"
-        return 0
-    fi
-
-    package_path="$tmpdir/$(basename "$asset_path")"
-    cp "$asset_path" "$package_path"
-    echo -e "${GREEN}✔ Using bundled HDSentinel package: $asset_path${NC}"
-
-    if ! unzip -o "$package_path" -d "$tmpdir" >/dev/null; then
-        echo -e "${YELLOW}HDSentinel extraction failed. Continuing without it.${NC}"
-        rm -rf "$tmpdir"
-        return 0
-    fi
-
-    for extracted in "$tmpdir"/HDSentinel*; do
-        if [ -f "$extracted" ]; then
-            candidate="$extracted"
-            break
-        fi
-    done
-
-    if [ -z "$candidate" ]; then
-        echo -e "${YELLOW}HDSentinel binary not found in downloaded archive. Continuing without it.${NC}"
-        rm -rf "$tmpdir"
-        return 0
-    fi
-
-    install -m 755 "$candidate" "$HDSENTINEL_BIN"
+  tmpdir=$(mktemp -d)
+  # The automated installer only trusts vendored HDSentinel archives so the
+  # binary source stays pinned to files shipped with this repo.
+  if [ ! -f "$asset_path" ]; then
+    echo -e "${YELLOW}Bundled HDSentinel package not found for ${arch}. Skipping HDSentinel auto-install.${NC}"
     rm -rf "$tmpdir"
-    echo -e "${GREEN}✔ HDSentinel installed to $HDSENTINEL_BIN.${NC}\n"
+    return 0
+  fi
+
+  package_path="$tmpdir/$(basename "$asset_path")"
+  cp "$asset_path" "$package_path"
+  echo -e "${GREEN}✔ Using bundled HDSentinel package: $asset_path${NC}"
+
+  if ! unzip -o "$package_path" -d "$tmpdir" >/dev/null; then
+    echo -e "${YELLOW}HDSentinel extraction failed. Continuing without it.${NC}"
+    rm -rf "$tmpdir"
+    return 0
+  fi
+
+  for extracted in "$tmpdir"/HDSentinel*; do
+    if [ -f "$extracted" ]; then
+      candidate="$extracted"
+      break
+    fi
+  done
+
+  if [ -z "$candidate" ]; then
+    echo -e "${YELLOW}HDSentinel binary not found in downloaded archive. Continuing without it.${NC}"
+    rm -rf "$tmpdir"
+    return 0
+  fi
+
+  install -m 755 "$candidate" "$HDSENTINEL_BIN"
+  rm -rf "$tmpdir"
+  echo -e "${GREEN}✔ HDSentinel installed to $HDSENTINEL_BIN.${NC}\n"
 }
 
 install_optional_wsdd2() {
-    echo -e "${YELLOW}Installing optional wsdd2 discovery support...${NC}"
-    if DEBIAN_FRONTEND=noninteractive apt-get install -y wsdd2; then
-        echo -e "${GREEN}✔ wsdd2 installed for modern Windows Network discovery.${NC}\n"
-    else
-        # wsdd2 is absent on some supported Debian-family releases. Samba file
-        # serving must still install cleanly when only discovery is degraded.
-        echo -e "${YELLOW}wsdd2 is unavailable or could not be installed. Continuing without modern Windows discovery.${NC}\n"
-    fi
+  echo -e "${YELLOW}Installing optional wsdd2 discovery support...${NC}"
+  if DEBIAN_FRONTEND=noninteractive apt-get install -y wsdd2; then
+    echo -e "${GREEN}✔ wsdd2 installed for modern Windows Network discovery.${NC}\n"
+  else
+    # wsdd2 is absent on some supported Debian-family releases. Samba file
+    # serving must still install cleanly when only discovery is degraded.
+    echo -e "${YELLOW}wsdd2 is unavailable or could not be installed. Continuing without modern Windows discovery.${NC}\n"
+  fi
 }
 
 configure_samba_discovery_services() {
-    local smbd_state=""
-    local nmbd_state=""
-    local wsdd2_state=""
-    local smbd_enable_failed=0
-    local smbd_start_failed=0
-    local nmbd_enable_failed=0
-    local nmbd_start_failed=0
-    local wsdd2_enable_failed=0
-    local wsdd2_start_failed=0
+  local smbd_state=""
+  local nmbd_state=""
+  local wsdd2_state=""
+  local smbd_enable_failed=0
+  local smbd_start_failed=0
+  local nmbd_enable_failed=0
+  local nmbd_start_failed=0
+  local wsdd2_enable_failed=0
+  local wsdd2_start_failed=0
 
-    echo -e "${YELLOW}Configuring Samba file sharing and discovery services...${NC}"
+  echo -e "${YELLOW}Configuring Samba file sharing and discovery services...${NC}"
 
-    # smbd is the required file-serving daemon. Enable/start failures are not
-    # fatal by themselves because a unit can still be active after a manual
-    # start or distro-specific boot policy; the final active state is the gate.
-    if ! systemctl enable smbd; then
-        smbd_enable_failed=1
+  # smbd is the required file-serving daemon. Enable/start failures are not
+  # fatal by themselves because a unit can still be active after a manual
+  # start or distro-specific boot policy; the final active state is the gate.
+  if ! systemctl enable smbd; then
+    smbd_enable_failed=1
+  fi
+  # If smbd is already active, we attempt a graceful config reload first
+  # using smbcontrol. This avoids dropping active user connections.
+  # If the reload fails, we fall back to systemctl restart.
+  # If smbd is inactive, we perform a normal systemctl start.
+  if systemctl is-active --quiet smbd; then
+    if ! smbcontrol smbd reload-config >/dev/null 2>&1; then
+      if ! systemctl restart smbd; then
+        smbd_start_failed=1
+      fi
     fi
-    # If smbd is already active, we attempt a graceful config reload first
-    # using smbcontrol. This avoids dropping active user connections.
-    # If the reload fails, we fall back to systemctl restart.
-    # If smbd is inactive, we perform a normal systemctl start.
-    if systemctl is-active --quiet smbd; then
-        if ! smbcontrol smbd reload-config >/dev/null 2>&1; then
-            if ! systemctl restart smbd; then
-                smbd_start_failed=1
-            fi
-        fi
-    else
-        if ! systemctl start smbd; then
-            smbd_start_failed=1
-        fi
+  else
+    if ! systemctl start smbd; then
+      smbd_start_failed=1
     fi
-    if ! systemctl is-active --quiet smbd; then
-        echo -e "${RED}ERROR: smbd is not active after start.${NC}"
-        echo -e "${RED}Samba file serving is required, so installation cannot continue safely.${NC}"
-        echo -e "${RED}Run 'systemctl status smbd' and 'journalctl -u smbd --no-pager' to inspect the failure, then rerun the installer after smbd can start.${NC}"
-        return 1
-    fi
-    if [ "$smbd_enable_failed" -eq 1 ]; then
-        echo -e "${YELLOW}WARNING: smbd is active, but systemctl enable smbd failed. File sharing works now, but it may not survive reboot until boot enablement is fixed.${NC}"
-    fi
-    if [ "$smbd_start_failed" -eq 1 ]; then
-        echo -e "${YELLOW}WARNING: smbd is active, but reload/restart failed. File sharing works now, but review the service state before relying on it.${NC}"
-    fi
+  fi
+  if ! systemctl is-active --quiet smbd; then
+    echo -e "${RED}ERROR: smbd is not active after start.${NC}"
+    echo -e "${RED}Samba file serving is required, so installation cannot continue safely.${NC}"
+    echo -e "${RED}Run 'systemctl status smbd' and 'journalctl -u smbd --no-pager' to inspect the failure, then rerun the installer after smbd can start.${NC}"
+    return 1
+  fi
+  if [ "$smbd_enable_failed" -eq 1 ]; then
+    echo -e "${YELLOW}WARNING: smbd is active, but systemctl enable smbd failed. File sharing works now, but it may not survive reboot until boot enablement is fixed.${NC}"
+  fi
+  if [ "$smbd_start_failed" -eq 1 ]; then
+    echo -e "${YELLOW}WARNING: smbd is active, but reload/restart failed. File sharing works now, but review the service state before relying on it.${NC}"
+  fi
 
-    if ! systemctl enable nmbd; then
-        nmbd_enable_failed=1
-    fi
-    if ! systemctl start nmbd; then
-        nmbd_start_failed=1
-    fi
-    if [ "$nmbd_enable_failed" -eq 1 ] || [ "$nmbd_start_failed" -eq 1 ]; then
-        echo -e "${YELLOW}nmbd could not be enabled or started. Continuing with legacy NetBIOS discovery degraded.${NC}"
-    fi
-    if ! systemctl is-active --quiet nmbd; then
-        echo -e "${YELLOW}nmbd is not active. Legacy NetBIOS discovery may be unavailable.${NC}"
-    fi
+  if ! systemctl enable nmbd; then
+    nmbd_enable_failed=1
+  fi
+  if ! systemctl start nmbd; then
+    nmbd_start_failed=1
+  fi
+  if [ "$nmbd_enable_failed" -eq 1 ] || [ "$nmbd_start_failed" -eq 1 ]; then
+    echo -e "${YELLOW}nmbd could not be enabled or started. Continuing with legacy NetBIOS discovery degraded.${NC}"
+  fi
+  if ! systemctl is-active --quiet nmbd; then
+    echo -e "${YELLOW}nmbd is not active. Legacy NetBIOS discovery may be unavailable.${NC}"
+  fi
 
-    # Try the packaged unit directly. Missing wsdd2 units are non-fatal because
-    # wsdd2 is optional and package availability varies by distro release.
-    if ! systemctl enable wsdd2; then
-        wsdd2_enable_failed=1
-    fi
-    if ! systemctl start wsdd2; then
-        wsdd2_start_failed=1
-    fi
-    if [ "$wsdd2_enable_failed" -eq 1 ] || [ "$wsdd2_start_failed" -eq 1 ]; then
-        echo -e "${YELLOW}wsdd2 could not be enabled or started. Continuing with modern Windows discovery degraded.${NC}"
-    fi
-    if ! systemctl is-active --quiet wsdd2; then
-        echo -e "${YELLOW}wsdd2 is not active or unavailable. Modern Windows Network discovery may be unavailable.${NC}"
-    fi
+  # Try the packaged unit directly. Missing wsdd2 units are non-fatal because
+  # wsdd2 is optional and package availability varies by distro release.
+  if ! systemctl enable wsdd2; then
+    wsdd2_enable_failed=1
+  fi
+  if ! systemctl start wsdd2; then
+    wsdd2_start_failed=1
+  fi
+  if [ "$wsdd2_enable_failed" -eq 1 ] || [ "$wsdd2_start_failed" -eq 1 ]; then
+    echo -e "${YELLOW}wsdd2 could not be enabled or started. Continuing with modern Windows discovery degraded.${NC}"
+  fi
+  if ! systemctl is-active --quiet wsdd2; then
+    echo -e "${YELLOW}wsdd2 is not active or unavailable. Modern Windows Network discovery may be unavailable.${NC}"
+  fi
 
-    if systemctl is-active --quiet smbd; then
-        smbd_state="active"
-    else
-        smbd_state="inactive"
-    fi
-    if systemctl is-active --quiet nmbd; then
-        nmbd_state="active"
-    else
-        nmbd_state="inactive"
-    fi
-    if systemctl is-active --quiet wsdd2; then
-        wsdd2_state="active"
-    elif systemctl cat wsdd2 >/dev/null 2>&1; then
-        wsdd2_state="inactive"
-    else
-        wsdd2_state="unavailable"
-    fi
+  if systemctl is-active --quiet smbd; then
+    smbd_state="active"
+  else
+    smbd_state="inactive"
+  fi
+  if systemctl is-active --quiet nmbd; then
+    nmbd_state="active"
+  else
+    nmbd_state="inactive"
+  fi
+  if systemctl is-active --quiet wsdd2; then
+    wsdd2_state="active"
+  elif systemctl cat wsdd2 >/dev/null 2>&1; then
+    wsdd2_state="inactive"
+  else
+    wsdd2_state="unavailable"
+  fi
 
-    echo -e "${BLUE}Samba service summary:${NC}"
-    echo -e "  smbd: ${smbd_state}"
-    echo -e "  nmbd: ${nmbd_state}"
-    echo -e "  wsdd2: ${wsdd2_state}"
-    echo -e "${GREEN}✔ Samba service setup complete.${NC}\n"
+  echo -e "${BLUE}Samba service summary:${NC}"
+  echo -e "  smbd: ${smbd_state}"
+  echo -e "  nmbd: ${nmbd_state}"
+  echo -e "  wsdd2: ${wsdd2_state}"
+  echo -e "${GREEN}✔ Samba service setup complete.${NC}\n"
 }
 
 # 1. Install system dependencies. Python application dependencies are resolved
@@ -746,16 +746,16 @@ fi
 echo -e "${YELLOW}Step 11: Configuring firewall (if active)...${NC}"
 if command -v ufw >/dev/null 2>&1 && ufw status | grep -q 'Status: active'; then
   ufw allow 5000/tcp
-echo -e "${GREEN}✔ Port 5000 opened in ufw.${NC}"
+  echo -e "${GREEN}✔ Port 5000 opened in ufw.${NC}"
 elif command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state 2>/dev/null | grep -q running; then
   firewall-cmd --permanent --add-port=5000/tcp
   firewall-cmd --reload
-echo -e "${GREEN}✔ Port 5000 opened in firewalld.${NC}"
+  echo -e "${GREEN}✔ Port 5000 opened in firewalld.${NC}"
 elif iptables -L | grep -q 'Chain'; then
   iptables -C INPUT -p tcp --dport 5000 -j ACCEPT 2>/dev/null || iptables -A INPUT -p tcp --dport 5000 -j ACCEPT
-echo -e "${GREEN}✔ Port 5000 opened in iptables.${NC}"
+  echo -e "${GREEN}✔ Port 5000 opened in iptables.${NC}"
 else
-echo -e "${YELLOW}No active firewall detected or configured. Skipping firewall step.${NC}"
+  echo -e "${YELLOW}No active firewall detected or configured. Skipping firewall step.${NC}"
 fi
 echo
 
@@ -786,6 +786,6 @@ echo -e "${BLUE}===============================================${NC}\n"
 
 # At the end, clean up if we cloned
 if [ "$CLEANUP_CLONE" = "1" ]; then
-    echo -e "${YELLOW}Cleaning up temporary files...${NC}"
-    rm -rf "$TMPDIR"
-fi 
+  echo -e "${YELLOW}Cleaning up temporary files...${NC}"
+  rm -rf "$TMPDIR"
+fi

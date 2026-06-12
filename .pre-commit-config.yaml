@@ -5,3 +5,15 @@ repos:
       - id: ruff-check
         args: [--fix]
       - id: ruff-format
+  - repo: local
+    hooks:
+      - id: shfmt
+        name: shfmt
+        entry: uv run shfmt -w -i 2 -ci -bn
+        language: system
+        types: [shell]
+      - id: shellcheck
+        name: shellcheck
+        entry: uv run shellcheck
+        language: system
+        types: [shell]

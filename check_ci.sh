@@ -9,6 +9,10 @@ fi
 SYNC=true
 CHECK_FORMAT=false
 PYTEST_ARGS=()
+# Only check tracked shell scripts. Local virtualenvs and generated test data can
+# contain third-party scripts that are not part of this repo's quality gate.
+mapfile -t SHELL_FILES < <(git ls-files '*.sh')
+SHFMT_ARGS=(-i 2 -ci -bn)
 # Full-suite runs are the common pre-commit path, so use xdist there. Targeted
 # pytest arguments usually mean a developer wants the quickest single-file or
 # single-test feedback, where worker startup costs can be slower than serial.
@@ -47,12 +51,21 @@ if [[ "$SYNC" == true ]]; then
 fi
 
 if [[ "$CHECK_FORMAT" == true ]]; then
-  run_check "Check formatting" uv run ruff format --check .
+  run_check "Check Python formatting" uv run ruff format --check .
+  if [[ ${#SHELL_FILES[@]} -gt 0 ]]; then
+    run_check "Check shell formatting" uv run shfmt -d "${SHFMT_ARGS[@]}" "${SHELL_FILES[@]}"
+  fi
 else
-  run_check "Format" uv run ruff format .
+  run_check "Format Python" uv run ruff format .
+  if [[ ${#SHELL_FILES[@]} -gt 0 ]]; then
+    run_check "Format shell" uv run shfmt -w "${SHFMT_ARGS[@]}" "${SHELL_FILES[@]}"
+  fi
 fi
 
 run_check "Lint" uv run ruff check .
+if [[ ${#SHELL_FILES[@]} -gt 0 ]]; then
+  run_check "Lint shell" uv run shellcheck "${SHELL_FILES[@]}"
+fi
 if [[ ${#PYTEST_ARGS[@]} -eq 0 ]]; then
   run_check "Test" uv run pytest -n "$PYTEST_WORKERS"
 else
