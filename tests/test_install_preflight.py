@@ -213,24 +213,74 @@ class InstallPreflightTests(unittest.TestCase):
             "systemd does not appear to be running as the host init system", result.stdout
         )
 
-    def test_ensure_uv_installs_pinned_uv_when_existing_uv_differs(self):
+    def uv_helper_functions(self):
+        return "\n".join(
+            [
+                self.installer_function("uv_version_number"),
+                self.installer_function("version_at_least"),
+                self.installer_function("ensure_uv"),
+            ]
+        )
+
+    def test_ensure_uv_uses_existing_uv_when_it_meets_minimum_version(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            existing_bin = root / "existing-bin"
+            existing_bin.mkdir()
+            (existing_bin / "uv").write_text('#!/bin/sh\necho "uv 0.11.16"\n')
+            (existing_bin / "uv").chmod(0o755)
+            calls_path = root / "calls.log"
+
+            snippet = textwrap.dedent(
+                f"""\
+                set -e
+                {self.uv_helper_functions()}
+                RED=""; GREEN=""; YELLOW=""; NC=""
+                MIN_UV_VERSION="0.11.13"
+                UV_INSTALL_DIR="{root / "install-bin"}"
+                UV_INSTALL_URL="https://astral.sh/uv/install.sh"
+                export PATH="{existing_bin}:$PATH"
+                curl() {{
+                  printf 'curl %s\\n' "$*" >> "{calls_path}"
+                  return 42
+                }}
+                ensure_uv
+                command -v uv
+                uv --version
+                """
+            )
+
+            result = subprocess.run(
+                ["bash", "-lc", snippet],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+            self.assertIn(str(existing_bin / "uv"), result.stdout)
+            self.assertIn("uv 0.11.16", result.stdout)
+            self.assertFalse(calls_path.exists())
+
+    def test_ensure_uv_installs_latest_when_existing_uv_is_too_old(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             old_bin = root / "old-bin"
             install_bin = root / "install-bin"
             old_bin.mkdir()
             install_bin.mkdir()
-            (old_bin / "uv").write_text('#!/bin/sh\necho "uv 0.11.18"\n')
+            (old_bin / "uv").write_text('#!/bin/sh\necho "uv 0.10.9"\n')
             (old_bin / "uv").chmod(0o755)
             calls_path = root / "calls.log"
 
             snippet = textwrap.dedent(
                 f"""\
                 set -e
-                {self.installer_function("ensure_uv")}
+                {self.uv_helper_functions()}
                 RED=""; GREEN=""; YELLOW=""; NC=""
-                UV_VERSION="0.11.19"
+                MIN_UV_VERSION="0.11.13"
                 UV_INSTALL_DIR="{install_bin}"
+                UV_INSTALL_URL="https://astral.sh/uv/install.sh"
                 export PATH="{old_bin}:$PATH"
                 curl() {{
                   printf 'curl %s\\n' "$*" >> "{calls_path}"
@@ -239,7 +289,7 @@ class InstallPreflightTests(unittest.TestCase):
                     printf '%s\\n' 'mkdir -p "$UV_INSTALL_DIR"'
                     printf '%s\\n' 'cat > "$UV_INSTALL_DIR/uv" <<'"'"'UVBIN'"'"''
                     printf '%s\\n' '#!/bin/sh'
-                    printf '%s\\n' 'echo "uv 0.11.19"'
+                    printf '%s\\n' 'echo "uv 0.11.21"'
                     printf '%s\\n' 'UVBIN'
                     printf '%s\\n' 'chmod +x "$UV_INSTALL_DIR/uv"'
                   }} > "$output_path"
@@ -259,7 +309,7 @@ class InstallPreflightTests(unittest.TestCase):
 
             self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
             self.assertIn(str(install_bin / "uv"), result.stdout)
-            self.assertIn("uv 0.11.19", result.stdout)
+            self.assertIn("uv 0.11.21", result.stdout)
             self.assertIn("curl -fLsS https://astral.sh/uv/install.sh", calls_path.read_text())
 
     def test_script_install_loop_skips_same_app_destination(self):

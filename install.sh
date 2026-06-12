@@ -278,27 +278,71 @@ DATA_DIR="/var/lib/SimpleSaferServer"
 SCRIPTS_DIR="$APP_DIR/scripts"
 BIN_DIR="/usr/local/bin"
 VENV_DIR="$APP_DIR/.venv"
-UV_VERSION="0.11.19"
+MIN_UV_VERSION="0.11.13"
 UV_INSTALL_DIR="/usr/local/bin"
+UV_INSTALL_URL="https://astral.sh/uv/install.sh"
 SERVICE_FILE="/etc/systemd/system/simple_safer_server_web.service"
 HDSENTINEL_BIN="/usr/local/bin/hdsentinel"
 HDSENTINEL_ASSET_DIR="$SRC_DIR/third_party/hdsentinel"
 
+uv_version_number() {
+    uv --version | awk '{print $2}'
+}
+
+version_at_least() {
+    local actual="$1"
+    local minimum="$2"
+    local actual_major=0
+    local actual_minor=0
+    local actual_patch=0
+    local minimum_major=0
+    local minimum_minor=0
+    local minimum_patch=0
+
+    IFS=. read -r actual_major actual_minor actual_patch <<EOF
+$actual
+EOF
+    IFS=. read -r minimum_major minimum_minor minimum_patch <<EOF
+$minimum
+EOF
+
+    actual_major=${actual_major:-0}
+    actual_minor=${actual_minor:-0}
+    actual_patch=${actual_patch:-0}
+    minimum_major=${minimum_major:-0}
+    minimum_minor=${minimum_minor:-0}
+    minimum_patch=${minimum_patch:-0}
+
+    if [ "$actual_major" -gt "$minimum_major" ]; then
+        return 0
+    fi
+    if [ "$actual_major" -lt "$minimum_major" ]; then
+        return 1
+    fi
+    if [ "$actual_minor" -gt "$minimum_minor" ]; then
+        return 0
+    fi
+    if [ "$actual_minor" -lt "$minimum_minor" ]; then
+        return 1
+    fi
+    [ "$actual_patch" -ge "$minimum_patch" ]
+}
+
 ensure_uv() {
     if command -v uv >/dev/null 2>&1; then
-        current_uv_version=$(uv --version | awk '{print $2}')
-        if [ "$current_uv_version" = "$UV_VERSION" ]; then
+        current_uv_version=$(uv_version_number)
+        if version_at_least "$current_uv_version" "$MIN_UV_VERSION"; then
             echo -e "${GREEN}✔ uv ${current_uv_version} available.${NC}"
             return 0
         fi
-        echo -e "${YELLOW}uv ${current_uv_version} found. Installing pinned uv ${UV_VERSION}...${NC}"
+        echo -e "${YELLOW}uv ${current_uv_version} found, but SimpleSaferServer needs uv ${MIN_UV_VERSION} or newer for Python 3.14 installs. Installing the latest uv...${NC}"
     else
-        echo -e "${YELLOW}uv is not installed. Installing pinned uv ${UV_VERSION}...${NC}"
+        echo -e "${YELLOW}uv is not installed. Installing the latest uv...${NC}"
     fi
 
     TMPFILE=$(mktemp)
-    if curl -fLsS https://astral.sh/uv/install.sh -o "$TMPFILE"; then
-        UV_INSTALL_DIR="$UV_INSTALL_DIR" INSTALLER_NO_MODIFY_PATH=1 UV_VERSION="$UV_VERSION" sh "$TMPFILE"
+    if curl -fLsS "$UV_INSTALL_URL" -o "$TMPFILE"; then
+        UV_INSTALL_DIR="$UV_INSTALL_DIR" INSTALLER_NO_MODIFY_PATH=1 sh "$TMPFILE"
         rm -f "$TMPFILE"
     else
         rm -f "$TMPFILE"
@@ -315,9 +359,9 @@ ensure_uv() {
         echo -e "${RED}ERROR: uv installation completed but uv is not on PATH.${NC}"
         exit 1
     fi
-    installed_uv_version=$(uv --version | awk '{print $2}')
-    if [ "$installed_uv_version" != "$UV_VERSION" ]; then
-        echo -e "${RED}ERROR: expected uv ${UV_VERSION}, but found uv ${installed_uv_version}.${NC}"
+    installed_uv_version=$(uv_version_number)
+    if ! version_at_least "$installed_uv_version" "$MIN_UV_VERSION"; then
+        echo -e "${RED}ERROR: expected uv ${MIN_UV_VERSION} or newer, but found uv ${installed_uv_version}.${NC}"
         exit 1
     fi
     echo -e "${GREEN}✔ uv ${installed_uv_version} installed.${NC}"

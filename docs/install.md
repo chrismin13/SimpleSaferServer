@@ -31,8 +31,9 @@ The installer supports `amd64` and `arm64` 64-bit userspaces. ARMv7, `armhf`, an
 
 The installer installs only OS-level tools from APT. The Python application runtime is managed by
 `uv` under `/opt/SimpleSaferServer/.venv` using the repository's `uv.lock`, so Debian or Ubuntu's
-system Python version does not decide which Python dependencies run the app. If `uv` is not already
-installed, or if a different uv version is found, the installer installs the pinned uv version used by the project.
+system Python version does not decide which Python dependencies run the app. If `uv` is already
+installed and new enough to install Python 3.14, the installer uses it. If `uv` is missing or too
+old, the installer installs the latest official standalone `uv` release into `/usr/local/bin`.
 
 The installer prepares SimpleSaferServer-owned Samba include files in `/etc/samba` and starts
 `smbd` as the required file-serving daemon. It also tries to enable `nmbd` for older Windows

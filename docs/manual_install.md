@@ -11,10 +11,11 @@ sudo apt-get update
 sudo apt-get install -y git ca-certificates smartmontools samba msmtp rsync curl unzip fdisk ntfs-3g unattended-upgrades
 ```
 
-Install `uv` if it is not already available:
+Install `uv` if it is not already available. SimpleSaferServer needs `uv 0.11.13` or newer because
+that release line knows about stable CPython 3.14 downloads:
 
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh | sudo env UV_INSTALL_DIR=/usr/local/bin INSTALLER_NO_MODIFY_PATH=1 UV_VERSION=0.11.19 sh
+curl -LsSf https://astral.sh/uv/install.sh | sudo env UV_INSTALL_DIR=/usr/local/bin INSTALLER_NO_MODIFY_PATH=1 sh
 uv --version
 ```
 
