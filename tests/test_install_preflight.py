@@ -195,6 +195,7 @@ class InstallPreflightTests(unittest.TestCase):
                 **os.environ,
                 "SSS_INSTALLER_PREFLIGHT_ONLY": "1",
                 "SSS_INSTALLER_TEST_COMMANDS": "apt-get,dpkg,systemctl",
+                "SSS_INSTALLER_TEST_SYSTEMD": "0",
                 "SSS_OS_RELEASE_PATH": str(os_release_path),
             }
 

@@ -17,10 +17,13 @@ DATA_DIR="/var/lib/SimpleSaferServer"
 VOLATILE_DIR="/run/SimpleSaferServer"
 LOG_DIR="/var/log/SimpleSaferServer"
 SYSTEMD_DIR="/etc/systemd/system"
-SMB_CONF="/etc/samba/smb.conf"
-SSS_SAMBA_GLOBALS_FILE="/etc/samba/simple_safer_server_globals.conf"
-SSS_SAMBA_SHARES_FILE="/etc/samba/simple_safer_server_shares.conf"
-SSS_SAMBA_BACKUP_DIR="/etc/samba/backups"
+# Keep Samba-owned paths under one root so tests and recovery runs can redirect
+# the whole Samba layout without accidentally reaching the live /etc/samba tree.
+SAMBA_DIR="${SAMBA_DIR:-/etc/samba}"
+SMB_CONF="${SMB_CONF:-$SAMBA_DIR/smb.conf}"
+SSS_SAMBA_GLOBALS_FILE="${SSS_SAMBA_GLOBALS_FILE:-$SAMBA_DIR/simple_safer_server_globals.conf}"
+SSS_SAMBA_SHARES_FILE="${SSS_SAMBA_SHARES_FILE:-$SAMBA_DIR/simple_safer_server_shares.conf}"
+SSS_SAMBA_BACKUP_DIR="${SSS_SAMBA_BACKUP_DIR:-$SAMBA_DIR/backups}"
 APT_AUTO_UPGRADES_CONF="/etc/apt/apt.conf.d/20auto-upgrades"
 FSTAB_MARKER="SimpleSaferServer managed backup drive"
 LEGACY_FSTAB_MARKER="SimpleSaferServer"
@@ -513,4 +516,3 @@ main() {
 if [ -z "${BASH_SOURCE[0]:-}" ] || [ "${BASH_SOURCE[0]:-}" = "$0" ]; then
     main "$@"
 fi
-

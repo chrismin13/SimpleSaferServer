@@ -51,8 +51,9 @@ installer_command_available() {
 }
 
 installer_systemd_available() {
-    if [ "$PREFLIGHT_ONLY" = "1" ] && [ "${SSS_INSTALLER_TEST_SYSTEMD:-0}" = "1" ]; then
-        return 0
+    if [ "$PREFLIGHT_ONLY" = "1" ] && [ -n "${SSS_INSTALLER_TEST_SYSTEMD+x}" ]; then
+        [ "$SSS_INSTALLER_TEST_SYSTEMD" = "1" ]
+        return
     fi
     # Normal Debian/Ubuntu server installs are systemd-booted. This catches
     # chroots and minimal containers where systemctl exists but service setup

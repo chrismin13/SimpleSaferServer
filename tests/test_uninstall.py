@@ -10,6 +10,14 @@ UNINSTALL_SCRIPT = REPO_ROOT / "uninstall.sh"
 
 
 class UninstallScriptTests(unittest.TestCase):
+    def source_with_samba_dir(self, samba_dir):
+        return textwrap.dedent(
+            f"""\
+            SAMBA_DIR="{samba_dir}"
+            source "{UNINSTALL_SCRIPT}"
+            """
+        )
+
     def run_bash(self, snippet):
         result = subprocess.run(
             ["bash", "-lc", snippet],
@@ -338,8 +346,7 @@ class UninstallScriptTests(unittest.TestCase):
             self.run_bash(
                 textwrap.dedent(
                     f"""\
-                    source "{UNINSTALL_SCRIPT}"
-                    SMB_CONF="{smb_conf_path}"
+                    {self.source_with_samba_dir(Path(tempdir))}
                     cleanup_managed_smb_shares
                     """
                 )
@@ -383,10 +390,7 @@ class UninstallScriptTests(unittest.TestCase):
             self.run_bash(
                 textwrap.dedent(
                     f"""\
-                    source "{UNINSTALL_SCRIPT}"
-                    SMB_CONF="{smb_conf_path}"
-                    SSS_SAMBA_GLOBALS_FILE="{globals_path}"
-                    SSS_SAMBA_SHARES_FILE="{shares_path}"
+                    {self.source_with_samba_dir(samba_dir)}
                     cleanup_managed_smb_shares
                     """
                 )
@@ -406,7 +410,6 @@ class UninstallScriptTests(unittest.TestCase):
     def test_cleanup_managed_smb_shares_deletes_owned_files_when_main_config_missing(self):
         with tempfile.TemporaryDirectory() as tempdir:
             samba_dir = Path(tempdir)
-            smb_conf_path = samba_dir / "smb.conf"
             globals_path = samba_dir / "simple_safer_server_globals.conf"
             shares_path = samba_dir / "simple_safer_server_shares.conf"
             globals_path.write_text("map to guest = never\n")
@@ -415,10 +418,7 @@ class UninstallScriptTests(unittest.TestCase):
             self.run_bash(
                 textwrap.dedent(
                     f"""\
-                    source "{UNINSTALL_SCRIPT}"
-                    SMB_CONF="{smb_conf_path}"
-                    SSS_SAMBA_GLOBALS_FILE="{globals_path}"
-                    SSS_SAMBA_SHARES_FILE="{shares_path}"
+                    {self.source_with_samba_dir(samba_dir)}
                     cleanup_managed_smb_shares
                     """
                 )
@@ -462,9 +462,8 @@ class UninstallScriptTests(unittest.TestCase):
             self.run_bash(
                 textwrap.dedent(
                     f"""\
-                    source "{UNINSTALL_SCRIPT}"
+                    {self.source_with_samba_dir(samba_dir)}
                     export PATH="{fake_bin}:$PATH"
-                    SMB_CONF="{smb_conf_path}"
                     cleanup_managed_smb_shares
                     """
                 )
@@ -496,8 +495,7 @@ class UninstallScriptTests(unittest.TestCase):
             self.run_bash(
                 textwrap.dedent(
                     f"""\
-                    source "{UNINSTALL_SCRIPT}"
-                    SMB_CONF="{smb_conf_path}"
+                    {self.source_with_samba_dir(Path(tempdir))}
                     cleanup_managed_smb_shares
                     """
                 )
@@ -533,10 +531,7 @@ class UninstallScriptTests(unittest.TestCase):
             result = self.run_bash_raw(
                 textwrap.dedent(
                     f"""\
-                    source "{UNINSTALL_SCRIPT}"
-                    SMB_CONF="{smb_conf_path}"
-                    SSS_SAMBA_GLOBALS_FILE="{globals_path}"
-                    SSS_SAMBA_SHARES_FILE="{shares_path}"
+                    {self.source_with_samba_dir(samba_dir)}
                     cleanup_managed_smb_shares
                     """
                 )
@@ -595,11 +590,8 @@ class UninstallScriptTests(unittest.TestCase):
             self.run_bash(
                 textwrap.dedent(
                     f"""\
-                    source "{UNINSTALL_SCRIPT}"
+                    {self.source_with_samba_dir(samba_dir)}
                     export PATH="{fake_bin}:$PATH"
-                    SMB_CONF="{smb_conf_path}"
-                    SSS_SAMBA_GLOBALS_FILE="{globals_path}"
-                    SSS_SAMBA_SHARES_FILE="{shares_path}"
                     cleanup_managed_smb_shares
                     """
                 )
@@ -649,11 +641,8 @@ class UninstallScriptTests(unittest.TestCase):
             result = self.run_bash_raw(
                 textwrap.dedent(
                     f"""\
-                    source "{UNINSTALL_SCRIPT}"
+                    {self.source_with_samba_dir(samba_dir)}
                     export PATH="{fake_bin}:$PATH"
-                    SMB_CONF="{smb_conf_path}"
-                    SSS_SAMBA_GLOBALS_FILE="{globals_path}"
-                    SSS_SAMBA_SHARES_FILE="{shares_path}"
                     cleanup_managed_smb_shares
                     """
                 )
@@ -689,10 +678,7 @@ class UninstallScriptTests(unittest.TestCase):
             result = self.run_bash_raw(
                 textwrap.dedent(
                     f"""\
-                    source "{UNINSTALL_SCRIPT}"
-                    SMB_CONF="{smb_conf_path}"
-                    SSS_SAMBA_GLOBALS_FILE="{globals_path}"
-                    SSS_SAMBA_SHARES_FILE="{shares_path}"
+                    {self.source_with_samba_dir(samba_dir)}
                     cleanup_managed_smb_shares
                     """
                 )
@@ -726,9 +712,7 @@ class UninstallScriptTests(unittest.TestCase):
             self.run_bash(
                 textwrap.dedent(
                     f"""\
-                    source "{UNINSTALL_SCRIPT}"
-                    SMB_CONF="{smb_conf_path}"
-                    SSS_SAMBA_BACKUP_DIR="{backup_dir}"
+                    {self.source_with_samba_dir(samba_dir)}
                     cleanup_managed_smb_shares
                     """
                 )
@@ -760,9 +744,7 @@ class UninstallScriptTests(unittest.TestCase):
             self.run_bash(
                 textwrap.dedent(
                     f"""\
-                    source "{UNINSTALL_SCRIPT}"
-                    SMB_CONF="{smb_conf_path}"
-                    SSS_SAMBA_BACKUP_DIR="{backup_dir}"
+                    {self.source_with_samba_dir(samba_dir)}
                     cleanup_managed_smb_shares
                     """
                 )
