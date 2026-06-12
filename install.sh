@@ -184,8 +184,10 @@ run_installer_preflight() {
 
     host_arch=$(installer_architecture)
     case "$host_arch" in
-        armhf|armel|armv6*|armv7*|armv8l*)
-            echo -e "${RED}ERROR:${NC} Unsupported 32-bit ARM architecture detected: ${host_arch}."
+        amd64|x86_64|arm64|aarch64)
+            ;;
+        *)
+            echo -e "${RED}ERROR:${NC} Unsupported architecture detected: ${host_arch:-unknown}."
             echo -e "SimpleSaferServer requires a 64-bit OS/userspace for uv-managed Python and binary Python dependencies. Use amd64 or arm64."
             exit 1
             ;;

@@ -72,7 +72,28 @@ class InstallPreflightTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
         self.assertIn("older OS compatibility platform", result.stdout)
 
-    def test_armhf_platform_is_rejected(self):
+    def run_preflight_with_arch(self, os_release_text, arch):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            os_release_path = Path(temp_dir) / "os-release"
+            os_release_path.write_text(textwrap.dedent(os_release_text))
+            env = {
+                **os.environ,
+                "SSS_INSTALLER_PREFLIGHT_ONLY": "1",
+                "SSS_INSTALLER_TEST_COMMANDS": "apt-get,dpkg,systemctl",
+                "SSS_INSTALLER_TEST_SYSTEMD": "1",
+                "SSS_INSTALLER_TEST_ARCH": arch,
+                "SSS_OS_RELEASE_PATH": str(os_release_path),
+            }
+            return subprocess.run(
+                ["bash", str(INSTALL_SCRIPT)],
+                cwd=str(REPO_ROOT),
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+    def test_unsupported_architectures_are_rejected(self):
         result = self.run_preflight(
             """
             ID=debian
@@ -85,36 +106,21 @@ class InstallPreflightTests(unittest.TestCase):
         # override test below focused on the unsupported userspace.
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
 
-        with tempfile.TemporaryDirectory() as temp_dir:
-            os_release_path = Path(temp_dir) / "os-release"
-            os_release_path.write_text(
-                textwrap.dedent(
+        for arch in ("armhf", "i386"):
+            with self.subTest(arch=arch):
+                arch_result = self.run_preflight_with_arch(
                     """
                     ID=debian
                     VERSION_ID="13"
                     PRETTY_NAME="Debian GNU/Linux 13 (trixie)"
-                    """
+                    """,
+                    arch,
                 )
-            )
-            env = {
-                **os.environ,
-                "SSS_INSTALLER_PREFLIGHT_ONLY": "1",
-                "SSS_INSTALLER_TEST_COMMANDS": "apt-get,dpkg,systemctl",
-                "SSS_INSTALLER_TEST_SYSTEMD": "1",
-                "SSS_INSTALLER_TEST_ARCH": "armhf",
-                "SSS_OS_RELEASE_PATH": str(os_release_path),
-            }
-            armhf_result = subprocess.run(
-                ["bash", str(INSTALL_SCRIPT)],
-                cwd=str(REPO_ROOT),
-                env=env,
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-
-        self.assertNotEqual(armhf_result.returncode, 0)
-        self.assertIn("Unsupported 32-bit ARM architecture", armhf_result.stdout)
+                self.assertNotEqual(arch_result.returncode, 0)
+                self.assertIn(
+                    f"Unsupported architecture detected: {arch}",
+                    arch_result.stdout,
+                )
 
     def test_linux_mint_style_derivative_warns_but_passes(self):
         result = self.run_preflight(
