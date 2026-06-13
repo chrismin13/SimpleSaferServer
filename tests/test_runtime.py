@@ -31,7 +31,7 @@ class RuntimeHelpersTests(unittest.TestCase):
     def test_resolve_fake_data_dir_prefers_railway_volume_over_default_data_path(self):
         repo_root = Path("/srv/simple-safer-server")
 
-        # The repo pins SSS_DATA_DIR to /data for Railway, so this guards the
+        # Railway service variables set SSS_DATA_DIR=/data, so this guards the
         # easy-to-forget case where the real volume gets mounted somewhere else.
         with patch.dict(
             os.environ,
