@@ -1,85 +1,28 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Detect atomic/Fedora Silverblue-style systems and prefer podman when available.
-RUNTIME=""
-if command -v podman >/dev/null 2>&1; then
-  if podman info >/dev/null 2>&1; then
-    RUNTIME="podman"
-  else
-    printf 'Podman is installed, but it is not usable. Trying Docker instead.\n' >&2
-  fi
-fi
-if [[ -z "$RUNTIME" ]] && command -v docker >/dev/null 2>&1; then
+CI_IMAGE="${CI_IMAGE:-ghcr.io/astral-sh/uv:python3.14-trixie}"
+
+CONTAINER_BIN=""
+if command -v podman >/dev/null 2>&1 && podman info >/dev/null 2>&1; then
+  CONTAINER_BIN="podman"
+elif command -v docker >/dev/null 2>&1; then
   if ! docker info >/dev/null 2>&1; then
     printf 'Docker is installed, but the daemon is not reachable. Start Docker and rerun this script.\n' >&2
     exit 1
   fi
-  RUNTIME="docker"
-fi
-if [[ -z "$RUNTIME" ]]; then
+  CONTAINER_BIN="docker"
+else
   printf 'Docker or Podman is required for exact Python CI reproduction.\n' >&2
   exit 1
 fi
 
-MODE="${1:-all}"
-case "$MODE" in
-  modern)
-    MODE="python313-security"
-    ;;
-  legacy-python37)
-    MODE="python37-legacy-compat"
-    ;;
-esac
-
-if [[ "$MODE" != "all" && "$MODE" != "python313-security" && "$MODE" != "python37-legacy-compat" ]]; then
-  printf 'Usage: bash check_ci_docker.sh [all|python313-security|python37-legacy-compat]\n' >&2
-  printf 'Legacy aliases still accepted: modern, legacy-python37\n' >&2
-  exit 1
-fi
-
-run_lane() {
-  local mode="$1"
-  local image=""
-  local requirements=""
-  local pip_upgrade=""
-  local final_gate=""
-
-  if [[ "$mode" == "python37-legacy-compat" ]]; then
-    image="python:3.7-buster"
-    requirements="requirements-legacy-py37.txt"
-    pip_upgrade='"pip<24.1" wheel'
-    final_gate="python - <<'PY'
-import ast
-from pathlib import Path
-
-for path in sorted(Path(\".\").rglob(\"*.py\")):
-    if any(part in {\".venv\", \".git\", \"__pycache__\"} for part in path.parts):
-        continue
-    source = path.read_text(encoding=\"utf-8\")
-    ast.parse(source, filename=str(path))
-PY"
-  else
-    image="python:3.13-trixie"
-    requirements="requirements.txt"
-    pip_upgrade="pip wheel"
-    final_gate="python -m pip_audit -r requirements.txt -r requirements-dev.txt"
-  fi
-
-  printf '\n==> Docker CI lane: %s (%s)\n' "$mode" "$image"
-  $RUNTIME run --rm \
-    --volume "$PWD:/workspace:Z" \
-    --workdir /workspace \
-    "$image" \
-    bash -lc "set -euo pipefail; python -m pip install --upgrade $pip_upgrade; python -m pip install -r $requirements -r requirements-dev.txt; python -m ruff format --check .; python -m ruff check .; python -m pytest; pyright; python -m bandit -c pyproject.toml -r .; $final_gate"
-}
-
-# This reproduces the GitHub Actions Python CI lanes in the same Python images
-# used by CI. Keep this strict so a green default run covers both supported
-# runtime policies.
-if [[ "$MODE" == "all" ]]; then
-  run_lane "python313-security"
-  run_lane "python37-legacy-compat"
-else
-  run_lane "$MODE"
-fi
+printf '\n==> Docker CI image: %s\n' "$CI_IMAGE"
+exec "$CONTAINER_BIN" run --rm \
+  --user "$(id -u):$(id -g)" \
+  -e HOME=/tmp \
+  -e UV_CACHE_DIR=/tmp/uv-cache \
+  -v "$PWD:/work" \
+  -w /work \
+  "$CI_IMAGE" \
+  bash -lc 'set -euo pipefail; bash check_ci.sh --check-format; bash check_security.sh --no-sync'

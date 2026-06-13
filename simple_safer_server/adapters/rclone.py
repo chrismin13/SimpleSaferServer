@@ -1,12 +1,10 @@
-from typing import List, Optional
-
 from simple_safer_server.adapters.command_runner import PIPE, CommandRunner
 
 
 class RcloneAdapter:
     """Wraps rclone process creation so backup services do not own subprocess details."""
 
-    def __init__(self, command_runner: Optional[CommandRunner] = None) -> None:
+    def __init__(self, command_runner: CommandRunner | None = None) -> None:
         self._command_runner = command_runner or CommandRunner()
 
     def sync(
@@ -14,7 +12,7 @@ class RcloneAdapter:
         source: str,
         destination: str,
         *,
-        config_path: Optional[str] = None,
+        config_path: str | None = None,
         bandwidth_limit: str = "",
     ):
         command = self.build_sync_command(
@@ -36,9 +34,9 @@ class RcloneAdapter:
         source: str,
         destination: str,
         *,
-        config_path: Optional[str] = None,
+        config_path: str | None = None,
         bandwidth_limit: str = "",
-    ) -> List[str]:
+    ) -> list[str]:
         command = ["rclone", "sync", source, destination, "--create-empty-src-dirs", "-v"]
         if config_path:
             command.extend(["--config", config_path])

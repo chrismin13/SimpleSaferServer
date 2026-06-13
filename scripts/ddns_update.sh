@@ -2,13 +2,14 @@
 
 set -euo pipefail
 
-PYTHON_BIN="/opt/SimpleSaferServer/venv/bin/python"
+PYTHON_BIN="/opt/SimpleSaferServer/.venv/bin/python"
 if [ ! -x "$PYTHON_BIN" ]; then
-    PYTHON_BIN="/usr/bin/python3"
+  echo "Missing SimpleSaferServer Python environment at $PYTHON_BIN" >&2
+  exit 1
 fi
 
 if [ -x "/opt/SimpleSaferServer/scripts/ddns_update.py" ]; then
-    exec "$PYTHON_BIN" "/opt/SimpleSaferServer/scripts/ddns_update.py"
+  exec "$PYTHON_BIN" "/opt/SimpleSaferServer/scripts/ddns_update.py"
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

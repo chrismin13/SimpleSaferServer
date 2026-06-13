@@ -170,7 +170,7 @@ class ConfigManager:
         """Get a configuration value"""
         try:
             return self.config.get(section, key)
-        except (configparser.NoSectionError, configparser.NoOptionError):
+        except configparser.NoSectionError, configparser.NoOptionError:
             return default
 
     def set_value(self, section, key, value):

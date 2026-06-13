@@ -1,12 +1,10 @@
 import contextlib
-import csv
 import json
 import logging
 import re
 import shutil
 import threading
 from datetime import datetime
-from functools import lru_cache
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
@@ -19,45 +17,14 @@ from simple_safer_server.services.file_persistence import atomic_write_json
 from simple_safer_server.services.runtime import get_runtime
 
 LOGGER = logging.getLogger(__name__)
-NUMPY_X86_V2_PREDICTION_UNAVAILABLE_MESSAGE = (
-    "SMART prediction is unavailable because this machine's CPU cannot run "
-    "the installed NumPy package. SMART and HDSentinel checks can still run."
-)
-GENERAL_PREDICTION_UNAVAILABLE_MESSAGE = (
-    "SMART prediction is unavailable because the prediction dependencies could not be loaded. "
-    "SMART and HDSentinel checks can still run."
-)
-
-try:
-    import joblib
-    import pandas as pd
-    from xgboost import XGBClassifier
-
-    PREDICTION_DEPENDENCIES_AVAILABLE = True
-    PREDICTION_UNAVAILABLE_MESSAGE = None
-except Exception as exc:
-    # Native extension loaders can raise RuntimeError or OSError before Python
-    # gets an ImportError. Keep SMART/HDSentinel usable when prediction is the
-    # only unavailable part of Drive Health.
-    pd = None
-    XGBClassifier = None
-    joblib = None
-    PREDICTION_DEPENDENCIES_AVAILABLE = False
-    if "X86_V2" in str(exc):
-        PREDICTION_UNAVAILABLE_MESSAGE = NUMPY_X86_V2_PREDICTION_UNAVAILABLE_MESSAGE
-    else:
-        PREDICTION_UNAVAILABLE_MESSAGE = GENERAL_PREDICTION_UNAVAILABLE_MESSAGE
-    LOGGER.warning("SMART prediction dependencies could not be loaded: %s", exc)
-
-
 DRIVE_HEALTH_TIMEOUT_MESSAGE = (
     "The drive health check timed out before the device responded. "
     "A sleeping USB drive, adapter, or dock may need another check after it spins up."
 )
 drive_health_command_adapter = DriveHealthCommandAdapter()
 SMARTCTL_JSON_UPGRADE_MESSAGE = (
-    "The installed smartctl version does not support JSON output required for SMART-based health prediction. "
-    "Upgrade smartmontools on this machine to enable SMART prediction."
+    "The installed smartctl version does not support JSON output required for SMART attribute collection. "
+    "Upgrade smartmontools on this machine to enable SMART details."
 )
 
 SMART_FIELDS = {
@@ -149,7 +116,6 @@ class DriveHealthSummaryService:
             "status": "unknown",
             "source": "memory",
             "checked_at": None,
-            "probability": None,
             "temperature": None,
             "hdsentinel_health": None,
             "hdsentinel_performance": None,
@@ -193,8 +159,33 @@ def _summary_timestamp(summary):
         return None
     try:
         return datetime.fromisoformat(checked_at)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
+
+
+def hdsentinel_summary_status(health_pct):
+    """Map HDSentinel's own health meter to the dashboard's compact status."""
+    if health_pct is None:
+        return "unknown"
+    try:
+        health = int(health_pct)
+    except TypeError, ValueError:
+        return "unknown"
+    if health < 25:
+        return "critical"
+    if health < 50:
+        return "warning"
+    return "good"
+
+
+def hdsentinel_snapshot_has_health(snapshot):
+    """Return true only when HDSentinel reported a usable health percentage."""
+    if not snapshot or not snapshot.get("available"):
+        return False
+    health_pct = snapshot.get("health_pct")
+    if health_pct is None:
+        return False
+    return hdsentinel_summary_status(health_pct) != "unknown"
 
 
 def build_drive_health_summary(
@@ -211,7 +202,6 @@ def build_drive_health_summary(
         "status": "unknown",
         "source": "live",
         "checked_at": checked_at,
-        "probability": None,
         "temperature": None,
         "hdsentinel_health": None,
         "hdsentinel_performance": None,
@@ -225,20 +215,12 @@ def build_drive_health_summary(
         runtime=runtime,
     )
     if smart is not None:
-        probability = predict_failure_probability(smart, runtime=runtime)
-        if probability is not None:
-            summary["probability"] = probability
-            summary["temperature"] = smart.get("smart_194_raw")
-            summary["status"] = (
-                "good" if probability < get_optimal_threshold(runtime) else "warning"
-            )
-            summary["detail"] = "SMART prediction completed."
-        else:
-            summary["detail"] = get_prediction_unavailable_message()
-            summary["error"] = summary["detail"]
+        summary["temperature"] = smart.get("smart_194_raw")
+        summary["detail"] = "SMART details were collected."
     else:
         # Timeouts and missing data are operationally common with sleeping USB
-        # drives, so the dashboard keeps them neutral instead of alarming users.
+        # drives, so the dashboard waits for HDSentinel's health meter before
+        # presenting an overall drive-health status.
         summary["detail"] = smart_error or "Could not retrieve SMART data."
         summary["error"] = smart_error
 
@@ -248,11 +230,17 @@ def build_drive_health_summary(
             system_utils,
             runtime=runtime,
         )
-        if hdsentinel_snapshot and hdsentinel_snapshot.get("available"):
-            summary["hdsentinel_health"] = hdsentinel_snapshot.get("health_pct")
+        if hdsentinel_snapshot_has_health(hdsentinel_snapshot):
+            health_pct = hdsentinel_snapshot.get("health_pct")
+            summary["hdsentinel_health"] = health_pct
             summary["hdsentinel_performance"] = hdsentinel_snapshot.get("performance_pct")
+            summary["status"] = hdsentinel_summary_status(health_pct)
+            summary["detail"] = f"HDSentinel health: {health_pct}%."
             if summary["temperature"] is None:
                 summary["temperature"] = hdsentinel_snapshot.get("temperature_c")
+        elif hdsentinel_snapshot and hdsentinel_snapshot.get("error"):
+            summary["detail"] = hdsentinel_snapshot["error"]
+            summary["error"] = hdsentinel_snapshot["error"]
 
     return summary
 
@@ -289,69 +277,6 @@ def get_smartctl_json_support():
     if "-j" in help_output or "--json" in help_output:
         return True, None
     return False, SMARTCTL_JSON_UPGRADE_MESSAGE
-
-
-@lru_cache(maxsize=1)
-def _load_model_and_threshold(model_path: str, threshold_path: str):
-    if not PREDICTION_DEPENDENCIES_AVAILABLE:
-        return None, 0.5
-
-    # Pyright does not connect the availability flag to the optional imports
-    # above, so keep the runtime invariant explicit where the model is loaded.
-    if XGBClassifier is None or joblib is None:
-        raise RuntimeError("Prediction dependencies not available")
-
-    model = XGBClassifier()
-    try:
-        model.load_model(model_path)
-        threshold = float(joblib.load(threshold_path))
-        return model, threshold
-    except Exception as exc:
-        LOGGER.warning("Failed to load drive health model: %s", exc)
-        return None, 0.5
-
-
-def get_prediction_unavailable_message():
-    return PREDICTION_UNAVAILABLE_MESSAGE or GENERAL_PREDICTION_UNAVAILABLE_MESSAGE
-
-
-def get_optimal_threshold(runtime=None):
-    if not PREDICTION_DEPENDENCIES_AVAILABLE:
-        return 0.5
-
-    runtime = runtime or get_runtime()
-    _, threshold = _load_model_and_threshold(
-        str(runtime.model_dir / "xgb_model.json"),
-        str(runtime.model_dir / "optimal_threshold_xgb.pkl"),
-    )
-    return threshold
-
-
-def predict_failure_probability(smart, runtime=None):
-    if not PREDICTION_DEPENDENCIES_AVAILABLE:
-        return None
-
-    runtime = runtime or get_runtime()
-    model, _ = _load_model_and_threshold(
-        str(runtime.model_dir / "xgb_model.json"),
-        str(runtime.model_dir / "optimal_threshold_xgb.pkl"),
-    )
-
-    if model is not None and pd is not None:
-        df = pd.DataFrame([smart])
-        probabilities = model.predict_proba(df)
-        return float(probabilities[0, 1])
-
-    if runtime.is_fake:
-        temperature = float(smart.get("smart_194_raw", 30.0) or 30.0)
-        reallocated = float(smart.get("smart_5_raw", 0.0) or 0.0)
-        pending = float(smart.get("smart_197_raw", 0.0) or 0.0)
-        probability = 0.03 + min(0.25, reallocated * 0.02) + min(0.25, pending * 0.05)
-        if temperature > 40:
-            probability += min(0.15, (temperature - 40) * 0.01)
-        return min(0.95, probability)
-
-    return None
 
 
 def resolve_backup_partition_device(config_manager, runtime=None):
@@ -429,8 +354,8 @@ def get_smart_attributes(config_manager, system_utils, device=None, runtime=None
         smart_table = data.get("ata_smart_attributes", {}).get("table")
         if not smart_table:
             # Some smartctl failures still emit valid JSON, but without the ATA
-            # SMART table we need for prediction. Treat that as a read failure
-            # instead of silently falling back to model defaults.
+            # SMART table we display. Treat that as a read failure instead of
+            # silently falling back to defaults.
             messages = data.get("smartctl", {}).get("messages") or []
             first_message = messages[0].get("string") if messages else None
             error_message = (
@@ -452,7 +377,7 @@ def get_smart_attributes(config_manager, system_utils, device=None, runtime=None
                 else:
                     attrs[field_name] = float(item["raw"]["value"])
                 missing_attrs.remove(field_name)
-            except (ValueError, KeyError, TypeError):
+            except ValueError, KeyError, TypeError:
                 LOGGER.warning("Could not parse SMART value for %s", field_name)
 
         return attrs, list(missing_attrs), None
@@ -475,24 +400,6 @@ def get_smart_attributes(config_manager, system_utils, device=None, runtime=None
     except Exception as exc:
         LOGGER.warning("Unexpected SMART read error: %s", exc)
         return None, None, str(exc)
-
-
-def append_telemetry(data_dict, prediction, runtime=None):
-    if not data_dict:
-        return
-
-    runtime = runtime or get_runtime()
-    telemetry_path = runtime.telemetry_path
-    telemetry_path.parent.mkdir(parents=True, exist_ok=True)
-    file_exists = telemetry_path.exists()
-
-    with open(telemetry_path, "a", newline="") as csvfile:
-        writer = csv.writer(csvfile)
-        if not file_exists:
-            writer.writerow([*list(SMART_FIELDS.keys()), "failure"])
-        row = [data_dict.get(field, "") for field in SMART_FIELDS]
-        row.append(prediction)
-        writer.writerow(row)
 
 
 def _parse_bool(value, default):
@@ -572,7 +479,7 @@ def _parse_optional_int(value):
         return None
     try:
         return int(str(value).strip())
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
 
 
@@ -815,16 +722,6 @@ def collect_hdsentinel_snapshot(config_manager, system_utils, runtime=None, devi
     return snapshot
 
 
-def get_hdsentinel_display_snapshot(config_manager, system_utils, runtime=None):
-    runtime = runtime or get_runtime()
-    snapshot = load_hdsentinel_state(runtime)
-    if snapshot is not None:
-        return snapshot
-    if runtime.is_fake:
-        return get_fake_hdsentinel_snapshot(config_manager=config_manager, runtime=runtime)
-    return None
-
-
 def _log_and_email_alert(config_manager, runtime, title, message, *, alert_type, source):
     AlertNotifier(
         config_manager,
@@ -924,17 +821,14 @@ def run_scheduled_drive_health_check(config_manager, system_utils, runtime=None)
         hdsentinel_result = run_hdsentinel_health_monitor(
             config_manager, system_utils, runtime=runtime
         )
-        if smart_error == SMARTCTL_JSON_UPGRADE_MESSAGE and hdsentinel_result.get(
-            "snapshot", {}
-        ).get("available"):
+        if smart_error == SMARTCTL_JSON_UPGRADE_MESSAGE and hdsentinel_snapshot_has_health(
+            hdsentinel_result.get("snapshot", {})
+        ):
             LOGGER.warning(smart_error)
             return {
                 "device": device,
                 "smart": None,
                 "missing_attrs": None,
-                "probability": None,
-                "prediction": None,
-                "threshold": get_optimal_threshold(runtime),
                 "hdsentinel": hdsentinel_result,
                 "smart_warning": smart_error,
             }
@@ -951,44 +845,10 @@ def run_scheduled_drive_health_check(config_manager, system_utils, runtime=None)
         )
         raise RuntimeError(message)
 
-    probability = predict_failure_probability(smart, runtime=runtime)
-    if probability is None:
-        message = get_prediction_unavailable_message()
-        LOGGER.warning("Scheduled Drive Health completed without prediction: %s", message)
-        hdsentinel_result = run_hdsentinel_health_monitor(
-            config_manager, system_utils, runtime=runtime
-        )
-        return {
-            "device": device,
-            "smart": smart,
-            "missing_attrs": missing_attrs,
-            "probability": None,
-            "prediction": None,
-            # No threshold is returned here because a threshold only has
-            # operational meaning when the model produced a probability.
-            "prediction_warning": message,
-            "hdsentinel": hdsentinel_result,
-        }
-
-    threshold = get_optimal_threshold(runtime)
-    prediction = int(probability >= threshold)
-    if prediction == 1:
-        _log_and_email_alert(
-            config_manager,
-            runtime,
-            "Drive Health Warning",
-            f"Drive health check predicted failure with probability {probability:.4f}. Drive: {device}.",
-            alert_type="warning",
-            source="check_health",
-        )
-
     hdsentinel_result = run_hdsentinel_health_monitor(config_manager, system_utils, runtime=runtime)
     return {
         "device": device,
         "smart": smart,
         "missing_attrs": missing_attrs,
-        "probability": probability,
-        "prediction": prediction,
-        "threshold": threshold,
         "hdsentinel": hdsentinel_result,
     }

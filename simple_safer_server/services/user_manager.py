@@ -21,7 +21,7 @@ def _parse_user_timestamp(value):
     if timestamp.tzinfo is None:
         # Older user records stored UTC values without an offset; keep them
         # comparable with the aware timestamps written by current code.
-        return timestamp.replace(tzinfo=datetime.timezone.utc)
+        return timestamp.replace(tzinfo=datetime.UTC)
     return timestamp
 
 
@@ -142,7 +142,7 @@ class UserManager:
         self.users[username] = {
             'password_hash': generate_password_hash(password),
             'is_admin': is_admin,
-            'created_at': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            'created_at': datetime.datetime.now(datetime.UTC).isoformat(),
             'last_login': None,
             'failed_attempts': 0,
             'locked_until': None,
@@ -170,7 +170,7 @@ class UserManager:
             return False
 
         user = self.users[username]
-        now = datetime.datetime.now(datetime.timezone.utc)
+        now = datetime.datetime.now(datetime.UTC)
 
         # Check if account is locked
         if user.get('locked_until'):
@@ -247,9 +247,7 @@ class UserManager:
         user_record['is_admin'] = True
         user_record['failed_attempts'] = 0
         user_record['locked_until'] = None
-        user_record.setdefault(
-            'created_at', datetime.datetime.now(datetime.timezone.utc).isoformat()
-        )
+        user_record.setdefault('created_at', datetime.datetime.now(datetime.UTC).isoformat())
         user_record.setdefault('last_login', None)
         return self._commit_password_record_after_samba_sync(username, password, user_record)
 

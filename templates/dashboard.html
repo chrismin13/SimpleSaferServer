@@ -562,11 +562,9 @@ Remove the drive now if you do not want it mounted again.`;
     const val = document.getElementById('health-status');
     const detail = document.getElementById('health-detail');
     const checkedAt = document.getElementById('health-checked-at');
-    const probability = typeof data.probability === 'number'
-      ? 'Risk ' + (data.probability * 100).toFixed(1) + '%'
-      : '';
+    const hdsentinelHealth = data.hdsentinel_health != null ? 'Health ' + data.hdsentinel_health + '%' : '';
     const temperature = data.temperature != null ? 'Temp ' + data.temperature + '°C' : '';
-    const metrics = [probability, temperature].filter(Boolean);
+    const metrics = [hdsentinelHealth, temperature].filter(Boolean);
 
     checkedAt.textContent = formatHealthCheckedAt(data.checked_at);
     checkedAt.title = data.checked_at || 'No check yet';
@@ -613,18 +611,26 @@ Remove the drive now if you do not want it mounted again.`;
     if (data.status === 'good') {
       badge.className = 'badge badge-success';
       badge.textContent = 'Healthy';
-      val.textContent = 'No Issues';
+      val.textContent = 'Healthy';
       // Keep volatile summary metrics on one row so the overview tile does not
-      // grow vertically when both SMART risk and temperature are present.
+      // grow vertically when health and temperature are both present.
       renderMetricRow(metrics, data.detail || 'Checked');
       return;
     }
 
     if (data.status === 'warning') {
-      badge.className = 'badge badge-danger';
+      badge.className = 'badge badge-warning';
       badge.textContent = 'Warning';
       val.textContent = 'Needs Attention';
       renderMetricRow(metrics, data.detail || 'Warning');
+      return;
+    }
+
+    if (data.status === 'critical') {
+      badge.className = 'badge badge-danger';
+      badge.textContent = 'Critical';
+      val.textContent = 'Needs Attention';
+      renderMetricRow(metrics, data.detail || 'Critical');
       return;
     }
 

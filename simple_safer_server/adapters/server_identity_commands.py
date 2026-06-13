@@ -1,5 +1,3 @@
-from typing import Optional
-
 from simple_safer_server.adapters.command_runner import CommandRunner
 
 SERVER_IDENTITY_TIMEOUT_SECONDS = 30
@@ -8,7 +6,7 @@ SERVER_IDENTITY_TIMEOUT_SECONDS = 30
 class ServerIdentityCommandAdapter:
     """Wrap host identity commands behind one injectable boundary."""
 
-    def __init__(self, command_runner: Optional[CommandRunner] = None) -> None:
+    def __init__(self, command_runner: CommandRunner | None = None) -> None:
         self._command_runner = command_runner or CommandRunner()
 
     def current_hostname(self) -> str:

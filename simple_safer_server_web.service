@@ -1,13 +1,13 @@
 [Unit]
-Description=SimpleSaferServer Web UI (Flask)
+Description=SimpleSaferServer Web UI (Gunicorn)
 After=network.target
 
 [Service]
 Type=simple
 User=root
 WorkingDirectory=/opt/SimpleSaferServer
-ExecStart=/opt/SimpleSaferServer/venv/bin/python -m simple_safer_server --host=0.0.0.0 --port=5000 --no-debug
+ExecStart=/opt/SimpleSaferServer/.venv/bin/gunicorn --worker-class gthread --threads 4 -w 1 --bind 0.0.0.0:5000 simple_safer_server.wsgi:app
 Restart=on-failure
 
 [Install]
-WantedBy=multi-user.target 
+WantedBy=multi-user.target

@@ -8,7 +8,7 @@ import threading
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from simple_safer_server.adapters.command_runner import CalledProcessError, TimeoutExpired
 from simple_safer_server.adapters.system_updates_commands import SystemUpdatesCommandAdapter
@@ -19,13 +19,16 @@ from simple_safer_server.services.os_support import (
     get_support_info,
     parse_os_release_text,
 )
-
-try:
-    import psutil
-except ImportError:
-    psutil = None
-
 from simple_safer_server.services.runtime import get_runtime
+
+# psutil is optional in tests that exercise fallback lock detection paths.
+psutil: Any | None = None
+try:
+    import psutil as _psutil
+except ImportError:
+    pass
+else:
+    psutil = _psutil
 
 APT_LOCK_PATHS = [
     Path("/var/lib/dpkg/lock-frontend"),
@@ -55,7 +58,7 @@ def _apt_process_token(value: Any) -> str:
     return Path(str(value or "")).name.lower()
 
 
-def _apt_executable_candidates(name: str, cmdline_parts: List[str]) -> List[str]:
+def _apt_executable_candidates(name: str, cmdline_parts: list[str]) -> list[str]:
     candidates = [_apt_process_token(name)]
     argv_tokens = [_apt_process_token(part) for part in cmdline_parts if str(part or "").strip()]
     if not argv_tokens:
@@ -88,7 +91,7 @@ def _apt_executable_candidates(name: str, cmdline_parts: List[str]) -> List[str]
     return candidates
 
 
-def _is_apt_process(name: str, cmdline_parts: List[str]) -> bool:
+def _is_apt_process(name: str, cmdline_parts: list[str]) -> bool:
     return any(
         token in APT_PROCESS_MARKERS for token in _apt_executable_candidates(name, cmdline_parts)
     )
@@ -102,15 +105,15 @@ class SystemUpdatesManager:
         self.state_path = self.runtime.volatile_dir / "system_updates_state.json"
         self.state_log_path = self.runtime.volatile_dir / "system_updates.log"
         self._lock = threading.RLock()
-        self._thread: Optional[threading.Thread] = None
-        self._process: Optional[Any] = None
-        self._cancel_event: Optional[threading.Event] = None
+        self._thread: threading.Thread | None = None
+        self._process: Any | None = None
+        self._cancel_event: threading.Event | None = None
         self.state_path.parent.mkdir(parents=True, exist_ok=True)
         self.state_log_path.parent.mkdir(parents=True, exist_ok=True)
         if not self.state_path.exists():
             self._write_state(self._default_state())
 
-    def _default_state(self) -> Dict[str, Any]:
+    def _default_state(self) -> dict[str, Any]:
         return {
             "operation": None,
             "status": "idle",
@@ -123,7 +126,7 @@ class SystemUpdatesManager:
             "log": "",
         }
 
-    def _read_state(self) -> Dict[str, Any]:
+    def _read_state(self) -> dict[str, Any]:
         try:
             state = json.loads(self.state_path.read_text(encoding="utf-8"))
         except Exception:
@@ -138,14 +141,14 @@ class SystemUpdatesManager:
         except Exception:
             return ""
 
-    def _write_state(self, state: Dict[str, Any]) -> None:
+    def _write_state(self, state: dict[str, Any]) -> None:
         state_without_log = dict(state)
         state_without_log.pop("log", None)
         # Readers poll this file from the UI, so replace it atomically instead
         # of exposing half-written JSON during an update.
         atomic_write_json(self.state_path, state_without_log, mode=0o644, durable=False)
 
-    def _update_state(self, **updates) -> Dict[str, Any]:
+    def _update_state(self, **updates) -> dict[str, Any]:
         with self._lock:
             state = self._read_state()
             if "log" in updates:
@@ -169,7 +172,7 @@ class SystemUpdatesManager:
             with self.state_log_path.open("a", encoding="utf-8") as log_file:
                 log_file.write(f"{timestamp} {line.rstrip()}\n")
 
-    def get_distribution_info(self) -> Dict[str, Any]:
+    def get_distribution_info(self) -> dict[str, Any]:
         if self.runtime.is_fake:
             os_release = {
                 "ID": "debian",
@@ -198,11 +201,11 @@ class SystemUpdatesManager:
             "support": support,
         }
 
-    def _active_apt_processes(self) -> List[Dict[str, Any]]:
+    def _active_apt_processes(self) -> list[dict[str, Any]]:
         if psutil is None:
             return self._active_apt_processes_from_proc()
 
-        processes: List[Dict[str, Any]] = []
+        processes: list[dict[str, Any]] = []
         current_pid = os.getpid()
         for proc in psutil.process_iter(["pid", "name", "cmdline"]):
             try:
@@ -219,13 +222,13 @@ class SystemUpdatesManager:
                             "cmdline": " ".join(cmdline_parts),
                         }
                     )
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
+            except psutil.NoSuchProcess, psutil.AccessDenied:
                 continue
         return processes
 
-    def _active_apt_processes_from_proc(self) -> List[Dict[str, Any]]:
+    def _active_apt_processes_from_proc(self) -> list[dict[str, Any]]:
         """Fallback for minimal test/dev environments where psutil is absent."""
-        processes: List[Dict[str, Any]] = []
+        processes: list[dict[str, Any]] = []
         current_pid = os.getpid()
         proc_root = Path("/proc")
         if not proc_root.exists():
@@ -252,11 +255,11 @@ class SystemUpdatesManager:
                 processes.append({"pid": pid, "name": name, "cmdline": " ".join(cmdline_parts)})
         return processes
 
-    def _held_lock_paths(self) -> List[str]:
+    def _held_lock_paths(self) -> list[str]:
         if self.runtime.is_fake:
             return []
 
-        held: List[str] = []
+        held: list[str] = []
         fuser = shutil.which("fuser")
         if not fuser:
             return held
@@ -271,7 +274,7 @@ class SystemUpdatesManager:
         with self._lock:
             return bool(self._thread and self._thread.is_alive())
 
-    def get_lock_status(self) -> Dict[str, Any]:
+    def get_lock_status(self) -> dict[str, Any]:
         own_running = self.is_own_operation_running()
         processes = [] if self.runtime.is_fake else self._active_apt_processes()
         held_locks = self._held_lock_paths()
@@ -282,7 +285,7 @@ class SystemUpdatesManager:
             "processes": processes[:8],
         }
 
-    def _command_for_operation(self, operation: str) -> List[str]:
+    def _command_for_operation(self, operation: str) -> list[str]:
         if operation == "update":
             return ["apt-get", "update"]
         if operation == "upgrade":
@@ -291,7 +294,7 @@ class SystemUpdatesManager:
 
     def _progress_from_line(
         self, operation: str, line: str, current_progress: int
-    ) -> Tuple[int, str]:
+    ) -> tuple[int, str]:
         text = line.strip()
         lowered = text.lower()
         if operation == "update":
@@ -317,7 +320,7 @@ class SystemUpdatesManager:
             return max(current_progress, 92), "Processing triggers"
         return max(current_progress, 8), "Upgrading packages"
 
-    def start_operation(self, operation: str) -> Dict[str, Any]:
+    def start_operation(self, operation: str) -> dict[str, Any]:
         if operation not in {"update", "upgrade"}:
             raise ValueError("Operation must be update or upgrade.")
         with self._lock:
@@ -455,7 +458,7 @@ class SystemUpdatesManager:
                 self._process = None
                 self._cancel_event = None
 
-    def stop_operation(self) -> Dict[str, Any]:
+    def stop_operation(self) -> dict[str, Any]:
         with self._lock:
             if not self.is_own_operation_running() or not self._cancel_event:
                 raise AptOperationConflict("No SimpleSaferServer apt operation is running.")
@@ -472,13 +475,13 @@ class SystemUpdatesManager:
         return self.get_status()
 
     def _reconcile_running_state(
-        self, state: Dict[str, Any], lock_status: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, state: dict[str, Any], lock_status: dict[str, Any]
+    ) -> dict[str, Any]:
         if state.get("status") != "running" or lock_status["own_operation_running"]:
             return state
 
         if lock_status["processes"] or lock_status["held_locks"]:
-            updates: Dict[str, Any] = {
+            updates: dict[str, Any] = {
                 "status": "external",
                 "phase": "Package manager busy",
                 "finished_at": datetime.now().isoformat(timespec="seconds"),
@@ -488,7 +491,7 @@ class SystemUpdatesManager:
                 ),
             }
         else:
-            updates = {
+            updates: dict[str, Any] = {
                 "status": "failure",
                 "phase": "Interrupted",
                 "finished_at": datetime.now().isoformat(timespec="seconds"),
@@ -500,14 +503,14 @@ class SystemUpdatesManager:
         updates["returncode"] = None
         return self._update_state(**updates)
 
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self) -> dict[str, Any]:
         state = self._read_state()
         lock_status = self.get_lock_status()
         state = self._reconcile_running_state(state, lock_status)
         state["lock"] = lock_status
         return state
 
-    def remove_stale_locks(self) -> Dict[str, Any]:
+    def remove_stale_locks(self) -> dict[str, Any]:
         lock_status = self.get_lock_status()
         if (
             lock_status["processes"]
@@ -530,8 +533,8 @@ class SystemUpdatesManager:
         self.command_adapter.remove_files(existing)
         return {"removed": existing, "message": "Stale apt lock files removed."}
 
-    def _parse_apt_periodic_config(self, text: str) -> Dict[str, Any]:
-        values: Dict[str, Any] = {}
+    def _parse_apt_periodic_config(self, text: str) -> dict[str, Any]:
+        values: dict[str, Any] = {}
         key_map = {
             "Update-Package-Lists": "update_package_lists",
             "Unattended-Upgrade": "unattended_upgrade",
@@ -547,7 +550,7 @@ class SystemUpdatesManager:
             )
         return values
 
-    def _read_apt_periodic_config(self) -> Dict[str, Any]:
+    def _read_apt_periodic_config(self) -> dict[str, Any]:
         path = Path("/etc/apt/apt.conf.d/20auto-upgrades")
         if self.runtime.is_fake or not path.exists():
             return {}
@@ -574,7 +577,7 @@ class SystemUpdatesManager:
             return default
         return DEFAULT_AUTOCLEAN_INTERVAL_DAYS if self._coerce_bool(stored_bool, True) else 0
 
-    def get_settings(self) -> Dict[str, Any]:
+    def get_settings(self) -> dict[str, Any]:
         system_values = self._read_apt_periodic_config()
         managed = self._app_manages_apt_updates()
         if managed:
@@ -601,7 +604,7 @@ class SystemUpdatesManager:
             or self.runtime.is_fake,
         }
 
-    def _coerce_bool(self, value: Optional[str], default: bool) -> bool:
+    def _coerce_bool(self, value: str | None, default: bool) -> bool:
         if value is None:
             return default
         return str(value).strip().lower() in {"1", "true", "yes", "on"}
@@ -609,11 +612,11 @@ class SystemUpdatesManager:
     def _coerce_nonnegative_int(self, value: Any, default: int) -> int:
         try:
             return max(0, int(str(value).strip()))
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return default
 
     def _resolve_autoclean_interval(
-        self, data: Dict[str, Any], system_values: Dict[str, Any]
+        self, data: dict[str, Any], system_values: dict[str, Any]
     ) -> int:
         if not bool(data.get("autoclean")):
             return 0
@@ -639,7 +642,7 @@ class SystemUpdatesManager:
 
         return DEFAULT_AUTOCLEAN_INTERVAL_DAYS
 
-    def save_settings(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    def save_settings(self, data: dict[str, Any]) -> dict[str, Any]:
         system_values = self._read_apt_periodic_config()
         settings = {
             "update_package_lists": bool(data.get("update_package_lists")),
@@ -659,7 +662,7 @@ class SystemUpdatesManager:
 
         return self.get_settings()
 
-    def _write_apt_periodic_config(self, settings: Dict[str, Any]) -> None:
+    def _write_apt_periodic_config(self, settings: dict[str, Any]) -> None:
         content = "\n".join(
             [
                 "// Managed by SimpleSaferServer.",
@@ -674,8 +677,8 @@ class SystemUpdatesManager:
         # adapter only needs a readable text stream for the privileged write.
         self.command_adapter.write_apt_periodic_config(io.StringIO(content))
 
-    def get_livepatch_status(self) -> Dict[str, Any]:
-        def status_command_failed(exc: Exception) -> Dict[str, Any]:
+    def get_livepatch_status(self) -> dict[str, Any]:
+        def status_command_failed(exc: Exception) -> dict[str, Any]:
             return {
                 "supported_distro": True,
                 "installed": False,
@@ -749,7 +752,7 @@ class SystemUpdatesManager:
             "source_url": SUPPORT_SOURCES["livepatch"],
         }
 
-    def _summarize_livepatch_details(self, details: Dict[str, Any]) -> str:
+    def _summarize_livepatch_details(self, details: dict[str, Any]) -> str:
         status = details.get("status") or details.get("Status") or []
         if isinstance(status, list) and status:
             kernel = status[0].get("kernel") or status[0].get("Kernel") or "kernel"
@@ -757,7 +760,7 @@ class SystemUpdatesManager:
             return f"{kernel}: {state}"
         return "Livepatch status is available."
 
-    def setup_livepatch(self, token: str) -> Dict[str, Any]:
+    def setup_livepatch(self, token: str) -> dict[str, Any]:
         token = (token or "").strip()
         if not token:
             raise ValueError("Livepatch token is required.")

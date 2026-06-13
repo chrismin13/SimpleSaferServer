@@ -2,7 +2,6 @@ import os
 import signal
 from contextlib import suppress
 from pathlib import Path
-from typing import Optional
 
 from simple_safer_server.adapters.command_runner import (
     DEVNULL,
@@ -22,7 +21,7 @@ class SystemUpdatesCommandAdapter:
 
     def __init__(
         self,
-        command_runner: Optional[CommandRunner] = None,
+        command_runner: CommandRunner | None = None,
         apt_periodic_path: Path = Path("/etc/apt/apt.conf.d/20auto-upgrades"),
     ) -> None:
         self._command_runner = command_runner or CommandRunner()

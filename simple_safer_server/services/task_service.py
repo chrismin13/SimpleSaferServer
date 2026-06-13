@@ -4,7 +4,7 @@ import sys
 import threading
 import time
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from simple_safer_server.adapters.command_runner import (
     PIPE,
@@ -19,7 +19,10 @@ from simple_safer_server.services.disabled_timers import (
     parse_timestamp,
     utc_now,
 )
-from simple_safer_server.services.drive_health import run_scheduled_drive_health_check
+from simple_safer_server.services.drive_health import (
+    hdsentinel_snapshot_has_health,
+    run_scheduled_drive_health_check,
+)
 
 
 class Status:
@@ -39,7 +42,7 @@ TERMINAL_FAKE_STATUSES = {Status.SUCCESS, Status.FAILURE, Status.ERROR, Status.S
 TASK_LOG_LINE_LIMIT = 500
 
 
-def parse_systemd_datetime(value: str) -> Optional[datetime]:
+def parse_systemd_datetime(value: str) -> datetime | None:
     if not value or value in {"Unknown", "Retrieval Error"}:
         return None
     formats = [
@@ -55,7 +58,7 @@ def parse_systemd_datetime(value: str) -> Optional[datetime]:
     return None
 
 
-def format_compact_schedule_datetime(value: Optional[datetime], now: datetime) -> str:
+def format_compact_schedule_datetime(value: datetime | None, now: datetime) -> str:
     if value is None:
         return "Unknown"
     if value.date() == now.date():
@@ -68,13 +71,13 @@ def format_compact_schedule_datetime(value: Optional[datetime], now: datetime) -
 def clamp_task_log_lines(lines: Any) -> int:
     try:
         parsed_lines = int(lines)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         parsed_lines = TASK_LOG_LINE_LIMIT
     return max(1, min(parsed_lines, TASK_LOG_LINE_LIMIT))
 
 
 class Task:
-    def __init__(self, service: "TaskService", name: str, service_name: str, timer_name: str):
+    def __init__(self, service: TaskService, name: str, service_name: str, timer_name: str):
         self._service = service
         self.name = name
         self.service_name = service_name
@@ -92,7 +95,7 @@ class Task:
         """Stop the associated service asynchronously."""
         self._service.stop_task(self)
 
-    def disable_schedule(self, mode: str, hours: Optional[int] = None) -> None:
+    def disable_schedule(self, mode: str, hours: int | None = None) -> None:
         self._service.disable_schedule(self, mode, hours=hours)
 
     def enable_schedule(self) -> None:
@@ -121,12 +124,12 @@ class TaskService:
         runtime: Any,
         config_manager: Any,
         system_utils: Any,
-        fake_state: Optional[Any] = None,
-        logger: Optional[Any] = None,
-        command_runner: Optional[CommandRunner] = None,
-        systemd_adapter: Optional[SystemdAdapter] = None,
-        rclone_adapter: Optional[RcloneAdapter] = None,
-        disabled_timer_service: Optional[DisabledTimerService] = None,
+        fake_state: Any | None = None,
+        logger: Any | None = None,
+        command_runner: CommandRunner | None = None,
+        systemd_adapter: SystemdAdapter | None = None,
+        rclone_adapter: RcloneAdapter | None = None,
+        disabled_timer_service: DisabledTimerService | None = None,
     ):
         self.runtime = runtime
         self.config_manager = config_manager
@@ -141,8 +144,8 @@ class TaskService:
             self.systemd_adapter,
             logger=logger,
         )
-        self._fake_task_threads = {}  # type: Dict[str, threading.Thread]
-        self._fake_task_cancel_events = {}  # type: Dict[str, threading.Event]
+        self._fake_task_threads: dict[str, threading.Thread] = {}
+        self._fake_task_cancel_events: dict[str, threading.Event] = {}
         self._fake_task_lock = threading.Lock()
         self._tasks = [
             Task(self, "Check Mount", "check_mount.service", "check_mount.timer"),
@@ -152,13 +155,13 @@ class TaskService:
             Task(self, "App Update", "app_update.service", "app_update.timer"),
         ]
 
-    def get_task(self, name: str) -> Optional[Task]:
+    def get_task(self, name: str) -> Task | None:
         for task in self._tasks:
             if task.name == name:
                 return task
         return None
 
-    def task_summary(self, task: Task) -> Dict[str, Any]:
+    def task_summary(self, task: Task) -> dict[str, Any]:
         try:
             schedule = self.schedule_state(task)
             return {
@@ -188,10 +191,10 @@ class TaskService:
                 },
             }
 
-    def task_summaries(self) -> List[Dict[str, Any]]:
+    def task_summaries(self) -> list[dict[str, Any]]:
         return [self.task_summary(task) for task in self._tasks]
 
-    def get_check_mount_next_run(self) -> Optional[str]:
+    def get_check_mount_next_run(self) -> str | None:
         check_mount_task = self.get_task("Check Mount")
         if not check_mount_task:
             return None
@@ -253,7 +256,7 @@ class TaskService:
         task: Task,
         mode: str,
         *,
-        hours: Optional[int] = None,
+        hours: int | None = None,
     ) -> None:
         expires_at = None
         if mode == "temporary":
@@ -270,7 +273,7 @@ class TaskService:
     def enable_schedule(self, task: Task) -> None:
         self.disabled_timer_service.enable(task.timer_name)
 
-    def schedule_state(self, task: Task) -> Dict[str, Any]:
+    def schedule_state(self, task: Task) -> dict[str, Any]:
         raw_next_run = self.get_next_run(task)
         record = self.disabled_timer_service.get_record(task.timer_name)
         if record:
@@ -346,7 +349,7 @@ class TaskService:
             },
         )
 
-    def _schedule_issue_state(self, raw_next_run: str, raw: Any) -> Dict[str, Any]:
+    def _schedule_issue_state(self, raw_next_run: str, raw: Any) -> dict[str, Any]:
         return {
             "state": "issue",
             "label": "Schedule issue",
@@ -364,7 +367,7 @@ class TaskService:
             return output.split("=", 1)[1].strip()
         return output.strip()
 
-    def _format_compact_datetime(self, value: Optional[datetime]) -> str:
+    def _format_compact_datetime(self, value: datetime | None) -> str:
         if value is not None and value.tzinfo is not None:
             # Disabled-timer state is stored in UTC, but schedule labels should match
             # the local clock admins use when choosing a temporary disable duration.
@@ -622,18 +625,11 @@ class TaskService:
             self.system_utils,
             runtime=self.runtime,
         )
-        probability = result.get("probability")
-        if probability is not None:
-            fake_state.append_task_log(task_name, f"Drive health probability: {probability:.4f}")
-        elif result.get("prediction_warning"):
-            fake_state.append_task_log(task_name, result["prediction_warning"])
-        else:
-            fake_state.append_task_log(
-                task_name, "Model unavailable; using sample SMART data only."
-            )
+        if result.get("smart") is not None:
+            fake_state.append_task_log(task_name, "SMART details collected.")
 
         hdsentinel_snapshot = result.get("hdsentinel", {}).get("snapshot")
-        if hdsentinel_snapshot and hdsentinel_snapshot.get("available"):
+        if hdsentinel_snapshot_has_health(hdsentinel_snapshot):
             fake_state.append_task_log(
                 task_name,
                 ("HDSentinel status: health {}%, performance {}%, temperature {}C").format(
@@ -686,8 +682,8 @@ class TaskService:
         proc: Any,
         cancel_event: threading.Event,
         thread_name_prefix: str,
-    ) -> Tuple[str, str]:
-        output_queue = queue.Queue()  # type: queue.Queue[Tuple[str, str]]
+    ) -> tuple[str, str]:
+        output_queue: queue.Queue[tuple[str, str]] = queue.Queue()
 
         def _drain_stream(stream: Any, stream_name: str) -> None:
             try:
@@ -711,8 +707,8 @@ class TaskService:
         stdout_thread.start()
         stderr_thread.start()
 
-        stdout_chunks = []  # type: List[str]
-        stderr_chunks = []  # type: List[str]
+        stdout_chunks: list[str] = []
+        stderr_chunks: list[str] = []
         while True:
             self._drain_output_queue(output_queue, stdout_chunks, stderr_chunks)
             if proc.poll() is not None:
@@ -734,7 +730,7 @@ class TaskService:
 
     @staticmethod
     def _drain_output_queue(
-        output_queue: Any, stdout_chunks: List[str], stderr_chunks: List[str]
+        output_queue: Any, stdout_chunks: list[str], stderr_chunks: list[str]
     ) -> None:
         while True:
             try:

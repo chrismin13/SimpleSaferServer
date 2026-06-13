@@ -1,5 +1,3 @@
-from typing import Optional
-
 from simple_safer_server.adapters.command_runner import CommandRunner
 
 STORAGE_COMMAND_TIMEOUT_SECONDS = 30
@@ -9,7 +7,7 @@ STORAGE_MOUNT_TIMEOUT_SECONDS = 120
 class StorageCommandAdapter:
     """Wraps system commands used by dashboard storage controls."""
 
-    def __init__(self, command_runner: Optional[CommandRunner] = None) -> None:
+    def __init__(self, command_runner: CommandRunner | None = None) -> None:
         self._command_runner = command_runner or CommandRunner()
 
     def reboot(self) -> None:

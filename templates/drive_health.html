@@ -11,12 +11,6 @@
       <i class="fas fa-stethoscope me-1"></i> Run Health Check
     </button>
   </form>
-  <a href="/download_telemetry" id="downloadTelemetryBtn" class="btn btn-secondary btn-sm action-bar-btn">
-    <i class="fas fa-download me-1"></i> Download Telemetry
-  </a>
-  <a href="mailto:simplesaferserver@chrismin13.com?subject=SMART%20Telemetry" class="btn btn-secondary btn-sm action-bar-btn" target="_blank">
-    <i class="fas fa-envelope me-1"></i> Send Telemetry
-  </a>
 </div>
 
 <div class="page-feedback-stack mb-6">
@@ -34,13 +28,6 @@
     </div>
   {% endif %}
 
-  {% if prediction_warning %}
-    <div class="alert alert-warning">
-      <i class="fas fa-triangle-exclamation"></i>
-      <span>{{ prediction_warning }}</span>
-    </div>
-  {% endif %}
-
   {% if settings_message %}
     <div class="alert alert-success">
       <i class="fas fa-circle-check"></i>
@@ -55,24 +42,6 @@
     </div>
   {% endif %}
 
-  {% if prediction is not none %}
-    <div class="drive-health-result-panel">
-      {% if prediction == 0 %}
-        <i class="fas fa-circle-check text-success" style="font-size: var(--text-3xl);"></i>
-        <div>
-          <div style="font-size: var(--text-xl); font-weight: var(--weight-bold);" class="text-success">No Failure Detected</div>
-          <div class="text-muted mt-1">Failure probability: {{ '%.2f'|format(probability*100) }}%</div>
-        </div>
-      {% else %}
-        <i class="fas fa-circle-xmark text-danger" style="font-size: var(--text-3xl);"></i>
-        <div>
-          <div style="font-size: var(--text-xl); font-weight: var(--weight-bold);" class="text-danger">Failure Predicted</div>
-          <div class="text-muted mt-1">Failure probability: {{ '%.2f'|format(probability*100) }}%</div>
-        </div>
-      {% endif %}
-    </div>
-  {% endif %}
-
   {% if missing_attrs %}
     <div class="alert alert-warning">
       <div>
@@ -83,7 +52,7 @@
             <li><code>{{ attr }}</code> — {{ smart_fields[attr].name }}</li>
           {% endfor %}
         </ul>
-        <p class="mt-2 mb-0 text-muted" style="font-size: var(--text-xs);">This may affect prediction accuracy.</p>
+        <p class="mt-2 mb-0 text-muted" style="font-size: var(--text-xs);">The SMART table uses documented defaults for unavailable attributes.</p>
       </div>
     </div>
   {% endif %}
@@ -402,70 +371,6 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
-  (function() {
-    const downloadTelemetryBtn = document.getElementById('downloadTelemetryBtn');
-    if (!downloadTelemetryBtn) {
-      return;
-    }
-
-    function getDownloadFilename(response) {
-      const disposition = response.headers.get('content-disposition') || '';
-      const match = disposition.match(/filename="?([^";]+)"?/i);
-      return match ? match[1] : 'telemetry.csv';
-    }
-
-    async function handleTelemetryDownload(event) {
-      event.preventDefault();
-      if (window.AsyncButtonState) {
-        window.AsyncButtonState.start(downloadTelemetryBtn);
-      }
-
-      try {
-        const response = await fetch(downloadTelemetryBtn.href, {
-          headers: { 'X-Requested-With': 'XMLHttpRequest' },
-          credentials: 'same-origin'
-        });
-
-        if (response.redirected || response.status === 401 || response.status === 403) {
-          throw new Error('Your session expired. Please log in again.');
-        }
-
-        if (response.status === 404) {
-          const data = await response.json().catch(() => ({}));
-          throw new Error(data.detail || 'Telemetry has not been generated yet. Run a health check first.');
-        }
-
-        if (!response.ok) {
-          throw new Error('Failed to download telemetry.');
-        }
-
-        const blob = await response.blob();
-        const objectUrl = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = objectUrl;
-        link.download = getDownloadFilename(response);
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        window.URL.revokeObjectURL(objectUrl);
-
-        if (window.AsyncButtonState) {
-          window.AsyncButtonState.success(downloadTelemetryBtn);
-        }
-      } catch (error) {
-        if (window.AsyncButtonState) {
-          window.AsyncButtonState.error(downloadTelemetryBtn);
-        }
-        if (window.showAlert) {
-          window.showAlert(error.message || 'Failed to download telemetry.', 'warning');
-        }
-      }
-    }
-
-    downloadTelemetryBtn.addEventListener('click', handleTelemetryDownload);
-  })();
-</script>
 <script>
   (function() {
     const statusEl = document.getElementById('driveSetupStatus');

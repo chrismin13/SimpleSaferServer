@@ -20,7 +20,7 @@ def _create_fake_app(temp_dir, *, skip_login=True):
         runtime._fake_state = None
         from simple_safer_server.app_factory import create_app
 
-        app, _socketio = create_app()
+        app = create_app()
         app.config["TESTING"] = True
         return app
 

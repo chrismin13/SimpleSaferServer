@@ -1,6 +1,6 @@
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from simple_safer_server.services.file_persistence import (
     atomic_write_json,
@@ -27,8 +27,8 @@ class AlertStore:
                 self.alerts_path.chmod(0o644)
 
     def list_alerts(
-        self, limit: Optional[int] = None, unread_only: bool = False
-    ) -> List[Dict[str, Any]]:
+        self, limit: int | None = None, unread_only: bool = False
+    ) -> list[dict[str, Any]]:
         alerts = read_json(self.alerts_path, [])
         if unread_only:
             alerts = [alert for alert in alerts if not alert.get("read", False)]
@@ -42,7 +42,7 @@ class AlertStore:
         message: str,
         alert_type: str = "info",
         source: str = "system",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         new_alert = {}
 
         def update(alerts):

@@ -1,7 +1,6 @@
 import logging
 import os
 from logging.handlers import RotatingFileHandler
-from typing import Tuple
 
 from flask import (
     Flask,
@@ -13,7 +12,6 @@ from flask import (
     session,
     url_for,
 )
-from flask_socketio import SocketIO
 
 from simple_safer_server.adapters.command_runner import CommandRunner
 from simple_safer_server.adapters.rclone import RcloneAdapter
@@ -56,16 +54,13 @@ from simple_safer_server.web.problems import (
 )
 
 
-def create_app() -> Tuple[Flask, SocketIO]:
+def create_app() -> Flask:
     runtime = get_runtime()
     fake_state = get_fake_state() if runtime.is_fake else None
     app = Flask(__name__, template_folder="../templates", static_folder="../static")
     # Keep the session secret stable across deploys so a restart does not
     # invalidate every login cookie when the app's config directory persists.
     app.secret_key = get_flask_secret_key(runtime)
-    # Use Flask-SocketIO's threading backend unless a future real-time feature
-    # needs a different async worker. Eventlet is deprecated and noisy in dev.
-    socketio = SocketIO(app, async_mode="threading")
     user_manager = UserManager(runtime=runtime)
 
     system_utils = SystemUtils(runtime=runtime)
@@ -338,4 +333,4 @@ def create_app() -> Tuple[Flask, SocketIO]:
     def favicon():
         return send_from_directory("static/img", "favicon.ico")
 
-    return app, socketio
+    return app

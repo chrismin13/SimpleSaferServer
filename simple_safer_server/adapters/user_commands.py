@@ -1,5 +1,3 @@
-from typing import Optional, Set
-
 from simple_safer_server.adapters.command_runner import CalledProcessError, CommandRunner
 
 USER_COMMAND_TIMEOUT_SECONDS = 30
@@ -8,7 +6,7 @@ USER_COMMAND_TIMEOUT_SECONDS = 30
 class UserCommandAdapter:
     """Wraps local account and Samba account commands used by UserManager."""
 
-    def __init__(self, command_runner: Optional[CommandRunner] = None) -> None:
+    def __init__(self, command_runner: CommandRunner | None = None) -> None:
         self._command_runner = command_runner or CommandRunner()
 
     def system_user_exists(self, username: str) -> bool:
@@ -30,7 +28,7 @@ class UserCommandAdapter:
             timeout=USER_COMMAND_TIMEOUT_SECONDS,
         )
 
-    def samba_users(self) -> Set[str]:
+    def samba_users(self) -> set[str]:
         result = self._command_runner.run(
             ["pdbedit", "-L"],
             capture_output=True,

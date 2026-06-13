@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from simple_safer_server.adapters.command_runner import CalledProcessError, TimeoutExpired
 from simple_safer_server.adapters.drive_health_commands import DriveHealthCommandAdapter
@@ -12,8 +12,8 @@ class AlertNotifier:
         self,
         config_manager: Any,
         runtime: Any,
-        command_adapter: Optional[DriveHealthCommandAdapter] = None,
-        logger: Optional[Any] = None,
+        command_adapter: DriveHealthCommandAdapter | None = None,
+        logger: Any | None = None,
     ) -> None:
         self._config_manager = config_manager
         self._runtime = runtime

@@ -2,7 +2,6 @@ import os
 import shutil
 import tempfile
 from pathlib import Path
-from typing import List, Optional
 
 from simple_safer_server.adapters.smb_commands import SmbCommandAdapter
 from simple_safer_server.services.runtime import get_runtime
@@ -147,7 +146,7 @@ class SambaLayoutService:
         """Remove only SimpleSaferServer-owned include marker blocks."""
         return "".join(self.strip_owned_include_blocks_from_lines(content.splitlines(True)))
 
-    def strip_owned_include_blocks_from_lines(self, lines: List[str]):
+    def strip_owned_include_blocks_from_lines(self, lines: list[str]):
         lines = self._remove_marker_block(
             lines,
             SSS_GLOBALS_INCLUDE_BEGIN,
@@ -159,7 +158,7 @@ class SambaLayoutService:
             SSS_SHARES_INCLUDE_END,
         )
 
-    def _remove_marker_block(self, lines: List[str], begin_marker: str, end_marker: str):
+    def _remove_marker_block(self, lines: list[str], begin_marker: str, end_marker: str):
         result = []
         index = 0
         removed = False
@@ -194,7 +193,7 @@ class SambaLayoutService:
 
         return result
 
-    def _insert_global_include(self, lines: List[str]):
+    def _insert_global_include(self, lines: list[str]):
         global_start = self._find_section_start(lines, "global")
         if global_start is None:
             prefix = ["[global]\n"]
@@ -218,7 +217,7 @@ class SambaLayoutService:
         self._ensure_blank_after(new_lines, insert_at + len(block))
         return new_lines
 
-    def _append_shares_include(self, lines: List[str]):
+    def _append_shares_include(self, lines: list[str]):
         new_lines = list(lines)
         if new_lines and not new_lines[-1].endswith("\n"):
             new_lines[-1] = new_lines[-1] + "\n"
@@ -227,27 +226,27 @@ class SambaLayoutService:
         new_lines.extend(self._shares_include_block())
         return new_lines
 
-    def _ensure_blank_before(self, lines: List[str], insert_at: int):
+    def _ensure_blank_before(self, lines: list[str], insert_at: int):
         if insert_at > 0 and lines[insert_at - 1].strip():
             lines.insert(insert_at, "\n")
 
-    def _adjust_insert_at_after_blank(self, lines: List[str], insert_at: int):
+    def _adjust_insert_at_after_blank(self, lines: list[str], insert_at: int):
         if insert_at > 0 and not lines[insert_at - 1].strip():
             return insert_at
         return insert_at + 1
 
-    def _ensure_blank_after(self, lines: List[str], insert_at: int):
+    def _ensure_blank_after(self, lines: list[str], insert_at: int):
         if insert_at < len(lines) and lines[insert_at].strip():
             lines.insert(insert_at, "\n")
 
-    def _find_section_start(self, lines: List[str], section_name: str) -> Optional[int]:
+    def _find_section_start(self, lines: list[str], section_name: str) -> int | None:
         for index, line in enumerate(lines):
             current = self._section_name(line)
             if current is not None and current.lower() == section_name:
                 return index
         return None
 
-    def _section_name(self, line: str) -> Optional[str]:
+    def _section_name(self, line: str) -> str | None:
         stripped = line.strip()
         if stripped.startswith("[") and stripped.endswith("]") and len(stripped) > 2:
             return stripped[1:-1].strip()

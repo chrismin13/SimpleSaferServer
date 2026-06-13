@@ -162,10 +162,6 @@ SimpleSaferServer could not remove stale apt lock files.
 
 Ubuntu Livepatch setup failed.
 
-### drive-health-telemetry-not-found
-
-Telemetry has not been generated yet, so there is no file to download.
-
 ### user-not-found
 
 The requested management user does not exist.

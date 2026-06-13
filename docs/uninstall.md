@@ -15,7 +15,7 @@ sudo bash uninstall.sh
 
 The uninstaller removes:
 
-- SimpleSaferServer application files, scripts, and models
+- SimpleSaferServer application files, scripts, and managed Python environment
 - SimpleSaferServer systemd services and timers
 - app config, logs, task data, and user data
 - Disable Schedule restore timer state, helper script, and disabled-timer data

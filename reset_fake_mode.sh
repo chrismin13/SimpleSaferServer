@@ -15,7 +15,7 @@ printf '%s' "Continue? [y/N] "
 read -r response
 
 case "$response" in
-  y|Y|yes|YES)
+  y | Y | yes | YES)
     rm -rf "$FAKE_DATA_DIR"
     printf '%s\n' "Fake-mode data reset complete."
     ;;

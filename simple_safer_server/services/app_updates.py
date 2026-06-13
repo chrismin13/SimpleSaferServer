@@ -4,7 +4,7 @@ import shlex
 from contextlib import suppress
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from simple_safer_server.adapters.app_update_commands import AppUpdateCommandAdapter
 from simple_safer_server.adapters.command_runner import CalledProcessError
@@ -20,7 +20,7 @@ BRANCH_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
 
 
 def _format_process_failure(
-    command: List[str], repo_path: Path, returncode: int, stdout: str, stderr: str
+    command: list[str], repo_path: Path, returncode: int, stdout: str, stderr: str
 ) -> str:
     command_text = " ".join(shlex.quote(part) for part in command)
     return (
@@ -33,7 +33,7 @@ def _format_process_failure(
 
 
 class AppUpdateManager:
-    def __init__(self, runtime=None, command_adapter=None, repo_path: Optional[Path] = None):
+    def __init__(self, runtime=None, command_adapter=None, repo_path: Path | None = None):
         self.runtime = runtime or get_runtime()
         self.repo_path = Path(repo_path) if repo_path is not None else self._default_repo_path()
         self.command_adapter = command_adapter or AppUpdateCommandAdapter()
@@ -77,7 +77,7 @@ class AppUpdateManager:
             exc.stderr or "",
         )
 
-    def _process_failure_detail(self, command: List[str], result) -> str:
+    def _process_failure_detail(self, command: list[str], result) -> str:
         return _format_process_failure(
             command,
             self.repo_path,
@@ -86,7 +86,7 @@ class AppUpdateManager:
             result.stderr or "",
         )
 
-    def _empty_status(self, status: str, message: str) -> Dict[str, Any]:
+    def _empty_status(self, status: str, message: str) -> dict[str, Any]:
         return {
             "source_type": "unknown",
             "source_name": "",
@@ -108,13 +108,13 @@ class AppUpdateManager:
             "last_remote_check_at": None,
         }
 
-    def _read_cache(self) -> Dict[str, Any]:
+    def _read_cache(self) -> dict[str, Any]:
         try:
             return json.loads(self.cache_path.read_text(encoding="utf-8"))
         except Exception:
             return {}
 
-    def _write_cache(self, status: Dict[str, Any]) -> None:
+    def _write_cache(self, status: dict[str, Any]) -> None:
         atomic_write_json(self.cache_path, status, mode=0o644, durable=False)
 
     def request_cleanup_update(self) -> None:
@@ -144,7 +144,7 @@ class AppUpdateManager:
         with suppress(FileNotFoundError):
             self.request_path.unlink()
 
-    def consume_update_request(self) -> Dict[str, str]:
+    def consume_update_request(self) -> dict[str, str]:
         """Return the queued update request and clear the volatile request.
 
         The web process writes this before starting app_update.service. The
@@ -153,7 +153,7 @@ class AppUpdateManager:
         """
         try:
             payload = read_json(self.request_path, {})
-        except (OSError, ValueError, TypeError):
+        except OSError, ValueError, TypeError:
             payload = {}
         with suppress(FileNotFoundError):
             self.request_path.unlink()
@@ -170,7 +170,7 @@ class AppUpdateManager:
         """Return the queued update mode for callers that do not need details."""
         return self.consume_update_request()["mode"]
 
-    def _source_info(self) -> Tuple[str, str]:
+    def _source_info(self) -> tuple[str, str]:
         branch = self._git_stdout(["symbolic-ref", "--quiet", "--short", "HEAD"], check=False)
         if branch:
             return "branch", branch
@@ -182,7 +182,7 @@ class AppUpdateManager:
         commit = self._git_stdout(["rev-parse", "--short", "HEAD"], check=False)
         return "detached", commit
 
-    def list_remote_branches(self, *, fetch_remote: bool = False) -> List[str]:
+    def list_remote_branches(self, *, fetch_remote: bool = False) -> list[str]:
         """Return switchable branch names advertised by the origin remote."""
         if fetch_remote:
             self._git(["fetch", "--prune", "--tags", "origin"], check=True)
@@ -224,7 +224,7 @@ class AppUpdateManager:
         )
         return result.returncode == 0
 
-    def _base_status(self) -> Dict[str, Any]:
+    def _base_status(self) -> dict[str, Any]:
         if not (self.repo_path / ".git").exists():
             return self._empty_status(
                 "unavailable",
@@ -301,7 +301,7 @@ class AppUpdateManager:
             return status
         return status
 
-    def _status_counts(self, status_output: str) -> Tuple[int, int]:
+    def _status_counts(self, status_output: str) -> tuple[int, int]:
         tracked_change_count = 0
         untracked_file_count = 0
         for line in status_output.splitlines():
@@ -311,7 +311,7 @@ class AppUpdateManager:
                 tracked_change_count += 1
         return tracked_change_count, untracked_file_count
 
-    def _status_files(self, status_output: str) -> List[Dict[str, str]]:
+    def _status_files(self, status_output: str) -> list[dict[str, str]]:
         files = []
         for line in status_output.splitlines()[:50]:
             if len(line) < 4:
@@ -331,7 +331,7 @@ class AppUpdateManager:
             )
         return files
 
-    def _apply_counts(self, status: Dict[str, Any]) -> Dict[str, Any]:
+    def _apply_counts(self, status: dict[str, Any]) -> dict[str, Any]:
         counts = self._git_stdout(
             ["rev-list", "--left-right", "--count", "HEAD...@{u}"], check=True
         )
@@ -360,7 +360,7 @@ class AppUpdateManager:
             status["message"] = f"Up to date with {status['upstream']}."
         return status
 
-    def get_status(self, *, fetch_remote: bool = False) -> Dict[str, Any]:
+    def get_status(self, *, fetch_remote: bool = False) -> dict[str, Any]:
         status = self._base_status()
         if status["status"] in {"unavailable", "dirty", "pinned"}:
             self._write_cache(status)
@@ -392,7 +392,7 @@ class AppUpdateManager:
                 status["can_update"] = bool(cache.get("can_update"))
         return status
 
-    def update_now(self, *, stream_to_journal: bool = False) -> Dict[str, Any]:
+    def update_now(self, *, stream_to_journal: bool = False) -> dict[str, Any]:
         status = self.get_status(fetch_remote=True)
         if not status.get("can_update"):
             raise AppUpdateError(status.get("message") or "Application update is not available.")
@@ -415,7 +415,7 @@ class AppUpdateManager:
 
         return self.get_status(fetch_remote=False)
 
-    def force_update_now(self, *, stream_to_journal: bool = False) -> Dict[str, Any]:
+    def force_update_now(self, *, stream_to_journal: bool = False) -> dict[str, Any]:
         status = self.get_status(fetch_remote=False)
         if not status.get("can_force_update"):
             raise AppUpdateError(status.get("message") or "Application cleanup is not available.")
@@ -448,7 +448,7 @@ class AppUpdateManager:
 
         return self.get_status(fetch_remote=False)
 
-    def switch_branch_now(self, branch: str, *, stream_to_journal: bool = False) -> Dict[str, Any]:
+    def switch_branch_now(self, branch: str, *, stream_to_journal: bool = False) -> dict[str, Any]:
         branch = self._validate_branch_name(branch)
         status = self.get_status(fetch_remote=False)
         if status.get("dirty"):

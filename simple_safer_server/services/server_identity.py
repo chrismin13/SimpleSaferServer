@@ -2,7 +2,7 @@ import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, List, Optional, Tuple
+from typing import Any
 
 from simple_safer_server.adapters.server_identity_commands import (
     ServerIdentityCommandAdapter,
@@ -73,14 +73,14 @@ def normalize_server_name(value: Any) -> str:
     return normalized
 
 
-def _split_hosts_line(line: str) -> Tuple[str, str]:
+def _split_hosts_line(line: str) -> tuple[str, str]:
     if "#" not in line:
         return line.rstrip("\n"), ""
     body, comment = line.rstrip("\n").split("#", 1)
     return body.rstrip(), "#" + comment
 
 
-def _join_hosts_line(address: str, names: List[str], comment: str) -> str:
+def _join_hosts_line(address: str, names: list[str], comment: str) -> str:
     body = address
     if names:
         body = "{}\t{}".format(address, " ".join(names))
@@ -154,9 +154,9 @@ class ServerIdentityService:
     def __init__(
         self,
         config_manager: Any,
-        runtime: Optional[Any] = None,
-        command_adapter: Optional[Any] = None,
-        hosts_path: Optional[Path] = None,
+        runtime: Any | None = None,
+        command_adapter: Any | None = None,
+        hosts_path: Path | None = None,
     ) -> None:
         self.config_manager = config_manager
         self.runtime = runtime or get_runtime()
@@ -220,7 +220,7 @@ class ServerIdentityService:
             atomic_write_text(self.hosts_path, updated, mode=0o644)
         return content
 
-    def _restore_hosts_file(self, content: Optional[str]) -> None:
+    def _restore_hosts_file(self, content: str | None) -> None:
         if content is None:
             return
         try:

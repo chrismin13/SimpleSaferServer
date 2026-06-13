@@ -47,9 +47,10 @@ def test_admin_required_clears_stale_non_admin_web_session():
     user_manager = MagicMock()
     user_manager.is_admin.return_value = False
 
-    with patch(
-        'simple_safer_server.services.user_manager.UserManager', return_value=user_manager
-    ), app.test_client() as client:
+    with (
+        patch('simple_safer_server.services.user_manager.UserManager', return_value=user_manager),
+        app.test_client() as client,
+    ):
         with client.session_transaction() as session:
             session['username'] = 'operator'
 
@@ -88,9 +89,10 @@ def test_api_admin_required_clears_stale_non_admin_api_session():
     user_manager = MagicMock()
     user_manager.is_admin.return_value = False
 
-    with patch(
-        'simple_safer_server.services.user_manager.UserManager', return_value=user_manager
-    ), app.test_client() as client:
+    with (
+        patch('simple_safer_server.services.user_manager.UserManager', return_value=user_manager),
+        app.test_client() as client,
+    ):
         with client.session_transaction() as session:
             session['username'] = 'operator'
 
@@ -117,9 +119,10 @@ def test_api_admin_required_allows_admin_sessions():
     user_manager = MagicMock()
     user_manager.is_admin.return_value = True
 
-    with patch(
-        'simple_safer_server.services.user_manager.UserManager', return_value=user_manager
-    ), app.test_client() as client:
+    with (
+        patch('simple_safer_server.services.user_manager.UserManager', return_value=user_manager),
+        app.test_client() as client,
+    ):
         with client.session_transaction() as session:
             session['username'] = 'admin'
 
@@ -154,8 +157,6 @@ class AppRouteAuthorizationTests(unittest.TestCase):
                         route_arg = decorator.args[0]
                         if isinstance(route_arg, ast.Constant):
                             route_paths.append(route_arg.value)
-                        elif isinstance(route_arg, ast.Str):
-                            route_paths.append(route_arg.s)
                 else:
                     name = _decorator_name(decorator)
                     if name:

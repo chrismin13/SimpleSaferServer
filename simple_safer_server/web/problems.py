@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any
 
 PROBLEM_DOCS_URL = "https://github.com/chrismin13/SimpleSaferServer/blob/main/docs/api_responses.md"
 
@@ -13,10 +13,10 @@ class ApiProblem(Exception):
     def __init__(
         self,
         detail: str,
-        status_code: Optional[int] = None,
-        title: Optional[str] = None,
-        slug: Optional[str] = None,
-        extra: Optional[Dict[str, Any]] = None,
+        status_code: int | None = None,
+        title: str | None = None,
+        slug: str | None = None,
+        extra: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(detail)
         self.detail = detail
@@ -32,7 +32,7 @@ class ApiProblem(Exception):
     def type_uri(self) -> str:
         return f"{PROBLEM_DOCS_URL}#{self.slug}"
 
-    def to_problem(self) -> Dict[str, Any]:
+    def to_problem(self) -> dict[str, Any]:
         payload = {
             "type": self.type_uri,
             "title": self.title,

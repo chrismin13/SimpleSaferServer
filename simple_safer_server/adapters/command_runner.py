@@ -1,5 +1,5 @@
 import subprocess
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 DEVNULL = subprocess.DEVNULL
 PIPE = subprocess.PIPE
@@ -14,25 +14,25 @@ class CommandRunner:
 
     def run(
         self,
-        command: List[str],
+        command: list[str],
         *,
         capture_output: bool = False,
         check: bool = False,
-        input: Optional[Any] = None,
-        stdout: Optional[Any] = None,
-        stderr: Optional[Any] = None,
+        input: Any | None = None,
+        stdout: Any | None = None,
+        stderr: Any | None = None,
         text: bool = False,
-        timeout: Optional[float] = None,
-        cwd: Optional[Any] = None,
+        timeout: float | None = None,
+        cwd: Any | None = None,
     ) -> subprocess.CompletedProcess:
         # Keep subprocess use centralized so future allowlisting, logging, and
         # fake adapters can be added without changing feature services again.
-        kwargs: Dict[str, Any] = {
+        kwargs: dict[str, Any] = {
             "capture_output": capture_output,
             "check": check,
             "text": text,
         }
-        # Python 3.7 rejects capture_output=True when stdout/stderr are present,
+        # subprocess.run rejects capture_output=True when stdout/stderr are present,
         # even if they are None. Only forward stream overrides that callers set.
         if input is not None:
             kwargs["input"] = input
@@ -48,13 +48,13 @@ class CommandRunner:
 
     def popen(
         self,
-        command: List[str],
+        command: list[str],
         *,
-        stdout: Optional[Any] = None,
-        stderr: Optional[Any] = None,
+        stdout: Any | None = None,
+        stderr: Any | None = None,
         text: bool = False,
         bufsize: int = -1,
-        env: Optional[Any] = None,
+        env: Any | None = None,
         start_new_session: bool = False,
     ) -> subprocess.Popen:
         return subprocess.Popen(

@@ -1,13 +1,13 @@
 # Architecture
 
 SimpleSaferServer is a Flask application with a package-based architecture. The package entrypoints
-are canonical: local/service startup uses `python -m simple_safer_server`, and WSGI deployments use
-`simple_safer_server.wsgi:app`.
+are canonical: local development can use `python -m simple_safer_server`, while the installed
+systemd service and hosted deployments run Gunicorn against `simple_safer_server.wsgi:app`.
 
 ## Application Composition
 
 `simple_safer_server.app_factory.create_app()` is the composition root. It creates the Flask app,
-Socket.IO wrapper, runtime/config managers, feature services, and blueprints.
+runtime/config managers, feature services, and blueprints.
 
 Shared services are stored in `app.extensions["simple_safer_server"]` as an `AppServices`
 container. Blueprints fetch dependencies from that container instead of importing the startup

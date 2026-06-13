@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import List, Optional
 
 from simple_safer_server.adapters.command_runner import CommandRunner
 
@@ -10,10 +9,10 @@ APP_UPDATE_INSTALL_TIMEOUT_SECONDS = 1800
 class AppUpdateCommandAdapter:
     """Runs Git and installer commands for application self-updates."""
 
-    def __init__(self, command_runner: Optional[CommandRunner] = None) -> None:
+    def __init__(self, command_runner: CommandRunner | None = None) -> None:
         self._command_runner = command_runner or CommandRunner()
 
-    def run_git(self, repo_path: Path, args: List[str], *, check: bool = False, timeout=None):
+    def run_git(self, repo_path: Path, args: list[str], *, check: bool = False, timeout=None):
         return self._command_runner.run(
             ["git", *args],
             cwd=str(repo_path),
@@ -24,7 +23,7 @@ class AppUpdateCommandAdapter:
         )
 
     def run_git_for_journal(
-        self, repo_path: Path, args: List[str], *, check: bool = False, timeout=None
+        self, repo_path: Path, args: list[str], *, check: bool = False, timeout=None
     ):
         # app_update.service already sends stdout/stderr to journald. Letting
         # the child process inherit those streams keeps long installer output

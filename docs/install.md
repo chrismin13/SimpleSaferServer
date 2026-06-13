@@ -27,6 +27,14 @@ curl -fsSL https://sss.chrismin13.com/install.sh | sudo bash -s -- --unsupported
 That override only bypasses the OS-family block. Missing APT/systemd tools, package install
 failures, and service setup failures still stop the install.
 
+The installer supports `amd64` and `arm64` 64-bit userspaces. ARMv7, `armhf`, and other 32-bit ARM installs are not supported.
+
+The installer installs only OS-level tools from APT. The Python application runtime is managed by
+`uv` under `/opt/SimpleSaferServer/.venv` using the repository's `uv.lock`, so Debian or Ubuntu's
+system Python version does not decide which Python dependencies run the app. If `uv` is already
+installed and new enough to install Python 3.14, the installer uses it. If `uv` is missing or too
+old, the installer installs the latest official standalone `uv` release into `/usr/local/bin`.
+
 The installer prepares SimpleSaferServer-owned Samba include files in `/etc/samba` and starts
 `smbd` as the required file-serving daemon. It also tries to enable `nmbd` for older Windows
 NetBIOS discovery and installs `wsdd2` when the package is available for modern Windows Network

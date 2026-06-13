@@ -86,16 +86,19 @@ class SystemUpdatesTests(unittest.TestCase):
             runtime = make_runtime(Path(temp_dir))
             manager = SystemUpdatesManager(FakeConfigManager(), runtime=runtime)
 
-            with patch.object(
-                manager,
-                "get_lock_status",
-                return_value={
-                    "locked": True,
-                    "own_operation_running": False,
-                    "held_locks": [],
-                    "processes": [{"pid": 123, "name": "apt-get"}],
-                },
-            ), self.assertRaises(RuntimeError):
+            with (
+                patch.object(
+                    manager,
+                    "get_lock_status",
+                    return_value={
+                        "locked": True,
+                        "own_operation_running": False,
+                        "held_locks": [],
+                        "processes": [{"pid": 123, "name": "apt-get"}],
+                    },
+                ),
+                self.assertRaises(RuntimeError),
+            ):
                 manager.remove_stale_locks()
 
     def test_apt_process_matching_uses_executable_tokens(self):
@@ -133,11 +136,12 @@ class SystemUpdatesTests(unittest.TestCase):
                 FakeConfigManager(), runtime=runtime, command_adapter=adapter
             )
 
-            with patch.object(
-                manager, "get_distribution_info", return_value={"id": "ubuntu"}
-            ), patch(
-                "simple_safer_server.services.system_updates.shutil.which",
-                return_value="/usr/bin/canonical-livepatch",
+            with (
+                patch.object(manager, "get_distribution_info", return_value={"id": "ubuntu"}),
+                patch(
+                    "simple_safer_server.services.system_updates.shutil.which",
+                    return_value="/usr/bin/canonical-livepatch",
+                ),
             ):
                 status = manager.get_livepatch_status()
 
@@ -161,11 +165,12 @@ class SystemUpdatesTests(unittest.TestCase):
                 FakeConfigManager(), runtime=runtime, command_adapter=adapter
             )
 
-            with patch.object(
-                manager, "get_distribution_info", return_value={"id": "ubuntu"}
-            ), patch(
-                "simple_safer_server.services.system_updates.shutil.which",
-                return_value="/usr/bin/canonical-livepatch",
+            with (
+                patch.object(manager, "get_distribution_info", return_value={"id": "ubuntu"}),
+                patch(
+                    "simple_safer_server.services.system_updates.shutil.which",
+                    return_value="/usr/bin/canonical-livepatch",
+                ),
             ):
                 status = manager.get_livepatch_status()
 

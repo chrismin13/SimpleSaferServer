@@ -1,4 +1,3 @@
-# pyright: reportArgumentType=false, reportAttributeAccessIssue=false, reportOptionalSubscript=false
 import json
 import sys
 import types
@@ -86,11 +85,13 @@ class CloudflareDdnsTests(unittest.TestCase):
                 # leave it, because alert de-dupe depends on persisted messages.
                 runtime.volatile_dir.mkdir(parents=True, exist_ok=True)
                 (runtime.volatile_dir / "ddns_status.json").write_text(json.dumps(initial_status))
-            with patch("scripts.ddns_update.get_runtime", return_value=runtime), patch(
-                "scripts.ddns_update.ConfigManager", FakeConfigManager
-            ), patch("scripts.ddns_update.get_public_ip", return_value=public_ip), patch(
-                "scripts.ddns_update.update_duckdns", return_value=duckdns_result
-            ), patch("scripts.ddns_update.update_cloudflare", return_value=cloudflare_result):
+            with (
+                patch("scripts.ddns_update.get_runtime", return_value=runtime),
+                patch("scripts.ddns_update.ConfigManager", FakeConfigManager),
+                patch("scripts.ddns_update.get_public_ip", return_value=public_ip),
+                patch("scripts.ddns_update.update_duckdns", return_value=duckdns_result),
+                patch("scripts.ddns_update.update_cloudflare", return_value=cloudflare_result),
+            ):
                 exit_code = ddns_update.main()
 
             status_file = runtime.volatile_dir / "ddns_status.json"
@@ -121,10 +122,13 @@ class CloudflareDdnsTests(unittest.TestCase):
             )
 
     def test_update_cloudflare_skips_when_ip_and_proxy_state_match(self):
-        with patch(
-            "scripts.ddns_update.get_cloudflare_record",
-            return_value=("record-123", "203.0.113.10", True),
-        ), patch("scripts.ddns_update.urllib.request.urlopen") as mock_urlopen:
+        with (
+            patch(
+                "scripts.ddns_update.get_cloudflare_record",
+                return_value=("record-123", "203.0.113.10", True),
+            ),
+            patch("scripts.ddns_update.urllib.request.urlopen") as mock_urlopen,
+        ):
             success, message = ddns_update.update_cloudflare(
                 "zone-123",
                 "token",
@@ -147,10 +151,13 @@ class CloudflareDdnsTests(unittest.TestCase):
             # not a SimpleSaferServer API response envelope.
             return FakeResponse({"success": True})
 
-        with patch(
-            "scripts.ddns_update.get_cloudflare_record",
-            return_value=("record-123", "203.0.113.10", False),
-        ), patch("scripts.ddns_update.urllib.request.urlopen", side_effect=fake_urlopen):
+        with (
+            patch(
+                "scripts.ddns_update.get_cloudflare_record",
+                return_value=("record-123", "203.0.113.10", False),
+            ),
+            patch("scripts.ddns_update.urllib.request.urlopen", side_effect=fake_urlopen),
+        ):
             success, message = ddns_update.update_cloudflare(
                 "zone-123",
                 "token",

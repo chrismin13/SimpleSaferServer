@@ -2,7 +2,7 @@ import logging
 import os
 import stat
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 from functools import wraps
 
 from flask import Blueprint, current_app, redirect, render_template, session
@@ -406,7 +406,7 @@ def format_drive():
         # would corrupt get_partition_node output (e.g. /dev/sda1 → /dev/sda11).
         try:
             lsblk_result = setup_command_adapter.whole_disk_type(disk)
-        except (SubprocessError, OSError):
+        except SubprocessError, OSError:
             return _validation_problem('Unable to verify disk type')
 
         if lsblk_result.stdout.strip() != 'disk':
@@ -836,7 +836,7 @@ def complete_setup():
         if 'username' in session:
             username = session['username']
             if username in user_manager.users:
-                user_manager.users[username]['last_login'] = str(datetime.utcnow())
+                user_manager.users[username]['last_login'] = str(datetime.now(UTC))
                 user_manager._save_users()
                 logger.info(f"Updated last login time for user {username} after setup completion")
 

@@ -3,7 +3,7 @@ import os
 import threading
 import time
 import unittest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -260,21 +260,16 @@ class TaskServiceTests(unittest.TestCase):
         )
 
     @patch("simple_safer_server.services.task_service.run_scheduled_drive_health_check")
-    def test_fake_drive_health_logs_prediction_warning_for_degraded_success(
-        self, mock_health_check
-    ):
+    def test_fake_drive_health_logs_smart_collection(self, mock_health_check):
         service, fake_state = self.build_service(mount_point=".")
-        warning = "SMART prediction is unavailable because the prediction dependencies could not be loaded."
         mock_health_check.return_value = {
-            "probability": None,
-            "prediction": None,
-            "prediction_warning": warning,
+            "smart": {"smart_194_raw": 31.0},
             "hdsentinel": {"snapshot": {"available": False}},
         }
 
         service._run_fake_drive_health_check("Drive Health", threading.Event())
 
-        self.assertIn(("Drive Health", warning), fake_state.logs)
+        self.assertIn(("Drive Health", "SMART details collected."), fake_state.logs)
 
     def test_fake_ddns_update_runs_provider_script_for_parity(self):
         service, fake_state = self.build_service()
@@ -412,7 +407,7 @@ class TaskServiceTests(unittest.TestCase):
             )
 
             self.assertEqual(
-                service._format_compact_datetime(local_target.astimezone(timezone.utc)),
+                service._format_compact_datetime(local_target.astimezone(UTC)),
                 "08:00",
             )
         finally:
@@ -423,7 +418,7 @@ class TaskServiceTests(unittest.TestCase):
             time.tzset()
 
     def test_schedule_datetime_labels_cover_today_tomorrow_and_later_dates(self):
-        now = datetime(2026, 5, 13, 9, 0, 0, tzinfo=timezone.utc)
+        now = datetime(2026, 5, 13, 9, 0, 0, tzinfo=UTC)
 
         self.assertEqual(
             format_compact_schedule_datetime(datetime(2026, 5, 13, 18, 0, 0), now),

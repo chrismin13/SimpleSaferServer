@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Tuple
 
 from simple_safer_server.adapters.backup_drive_commands import BackupDriveCommandAdapter
 from simple_safer_server.services.runtime import get_fake_state, get_runtime
@@ -25,7 +24,7 @@ class _BackupShareUpdate:
     path: str
     writable: bool
     comment: str
-    valid_users: Tuple[str, ...]
+    valid_users: tuple[str, ...]
 
     @classmethod
     def from_share(cls, share, path):

@@ -3,7 +3,6 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Optional
 from unittest.mock import patch
 
 from simple_safer_server.services.storage_service import StorageService
@@ -11,7 +10,7 @@ from simple_safer_server.web.problems import OperationProblem, ValidationProblem
 
 
 class FakeConfigManager:
-    def __init__(self, mount_point, uuid: Optional[str] = "drive-uuid"):
+    def __init__(self, mount_point, uuid: str | None = "drive-uuid"):
         self.mount_point = mount_point
         self.uuid = uuid
 
@@ -43,7 +42,7 @@ class FakeStorageCommandAdapter:
         self.mounted = []
         self.managed_mounted = []
         self.started = []
-        self.raise_on_mount = None  # type: Optional[Exception]
+        self.raise_on_mount: Exception | None = None
 
     def reboot(self):
         self.rebooted = True
@@ -74,7 +73,7 @@ class StorageServiceTests(unittest.TestCase):
         *,
         is_fake=False,
         mount_point=None,
-        uuid: Optional[str] = "drive-uuid",
+        uuid: str | None = "drive-uuid",
     ):
         runtime = SimpleNamespace(
             is_fake=is_fake,
