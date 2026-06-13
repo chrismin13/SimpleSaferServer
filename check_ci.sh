@@ -64,7 +64,7 @@ fi
 
 run_check "Lint" uv run ruff check .
 if [[ ${#SHELL_FILES[@]} -gt 0 ]]; then
-  run_check "Lint shell" uv run shellcheck "${SHELL_FILES[@]}"
+  run_check "Lint shell" bash scripts/run_shellcheck.sh "${SHELL_FILES[@]}"
 fi
 if [[ ${#PYTEST_ARGS[@]} -eq 0 ]]; then
   run_check "Test" uv run pytest -n "$PYTEST_WORKERS"
