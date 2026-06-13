@@ -35,24 +35,25 @@ class StorageLocation:
         return self.mode == MODE_PREPARED_DRIVE
 
 
+ROOT_PATH = Path("/")
 UNSAFE_STORAGE_PATHS = {
-    "/",
-    "/bin",
-    "/boot",
-    "/dev",
-    "/etc",
-    "/home",
-    "/lib",
-    "/lib64",
-    "/opt",
-    "/proc",
-    "/root",
-    "/run",
-    "/sbin",
-    "/sys",
-    "/tmp",
-    "/usr",
-    "/var",
+    ROOT_PATH,
+    ROOT_PATH / "bin",
+    ROOT_PATH / "boot",
+    ROOT_PATH / "dev",
+    ROOT_PATH / "etc",
+    ROOT_PATH / "home",
+    ROOT_PATH / "lib",
+    ROOT_PATH / "lib64",
+    ROOT_PATH / "opt",
+    ROOT_PATH / "proc",
+    ROOT_PATH / "root",
+    ROOT_PATH / "run",
+    ROOT_PATH / "sbin",
+    ROOT_PATH / "sys",
+    ROOT_PATH / "tmp",
+    ROOT_PATH / "usr",
+    ROOT_PATH / "var",
 }
 
 
@@ -128,7 +129,7 @@ def _normalize_storage_path(path: str) -> Path:
 def validate_existing_folder_path(path: str, runtime: Any | None = None) -> Path:
     runtime = runtime or get_runtime()
     resolved = _normalize_storage_path(path)
-    blocked = set() if runtime.is_fake else {Path(item).resolve() for item in UNSAFE_STORAGE_PATHS}
+    blocked = set() if runtime.is_fake else {path.resolve() for path in UNSAFE_STORAGE_PATHS}
     blocked.update(
         {
             runtime.config_dir.resolve(),
