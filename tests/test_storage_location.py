@@ -142,6 +142,16 @@ def test_existing_folder_rejects_app_owned_paths(tmp_path):
         validate_existing_folder_path(str(runtime.config_dir), runtime=runtime)
 
 
+def test_existing_folder_rejects_relative_paths(tmp_path, monkeypatch):
+    storage_path = tmp_path / "storage"
+    storage_path.mkdir()
+    runtime = fake_runtime(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(StorageLocationError, match="absolute path"):
+        validate_existing_folder_path("storage", runtime=runtime)
+
+
 def test_mount_identity_mismatch_fails_validation(tmp_path):
     storage_path = tmp_path / "storage"
     storage_path.mkdir()

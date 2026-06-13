@@ -120,10 +120,12 @@ def _normalize_storage_path(path: str) -> Path:
     text = (path or "").strip()
     if not text:
         raise StorageLocationError("Storage location is required.")
-    resolved = Path(text).expanduser().resolve()
-    if not resolved.is_absolute():
+    expanded = Path(text).expanduser()
+    # Check the path the admin actually entered before resolve() turns a
+    # relative path into an absolute path based on the current working directory.
+    if not expanded.is_absolute():
         raise StorageLocationError("Storage location must be an absolute path.")
-    return resolved
+    return expanded.resolve()
 
 
 def validate_existing_folder_path(path: str, runtime: Any | None = None) -> Path:
