@@ -143,20 +143,24 @@
   <h2 class="mb-4" style="font-size: var(--text-lg);">System Actions</h2>
   <div class="d-flex gap-3 flex-wrap">
     <div id="drive-action-slot">
-      {% if mount_info and mount_info.is_mounted %}
+      {% if mount_info and not mount_info.app_manages_mount %}
+      <a href="{{ url_for('storage_routes.storage_page') }}" class="btn btn-secondary btn-sm">
+        <i class="fas fa-folder-tree me-1"></i> Storage Settings
+      </a>
+      {% elif mount_info and mount_info.is_mounted %}
       <form method="post" action="{{ url_for('storage_routes.unmount') }}" class="d-inline dashboard-action-form" data-success-action="refresh-drive-ui" data-dashboard-unmount="true">
         <button type="submit" class="btn btn-warning btn-sm">
-          <i class="fas fa-eject me-1"></i> Unmount Drive
+          <i class="fas fa-eject me-1"></i> Unmount Storage
         </button>
       </form>
       {% else %}
       <form method="post" action="{{ url_for('storage_routes.dashboard_mount_drive') }}" class="d-inline dashboard-action-form" data-success-action="refresh-drive-ui">
         <button type="submit" class="btn btn-secondary btn-sm"
-          data-confirm="Are you sure you want to mount the backup drive?"
-          data-confirm-title="Mount Drive"
+          data-confirm="Are you sure you want to mount the storage drive?"
+          data-confirm-title="Mount Storage"
           data-confirm-button="Mount"
           data-confirm-class="btn-primary">
-          <i class="fas fa-plug me-1"></i> Mount Drive
+          <i class="fas fa-plug me-1"></i> Mount Storage
         </button>
       </form>
       {% endif %}
@@ -413,22 +417,29 @@ Remove the drive now if you do not want it mounted again.`;
     }
   }
 
-  function renderDriveActionForm(isMounted) {
+  function renderDriveActionForm(data) {
     if (!driveActionSlot) return;
 
-    driveActionSlot.innerHTML = isMounted
+    if (data && data.app_manages_mount === false) {
+      driveActionSlot.innerHTML = `<a href="{{ url_for('storage_routes.storage_page') }}" class="btn btn-secondary btn-sm">
+          <i class="fas fa-folder-tree me-1"></i> Storage Settings
+        </a>`;
+      return;
+    }
+
+    driveActionSlot.innerHTML = data && data.mounted
       ? `<form method="post" action="{{ url_for('storage_routes.unmount') }}" class="d-inline dashboard-action-form" data-success-action="refresh-drive-ui" data-dashboard-unmount="true">
           <button type="submit" class="btn btn-warning btn-sm">
-            <i class="fas fa-eject me-1"></i> Unmount Drive
+            <i class="fas fa-eject me-1"></i> Unmount Storage
           </button>
         </form>`
       : `<form method="post" action="{{ url_for('storage_routes.dashboard_mount_drive') }}" class="d-inline dashboard-action-form" data-success-action="refresh-drive-ui">
           <button type="submit" class="btn btn-secondary btn-sm"
-            data-confirm="Are you sure you want to mount the backup drive?"
-            data-confirm-title="Mount Drive"
+            data-confirm="Are you sure you want to mount the storage drive?"
+            data-confirm-title="Mount Storage"
             data-confirm-button="Mount"
             data-confirm-class="btn-primary">
-            <i class="fas fa-plug me-1"></i> Mount Drive
+            <i class="fas fa-plug me-1"></i> Mount Storage
           </button>
         </form>`;
 
@@ -467,7 +478,7 @@ Remove the drive now if you do not want it mounted again.`;
 
         if (isDashboardUnmount) {
           const confirmed = await window.showConfirmationDialog({
-            title: 'Unmount Drive',
+            title: 'Unmount Storage',
             message: getDashboardUnmountConfirmationMessage(),
             confirmLabel: 'Unmount',
             confirmClass: 'btn-warning'
@@ -508,7 +519,7 @@ Remove the drive now if you do not want it mounted again.`;
   function updateStorage() {
     window.ApiClient.fetchJson('/api/storage/status')
       .then(({ data }) => {
-        renderDriveActionForm(Boolean(data.mounted));
+        renderDriveActionForm(data);
         const badge = document.getElementById('mount-status-badge');
         const val = document.getElementById('storage-used');
         const bar = document.getElementById('storage-bar');
@@ -516,9 +527,9 @@ Remove the drive now if you do not want it mounted again.`;
         const detail = document.getElementById('storage-detail');
         const meter = document.getElementById('storage-meter');
 
-        if (data.mounted) {
+        if (data.available) {
           badge.className = 'badge badge-success';
-          badge.textContent = 'Mounted';
+          badge.textContent = data.app_manages_mount ? 'Mounted' : 'Available';
           if (data.disk_available) {
             const usedPct = parseFloat(data.storage_usage || '0') || 0;
             meter.classList.remove('d-none');
@@ -535,12 +546,12 @@ Remove the drive now if you do not want it mounted again.`;
           }
         } else {
           badge.className = 'badge badge-warning';
-          badge.textContent = 'Not Mounted';
-          val.textContent = 'Not Mounted';
+          badge.textContent = data.app_manages_mount ? 'Not Mounted' : 'Unavailable';
+          val.textContent = data.app_manages_mount ? 'Not Mounted' : 'Unavailable';
           pct.textContent = '—';
           meter.classList.add('d-none');
           bar.style.width = '0%';
-          detail.textContent = data.mount_point || 'Drive is not mounted';
+          detail.textContent = data.error || data.mount_point || 'Storage is not available';
         }
       })
       .catch(() => {

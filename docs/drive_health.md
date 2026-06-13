@@ -1,6 +1,6 @@
 # Drive Health
 
-The Drive Health page is the main place to inspect the configured backup drive and to rerun backup-drive configuration if the physical backup device changes.
+The Drive Health page is the main place to inspect disk health.
 
 It combines:
 
@@ -14,6 +14,7 @@ It combines:
 - View SMART attributes returned by `smartctl` JSON output.
 - View missing SMART attributes that fell back to documented defaults.
 - View the HDSentinel device snapshot returned by an explicit manual refresh.
+- View the HDSentinel drive list returned by an explicit manual refresh.
 - Enable or disable HDSentinel monitoring and change alert settings.
 
 ## SMART Error Reporting
@@ -34,9 +35,9 @@ HDSentinel is the source for the simple health meter shown on the Dashboard afte
 - Health below `25%` is shown as critical.
 - If HDSentinel is disabled, unavailable, or has not run yet, the Dashboard status remains unknown.
 
-Scheduled Drive Health keeps a durable previous HDSentinel snapshot at `/var/lib/SimpleSaferServer/hdsentinel_state.json` in real mode. On each scheduled check it compares the previous successful HDSentinel health percentage with the current successful HDSentinel health percentage. Normal Drive Health page loads do not read that state as live dashboard health; the file exists for scheduled change detection.
+Scheduled Drive Health keeps durable HDSentinel state at `/var/lib/SimpleSaferServer/hdsentinel_state.json` in real mode. On each scheduled check it compares the previous successful health percentage with the current successful health percentage for each detected drive. Normal Drive Health page loads do not read that state as live dashboard health; the file exists for scheduled change detection.
 
-When HDSentinel monitoring and health-change alerts are enabled, any health percentage change creates the existing HDSentinel alert. The alert does not use the Dashboard warning/critical thresholds; it is deliberately based on change detection so operators see drive-health movement even when the absolute value is still high.
+When HDSentinel monitoring and health-change alerts are enabled, any health percentage change creates a HDSentinel alert for the drive that changed. The alert does not use the Dashboard warning/critical thresholds; it is deliberately based on change detection so operators see drive-health movement even when the absolute value is still high.
 
 ## Dashboard Summary
 
@@ -50,55 +51,24 @@ The Dashboard Drive Health tile reads only the latest summary stored in the runn
 
 ## Scheduled Checks
 
+Scheduled Drive Health tries to use HDSentinel's full drive list when it is available. This lets the app monitor more than one disk instead of tying health only to the configured storage path. The Drive Health table marks the prepared SimpleSaferServer storage drive when it can match the detected device safely.
+
 Scheduled Drive Health still treats general SMART read failures as task failures because those failures can signal real device, bridge, or permission problems.
 
 The one degraded-success exception is the existing smartctl JSON unsupported path: if SMART cannot run only because the installed smartctl lacks JSON output and HDSentinel reports a usable health percentage, the scheduled check can still complete with the HDSentinel snapshot.
 
-## Re-running Backup Drive Setup
+## Storage Setup
 
-Use the advanced backup-drive section only when:
+Storage setup has moved to the Storage page.
 
-- the backup drive was replaced
-- the original UUID or USB ID was detected incorrectly
-- the app needs to be pointed at the correct backup partition again
+Use Storage when:
 
-This flow is partition-oriented.
+- the storage folder changes
+- a prepared drive is replaced
+- an existing folder should be used instead of a prepared drive
+- the cloud-backup storage marker needs to be repaired
 
-- The selector shows NTFS partitions.
-- The selector uses the same NTFS-partition scan as setup wizard step 3.
-- If `lsblk` reports a mounted `ntfs-3g` partition as `fuseblk`, the app double-checks the on-disk type with `blkid` before showing it.
-- Partitions reported as `ntfs3`, `ntfs-3g`, or confirmed-NTFS `fuseblk` are treated as NTFS backup targets by the picker.
-- The unmount action unmounts only the exact selected partition.
-- That unmount action only clears the live mount so the selected partition can be validated and configured again.
-- If the selected partition is still the configured backup drive and it is currently mounted at the managed backup mount point, the app first disconnects SMB access and stops the related background tasks so the unmount is not blocked by busy share handles.
-- The app intentionally does not escalate to that broader SMB-safe path based on UUID alone, because cloned replacement disks can legitimately share a filesystem UUID and would make the selected physical device ambiguous.
-- The configure action mounts only the exact selected partition.
-- The NTFS driver selector controls the filesystem type written to the managed `/etc/fstab` entry. `ntfs-3g` remains the default; `ntfs3` uses the kernel NTFS driver on kernels that support it.
-- Managed `ntfs3` entries use explicit `dmask=000,fmask=000` permissions so existing NTFS folders remain writable through the authenticated Samba share.
-
-This is different from setup wizard step 2, which is disk-oriented for formatting.
-
-It is also different from the main Dashboard `Unmount Drive` action.
-
-- Dashboard unmount is temporary for the configured backup drive.
-- If that drive stays connected, SimpleSaferServer may remount it automatically during the next scheduled `Check Mount` run.
-- The Drive Health unmount button exists to clear the selected partition so the rerun flow can mount and validate the exact partition you picked.
-- When the selected partition is the live configured backup share, Drive Health uses the same SMB-safe unmount sequence as Dashboard, but it does not power the disk down because the next step is usually to mount and validate it again.
-- The Drive Health unmount button does not clear the stored backup `mount_point`, `uuid`, `usb_id`, or managed `/etc/fstab` entry by itself.
-
-## What the Rerun Flow Updates
-
-- the stored backup `mount_point`
-- the stored backup `uuid`
-- the stored backup `usb_id`
-- the SimpleSaferServer-managed `/etc/fstab` entry for the backup drive, including the selected NTFS driver
-- the Samba backup share path if the mount point changed
-
-The rerun flow always refreshes the managed `/etc/fstab` entry with driver-specific mount options. `ntfs-3g` entries use `defaults,nofail`; `ntfs3` entries use `rw,uid=0,gid=0,dmask=000,fmask=000,nofail` so existing NTFS folders stay writable through Samba.
-After rewriting the managed `/etc/fstab` entry, the app also runs `systemctl daemon-reload` so the next `Check Mount` run sees the updated systemd-generated mount units immediately.
-
-Persistent backup-drive state changes happen only when the rerun configure step succeeds.
-That separation is intentional because a failed replacement attempt should still be able to fall back to the previously configured backup drive.
+Drive Health does not decide where backups are stored. It checks drive health and reports what the local tools can read.
 
 ## What "SimpleSaferServer-managed" Means
 
@@ -138,7 +108,7 @@ Manual recovery rules:
 - Update only the SimpleSaferServer-managed `/etc/fstab` entry.
 - Use `ntfs-3g` or `ntfs3` as the filesystem type for the managed backup-drive line.
 - Run `sudo systemctl daemon-reload` after manually changing `/etc/fstab` so systemd forgets the old generated mount unit state.
-- If the mount point changes, also check `/etc/samba/simple_safer_server_shares.conf` (see [Network File Sharing](network_file_sharing.md)).
+- If the mount point changes, use the Storage page so the app can update the storage marker and the default network share. See [Network File Sharing](network_file_sharing.md) if you need to inspect the managed share file manually.
 - Do not modify unrelated `/etc/fstab` entries.
 - Back up `/etc/fstab` before editing it manually.
 

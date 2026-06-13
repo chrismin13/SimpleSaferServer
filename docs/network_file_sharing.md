@@ -215,6 +215,8 @@ Reload the Network File Sharing page after that.
 
 During setup, SimpleSaferServer tries to create or refresh the default `backup` share using the same ownership-aware SMB logic as the main UI.
 
+The default `backup` share points at the configured storage location. If the Storage page is later used to choose an existing folder, SimpleSaferServer updates that default share to point at the new folder.
+
 If an Unmanaged Samba Share named `[backup]` already exists anywhere Samba loads it:
 
 - setup does not overwrite it

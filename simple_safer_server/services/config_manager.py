@@ -101,6 +101,16 @@ class ConfigManager:
             'mount_point': self.runtime.default_mount_point,
             'rclone_dir': '',
             'bandwidth_limit': '',
+            'cloud_enabled': 'false',
+        }
+
+        config['storage'] = {
+            'mode': 'prepared_drive',
+            'path': self.runtime.default_mount_point,
+            'storage_id': '',
+            'mount_source': '',
+            'mount_target': '',
+            'mount_fstype': '',
         }
 
         config['schedule'] = {'backup_cloud_time': '03:00'}

@@ -55,6 +55,9 @@
                 <a href="{{ url_for('users_routes.users_page') }}" class="nav-item {% if request.endpoint == 'users_routes.users_page' %}active{% endif %}">
                     <i class="fas fa-users fa-fw"></i> Users
                 </a>
+                <a href="{{ url_for('storage_routes.storage_page') }}" class="nav-item {% if request.endpoint == 'storage_routes.storage_page' %}active{% endif %}">
+                    <i class="fas fa-folder-tree fa-fw"></i> Storage
+                </a>
                 <a href="{{ url_for('drive_health_routes.drives') }}" class="nav-item {% if request.endpoint == 'drive_health_routes.drives' %}active{% endif %}">
                     <i class="fas fa-hard-drive fa-fw"></i> Drive Health
                 </a>

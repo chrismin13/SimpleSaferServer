@@ -44,12 +44,12 @@
                     <div class="stepper-connector"></div>
                     <div class="stepper-item" data-step="2" onclick="goToStep(2)">
                         <div class="stepper-dot">2</div>
-                        <span class="stepper-label">Format Drive</span>
+                        <span class="stepper-label">Storage Location</span>
                     </div>
                     <div class="stepper-connector"></div>
                     <div class="stepper-item" data-step="3" onclick="goToStep(3)">
                         <div class="stepper-dot">3</div>
-                        <span class="stepper-label">Mount Drive</span>
+                        <span class="stepper-label">Prepare Drive</span>
                     </div>
                     <div class="stepper-connector"></div>
                     <div class="stepper-item" data-step="4" onclick="goToStep(4)">
@@ -106,10 +106,27 @@
                         </div>
                     </div>
 
-                    <!-- Step 2: Drive Format (Optional) -->
+                    <!-- Step 2: Storage Location -->
                     <div id="step2" class="setup-step">
                         <div class="setup-card">
-                            <h3>Drive Format <span class="badge badge-neutral">Optional</span></h3>
+                            <h3>Choose Where Files Will Be Stored</h3>
+                            <div class="alert alert-info mb-4">
+                                <div>
+                                    SimpleSaferServer creates a network share named <strong>backup</strong>. This is the folder people on your network copy files into from their computers.
+                                </div>
+                            </div>
+                            <div class="tabs-container mb-4">
+                                <div class="tabs-nav" role="tablist" aria-label="Storage location type">
+                                    <button type="button" class="tab-btn active" data-storage-mode="prepared_drive" id="storageModePreparedBtn">Prepare a drive for SimpleSaferServer</button>
+                                    <button type="button" class="tab-btn" data-storage-mode="existing_folder" id="storageModeExistingBtn">Use an existing folder</button>
+                                </div>
+                            </div>
+                            <div id="preparedDriveSetupFields">
+                                <div class="alert alert-info mb-4">
+                                    <div>
+                                        Best if you have a USB drive or extra internal drive for this server. SimpleSaferServer can erase it, format it, mount it, and keep it connected automatically.
+                                    </div>
+                                </div>
                             <div class="form-group mb-4">
                                 <label class="form-label">Select Drive to Format</label>
                                 <select id="formatDriveSelect" class="form-control">
@@ -138,8 +155,27 @@ This removes all files on the selected drive and prepares it as one backup drive
                             <div id="formatDetails" class="text-muted d-none" style="font-size:var(--text-xs);"></div>
                             <div class="setup-actions">
                                 <button onclick="nextStep()" class="btn btn-primary">
-                                    Skip Formatting <i class="fas fa-arrow-right ms-1"></i>
+                                    Continue to Drive Setup <i class="fas fa-arrow-right ms-1"></i>
                                 </button>
+                            </div>
+                            </div>
+                            <div id="existingFolderSetupFields" class="d-none">
+                                <div class="alert alert-info mb-4">
+                                    <div>
+                                        Best if your storage is already set up. Use this for ZFS, RAID, mergerfs, SnapRAID, NFS, or a normal folder. SimpleSaferServer will not mount or format anything.
+                                    </div>
+                                </div>
+                                <div class="form-group mb-4">
+                                    <label class="form-label">Existing Folder Path</label>
+                                    <input type="text" id="existingFolderPath" class="form-control text-mono" placeholder="/srv/storage">
+                                    <div class="form-hint">SimpleSaferServer will create <code>.simple-safer-server</code> inside this folder for backup safety checks.</div>
+                                </div>
+                                <div id="existingFolderError" class="text-danger d-none" style="font-size:var(--text-sm);"></div>
+                                <div class="setup-actions">
+                                    <button id="saveExistingFolderBtn" type="button" class="btn btn-primary">
+                                        Use This Folder <i class="fas fa-arrow-right ms-1"></i>
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -147,13 +183,13 @@ This removes all files on the selected drive and prepares it as one backup drive
                     <!-- Step 3: Drive Mount -->
                     <div id="step3" class="setup-step">
                         <div class="setup-card">
-                            <h3>Drive Mount</h3>
+                            <h3>Prepare Drive</h3>
                             <div class="form-group mb-4">
                                 <label class="form-label">Select Drive to Mount</label>
                                 <select id="mountDriveSelect" class="form-control">
                                     <option value="">Select a drive…</option>
                                 </select>
-                                <div class="form-hint">Only NTFS partitions are shown</div>
+                                <div class="form-hint">Only NTFS partitions are shown. This step creates the storage marker used before cloud backups.</div>
                             </div>
                             <div id="mountStatusArea" class="d-flex items-center mb-3" style="min-height:1.5rem;font-size:var(--text-sm);"></div>
                             <!-- Advanced Options -->
@@ -178,11 +214,11 @@ This only clears the live mount so you can configure the partition.
 Backup settings are NOT updated until 'Mount Drive' succeeds.">
                                     <i class="fas fa-eject me-1"></i> Unmount
                                 </button>
-                                <button id="mountDriveBtn" class="btn btn-primary btn-sm" data-confirm="Are you sure you want to mount this drive?">
-                                    <i class="fas fa-plug me-1"></i> Mount Drive
+                                <button id="mountDriveBtn" class="btn btn-primary btn-sm" data-confirm="Are you sure you want to use this drive for SimpleSaferServer storage?">
+                                    <i class="fas fa-plug me-1"></i> Use This Drive
                                 </button>
                             </div>
-                            <div class="form-hint mb-4">Unmount here is temporary preparation for mounting the selected partition. Backup-drive settings change only when Mount Drive succeeds.</div>
+                            <div class="form-hint mb-4">Unmount here is temporary preparation for mounting the selected partition. Storage settings change only when Use This Drive succeeds.</div>
                             <div id="mountError" class="text-danger d-none" style="font-size:var(--text-sm);"></div>
                             <div id="mountDetails" class="text-muted d-none" style="font-size:var(--text-xs);"></div>
                             <button
@@ -275,6 +311,9 @@ unmount the share, then restart SMB automatically."
                                 </div>
                             </div>
                             <div class="setup-actions">
+                                <button id="skipCloudBackupBtn" type="button" class="btn btn-secondary">
+                                    Skip Cloud Backup <i class="fas fa-arrow-right ms-1"></i>
+                                </button>
                                 <button id="saveBackupConfigBtn" onclick="saveBackupConfig()" class="btn btn-primary">
                                     Save Backup Configuration <i class="fas fa-arrow-right ms-1"></i>
                                 </button>
@@ -412,6 +451,7 @@ unmount the share, then restart SMB automatically."
     <script>
         let currentStep = 1;
         const totalSteps = 6;
+        let setupStorageMode = 'prepared_drive';
 
         // --- LocalStorage step persistence ---
         function saveStepToStorage(step) {
@@ -468,6 +508,23 @@ unmount the share, then restart SMB automatically."
                 showStep(currentStep);
                 saveStepToStorage(currentStep);
             }
+        }
+
+        function goToCloudBackupStep() {
+            currentStep = 4;
+            showStep(currentStep);
+            saveStepToStorage(currentStep);
+        }
+
+        function setStorageMode(mode) {
+            setupStorageMode = mode;
+            const preparedFields = document.getElementById('preparedDriveSetupFields');
+            const existingFields = document.getElementById('existingFolderSetupFields');
+            if (preparedFields) preparedFields.classList.toggle('d-none', mode !== 'prepared_drive');
+            if (existingFields) existingFields.classList.toggle('d-none', mode !== 'existing_folder');
+            document.querySelectorAll('[data-storage-mode]').forEach((button) => {
+                button.classList.toggle('active', button.dataset.storageMode === mode);
+            });
         }
 
         function previousStep() {
@@ -657,6 +714,41 @@ unmount the share, then restart SMB automatically."
             } catch (error) { window.AsyncButtonState.error(mountBtn); setMountStatus('Failed to mount drive.', 'error'); showMountError(error.message || 'An error occurred while mounting the drive', error.details); }
         }
 
+        async function saveExistingFolder() {
+            const saveBtn = document.getElementById('saveExistingFolderBtn');
+            const pathInput = document.getElementById('existingFolderPath');
+            const errorDiv = document.getElementById('existingFolderError');
+            const path = pathInput ? pathInput.value.trim() : '';
+            if (errorDiv) {
+                errorDiv.classList.add('d-none');
+                errorDiv.textContent = '';
+            }
+            if (!path) {
+                if (errorDiv) {
+                    errorDiv.textContent = 'Enter the folder path to use for storage.';
+                    errorDiv.classList.remove('d-none');
+                }
+                return;
+            }
+            window.AsyncButtonState.start(saveBtn);
+            try {
+                await window.ApiClient.fetchJson('/api/setup/existing-folder', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path })
+                });
+                window.AsyncButtonState.success(saveBtn);
+                localStorage.setItem('storageSuccess', '1');
+                goToCloudBackupStep();
+            } catch (error) {
+                window.AsyncButtonState.error(saveBtn);
+                if (errorDiv) {
+                    errorDiv.textContent = error.message || 'Could not use this folder.';
+                    errorDiv.classList.remove('d-none');
+                }
+            }
+        }
+
         async function unmountMountDrive() {
             return submitMountUnmountRequest({ forceManaged: false });
         }
@@ -738,15 +830,35 @@ unmount the share, then restart SMB automatically."
             } catch (error) { window.AsyncButtonState.error(saveBtn); showError('Error saving schedule: ' + (error.message || error)); }
         }
 
+        async function skipCloudBackup() {
+            const skipBtn = document.getElementById('skipCloudBackupBtn');
+            window.AsyncButtonState.start(skipBtn);
+            try {
+                await window.ApiClient.fetchJson('/api/setup/cloud-backup/skip', { method: 'POST' });
+                window.AsyncButtonState.success(skipBtn);
+                nextStep();
+            } catch (error) {
+                window.AsyncButtonState.error(skipBtn);
+                const backupConfigError = document.getElementById('backupConfigError');
+                if (backupConfigError) {
+                    backupConfigError.textContent = error.message || 'Could not skip cloud backup.';
+                    backupConfigError.classList.remove('d-none');
+                }
+            }
+        }
+
         // --- Complete ---
-        function clearSetupStorage() { localStorage.removeItem('setupCurrentStep'); localStorage.removeItem('formatSuccess'); localStorage.removeItem('mountSuccess'); }
+        function clearSetupStorage() { localStorage.removeItem('setupCurrentStep'); localStorage.removeItem('formatSuccess'); localStorage.removeItem('mountSuccess'); localStorage.removeItem('storageSuccess'); }
 
         function formatSetupFieldLabel(field) {
             const normalized = String(field || '').replace(/^Missing\s+/, '').trim();
             const labels = {
                 'backup.email_address': 'backup alert email address',
-                'backup.mount_point': 'backup drive mount point',
-                'backup.uuid': 'backup drive selection',
+                'backup.mount_point': 'storage location',
+                'backup.uuid': 'prepared drive selection',
+                'storage.mode': 'storage choice',
+                'storage.path': 'storage folder',
+                'storage.storage_id': 'storage marker',
                 'email.email_from_address': 'email sender address',
                 'email.smtp_server': 'SMTP server',
                 'email.smtp_port': 'SMTP port',
@@ -900,6 +1012,14 @@ unmount the share, then restart SMB automatically."
             }
 
             // Drive action buttons
+            document.querySelectorAll('[data-storage-mode]').forEach((button) => {
+                button.addEventListener('click', () => setStorageMode(button.dataset.storageMode));
+            });
+            setStorageMode(setupStorageMode);
+            const saveExistingFolderBtn = document.getElementById('saveExistingFolderBtn');
+            if (saveExistingFolderBtn) saveExistingFolderBtn.addEventListener('click', saveExistingFolder);
+            const skipCloudBackupBtn = document.getElementById('skipCloudBackupBtn');
+            if (skipCloudBackupBtn) skipCloudBackupBtn.addEventListener('click', skipCloudBackup);
             const unmountBtn = document.getElementById('unmountDriveBtn');
             if (unmountBtn) unmountBtn.addEventListener('click', function(e) { if (e.defaultPrevented) return; unmountDrive(); });
             const formatBtn = document.getElementById('formatDriveBtn');
