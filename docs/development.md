@@ -129,11 +129,25 @@ During normal development, run targeted tests for the code you changed. Before c
 bash check_ci.sh
 ```
 
-`check_ci.sh` syncs the dev environment, formats Python with Ruff, formats shell scripts with shfmt, lints Python with Ruff, lints shell scripts with ShellCheck, runs pytest, and runs ty. The shell checks only look at tracked `.sh` files, so local virtualenv scripts and generated scratch files do not become part of the project quality gate. ShellCheck runs through `scripts/run_shellcheck.sh`: on compatible Linux machines it uses a pinned, hash-checked ShellCheck package for speed, and otherwise falls back to the pinned `shellcheck-py` package through `uvx` so findings stay tied to ShellCheck 0.11.0. Full-suite pytest runs use `pytest-xdist` workers by default; set `PYTEST_WORKERS=4` or another worker count if `auto` is too aggressive on your machine. Pass pytest arguments after the script options for targeted serial runs:
+`check_ci.sh` syncs the dev environment, formats Python with Ruff, formats shell scripts with shfmt, lints Python with Ruff, lints shell scripts with ShellCheck, runs pytest, and runs ty. The shell checks only look at tracked `.sh` files, so local virtualenv scripts and generated scratch files do not become part of the project quality gate. Full-suite pytest runs use `pytest-xdist` workers by default; set `PYTEST_WORKERS=4` or another worker count if `auto` is too aggressive on your machine. Pass pytest arguments after the script options for targeted serial runs:
 
 ```bash
 bash check_ci.sh tests/test_drive_health.py
 ```
+
+ShellCheck runs through `scripts/run_shellcheck.sh` instead of directly through `apt`, `shellcheck-py`, or the official release tarball. This is intentional:
+
+- `apt install shellcheck` is fast, but the ShellCheck version changes with the distro. During setup, Debian trixie reported ShellCheck 0.10.0 findings that ShellCheck 0.11.0 did not report, so unpinned apt would make local and CI results drift.
+- `shellcheck-py==0.11.0.1` and the official ShellCheck 0.11.0 GitHub tarballs are stable, but their Linux binaries are static builds. On the arm64 development machine used for this change, checking all project shell scripts took about 15.8 seconds.
+- Ubuntu's `shellcheck_0.11.0-2` package is a dynamically linked build of ShellCheck 0.11.0. In the Debian trixie CI image, the pinned package checked the same scripts in about 4.6 seconds after a small setup step.
+
+The runner uses the faster path only when it can do so safely. It downloads exact `amd64` or `arm64` package files, verifies SHA256 hashes, extracts them into a user cache, and runs the extracted binary with the matching pinned `libnuma1` package. It does not install packages into the host OS. If the machine is not compatible, the runner falls back to `uvx --from shellcheck-py==0.11.0.1 shellcheck`, which is slower but keeps findings tied to ShellCheck 0.11.0.
+
+Useful links for future maintenance:
+
+- ShellCheck 0.11.0 upstream release: `https://github.com/koalaman/shellcheck/releases/tag/v0.11.0`
+- Ubuntu ShellCheck package pool: `https://archive.ubuntu.com/ubuntu/pool/universe/s/shellcheck/`
+- Debian libnuma package pool: `https://deb.debian.org/debian/pool/main/n/numactl/`
 
 CI uses `bash check_ci.sh --check-format` so unformatted files fail instead of being edited in the container. ty is configured to check shipped Python code and scripts; tests use dynamic monkeypatching patterns that are better covered by pytest than by ty today. Dependency and security checks are split out because they are slower and do not need to run after every local edit:
 

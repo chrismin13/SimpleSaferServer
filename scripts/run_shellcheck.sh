@@ -6,6 +6,24 @@ SHELLCHECK_PY_VERSION="0.11.0.1"
 SHELLCHECK_PACKAGE_VERSION="0.11.0-2"
 LIBNUMA_PACKAGE_VERSION="2.0.19-1"
 
+# Why this helper exists:
+#
+# We need ShellCheck findings to be stable across developer machines and CI, so
+# plain `apt install shellcheck` is not acceptable. Debian and Ubuntu can ship
+# different ShellCheck versions, and testing showed they can report different
+# findings on the same scripts.
+#
+# The official ShellCheck release tarball and `shellcheck-py` are stable, but on
+# this arm64 dev machine the static 0.11.0 binary took about 15.8s to check this
+# repo's shell scripts. Ubuntu's dynamically linked 0.11.0-2 package produced
+# the same ShellCheck version and took about 4.6s in the Debian trixie CI image.
+#
+# The fast path below downloads exact package files, verifies their SHA256
+# hashes, and extracts them into a user cache without installing anything into
+# the host OS. If that pinned binary cannot run, we fall back to `shellcheck-py`
+# through uvx. The fallback is slower, but it keeps results tied to ShellCheck
+# 0.11.0 instead of drifting with the local distro.
+
 if [[ $# -gt 0 ]]; then
   SHELL_FILES=("$@")
 else
@@ -64,6 +82,9 @@ multiarch_for_arch() {
 }
 
 package_info_for_arch() {
+  # The ShellCheck package comes from Ubuntu because Debian trixie currently
+  # ships ShellCheck 0.10.0. The tiny libnuma package comes from Debian so the
+  # extracted binary can run inside the same Debian image CI already uses.
   case "$1" in
     amd64)
       SHELLCHECK_URL="https://archive.ubuntu.com/ubuntu/pool/universe/s/shellcheck/shellcheck_${SHELLCHECK_PACKAGE_VERSION}_amd64.deb"
