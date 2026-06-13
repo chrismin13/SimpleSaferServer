@@ -55,6 +55,16 @@ def _apt_lock_block_response(action: str):
     )
 
 
+def _refresh_storage_timers(services: Any) -> None:
+    config = services.config_manager.get_all_config()
+    ok, error = services.system_utils.create_systemd_config_file(config)
+    if not ok:
+        raise OperationProblem(f"Storage was saved, but systemd config was not refreshed: {error}")
+    ok, error = services.system_utils.install_systemd_services_and_timers(config)
+    if not ok:
+        raise OperationProblem(f"Storage was saved, but task timers were not refreshed: {error}")
+
+
 @storage.route("/unmount", methods=["POST"])
 @admin_required
 def unmount():
@@ -308,6 +318,7 @@ def api_backup_drive_configure():
             result.get("mount_point", data.get("mount_point")),
             runtime=services.runtime,
         )
+        _refresh_storage_timers(services)
         return json_data({"result": result})
     except BackupDriveSetupError as exc:
         return json_problem(
@@ -317,6 +328,8 @@ def api_backup_drive_configure():
                 extra={"details": exc.details},
             )
         )
+    except OperationProblem as exc:
+        return json_problem(exc)
     except Exception as exc:
         current_app.logger.error("Error configuring backup drive: %s", exc)
         return json_problem(OperationProblem("Could not configure the backup drive."))
@@ -364,9 +377,12 @@ def api_existing_folder():
             location.path,
             services.config_manager.get_value("system", "username", ""),
         )
+        _refresh_storage_timers(services)
         return json_data({"path": location.path}, message="Storage folder saved.")
     except StorageLocationError as exc:
         return json_problem(ValidationProblem(str(exc), slug="storage-validation-error"))
+    except OperationProblem as exc:
+        return json_problem(exc)
     except Exception:
         current_app.logger.exception("Could not configure existing storage folder")
         return json_problem(OperationProblem("Could not configure the storage folder."))
