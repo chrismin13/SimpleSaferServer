@@ -9,9 +9,20 @@ fi
 SYNC=true
 CHECK_FORMAT=false
 PYTEST_ARGS=()
+# GitHub Actions checks out the repository on the host, then runs this script
+# inside a container as a different user. Mark the working tree safe before any
+# `git ls-files` call so shell checks cannot be silently skipped.
+git config --global --add safe.directory "$PWD" 2>/dev/null || true
 # Only check tracked shell scripts. Local virtualenvs and generated test data can
 # contain third-party scripts that are not part of this repo's quality gate.
-mapfile -t SHELL_FILES < <(git ls-files '*.sh')
+SHELL_FILES_OUTPUT="$(git ls-files '*.sh')" || {
+  printf 'Failed to list tracked shell scripts with git ls-files.\n' >&2
+  exit 1
+}
+SHELL_FILES=()
+if [[ -n "$SHELL_FILES_OUTPUT" ]]; then
+  mapfile -t SHELL_FILES <<<"$SHELL_FILES_OUTPUT"
+fi
 SHFMT_ARGS=(-i 2 -ci -bn)
 # Full-suite runs are the common pre-commit path, so use xdist there. Targeted
 # pytest arguments usually mean a developer wants the quickest single-file or
