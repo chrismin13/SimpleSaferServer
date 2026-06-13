@@ -1,5 +1,6 @@
 import json
 import os
+import tempfile
 import threading
 import time
 import unittest
@@ -8,6 +9,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+from simple_safer_server.services.storage_location import marker_path
 from simple_safer_server.services.task_service import (
     TASK_LOG_LINE_LIMIT,
     Status,
@@ -263,12 +265,17 @@ class TaskServiceTests(unittest.TestCase):
         self.assertEqual(fake_state.get_task_state("Cloud Backup")["status"], Status.SUCCESS)
 
     def test_fake_cloud_backup_runs_rclone_for_provider_parity(self):
-        service, fake_state = self.build_service(mount_point=".", rclone_dir="/tmp/fake-backup")
-        marker_dir = Path(".simple-safer-server")
-        marker_dir.mkdir(exist_ok=True)
-        self.addCleanup(lambda: marker_dir.rmdir() if marker_dir.exists() else None)
-        self.addCleanup(lambda: (marker_dir / "storage.json").unlink(missing_ok=True))
-        (marker_dir / "storage.json").write_text('{"storage_id": "test-storage-id"}')
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        source = Path(temp_dir.name) / "source"
+        source.mkdir()
+        marker = marker_path(source)
+        marker.parent.mkdir(mode=0o700)
+        marker.write_text('{"storage_id": "test-storage-id"}')
+        service, fake_state = self.build_service(
+            mount_point=str(source),
+            rclone_dir=str(Path(temp_dir.name) / "fake-backup"),
+        )
         service.rclone_adapter = MagicMock()
         service.rclone_adapter.sync.return_value = FakeProcess(stdout="copied\n")
 
