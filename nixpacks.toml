@@ -1,0 +1,22 @@
+[variables]
+# Railway fake mode stores config, users, secrets, and the persisted Flask
+# session key under SSS_DATA_DIR. That path must be backed by a Railway volume
+# in production, or every fresh deploy starts from an empty setup state.
+SSS_MODE = "fake"
+SSS_SKIP_LOGIN = "true"
+SSS_DATA_DIR = "/data"
+# Gunicorn's threaded worker handles concurrent dashboard/API requests without
+# Eventlet. Tune this for the host size instead of changing start commands.
+WEB_THREADS = "4"
+
+[phases.setup]
+# Nixpacks' built-in Python archive can lag behind new Python releases. This
+# pin points at a nixpkgs snapshot that exposes python314 for the Railway demo.
+nixpkgsArchive = "49a4bd0573c376468dd7996ddb6f9fa31d8c4d97"
+nixPkgs = ["python314", "uv", "rclone", "msmtp", "smartmontools"]
+
+[phases.install]
+cmds = ["uv sync --frozen --no-dev"]
+
+[start]
+cmd = ".venv/bin/gunicorn --worker-class gthread --threads ${WEB_THREADS:-4} -w 1 --bind 0.0.0.0:$PORT simple_safer_server.wsgi:app"

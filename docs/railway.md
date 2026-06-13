@@ -8,11 +8,8 @@ provide the local disks, Samba services, or systemd environment that the full
 Debian install uses, so the demo stores its writable state in a Railway volume
 instead.
 
-Fake mode is a local-system simulation, not a sandbox for outside APIs. DDNS can
-still contact real providers if valid credentials are configured. The trimmed
-Railway demo does not install `rclone`, so Cloud Backup provider setup, folder
-listing, and backup runs are not supported there unless you intentionally add
-`rclone` back to the Railway image. See [Fake Mode](fake_mode.md).
+Fake mode is a local-system simulation, not a sandbox for outside APIs. DDNS and cloud backup can
+still contact real providers if valid credentials are configured. See [Fake Mode](fake_mode.md).
 
 Regular SimpleSaferServer users do not need any of this. This document is only
 for development and demo hosting on Railway.
@@ -29,52 +26,17 @@ Run these steps from the root of the `SimpleSaferServer` repository.
 
 1. Open the Railway project and select the `SimpleSaferServer` service.
 
-2. Set these service variables:
+2. Create a persistent volume and attach it to that service.
 
-   ```text
-   SSS_MODE=fake
-   SSS_SKIP_LOGIN=true
-   SSS_DATA_DIR=/data
-   WEB_THREADS=4
-   ```
+3. Mount the volume at `/data`.
 
-3. Create a persistent volume and attach it to that service.
+4. Deploy the repository from the repo root.
 
-4. Mount the volume at `/data`.
+5. Open the app and complete setup once.
 
-5. Deploy the repository from the repo root.
+6. Redeploy one more time to confirm the setup still exists.
 
-6. Open the app and complete setup once.
-
-7. Redeploy one more time to confirm the setup still exists.
-
-If setup is still there after step 7, the deployment is correct.
-
-## What Railway Builds
-
-Railway uses `railway.toml` to select Railpack and start Gunicorn. Railpack reads
-the Python project files in this repository:
-
-- `.python-version` selects Python 3.14.
-- `pyproject.toml` lists the runtime Python packages.
-- `uv.lock` pins the exact Python dependency versions.
-
-Railway does not run `install.sh`. That is intentional. The full installer is
-for real Debian or Ubuntu hosts where SimpleSaferServer manages local disks,
-Samba, systemd timers, mail alerts, HDSentinel, and cloud-backup tooling.
-
-The Railway fake-mode demo skips those host packages:
-
-- Samba and `wsdd2`
-- `smartmontools` and HDSentinel
-- `msmtp`
-- `rclone`
-- disk tools such as `fdisk`, `ntfs-3g`, and `rsync`
-- unattended-upgrades and other real APT automation
-
-Most pages still work because fake mode stores simulated machine state under
-`/data`. Cloud Backup is the main exception because its provider actions call
-the real `rclone` binary.
+If setup is still there after step 6, the deployment is correct.
 
 ## CLI Version Of The Same Flow
 
@@ -106,9 +68,15 @@ The writable state lives under the fake-mode data directory. That includes:
 - `config/.flask-secret-key`
 - logs and fake task state
 
-Set `SSS_DATA_DIR=/data` in Railway service variables, and make `/data` a real
-Railway volume. If no volume is attached, `/data` is only a normal container
-directory and every deploy starts from an empty filesystem again.
+The repo sets `SSS_DATA_DIR=/data` in `nixpacks.toml`, so `/data` must be a
+real Railway volume. If no volume is attached, `/data` is only a normal
+container directory and every deploy starts from an empty filesystem again.
+
+`nixpacks.toml` also pins `phases.setup.nixpkgsArchive`. Nixpacks can lag behind
+new Python releases, and the Railway demo currently needs the `python314` Nix
+package to match the app's Python target. Refresh this pin when Railway builds
+break, when the app moves to a new Python version, or during a planned Railway
+deployment package refresh.
 
 ## Notes
 
