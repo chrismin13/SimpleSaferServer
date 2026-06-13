@@ -160,7 +160,7 @@ MULTIARCH="$(multiarch_for_arch "$ARCH")"
 package_info_for_arch "$ARCH"
 
 CACHE_ROOT="${SSS_SHELLCHECK_CACHE_DIR:-${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/simple-safer-server/shellcheck}"
-INSTALL_DIR="${CACHE_ROOT}/${SHELLCHECK_PACKAGE_VERSION}-${ARCH}"
+INSTALL_DIR="${CACHE_ROOT}/shellcheck-${SHELLCHECK_PACKAGE_VERSION}-libnuma-${LIBNUMA_PACKAGE_VERSION}-${ARCH}"
 SHELLCHECK_BIN="${INSTALL_DIR}/usr/bin/shellcheck"
 LIB_DIR="${INSTALL_DIR}/usr/lib/${MULTIARCH}"
 

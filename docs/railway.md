@@ -72,6 +72,12 @@ The repo sets `SSS_DATA_DIR=/data` in `nixpacks.toml`, so `/data` must be a
 real Railway volume. If no volume is attached, `/data` is only a normal
 container directory and every deploy starts from an empty filesystem again.
 
+`nixpacks.toml` also pins `phases.setup.nixpkgsArchive`. Nixpacks can lag behind
+new Python releases, and the Railway demo currently needs the `python314` Nix
+package to match the app's Python target. Refresh this pin when Railway builds
+break, when the app moves to a new Python version, or during a planned Railway
+deployment package refresh.
+
 ## Notes
 
 - The app now persists the Flask session secret in the writable config
