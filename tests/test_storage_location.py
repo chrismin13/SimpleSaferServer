@@ -7,6 +7,7 @@ from simple_safer_server.services.storage_location import (
     StorageLocationError,
     configure_existing_folder,
     get_storage_location,
+    mark_prepared_drive_storage,
     marker_path,
     repair_storage_marker,
     validate_existing_folder_path,
@@ -37,10 +38,14 @@ class FakeSystemUtils:
 
 
 class FakeCommandRunner:
-    def __init__(self, stdout=""):
+    def __init__(self, stdout="", command_outputs=None):
         self.stdout = stdout
+        self.command_outputs = command_outputs or {}
 
     def run(self, command, **kwargs):
+        key = tuple(command)
+        if key in self.command_outputs:
+            return SimpleNamespace(returncode=0, stdout=self.command_outputs[key], stderr="")
         return SimpleNamespace(returncode=0, stdout=self.stdout, stderr="")
 
 
@@ -97,6 +102,25 @@ def test_storage_validation_fails_when_marker_id_does_not_match(tmp_path):
         validate_storage_ready_for_backup(config, FakeSystemUtils(), runtime=runtime)
 
 
+def test_storage_validation_fails_when_write_probe_readback_does_not_match(tmp_path, monkeypatch):
+    storage_path = tmp_path / "storage"
+    storage_path.mkdir()
+    runtime = fake_runtime(tmp_path)
+    config = FakeConfigManager(storage_path)
+    configure_existing_folder(config, str(storage_path), runtime=runtime)
+
+    def write_wrong_value(path, _payload, mode=0o600):
+        path.write_text("different")
+
+    monkeypatch.setattr(
+        "simple_safer_server.services.storage_location.atomic_write_text",
+        write_wrong_value,
+    )
+
+    with pytest.raises(StorageLocationError, match="read back"):
+        validate_storage_ready_for_backup(config, FakeSystemUtils(), runtime=runtime)
+
+
 def test_repair_storage_marker_restores_missing_marker(tmp_path):
     storage_path = tmp_path / "storage"
     storage_path.mkdir()
@@ -136,4 +160,37 @@ def test_mount_identity_mismatch_fails_validation(tmp_path):
             FakeSystemUtils(),
             runtime=runtime,
             command_runner=FakeCommandRunner(f"/dev/sdc1 {storage_path} ext4\n"),
+        )
+
+
+def test_prepared_drive_validation_requires_matching_mounted_uuid(tmp_path):
+    storage_path = tmp_path / "storage"
+    storage_path.mkdir()
+    runtime = fake_runtime(tmp_path)
+    config = FakeConfigManager(storage_path)
+    config.set_value("backup", "uuid", "EXPECTED-UUID")
+    mark_prepared_drive_storage(config, str(storage_path), runtime=runtime)
+
+    assert validate_storage_ready_for_backup(
+        config,
+        FakeSystemUtils(),
+        runtime=runtime,
+        command_runner=FakeCommandRunner("EXPECTED-UUID\n"),
+    )
+
+
+def test_prepared_drive_validation_fails_on_mounted_uuid_mismatch(tmp_path):
+    storage_path = tmp_path / "storage"
+    storage_path.mkdir()
+    runtime = fake_runtime(tmp_path)
+    config = FakeConfigManager(storage_path)
+    config.set_value("backup", "uuid", "EXPECTED-UUID")
+    mark_prepared_drive_storage(config, str(storage_path), runtime=runtime)
+
+    with pytest.raises(StorageLocationError, match="does not match"):
+        validate_storage_ready_for_backup(
+            config,
+            FakeSystemUtils(),
+            runtime=runtime,
+            command_runner=FakeCommandRunner("OTHER-UUID\n"),
         )

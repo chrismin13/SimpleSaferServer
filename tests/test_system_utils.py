@@ -34,6 +34,7 @@ class SystemUtilsTimerActivationTests(unittest.TestCase):
     def _config(self):
         return {
             "system": {"setup_complete": "false"},
+            "backup": {"cloud_enabled": "true"},
             "schedule": {"backup_cloud_time": "03:00"},
         }
 
@@ -118,6 +119,31 @@ class SystemUtilsTimerActivationTests(unittest.TestCase):
                 self.assertIn(
                     (["systemctl", "start", f"{service_name}.timer"], True), system_utils.commands
                 )
+
+    def test_install_systemd_services_leaves_cloud_backup_disabled_without_explicit_true(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime = self._runtime(temp_dir)
+            runtime.systemd_dir.mkdir()
+            runtime.data_dir.mkdir()
+            system_utils = RecordingSystemUtils(runtime)
+            config = self._config()
+            config["backup"].pop("cloud_enabled")
+
+            ok, error = system_utils.install_systemd_services_and_timers(
+                config,
+                activate_timers=True,
+            )
+
+            self.assertTrue(ok, error)
+            self.assertIsNone(error)
+            self.assertIn(
+                (["systemctl", "disable", "--now", "backup_cloud.timer"], False),
+                system_utils.commands,
+            )
+            self.assertNotIn(
+                (["systemctl", "start", "backup_cloud.timer"], True),
+                system_utils.commands,
+            )
 
     def test_install_systemd_services_preserves_managed_disabled_timers(self):
         with tempfile.TemporaryDirectory() as temp_dir:

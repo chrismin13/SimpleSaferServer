@@ -103,7 +103,7 @@ class StorageService:
                 if managed_fstab_entry.get("uuid") != uuid:
                     raise ValidationProblem(
                         "Managed fstab entry does not match the configured backup drive UUID. "
-                        "Re-run backup drive setup from Drive Health before mounting.",
+                        "Re-run prepared-drive setup from Storage before mounting.",
                         slug="storage-validation-error",
                     )
                 # Prefer the managed fstab entry only after the UUID matches so

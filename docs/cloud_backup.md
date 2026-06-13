@@ -23,6 +23,7 @@ SimpleSaferServer therefore checks the configured storage location before every 
   - MEGA (Simple)
   - Advanced (Paste rclone config)
 - **Disabled**: Cloud Backup can be skipped during setup. When it is disabled, the timer is not enabled and manual backup runs are blocked until Cloud Backup is configured.
+- **Required setting**: `backup.cloud_enabled` must be `true` or `false`. If that setting is missing or invalid, cloud backup fails loudly and alerts the administrator instead of guessing what to do.
 
 ### MEGA Simple Mode
 - **MEGA Email/Password**: Enter MEGA credentials (fields may be disabled if already saved).
@@ -50,7 +51,7 @@ The check confirms:
 - the test file written by the app can be read back
 - the test file can be deleted
 
-For a drive prepared by SimpleSaferServer, the check also confirms that the app-managed mount point is mounted. For an existing folder, the app does not mount it, but it records where that folder was mounted when it was selected. If the folder later appears under a different mount source, the backup fails until an administrator checks it.
+For a drive prepared by SimpleSaferServer, the check also confirms that the app-managed mount point is mounted and that the mounted filesystem UUID matches the configured drive UUID. For an existing folder, the app does not mount it, but it records where that folder was mounted when it was selected. If the folder later appears under a different mount source, the backup fails until an administrator checks it.
 
 These checks are deliberately cautious. The safest failure is to skip a backup and alert the administrator. The unsafe failure would be syncing an empty or wrong folder to the cloud and deleting good remote files.
 

@@ -1,8 +1,9 @@
 #!/bin/bash
 
-CONFIG_FILE="/etc/SimpleSaferServer/config.conf"
-PYTHON_BIN="/opt/SimpleSaferServer/.venv/bin/python"
-VALIDATE_STORAGE_SCRIPT="/opt/SimpleSaferServer/scripts/validate_storage_source.py"
+CONFIG_FILE="${SSS_CONFIG_FILE:-/etc/SimpleSaferServer/config.conf}"
+PYTHON_BIN="${SSS_PYTHON_BIN:-/opt/SimpleSaferServer/.venv/bin/python}"
+VALIDATE_STORAGE_SCRIPT="${SSS_VALIDATE_STORAGE_SCRIPT:-/opt/SimpleSaferServer/scripts/validate_storage_source.py}"
+LOG_ALERT_SCRIPT="${SSS_LOG_ALERT_SCRIPT:-/opt/SimpleSaferServer/scripts/log_alert.py}"
 
 if [ ! -x "$PYTHON_BIN" ]; then
   echo "Missing SimpleSaferServer Python environment at $PYTHON_BIN" >&2
@@ -32,14 +33,18 @@ function send_email {
   echo "$1 - $2" # Log the status
   echo -e "Subject: $1 - $SERVER_NAME\nFrom: $FROM_ADDRESS\n\n$2" | msmtp --from="$FROM_ADDRESS" -- "$EMAIL_ADDRESS"
   # Log alert using the standalone script
-  "$PYTHON_BIN" /opt/SimpleSaferServer/scripts/log_alert.py "$1" "$2" "error" "backup_cloud"
+  "$PYTHON_BIN" "$LOG_ALERT_SCRIPT" "$1" "$2" "error" "backup_cloud"
 }
 
 echo "Starting cloud backup process..."
 
-if [ "$CLOUD_ENABLED" != "true" ]; then
+if [ "$CLOUD_ENABLED" = "false" ]; then
   echo "Cloud backup is disabled."
   exit 0
+fi
+if [ "$CLOUD_ENABLED" != "true" ]; then
+  send_email "BACKUP TO CLOUD FAILED - Cloud Backup Setting Invalid" "Cloud backup could not start because backup.cloud_enabled is missing or invalid in $CONFIG_FILE. Save Cloud Backup settings in the web interface."
+  exit 1
 fi
 
 # rclone sync makes the cloud destination match the local source. If a mount is

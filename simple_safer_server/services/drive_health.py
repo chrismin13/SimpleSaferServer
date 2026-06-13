@@ -15,6 +15,10 @@ from simple_safer_server.adapters.drive_health_commands import (
 from simple_safer_server.services.alert_notifications import AlertNotifier
 from simple_safer_server.services.file_persistence import atomic_write_json
 from simple_safer_server.services.runtime import get_runtime
+from simple_safer_server.services.storage_location import (
+    MODE_PREPARED_DRIVE,
+    get_storage_location,
+)
 
 LOGGER = logging.getLogger(__name__)
 DRIVE_HEALTH_TIMEOUT_MESSAGE = (
@@ -462,10 +466,61 @@ def load_hdsentinel_state(runtime=None):
         return None
 
 
+def load_hdsentinel_drive_state(runtime=None):
+    runtime = runtime or get_runtime()
+    path = get_hdsentinel_state_path(runtime)
+    if not path.exists():
+        return {}
+
+    try:
+        state = json.loads(path.read_text())
+        drives = state.get("drives")
+        return drives if isinstance(drives, dict) else {}
+    except Exception as exc:
+        LOGGER.warning("Failed to load HDSentinel drive state: %s", exc)
+        return {}
+
+
 def save_hdsentinel_state(snapshot, runtime=None):
     runtime = runtime or get_runtime()
     path = get_hdsentinel_state_path(runtime)
     _write_json_atomically(path, {"last_snapshot": snapshot})
+
+
+def save_hdsentinel_drive_state(drives, runtime=None):
+    runtime = runtime or get_runtime()
+    path = get_hdsentinel_state_path(runtime)
+    drive_map = {}
+    for snapshot in drives:
+        key = hdsentinel_drive_key(snapshot)
+        if key:
+            drive_map[key] = snapshot
+    worst_snapshot = worst_hdsentinel_snapshot(drives)
+    _write_json_atomically(path, {"drives": drive_map, "last_snapshot": worst_snapshot})
+
+
+def hdsentinel_drive_key(snapshot):
+    serial = (snapshot or {}).get("serial")
+    if serial:
+        return f"serial:{serial}"
+    device = (snapshot or {}).get("device")
+    if device:
+        return f"device:{device}"
+    return None
+
+
+def hdsentinel_drive_label(snapshot):
+    return (snapshot or {}).get("model") or (snapshot or {}).get("device") or "detected drive"
+
+
+def worst_hdsentinel_snapshot(drives):
+    available = [item for item in drives or [] if item.get("available")]
+    if not available:
+        return None
+    return min(
+        available,
+        key=lambda item: item.get("health_pct") if item.get("health_pct") is not None else 101,
+    )
 
 
 def _format_size_mb(size_mb):
@@ -627,6 +682,27 @@ def collect_hdsentinel_drive_list(config_manager, runtime=None):
     return drives
 
 
+def mark_prepared_storage_drive(drives, config_manager, system_utils, runtime=None):
+    runtime = runtime or get_runtime()
+    location = get_storage_location(config_manager, runtime=runtime)
+    marked_drives = [dict(drive) for drive in drives]
+    for drive in marked_drives:
+        drive["is_prepared_storage"] = False
+    if location.mode != MODE_PREPARED_DRIVE:
+        return marked_drives
+
+    parent_device, partition_device, error = resolve_backup_parent_device(
+        config_manager, system_utils, runtime=runtime
+    )
+    if error:
+        return marked_drives
+    expected_devices = {item for item in [parent_device, partition_device] if item}
+    for drive in marked_drives:
+        if drive.get("device") in expected_devices:
+            drive["is_prepared_storage"] = True
+    return marked_drives
+
+
 def parse_hdsentinel_report(report_text):
     health_pct = _parse_optional_int(_extract_first_match([r"Health\s*:\s*(\d+)%"], report_text))
     performance_pct = _parse_optional_int(
@@ -778,10 +854,57 @@ def _log_and_email_alert(config_manager, runtime, title, message, *, alert_type,
 
 def run_hdsentinel_health_monitor(config_manager, system_utils, runtime=None):
     runtime = runtime or get_runtime()
+    settings = get_hdsentinel_settings(config_manager)
+    current_drives = collect_hdsentinel_drive_list(config_manager, runtime=runtime)
+    alert_sent = False
+
+    if current_drives:
+        previous_drives = load_hdsentinel_drive_state(runtime)
+        for current_snapshot in current_drives:
+            key = hdsentinel_drive_key(current_snapshot)
+            previous_snapshot = previous_drives.get(key) if key else None
+            previous_health = None if not previous_snapshot else previous_snapshot.get("health_pct")
+            current_health = current_snapshot.get("health_pct")
+            if (
+                settings["enabled"]
+                and settings["health_change_alert"]
+                and current_snapshot.get("available")
+                and previous_snapshot
+                and previous_snapshot.get("available")
+                and previous_health is not None
+                and current_health is not None
+                and current_health != previous_health
+            ):
+                drive_label = hdsentinel_drive_label(current_snapshot)
+                title = "HDSentinel Drive Health Changed"
+                message = (
+                    f"HDSentinel reported a health change for {drive_label}. "
+                    f"Previous health: {previous_health}%. Current health: {current_health}%."
+                )
+                if current_snapshot.get("performance_pct") is not None:
+                    message += f" Current performance: {current_snapshot['performance_pct']}%."
+                if current_snapshot.get("serial"):
+                    message += f" Serial: {current_snapshot['serial']}."
+                _log_and_email_alert(
+                    config_manager,
+                    runtime,
+                    title,
+                    message,
+                    alert_type="warning",
+                    source="hdsentinel",
+                )
+                alert_sent = True
+
+        save_hdsentinel_drive_state(current_drives, runtime=runtime)
+        return {
+            "previous_drives": previous_drives,
+            "drives": current_drives,
+            "snapshot": worst_hdsentinel_snapshot(current_drives),
+            "alert_sent": alert_sent,
+        }
+
     previous_snapshot = load_hdsentinel_state(runtime)
     current_snapshot = collect_hdsentinel_snapshot(config_manager, system_utils, runtime=runtime)
-    settings = get_hdsentinel_settings(config_manager)
-    alert_sent = False
 
     previous_health = None if not previous_snapshot else previous_snapshot.get("health_pct")
     current_health = current_snapshot.get("health_pct")
@@ -796,9 +919,7 @@ def run_hdsentinel_health_monitor(config_manager, system_utils, runtime=None):
         and current_health is not None
         and current_health != previous_health
     ):
-        drive_label = (
-            current_snapshot.get("model") or current_snapshot.get("device") or "backup drive"
-        )
+        drive_label = hdsentinel_drive_label(current_snapshot)
         title = "HDSentinel Drive Health Changed"
         message = (
             f"HDSentinel reported a health change for {drive_label}. "
@@ -828,26 +949,17 @@ def run_hdsentinel_health_monitor(config_manager, system_utils, runtime=None):
 
 def run_scheduled_drive_health_check(config_manager, system_utils, runtime=None):
     runtime = runtime or get_runtime()
-    hdsentinel_drives = collect_hdsentinel_drive_list(config_manager, runtime=runtime)
+    hdsentinel_result = run_hdsentinel_health_monitor(config_manager, system_utils, runtime=runtime)
+    hdsentinel_drives = hdsentinel_result.get("drives") or []
 
     device, _, error = resolve_backup_parent_device(config_manager, system_utils, runtime=runtime)
     if error:
         if hdsentinel_drives:
-            snapshot = min(
-                hdsentinel_drives,
-                key=lambda item: (
-                    item.get("health_pct") if item.get("health_pct") is not None else 101
-                ),
+            snapshot = hdsentinel_result.get("snapshot") or worst_hdsentinel_snapshot(
+                hdsentinel_drives
             )
-            hdsentinel_result = {
-                "previous_snapshot": load_hdsentinel_state(runtime),
-                "snapshot": snapshot,
-                "drives": hdsentinel_drives,
-                "alert_sent": False,
-            }
-            save_hdsentinel_state(snapshot, runtime=runtime)
             return {
-                "device": snapshot.get("device"),
+                "device": snapshot.get("device") if snapshot else None,
                 "smart": None,
                 "missing_attrs": None,
                 "hdsentinel": hdsentinel_result,
@@ -871,9 +983,6 @@ def run_scheduled_drive_health_check(config_manager, system_utils, runtime=None)
         runtime=runtime,
     )
     if smart is None:
-        hdsentinel_result = run_hdsentinel_health_monitor(
-            config_manager, system_utils, runtime=runtime
-        )
         if smart_error == SMARTCTL_JSON_UPGRADE_MESSAGE and hdsentinel_snapshot_has_health(
             hdsentinel_result.get("snapshot", {})
         ):
@@ -898,7 +1007,6 @@ def run_scheduled_drive_health_check(config_manager, system_utils, runtime=None)
         )
         raise RuntimeError(message)
 
-    hdsentinel_result = run_hdsentinel_health_monitor(config_manager, system_utils, runtime=runtime)
     return {
         "device": device,
         "smart": smart,

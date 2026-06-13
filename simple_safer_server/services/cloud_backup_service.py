@@ -32,6 +32,18 @@ BANDWIDTH_LIMIT_RE = re.compile(r"^\d+(?:k|M|G)$", re.IGNORECASE)
 RCLONE_ADMIN_TIMEOUT_SECONDS = 60
 
 
+def strict_cloud_enabled(value: Any) -> bool:
+    """Return the explicit cloud-backup setting or raise on missing/invalid config."""
+    text = "" if value is None else str(value).strip().lower()
+    if text == "true":
+        return True
+    if text == "false":
+        return False
+    raise ValidationProblem(
+        "Cloud backup enabled setting is missing or invalid. Save Cloud Backup settings again."
+    )
+
+
 def normalize_bandwidth_limit(value: Any) -> str:
     """Return a safe rclone bwlimit value or raise a validation problem."""
     if value is None:
@@ -85,12 +97,15 @@ class CloudBackupService:
         return response
 
     def save_config(self, data: dict[str, Any]) -> dict[str, Any]:
+        cloud_enabled_changed = False
         if data.get("cloud_enabled") is not None:
+            cloud_enabled = strict_cloud_enabled(data.get("cloud_enabled"))
             self._config_manager.set_value(
                 "backup",
                 "cloud_enabled",
-                str(bool(data.get("cloud_enabled"))).lower(),
+                str(cloud_enabled).lower(),
             )
+            cloud_enabled_changed = True
         mode = data.get("cloud_mode")
         if mode == "mega":
             self._save_mega_config(data)
@@ -109,11 +124,15 @@ class CloudBackupService:
             # Enabling cloud backup from the settings page must also activate
             # the generated timer when setup is already complete.
             return self.save_schedule({})
+        if cloud_enabled_changed:
+            # Disabling cloud backup must also disable the generated timer.
+            return self.save_schedule({})
         return {}
 
     def get_status(self) -> CloudBackupStatus:
-        cloud_enabled = self._config_manager.get_value("backup", "cloud_enabled", None)
-        if cloud_enabled is not None and str(cloud_enabled).lower() != "true":
+        if not strict_cloud_enabled(
+            self._config_manager.get_value("backup", "cloud_enabled", None)
+        ):
             return CloudBackupStatus(
                 status="Disabled",
                 last_run="—",
@@ -135,8 +154,9 @@ class CloudBackupService:
         )
 
     def run_backup(self) -> None:
-        cloud_enabled = self._config_manager.get_value("backup", "cloud_enabled", None)
-        if cloud_enabled is not None and str(cloud_enabled).lower() != "true":
+        if not strict_cloud_enabled(
+            self._config_manager.get_value("backup", "cloud_enabled", None)
+        ):
             raise ValidationProblem("Cloud backup is disabled.")
         task = self._task_service.get_task("Cloud Backup")
         if not task:

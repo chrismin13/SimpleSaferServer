@@ -29,6 +29,8 @@ That split is important because a cloud backup sync can delete remote files if t
 
 Choose where SimpleSaferServer should store files.
 
+SimpleSaferServer creates a default network share named `backup`. This is the folder people on your network copy files into from their computers, and it points at the storage location chosen here.
+
 Use **Prepare a drive for SimpleSaferServer** when you want the app to handle the backup disk. This is the simplest path for the original one-drive setup.
 
 Use **Use an existing folder** when the storage is already handled outside SimpleSaferServer. That folder can be on a RAID array, a pooled filesystem, a manually mounted disk, a server folder, or any other local path that is already prepared.
@@ -114,6 +116,8 @@ You can also skip cloud backup. This is useful when:
 - the server is only used for local network backups
 - another tool already handles off-site backup
 - you want to finish setup first and configure cloud backup later
+
+SimpleSaferServer saves cloud backup as explicitly enabled or disabled. If that setting is missing or invalid, scheduled cloud backup fails and alerts the administrator instead of guessing.
 
 MEGA mode:
 

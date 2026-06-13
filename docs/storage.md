@@ -2,6 +2,8 @@
 
 The Storage page controls where SimpleSaferServer stores backup files.
 
+SimpleSaferServer keeps a default network share named `backup` pointed at the selected storage location. This is the folder people on your network copy files into from their computers.
+
 There are two storage modes:
 
 - **Prepared drive**: SimpleSaferServer mounts and manages one selected drive partition.
@@ -71,6 +73,7 @@ Before each cloud backup, the app checks that:
 - the storage folder can be written to
 - a small test file can be read back
 - the small test file can be deleted
+- a prepared drive's mounted filesystem UUID matches the configured drive UUID
 
 If any of those checks fail, the cloud backup is blocked.
 

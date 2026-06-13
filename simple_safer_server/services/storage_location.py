@@ -225,6 +225,66 @@ def _detect_mount_identity(
     return {"mount_source": parts[0], "mount_target": parts[1], "mount_fstype": parts[2]}
 
 
+def _run_mount_lookup(command: list[str], command_runner: CommandRunner | None = None) -> str:
+    runner = command_runner or CommandRunner()
+    try:
+        result = runner.run(
+            command,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=30,
+        )
+    except Exception as exc:
+        raise StorageLocationError(f"Could not verify the mounted storage drive: {exc}") from exc
+    if result.returncode != 0:
+        return ""
+    return (result.stdout or "").strip()
+
+
+def _mounted_uuid_for_path(path: Path, command_runner: CommandRunner | None = None) -> str:
+    uuid = _run_mount_lookup(
+        ["findmnt", "-T", str(path), "-n", "-o", "UUID"],
+        command_runner=command_runner,
+    )
+    if uuid:
+        return uuid
+
+    source = _run_mount_lookup(
+        ["findmnt", "-T", str(path), "-n", "-o", "SOURCE"],
+        command_runner=command_runner,
+    )
+    if not source:
+        return ""
+    return _run_mount_lookup(
+        ["blkid", "-s", "UUID", "-o", "value", source],
+        command_runner=command_runner,
+    )
+
+
+def _verify_prepared_drive_uuid(
+    config_manager: Any,
+    system_utils: Any,
+    storage_path: Path,
+    command_runner: CommandRunner | None = None,
+) -> None:
+    expected_uuid = str(config_manager.get_value("backup", "uuid", "")).strip()
+    if not expected_uuid:
+        raise StorageLocationError("Prepared storage drive UUID is missing from the app config.")
+    if not system_utils.is_mounted(str(storage_path)):
+        raise StorageLocationError(f"The prepared storage drive is not mounted at {storage_path}.")
+
+    actual_uuid = _mounted_uuid_for_path(storage_path, command_runner=command_runner)
+    if not actual_uuid:
+        raise StorageLocationError(
+            f"Could not verify which drive is mounted at {storage_path}. Cloud backup will not run."
+        )
+    if actual_uuid.lower() != expected_uuid.lower():
+        raise StorageLocationError(
+            "The drive mounted at the storage location does not match the configured drive UUID."
+        )
+
+
 def _verify_mount_identity(
     location: StorageLocation, command_runner: CommandRunner | None = None
 ) -> None:
@@ -320,11 +380,12 @@ def validate_storage_ready_for_backup(
     _probe_storage_write(storage_path)
 
     if location.mode == MODE_PREPARED_DRIVE:
-        expected_uuid = config_manager.get_value("backup", "uuid", "")
-        if expected_uuid and not system_utils.is_mounted(str(storage_path)):
-            raise StorageLocationError(
-                f"The prepared storage drive is not mounted at {storage_path}."
-            )
+        _verify_prepared_drive_uuid(
+            config_manager,
+            system_utils,
+            storage_path,
+            command_runner=command_runner,
+        )
     else:
         _verify_mount_identity(location, command_runner=command_runner)
     return location

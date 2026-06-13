@@ -351,7 +351,7 @@ def list_mount_drives():
     """List NTFS partitions for the mount step."""
     try:
         # Step 3 is partition-oriented and only accepts NTFS backup targets, so
-        # it must reuse the same NTFS scan as the Drive Health rerun flow. That
+        # it must reuse the same NTFS scan as the Storage prepared-drive flow. That
         # includes the blkid fallback when lsblk reports ntfs-3g mounts as
         # fuseblk, which is easy to miss if this route ever gets "simplified".
         drives = get_available_backup_drives(runtime=runtime, ntfs_only=True)
@@ -592,7 +592,7 @@ def mount_drive():
     try:
         data = json_request_data()
         # Step 3 always selects a filesystem-bearing partition, never a whole
-        # disk. That aligns it with the rerun flow on Drive Health.
+        # disk. That aligns it with the prepared-drive flow on Storage.
         partition = data.get('partition')
         if not partition:
             return _validation_problem('partition is required')

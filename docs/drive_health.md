@@ -35,9 +35,9 @@ HDSentinel is the source for the simple health meter shown on the Dashboard afte
 - Health below `25%` is shown as critical.
 - If HDSentinel is disabled, unavailable, or has not run yet, the Dashboard status remains unknown.
 
-Scheduled Drive Health keeps a durable previous HDSentinel snapshot at `/var/lib/SimpleSaferServer/hdsentinel_state.json` in real mode. On each scheduled check it compares the previous successful HDSentinel health percentage with the current successful HDSentinel health percentage. Normal Drive Health page loads do not read that state as live dashboard health; the file exists for scheduled change detection.
+Scheduled Drive Health keeps durable HDSentinel state at `/var/lib/SimpleSaferServer/hdsentinel_state.json` in real mode. On each scheduled check it compares the previous successful health percentage with the current successful health percentage for each detected drive. Normal Drive Health page loads do not read that state as live dashboard health; the file exists for scheduled change detection.
 
-When HDSentinel monitoring and health-change alerts are enabled, any health percentage change creates the existing HDSentinel alert. The alert does not use the Dashboard warning/critical thresholds; it is deliberately based on change detection so operators see drive-health movement even when the absolute value is still high.
+When HDSentinel monitoring and health-change alerts are enabled, any health percentage change creates a HDSentinel alert for the drive that changed. The alert does not use the Dashboard warning/critical thresholds; it is deliberately based on change detection so operators see drive-health movement even when the absolute value is still high.
 
 ## Dashboard Summary
 
@@ -51,7 +51,7 @@ The Dashboard Drive Health tile reads only the latest summary stored in the runn
 
 ## Scheduled Checks
 
-Scheduled Drive Health tries to use HDSentinel's full drive list when it is available. This lets the app monitor more than one disk instead of tying health only to the configured storage path.
+Scheduled Drive Health tries to use HDSentinel's full drive list when it is available. This lets the app monitor more than one disk instead of tying health only to the configured storage path. The Drive Health table marks the prepared SimpleSaferServer storage drive when it can match the detected device safely.
 
 Scheduled Drive Health still treats general SMART read failures as task failures because those failures can signal real device, bridge, or permission problems.
 

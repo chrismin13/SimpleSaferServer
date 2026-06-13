@@ -145,7 +145,7 @@
       <div class="form-group mb-4">
         <label class="form-check-label" for="hdsentinelEnabled">
           <input type="checkbox" class="form-check-input" id="hdsentinelEnabled" name="hdsentinel_enabled" {% if hdsentinel_settings.enabled %}checked{% endif %}>
-          Enable HDSentinel monitoring for the configured backup drive
+          Enable HDSentinel monitoring for all detected drives
         </label>
       </div>
       <div class="form-group mb-4">
@@ -171,6 +171,7 @@
         <tr>
           <th>Device</th>
           <th>Drive</th>
+          <th>Role</th>
           <th>Health</th>
           <th>Temperature</th>
           <th>Size</th>
@@ -182,6 +183,13 @@
         <tr>
           <td><code>{{ drive.device }}</code></td>
           <td>{{ drive.model or '—' }}</td>
+          <td>
+            {% if drive.is_prepared_storage %}
+              <span class="badge badge-info">SimpleSaferServer storage</span>
+            {% else %}
+              —
+            {% endif %}
+          </td>
           <td>{{ drive.health_pct ~ '%' if drive.health_pct is not none else '—' }}</td>
           <td>{{ drive.temperature_c ~ ' C' if drive.temperature_c is not none else '—' }}</td>
           <td>{{ drive.size_text or '—' }}</td>

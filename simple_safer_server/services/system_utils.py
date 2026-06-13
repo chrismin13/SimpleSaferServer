@@ -480,10 +480,7 @@ WantedBy=timers.target
             enabled_services = ['check_health', 'ddns_update', 'app_update']
             if storage.get('mode', 'prepared_drive') == 'prepared_drive':
                 enabled_services.insert(0, 'check_mount')
-            cloud_enabled_value = backup.get('cloud_enabled')
-            cloud_backup_enabled = (
-                True if cloud_enabled_value is None else str(cloud_enabled_value).lower() == 'true'
-            )
+            cloud_backup_enabled = str(backup.get('cloud_enabled', '')).lower() == 'true'
             if cloud_backup_enabled:
                 # Keep cloud backup after Check Mount and Drive Health in the
                 # visible task ordering and timer spacing.
