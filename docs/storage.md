@@ -4,10 +4,12 @@ The Storage page controls where SimpleSaferServer stores backup files.
 
 SimpleSaferServer keeps a default network share named `backup` pointed at the selected storage location. This is the folder people on your network copy files into from their computers.
 
-There are two storage modes:
+The page shows the current storage location, the active storage mode, and whether the cloud-backup safety checks are passing. The Storage Location selector has two modes:
 
 - **Prepared drive**: SimpleSaferServer mounts and manages one selected drive partition.
 - **Existing folder**: an administrator provides a folder that already exists on the server.
+
+Only the selected mode's controls are shown. Safety checks stay visible beside the storage controls on wide screens and move below them on narrower screens.
 
 ## Prepared Drive
 

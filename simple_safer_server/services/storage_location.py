@@ -7,7 +7,7 @@ from typing import Any
 
 from simple_safer_server.adapters.command_runner import CommandRunner
 from simple_safer_server.services.file_persistence import atomic_write_json, atomic_write_text
-from simple_safer_server.services.runtime import get_runtime
+from simple_safer_server.services.runtime import get_fake_state, get_runtime
 
 STORAGE_SECTION = "storage"
 MODE_PREPARED_DRIVE = "prepared_drive"
@@ -265,11 +265,22 @@ def _mounted_uuid_for_path(path: Path, command_runner: CommandRunner | None = No
     )
 
 
+def _fake_mounted_uuid(runtime: Any, storage_path: Path) -> str:
+    if not getattr(runtime, "is_fake", False) or not hasattr(runtime, "state_path"):
+        return ""
+    fake_state = get_fake_state(runtime)
+    state = fake_state.load()
+    if Path(str(state.get("mount_point", ""))).resolve() != storage_path.resolve():
+        return ""
+    return str(state.get("uuid", "")).strip()
+
+
 def _verify_prepared_drive_uuid(
     config_manager: Any,
     system_utils: Any,
     storage_path: Path,
     command_runner: CommandRunner | None = None,
+    runtime: Any | None = None,
 ) -> None:
     expected_uuid = str(config_manager.get_value("backup", "uuid", "")).strip()
     if not expected_uuid:
@@ -277,7 +288,12 @@ def _verify_prepared_drive_uuid(
     if not system_utils.is_mounted(str(storage_path)):
         raise StorageLocationError(f"The prepared storage drive is not mounted at {storage_path}.")
 
-    actual_uuid = _mounted_uuid_for_path(storage_path, command_runner=command_runner)
+    # Fake mode simulates a mounted backup drive with FakeState. Using host
+    # findmnt here would compare the configured fake UUID against the developer
+    # machine's real filesystem UUID and make the safety check fail forever.
+    actual_uuid = _fake_mounted_uuid(runtime, storage_path) if runtime else ""
+    if not actual_uuid:
+        actual_uuid = _mounted_uuid_for_path(storage_path, command_runner=command_runner)
     if not actual_uuid:
         raise StorageLocationError(
             f"Could not verify which drive is mounted at {storage_path}. Cloud backup will not run."
@@ -388,6 +404,7 @@ def validate_storage_ready_for_backup(
             system_utils,
             storage_path,
             command_runner=command_runner,
+            runtime=runtime,
         )
     else:
         _verify_mount_identity(location, command_runner=command_runner)

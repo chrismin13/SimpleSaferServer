@@ -35,6 +35,62 @@ def _get_services() -> Any:
     return current_app.extensions["simple_safer_server"]
 
 
+def _build_storage_safety_checks(status: dict[str, Any], location: Any) -> list[dict[str, str]]:
+    """Translate the backup-source validation result into operator-facing checklist rows."""
+    identity_label = (
+        "Prepared drive UUID match"
+        if location.mode != MODE_EXISTING_FOLDER
+        else "Folder availability"
+    )
+    if status.get("ok"):
+        identity_detail = (
+            "Configured drive matches app config."
+            if location.mode != MODE_EXISTING_FOLDER
+            else "Folder is writable."
+        )
+        return [
+            {
+                "label": "Storage marker file",
+                "state": "pass",
+                "detail": "Marker matches app config.",
+            },
+            {"label": "Write test", "state": "pass", "detail": "Last checked just now."},
+            {"label": identity_label, "state": "pass", "detail": identity_detail},
+        ]
+
+    error = str(status.get("error") or "Storage checks failed.")
+    error_lower = error.lower()
+    marker_failed = "marker" in error_lower or "storage id" in error_lower
+    write_failed = "write probe" in error_lower or "writable" in error_lower
+    identity_failed = not marker_failed and not write_failed
+
+    return [
+        {
+            "label": "Storage marker file",
+            "state": "fail" if marker_failed else "pass",
+            "detail": error if marker_failed else "Marker check passed before the later failure.",
+        },
+        {
+            "label": "Write test",
+            "state": "fail" if write_failed else ("pending" if marker_failed else "pass"),
+            "detail": (
+                error
+                if write_failed
+                else (
+                    "Not checked because the marker check failed."
+                    if marker_failed
+                    else "Write test passed before the later failure."
+                )
+            ),
+        },
+        {
+            "label": identity_label,
+            "state": "fail" if identity_failed else "pending",
+            "detail": error if identity_failed else "Not checked until earlier checks pass.",
+        },
+    ]
+
+
 def _get_check_mount_next_run() -> Any:
     return _get_services().task_service.get_check_mount_next_run()
 
@@ -357,6 +413,7 @@ def storage_page():
         "storage.html",
         storage_location=location,
         storage_status=status,
+        safety_checks=_build_storage_safety_checks(status, location),
         drive_config=drive_config,
     )
 

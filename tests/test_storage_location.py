@@ -204,3 +204,29 @@ def test_prepared_drive_validation_fails_on_mounted_uuid_mismatch(tmp_path):
             runtime=runtime,
             command_runner=FakeCommandRunner("OTHER-UUID\n"),
         )
+
+
+def test_prepared_drive_validation_uses_fake_state_uuid_in_fake_runtime(tmp_path, monkeypatch):
+    storage_path = tmp_path / "storage"
+    storage_path.mkdir()
+    runtime = fake_runtime(tmp_path)
+    runtime.state_path = tmp_path / "fake-state.json"
+    config = FakeConfigManager(storage_path)
+    config.set_value("backup", "uuid", "FAKE-UUID-0001")
+    mark_prepared_drive_storage(config, str(storage_path), runtime=runtime)
+
+    class StorageFakeState:
+        def load(self):
+            return {"mount_point": str(storage_path), "uuid": "FAKE-UUID-0001"}
+
+    monkeypatch.setattr(
+        "simple_safer_server.services.storage_location.get_fake_state",
+        lambda _runtime: StorageFakeState(),
+    )
+
+    assert validate_storage_ready_for_backup(
+        config,
+        FakeSystemUtils(),
+        runtime=runtime,
+        command_runner=FakeCommandRunner("HOST-UUID\n"),
+    )

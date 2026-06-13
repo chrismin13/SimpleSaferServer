@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 
 from flask import Flask
 
-from simple_safer_server.routes.storage import storage
+from simple_safer_server.routes.storage import _build_storage_safety_checks, storage
 
 
 def _app_with_services(services):
@@ -107,3 +107,61 @@ def test_existing_folder_reports_timer_refresh_failure():
 
     assert response.status_code == 500
     assert "task timers were not refreshed" in response.get_json()["detail"]
+
+
+def test_storage_safety_checks_show_existing_folder_success():
+    checks = _build_storage_safety_checks(
+        {"ok": True, "error": ""},
+        SimpleNamespace(mode="existing_folder"),
+    )
+
+    assert checks == [
+        {
+            "label": "Storage marker file",
+            "state": "pass",
+            "detail": "Marker matches app config.",
+        },
+        {"label": "Write test", "state": "pass", "detail": "Last checked just now."},
+        {"label": "Folder availability", "state": "pass", "detail": "Folder is writable."},
+    ]
+
+
+def test_storage_safety_checks_stop_after_marker_failure():
+    checks = _build_storage_safety_checks(
+        {
+            "ok": False,
+            "error": "Storage marker is missing at /srv/storage/.simple-safer-server/storage.json.",
+        },
+        SimpleNamespace(mode="prepared_drive"),
+    )
+
+    assert checks[0]["label"] == "Storage marker file"
+    assert checks[0]["state"] == "fail"
+    assert checks[1] == {
+        "label": "Write test",
+        "state": "pending",
+        "detail": "Not checked because the marker check failed.",
+    }
+    assert checks[2] == {
+        "label": "Prepared drive UUID match",
+        "state": "pending",
+        "detail": "Not checked until earlier checks pass.",
+    }
+
+
+def test_storage_safety_checks_show_prepared_drive_identity_failure():
+    checks = _build_storage_safety_checks(
+        {
+            "ok": False,
+            "error": "The drive mounted at the storage location does not match the configured drive UUID.",
+        },
+        SimpleNamespace(mode="prepared_drive"),
+    )
+
+    assert checks[0]["state"] == "pass"
+    assert checks[1]["state"] == "pass"
+    assert checks[2] == {
+        "label": "Prepared drive UUID match",
+        "state": "fail",
+        "detail": "The drive mounted at the storage location does not match the configured drive UUID.",
+    }

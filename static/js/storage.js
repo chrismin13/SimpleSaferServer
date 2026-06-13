@@ -4,6 +4,11 @@
   const existingError = document.getElementById('existingStorageError');
   const repairMarkerBtn = document.getElementById('repairMarkerBtn');
   const repairMarkerError = document.getElementById('repairMarkerError');
+  const modeButtons = document.querySelectorAll('[data-storage-mode]');
+  const modePanels = {
+    prepared_drive: document.getElementById('preparedDriveStoragePanel'),
+    existing_folder: document.getElementById('existingFolderStoragePanel')
+  };
 
   function showInlineError(element, message) {
     if (!element) return;
@@ -15,6 +20,23 @@
     if (!element) return;
     element.textContent = '';
     element.classList.add('d-none');
+  }
+
+  function setStorageMode(mode) {
+    // The Storage page mirrors setup: one mode is active and only its controls are visible.
+    modeButtons.forEach((button) => {
+      const isActive = button.dataset.storageMode === mode;
+      button.classList.toggle('active', isActive);
+      button.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    });
+    Object.entries(modePanels).forEach(([panelMode, panel]) => {
+      if (!panel) return;
+      panel.classList.toggle('d-none', panelMode !== mode);
+    });
+  }
+
+  function reloadAfterNotification() {
+    window.setTimeout(() => window.location.reload(), 1800);
   }
 
   async function saveExistingStorage() {
@@ -33,7 +55,7 @@
       });
       window.AsyncButtonState.success(saveExistingBtn);
       if (window.showAlert) window.showAlert(message || 'Storage folder saved.', 'success');
-      window.location.reload();
+      reloadAfterNotification();
     } catch (error) {
       window.AsyncButtonState.error(saveExistingBtn);
       showInlineError(existingError, error.message || 'Could not save storage folder.');
@@ -58,7 +80,7 @@ Cloud backup uses this marker to avoid syncing the wrong or empty folder.`,
       });
       window.AsyncButtonState.success(repairMarkerBtn);
       if (window.showAlert) window.showAlert(message || 'Storage marker repaired.', 'success');
-      window.location.reload();
+      reloadAfterNotification();
     } catch (error) {
       window.AsyncButtonState.error(repairMarkerBtn);
       showInlineError(repairMarkerError, error.message || 'Could not repair storage marker.');
@@ -67,6 +89,9 @@ Cloud backup uses this marker to avoid syncing the wrong or empty folder.`,
 
   if (saveExistingBtn) saveExistingBtn.addEventListener('click', saveExistingStorage);
   if (repairMarkerBtn) repairMarkerBtn.addEventListener('click', repairMarker);
+  modeButtons.forEach((button) => {
+    button.addEventListener('click', () => setStorageMode(button.dataset.storageMode));
+  });
 
   const statusEl = document.getElementById('driveSetupStatus');
   const errorEl = document.getElementById('driveSetupError');
@@ -119,7 +144,7 @@ Cloud backup uses this marker to avoid syncing the wrong or empty folder.`,
     driveSelect.innerHTML = '';
     const placeholder = document.createElement('option');
     placeholder.value = '';
-    placeholder.textContent = drives.length ? 'Select an NTFS partition' : 'No NTFS partitions found';
+    placeholder.textContent = drives.length ? 'Select a partition...' : 'No NTFS partitions found';
     driveSelect.appendChild(placeholder);
 
     drives.forEach((drive) => {
@@ -210,7 +235,7 @@ Cloud backup uses this marker to avoid syncing the wrong or empty folder.`,
       if (configuredUsbIdValue) configuredUsbIdValue.textContent = result.usb_id || '—';
       if (window.showAlert) window.showAlert(result.message || 'Drive setup updated successfully.', 'success');
       if (window.AsyncButtonState && applyBtn) window.AsyncButtonState.success(applyBtn);
-      window.location.reload();
+      reloadAfterNotification();
     } catch (error) {
       showDriveSetupError(error.message || 'Failed to apply drive setup.', error.details);
       if (window.AsyncButtonState && applyBtn) window.AsyncButtonState.error(applyBtn);

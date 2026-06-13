@@ -35,6 +35,9 @@ Fake-mode config, users, secrets, logs, and simulated machine state live under `
 `SSS_DATA_DIR` points somewhere else. Operational state that does not need to survive a restart can
 use the runtime volatile directory.
 
+Prepared-drive storage checks use the simulated mount point and UUID saved in fake state. They do
+not compare against the development machine's real mounted filesystem UUID.
+
 Disable Schedule writes the same `disabled_timers.json` state in fake mode, but it does not invoke
 systemd. Enable Schedule removes the fake disabled-schedule record so dashboard labels return to the
 simulated next run.
