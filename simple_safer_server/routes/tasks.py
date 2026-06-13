@@ -11,6 +11,7 @@ from flask import (
     url_for,
 )
 
+from simple_safer_server.services.storage_location import get_storage_location, storage_status
 from simple_safer_server.services.task_service import TASK_LOG_LINE_LIMIT, clamp_task_log_lines
 from simple_safer_server.services.user_manager import admin_required, api_admin_required
 from simple_safer_server.web.api import json_data, json_problem
@@ -39,18 +40,26 @@ def dashboard():
 
     config = services.config_manager.get_all_config()
     task_summaries = services.task_service.task_summaries()
-    mount_point = services.config_manager.get_value(
-        "backup",
-        "mount_point",
-        services.runtime.default_mount_point,
+    storage_location = get_storage_location(services.config_manager, runtime=services.runtime)
+    mount_point = storage_location.path
+    mounted = (
+        services.system_utils.is_mounted(mount_point)
+        if storage_location.app_manages_mount
+        else False
     )
-    mounted = services.system_utils.is_mounted(mount_point)
+    location_status = storage_status(
+        services.config_manager,
+        services.system_utils,
+        runtime=services.runtime,
+        command_runner=services.command_runner,
+    )
     disk = None
-    if mounted:
-        try:
-            disk = psutil.disk_usage(mount_point)
-        except Exception:
-            current_app.logger.exception("Could not read backup drive usage for %s", mount_point)
+    try:
+        # Disk usage only needs the path to be readable. The stricter marker
+        # check still feeds the status text and cloud-backup safety gate.
+        disk = psutil.disk_usage(mount_point)
+    except Exception:
+        current_app.logger.exception("Could not read storage usage for %s", mount_point)
 
     cpu_percent = psutil.cpu_percent()
     ram_percent = psutil.virtual_memory().percent
@@ -59,7 +68,11 @@ def dashboard():
         used_storage=f"{disk.used / (1024**3):.1f}" if disk else "Unavailable",
         total_storage=f"{disk.total / (1024**3):.1f}" if disk else "Unavailable",
         storage_usage=f"{disk.percent}%" if disk else "Unavailable",
-        cloud_backup_status="Active" if config.get("backup", {}).get("rclone_dir") else "Inactive",
+        cloud_backup_status=(
+            "Active"
+            if str(config.get("backup", {}).get("cloud_enabled", "false")).lower() == "true"
+            else "Inactive"
+        ),
         health_status="Not checked",
         hdd_temp="Not checked",
         cpu_usage=f"{cpu_percent}%",
@@ -68,6 +81,9 @@ def dashboard():
             "is_mounted": mounted,
             "disk_available": disk is not None,
             "mount_point": mount_point,
+            "app_manages_mount": storage_location.app_manages_mount,
+            "available": location_status["ok"],
+            "error": location_status["error"],
         },
         tasks=task_summaries,
     )

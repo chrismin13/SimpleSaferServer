@@ -225,6 +225,10 @@ def build_drive_health_summary(
         summary["error"] = smart_error
 
     if collect_hdsentinel and get_hdsentinel_settings(config_manager)["enabled"]:
+        # The dashboard refresh is an explicit live check of the configured
+        # storage drive. The all-drive list is shown on the Drive Health page
+        # and used by scheduled checks, but this compact summary keeps its
+        # older single-snapshot contract so status changes remain predictable.
         hdsentinel_snapshot = collect_hdsentinel_snapshot(
             config_manager,
             system_utils,
@@ -553,6 +557,12 @@ def get_fake_hdsentinel_snapshot(config_manager=None, runtime=None):
 
 
 def parse_hdsentinel_solid_output(output, device=None):
+    devices = parse_hdsentinel_solid_devices(output, device=device)
+    return devices[0] if devices else None
+
+
+def parse_hdsentinel_solid_devices(output, device=None):
+    devices = []
     for raw_line in output.splitlines():
         line = raw_line.strip()
         if not line.startswith("/dev/"):
@@ -567,19 +577,54 @@ def parse_hdsentinel_solid_output(output, device=None):
 
         size_mb = _parse_optional_int(parts[6])
         power_on_hours = _parse_optional_int(parts[3])
-        return {
-            "device": parts[0],
-            "temperature_c": _parse_optional_int(parts[1]),
-            "health_pct": _parse_optional_int(parts[2]),
-            "power_on_hours": power_on_hours,
-            "power_on_time_text": _format_power_on_time_from_hours(power_on_hours),
-            "model": parts[4].replace("_", " "),
-            "serial": parts[5].replace("_", " "),
-            "size_mb": size_mb,
-            "size_text": _format_size_mb(size_mb),
-        }
+        devices.append(
+            {
+                "device": parts[0],
+                "temperature_c": _parse_optional_int(parts[1]),
+                "health_pct": _parse_optional_int(parts[2]),
+                "power_on_hours": power_on_hours,
+                "power_on_time_text": _format_power_on_time_from_hours(power_on_hours),
+                "model": parts[4].replace("_", " "),
+                "serial": parts[5].replace("_", " "),
+                "size_mb": size_mb,
+                "size_text": _format_size_mb(size_mb),
+            }
+        )
 
-    return None
+    return devices
+
+
+def collect_hdsentinel_drive_list(config_manager, runtime=None):
+    runtime = runtime or get_runtime()
+    settings = get_hdsentinel_settings(config_manager)
+    if runtime.is_fake:
+        return [get_fake_hdsentinel_snapshot(config_manager=config_manager, runtime=runtime)]
+    if not hasattr(runtime, "bin_dir"):
+        return []
+    binary_path = get_hdsentinel_binary_path(runtime)
+    if not settings["enabled"] or not binary_path.exists():
+        return []
+    result = _run_hdsentinel_command(binary_path, ["-solid"])
+    if result.returncode != 0:
+        return []
+    checked_at = datetime.now().isoformat(timespec="seconds")
+    drives = []
+    for item in parse_hdsentinel_solid_devices(result.stdout):
+        snapshot = {
+            "installed": True,
+            "enabled": settings["enabled"],
+            "health_change_alert": settings["health_change_alert"],
+            "available": True,
+            "performance_pct": None,
+            "interface": None,
+            "firmware": None,
+            "last_checked": checked_at,
+            "error": None,
+            "binary_path": str(binary_path),
+        }
+        snapshot.update(item)
+        drives.append(snapshot)
+    return drives
 
 
 def parse_hdsentinel_report(report_text):
@@ -783,23 +828,31 @@ def run_hdsentinel_health_monitor(config_manager, system_utils, runtime=None):
 
 def run_scheduled_drive_health_check(config_manager, system_utils, runtime=None):
     runtime = runtime or get_runtime()
-    mount_point = config_manager.get_value("backup", "mount_point", runtime.default_mount_point)
-
-    if not system_utils.is_mounted(mount_point):
-        title = "Drive Health Check Failed - Drive Not Mounted"
-        message = f"The backup drive is not mounted at {mount_point}."
-        _log_and_email_alert(
-            config_manager,
-            runtime,
-            title,
-            message,
-            alert_type="error",
-            source="check_health",
-        )
-        raise RuntimeError(message)
+    hdsentinel_drives = collect_hdsentinel_drive_list(config_manager, runtime=runtime)
 
     device, _, error = resolve_backup_parent_device(config_manager, system_utils, runtime=runtime)
     if error:
+        if hdsentinel_drives:
+            snapshot = min(
+                hdsentinel_drives,
+                key=lambda item: (
+                    item.get("health_pct") if item.get("health_pct") is not None else 101
+                ),
+            )
+            hdsentinel_result = {
+                "previous_snapshot": load_hdsentinel_state(runtime),
+                "snapshot": snapshot,
+                "drives": hdsentinel_drives,
+                "alert_sent": False,
+            }
+            save_hdsentinel_state(snapshot, runtime=runtime)
+            return {
+                "device": snapshot.get("device"),
+                "smart": None,
+                "missing_attrs": None,
+                "hdsentinel": hdsentinel_result,
+                "smart_warning": error,
+            }
         title = "Drive Health Check Failed - Drive Not Found"
         _log_and_email_alert(
             config_manager,

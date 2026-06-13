@@ -68,6 +68,7 @@ class CloudBackupService:
         backup = config.get("backup", {})
         schedule = config.get("schedule", {})
         response = {
+            "cloud_enabled": backup.get("cloud_enabled", "false"),
             "cloud_mode": backup.get("cloud_mode", ""),
             "mega_email": backup.get("mega_email", ""),
             "mega_folder": backup.get("mega_folder", ""),
@@ -84,6 +85,12 @@ class CloudBackupService:
         return response
 
     def save_config(self, data: dict[str, Any]) -> dict[str, Any]:
+        if data.get("cloud_enabled") is not None:
+            self._config_manager.set_value(
+                "backup",
+                "cloud_enabled",
+                str(bool(data.get("cloud_enabled"))).lower(),
+            )
         mode = data.get("cloud_mode")
         if mode == "mega":
             self._save_mega_config(data)
@@ -98,9 +105,21 @@ class CloudBackupService:
             return self.save_schedule(
                 {"backup_cloud_time": backup_time, "bandwidth_limit": bandwidth_limit}
             )
+        if mode in {"mega", "advanced"}:
+            # Enabling cloud backup from the settings page must also activate
+            # the generated timer when setup is already complete.
+            return self.save_schedule({})
         return {}
 
     def get_status(self) -> CloudBackupStatus:
+        cloud_enabled = self._config_manager.get_value("backup", "cloud_enabled", None)
+        if cloud_enabled is not None and str(cloud_enabled).lower() != "true":
+            return CloudBackupStatus(
+                status="Disabled",
+                last_run="—",
+                next_run="—",
+                last_run_duration="—",
+            )
         task = self._task_service.get_task("Cloud Backup")
         if not task:
             raise NotFoundProblem(
@@ -116,6 +135,9 @@ class CloudBackupService:
         )
 
     def run_backup(self) -> None:
+        cloud_enabled = self._config_manager.get_value("backup", "cloud_enabled", None)
+        if cloud_enabled is not None and str(cloud_enabled).lower() != "true":
+            raise ValidationProblem("Cloud backup is disabled.")
         task = self._task_service.get_task("Cloud Backup")
         if not task:
             raise NotFoundProblem(
@@ -302,6 +324,7 @@ class CloudBackupService:
         self._config_manager.set_value("backup", "cloud_mode", "mega")
         self._config_manager.set_value("backup", "mega_folder", folder)
         self._config_manager.set_value("backup", "rclone_dir", f"mega:{folder}")
+        self._config_manager.set_value("backup", "cloud_enabled", "true")
 
     def _save_advanced_config(self, data: dict[str, Any]) -> None:
         rclone_config = data.get("rclone_config")
@@ -312,6 +335,7 @@ class CloudBackupService:
             raise OperationProblem("Failed to write rclone config.")
         self._config_manager.set_value("backup", "cloud_mode", "advanced")
         self._config_manager.set_value("backup", "rclone_dir", remote_name)
+        self._config_manager.set_value("backup", "cloud_enabled", "true")
 
     def _get_mega_credentials(self, data: dict[str, Any]) -> tuple[str, str] | None:
         email = data.get("email")

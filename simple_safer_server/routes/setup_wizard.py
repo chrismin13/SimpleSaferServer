@@ -36,6 +36,11 @@ from simple_safer_server.services.server_identity import (
     ServerIdentityService,
 )
 from simple_safer_server.services.smb_manager import SMBManager
+from simple_safer_server.services.storage_location import (
+    StorageLocationError,
+    configure_existing_folder,
+    mark_prepared_drive_storage,
+)
 from simple_safer_server.services.system_utils import SystemUtils
 from simple_safer_server.services.user_manager import UserManager
 from simple_safer_server.web.api import json_data, json_problem, json_request_data
@@ -76,6 +81,14 @@ def _operation_problem(message, **extra):
 def _cloud_backup_service():
     """Return the shared cloud-backup service registered by the app factory."""
     return current_app.extensions["simple_safer_server"].cloud_backup_service
+
+
+def _storage_command_runner():
+    """Return the app command runner for storage mount identity checks."""
+    services = current_app.extensions.get("simple_safer_server")
+    if services is not None and hasattr(services, "command_runner"):
+        return services.command_runner
+    return None
 
 
 def _server_identity_service():
@@ -250,9 +263,18 @@ def setup_page():
         # Check if we have all required fields
         required_fields = {
             'system': ['username', 'server_name'],
-            'backup': ['mount_point', 'uuid', 'email_address'],
+            'backup': ['mount_point', 'email_address'],
+            'storage': ['mode', 'path', 'storage_id'],
             'schedule': ['backup_cloud_time'],
         }
+        storage_mode = current_config.get('storage', {}).get('mode', 'prepared_drive')
+        cloud_enabled = (
+            str(current_config.get('backup', {}).get('cloud_enabled', 'false')).lower() == 'true'
+        )
+        if storage_mode == 'prepared_drive':
+            required_fields['backup'].append('uuid')
+        if cloud_enabled:
+            required_fields['backup'].append('rclone_dir')
 
         missing_fields = []
         for section, fields in required_fields.items():
@@ -586,6 +608,9 @@ def mount_drive():
             smb_manager,
             runtime=runtime,
         )
+        mark_prepared_drive_storage(
+            config_manager, result.get('mount_point', mount_point), runtime=runtime
+        )
         logger.info(
             "Backup drive mounted successfully at %s", result.get('mount_point', mount_point)
         )
@@ -600,6 +625,50 @@ def mount_drive():
             f'Error mounting drive: {e!s}',
             details='An unexpected error occurred. Please check the system logs for more information.',
         )
+
+
+@setup.route('/api/setup/existing-folder', methods=['POST'])
+@setup_api_access_required
+def setup_existing_folder():
+    """Use a folder that is already managed or mounted outside SimpleSaferServer."""
+    try:
+        data = json_request_data()
+        location = configure_existing_folder(
+            config_manager,
+            data.get('path', ''),
+            runtime=runtime,
+            command_runner=_storage_command_runner(),
+        )
+        return json_data(
+            {
+                'path': location.path,
+                'mode': location.mode,
+            },
+            message='Storage folder saved.',
+        )
+    except StorageLocationError as exc:
+        return _validation_problem(str(exc))
+    except ApiProblem:
+        raise
+    except Exception as exc:
+        logger.error("Error configuring existing storage folder: %s", exc)
+        return _operation_problem('Could not configure the storage folder')
+
+
+@setup.route('/api/setup/cloud-backup/skip', methods=['POST'])
+@setup_api_access_required
+def skip_cloud_backup():
+    """Allow local-only setup without forcing an rclone destination."""
+    try:
+        config_manager.set_value('backup', 'cloud_enabled', 'false')
+        config_manager.set_value('backup', 'cloud_mode', '')
+        config_manager.set_value('backup', 'rclone_dir', '')
+        return json_data(message='Cloud backup skipped.')
+    except ApiProblem:
+        raise
+    except Exception as exc:
+        logger.error("Error skipping cloud backup: %s", exc)
+        return _operation_problem('Could not skip cloud backup')
 
 
 @setup.route('/api/setup/rclone', methods=['POST'])
@@ -813,9 +882,18 @@ def complete_setup():
         # Validate required fields
         required_fields = {
             'system': ['username', 'server_name'],
-            'backup': ['mount_point', 'uuid', 'email_address'],
+            'backup': ['mount_point', 'email_address'],
+            'storage': ['mode', 'path', 'storage_id'],
             'schedule': ['backup_cloud_time'],
         }
+        storage_mode = current_config.get('storage', {}).get('mode', 'prepared_drive')
+        cloud_enabled = (
+            str(current_config.get('backup', {}).get('cloud_enabled', 'false')).lower() == 'true'
+        )
+        if storage_mode == 'prepared_drive':
+            required_fields['backup'].append('uuid')
+        if cloud_enabled:
+            required_fields['backup'].append('rclone_dir')
 
         missing_fields = []
         for section, fields in required_fields.items():

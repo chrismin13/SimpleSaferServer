@@ -4,7 +4,7 @@ The Dashboard is the main interface for monitoring and managing the system. It p
 
 ## Status Indicators
 Four cards display real-time status:
-- **Storage**: Shows drive connection status, used/total storage, and usage percentage.
+- **Storage**: Shows whether the configured storage location is available, plus used/total storage and usage percentage when that information can be read.
 - **Network File Sharing**: Summarizes `smbd`, `nmbd`, and `wsdd2`. The tile is operational when
   `smbd` is active and discovery services are either active or unavailable (not installed), partial
   when `smbd` is active but at least one discovery service is inactive, and down
@@ -38,11 +38,12 @@ Four cards display real-time status:
   are rendered in the web log when the journal output includes them.
 
 ## System Actions
-- **Unmount Storage**: Opens a modal to confirm a temporary unmount of the configured backup drive.
+- **Unmount Storage**: Opens a modal to confirm a temporary unmount of the configured backup drive. This action is available only when SimpleSaferServer manages the prepared drive.
 - Before unmounting, the app best-effort closes SMB sessions and stops the related background tasks so Samba does not keep the backup share busy.
 - If the backup drive stays connected, SimpleSaferServer may remount it automatically during the next scheduled `Check Mount` run.
 - When the next `Check Mount` run is available, the confirmation dialog explains the remount timing as a relative countdown so the user knows how long they have to remove or swap the drive.
 - **Mount Storage**: Opens a modal to mount the storage drive. When a SimpleSaferServer-managed `/etc/fstab` entry exists for the mount point, the app verifies that the entry's `UUID=` still matches the configured backup drive before using it for the remount.
+- **Storage Settings**: Opens the Storage page when the configured storage is an existing folder. SimpleSaferServer does not mount or unmount existing-folder storage because that folder is managed outside the app.
 - **Restart System**: Opens a modal to confirm and restart the system.
 - **Shutdown System**: Opens a modal to confirm and shut down the system.
 - Restart and shutdown are blocked while apt or dpkg is active so package operations are not interrupted.

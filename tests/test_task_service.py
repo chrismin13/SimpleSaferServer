@@ -20,12 +20,28 @@ class FakeConfigManager:
     def __init__(self, mount_point, rclone_dir=""):
         self.mount_point = mount_point
         self.rclone_dir = rclone_dir
+        self.storage_id = "test-storage-id"
+
+    def get_all_config(self):
+        return {
+            "backup": {
+                "mount_point": self.mount_point,
+                "rclone_dir": self.rclone_dir,
+                "bandwidth_limit": "",
+            },
+            "storage": {
+                "mode": "existing_folder",
+                "path": self.mount_point,
+                "storage_id": self.storage_id,
+            },
+        }
 
     def get_value(self, section, key, default=None):
         values = {
             ("backup", "mount_point"): self.mount_point,
             ("backup", "rclone_dir"): self.rclone_dir,
             ("backup", "bandwidth_limit"): "",
+            ("storage", "storage_id"): self.storage_id,
             ("schedule", "backup_cloud_time"): "03:00",
         }
         return values.get((section, key), default)
@@ -248,6 +264,11 @@ class TaskServiceTests(unittest.TestCase):
 
     def test_fake_cloud_backup_runs_rclone_for_provider_parity(self):
         service, fake_state = self.build_service(mount_point=".", rclone_dir="/tmp/fake-backup")
+        marker_dir = Path(".simple-safer-server")
+        marker_dir.mkdir(exist_ok=True)
+        self.addCleanup(lambda: marker_dir.rmdir() if marker_dir.exists() else None)
+        self.addCleanup(lambda: (marker_dir / "storage.json").unlink(missing_ok=True))
+        (marker_dir / "storage.json").write_text('{"storage_id": "test-storage-id"}')
         service.rclone_adapter = MagicMock()
         service.rclone_adapter.sync.return_value = FakeProcess(stdout="copied\n")
 

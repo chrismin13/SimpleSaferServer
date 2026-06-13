@@ -14,6 +14,18 @@ class FakeConfigManager:
         self.mount_point = mount_point
         self.uuid = uuid
 
+    def get_all_config(self):
+        return {
+            "backup": {
+                "mount_point": self.mount_point,
+                "uuid": self.uuid or "",
+            },
+            "storage": {
+                "mode": "prepared_drive",
+                "path": self.mount_point,
+            },
+        }
+
     def get_value(self, section, key, default=None):
         values = {
             ("backup", "mount_point"): self.mount_point,

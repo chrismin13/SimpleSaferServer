@@ -6,6 +6,11 @@ from simple_safer_server.services.backup_drive_setup import (
     get_managed_fstab_entry_for_mount_point,
     split_uuid_device_lookup,
 )
+from simple_safer_server.services.storage_location import (
+    MODE_EXISTING_FOLDER,
+    get_storage_location,
+    storage_status,
+)
 from simple_safer_server.web.problems import OperationProblem, ValidationProblem
 
 
@@ -43,6 +48,17 @@ class StorageService:
             raise OperationProblem("Failed to shut down system.") from exc
 
     def mount_dashboard_drive(self) -> str:
+        location = get_storage_location(self._config_manager, runtime=self._runtime)
+        if location.mode == MODE_EXISTING_FOLDER:
+            status = storage_status(
+                self._config_manager,
+                self._command_adapter,
+                runtime=self._runtime,
+            )
+            if not status["ok"]:
+                raise ValidationProblem(status["error"], slug="storage-validation-error")
+            return "Storage folder is available."
+
         mount_point = self._config_manager.get_value(
             "backup", "mount_point", self._runtime.default_mount_point
         )

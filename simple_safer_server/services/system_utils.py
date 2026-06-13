@@ -140,6 +140,7 @@ account default : simplesaferserver
                 'check_health.sh',
                 'check_health.py',
                 'backup_cloud.sh',
+                'validate_storage_source.py',
                 'app_update.sh',
                 'app_update.py',
                 'log_alert.py',
@@ -171,6 +172,7 @@ account default : simplesaferserver
         """Create the /etc/SimpleSaferServer/config.conf file for scripts and Python (INI format)"""
         try:
             backup_config = config.get('backup', {})
+            storage_config = config.get('storage', {})
             system_config = config.get('system', {})
             schedule_config = config.get('schedule', {})
             hdsentinel_config = config.get('hdsentinel', {})
@@ -194,10 +196,24 @@ account default : simplesaferserver
                 'from_address': str(backup_config.get('from_address', '')),
                 'rclone_dir': str(backup_config.get('rclone_dir', '')),
                 'bandwidth_limit': str(backup_config.get('bandwidth_limit', '')),
+                'cloud_enabled': str(backup_config.get('cloud_enabled', 'false')),
                 'cloud_mode': str(backup_config.get('cloud_mode', '')),
                 'mega_email': str(backup_config.get('mega_email', '')),
                 'mega_pass': str(backup_config.get('mega_pass', '')),
                 'mega_folder': str(backup_config.get('mega_folder', '')),
+            }
+            parser['storage'] = {
+                'mode': str(storage_config.get('mode', 'prepared_drive')),
+                'path': str(
+                    storage_config.get(
+                        'path',
+                        backup_config.get('mount_point', self.runtime.default_mount_point),
+                    )
+                ),
+                'storage_id': str(storage_config.get('storage_id', '')),
+                'mount_source': str(storage_config.get('mount_source', '')),
+                'mount_target': str(storage_config.get('mount_target', '')),
+                'mount_fstype': str(storage_config.get('mount_fstype', '')),
             }
             parser['schedule'] = {
                 'backup_cloud_time': str(schedule_config.get('backup_cloud_time', '')),
@@ -455,15 +471,40 @@ WantedBy=timers.target
 
                 return True, None
 
-            # Enable and start services and timers
+            # Enable and start services and timers. Not every install uses every
+            # recurring job: existing-folder storage has no mount for us to
+            # manage, and cloud backup is optional during setup.
             disabled_records = self._active_disabled_timer_records()
-            for service_name in [
+            storage = config.get('storage', {})
+            backup = config.get('backup', {})
+            enabled_services = ['check_health', 'ddns_update', 'app_update']
+            if storage.get('mode', 'prepared_drive') == 'prepared_drive':
+                enabled_services.insert(0, 'check_mount')
+            cloud_enabled_value = backup.get('cloud_enabled')
+            cloud_backup_enabled = (
+                True if cloud_enabled_value is None else str(cloud_enabled_value).lower() == 'true'
+            )
+            if cloud_backup_enabled:
+                # Keep cloud backup after Check Mount and Drive Health in the
+                # visible task ordering and timer spacing.
+                enabled_services.insert(
+                    2 if 'check_mount' in enabled_services else 1, 'backup_cloud'
+                )
+
+            disabled_services = {
                 'check_mount',
                 'check_health',
                 'backup_cloud',
                 'ddns_update',
                 'app_update',
-            ]:
+            } - set(enabled_services)
+            for service_name in sorted(disabled_services):
+                self.run_command(
+                    ['systemctl', 'disable', '--now', f'{service_name}.timer'], check=False
+                )
+                self.logger.info(f"Left {service_name} timer disabled by configuration")
+
+            for service_name in enabled_services:
                 # Enable services
                 self.run_command(['systemctl', 'enable', f'{service_name}.service'])
                 if f'{service_name}.timer' in disabled_records:

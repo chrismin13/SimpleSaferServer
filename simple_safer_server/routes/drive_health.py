@@ -4,11 +4,11 @@ from typing import Any
 
 from flask import Blueprint, current_app, render_template, request
 
-from simple_safer_server.services.backup_drive_setup import get_managed_ntfs_driver
 from simple_safer_server.services.drive_health import (
     SMART_FIELDS,
     SMARTCTL_JSON_UPGRADE_MESSAGE,
     build_drive_health_summary,
+    collect_hdsentinel_drive_list,
     collect_hdsentinel_snapshot,
     get_hdsentinel_settings,
     get_smart_attributes,
@@ -42,15 +42,7 @@ def drives():
     # Page loads and settings saves must not probe disks or publish stale health.
     # HDSentinel data appears here only after an explicit health check POST.
     hdsentinel_snapshot = None
-    drive_config = {
-        "mount_point": services.config_manager.get_value(
-            "backup", "mount_point", services.runtime.default_mount_point
-        ),
-        "uuid": services.config_manager.get_value("backup", "uuid", ""),
-        "usb_id": services.config_manager.get_value("backup", "usb_id", ""),
-        "ntfs_driver": get_managed_ntfs_driver(runtime=services.runtime),
-    }
-
+    hdsentinel_drives = []
     smart_support_warning = None
     if not services.runtime.is_fake:
         try:
@@ -94,6 +86,10 @@ def drives():
                     services.system_utils,
                     runtime=services.runtime,
                 )
+                hdsentinel_drives = collect_hdsentinel_drive_list(
+                    services.config_manager,
+                    runtime=services.runtime,
+                )
             # The Drive Health page already did the live probe above, so reuse
             # that result instead of waking or querying the drive a second time.
             summary = {
@@ -128,7 +124,7 @@ def drives():
         smart_fields=SMART_FIELDS,
         hdsentinel_settings=hdsentinel_settings,
         hdsentinel_snapshot=hdsentinel_snapshot,
-        drive_config=drive_config,
+        hdsentinel_drives=hdsentinel_drives,
         smart_support_warning=smart_support_warning,
         settings_message=settings_message,
         settings_error=settings_error,

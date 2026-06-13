@@ -1,7 +1,7 @@
 from typing import Any
 
 import psutil
-from flask import Blueprint, current_app
+from flask import Blueprint, current_app, render_template
 
 from simple_safer_server.services.backup_drive_setup import (
     BackupDriveSetupError,
@@ -12,6 +12,15 @@ from simple_safer_server.services.backup_drive_setup import (
 from simple_safer_server.services.backup_drive_unmount import (
     is_selected_partition_managed_backup_drive,
     unmount_managed_backup_drive,
+)
+from simple_safer_server.services.storage_location import (
+    MODE_EXISTING_FOLDER,
+    StorageLocationError,
+    configure_existing_folder,
+    get_storage_location,
+    mark_prepared_drive_storage,
+    repair_storage_marker,
+    storage_status,
 )
 from simple_safer_server.services.user_manager import admin_required, api_admin_required
 from simple_safer_server.web.api import json_data, json_problem, json_request_data
@@ -50,6 +59,14 @@ def _apt_lock_block_response(action: str):
 @admin_required
 def unmount():
     services = _get_services()
+    location = get_storage_location(services.config_manager, runtime=services.runtime)
+    if location.mode == MODE_EXISTING_FOLDER:
+        return json_problem(
+            ValidationProblem(
+                "SimpleSaferServer does not mount or unmount existing-folder storage.",
+                slug="storage-validation-error",
+            )
+        )
     mount_point = services.config_manager.get_value(
         "backup", "mount_point", services.runtime.default_mount_point
     )
@@ -135,24 +152,38 @@ def shutdown():
 @api_admin_required
 def api_storage_status():
     services = _get_services()
-    mount_point = services.config_manager.get_value(
-        "backup", "mount_point", services.runtime.default_mount_point
-    )
-    mounted = services.system_utils.is_mounted(mount_point)
-    if mounted:
-        try:
-            disk = psutil.disk_usage(mount_point)
-            used_storage = f"{disk.used / (1024**3):.1f}"
-            total_storage = f"{disk.total / (1024**3):.1f}"
-            storage_usage = f"{disk.percent}%"
-        except Exception:
-            used_storage = total_storage = storage_usage = None
-    else:
+    location = get_storage_location(services.config_manager, runtime=services.runtime)
+    mount_point = location.path
+    mounted = services.system_utils.is_mounted(mount_point) if location.app_manages_mount else False
+    available = False
+    try:
+        status = storage_status(
+            services.config_manager,
+            services.system_utils,
+            runtime=services.runtime,
+            command_runner=services.command_runner,
+        )
+        available = status["ok"]
+        storage_error = status["error"]
+    except Exception as exc:
+        storage_error = str(exc)
+    try:
+        # Usage only needs the path to be readable. The stricter available/error
+        # fields still tell the UI if cloud backup safety checks are passing.
+        disk = psutil.disk_usage(mount_point)
+        used_storage = f"{disk.used / (1024**3):.1f}"
+        total_storage = f"{disk.total / (1024**3):.1f}"
+        storage_usage = f"{disk.percent}%"
+    except Exception:
         used_storage = total_storage = storage_usage = None
     disk_available = total_storage is not None
     return json_data(
         {
             "mounted": mounted,
+            "mode": location.mode,
+            "app_manages_mount": location.app_manages_mount,
+            "available": available,
+            "error": storage_error,
             "disk_available": disk_available,
             "used_storage": used_storage,
             "total_storage": total_storage,
@@ -272,6 +303,11 @@ def api_backup_drive_configure():
             runtime=services.runtime,
             ntfs_driver=data.get("ntfs_driver", "ntfs-3g"),
         )
+        mark_prepared_drive_storage(
+            services.config_manager,
+            result.get("mount_point", data.get("mount_point")),
+            runtime=services.runtime,
+        )
         return json_data({"result": result})
     except BackupDriveSetupError as exc:
         return json_problem(
@@ -284,3 +320,67 @@ def api_backup_drive_configure():
     except Exception as exc:
         current_app.logger.error("Error configuring backup drive: %s", exc)
         return json_problem(OperationProblem("Could not configure the backup drive."))
+
+
+@storage.route("/storage")
+@admin_required
+def storage_page():
+    services = _get_services()
+    location = get_storage_location(services.config_manager, runtime=services.runtime)
+    drive_config = {
+        "mount_point": services.config_manager.get_value(
+            "backup", "mount_point", services.runtime.default_mount_point
+        ),
+        "uuid": services.config_manager.get_value("backup", "uuid", ""),
+        "usb_id": services.config_manager.get_value("backup", "usb_id", ""),
+    }
+    status = storage_status(
+        services.config_manager,
+        services.system_utils,
+        runtime=services.runtime,
+        command_runner=services.command_runner,
+    )
+    return render_template(
+        "storage.html",
+        storage_location=location,
+        storage_status=status,
+        drive_config=drive_config,
+    )
+
+
+@storage.route("/api/storage/existing-folder", methods=["POST"])
+@api_admin_required
+def api_existing_folder():
+    services = _get_services()
+    try:
+        data = json_request_data()
+        location = configure_existing_folder(
+            services.config_manager,
+            data.get("path", ""),
+            runtime=services.runtime,
+            command_runner=services.command_runner,
+        )
+        services.smb_manager.ensure_default_backup_share(
+            location.path,
+            services.config_manager.get_value("system", "username", ""),
+        )
+        return json_data({"path": location.path}, message="Storage folder saved.")
+    except StorageLocationError as exc:
+        return json_problem(ValidationProblem(str(exc), slug="storage-validation-error"))
+    except Exception:
+        current_app.logger.exception("Could not configure existing storage folder")
+        return json_problem(OperationProblem("Could not configure the storage folder."))
+
+
+@storage.route("/api/storage/repair-marker", methods=["POST"])
+@api_admin_required
+def api_repair_storage_marker():
+    services = _get_services()
+    try:
+        location = repair_storage_marker(services.config_manager, runtime=services.runtime)
+        return json_data({"path": location.path}, message="Storage marker repaired.")
+    except StorageLocationError as exc:
+        return json_problem(ValidationProblem(str(exc), slug="storage-validation-error"))
+    except Exception:
+        current_app.logger.exception("Could not repair storage marker")
+        return json_problem(OperationProblem("Could not repair the storage marker."))
