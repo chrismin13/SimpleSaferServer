@@ -160,8 +160,11 @@ Before every cloud backup, SimpleSaferServer checks the storage marker and confi
 If the storage location changes after setup:
 
 - use the Storage page
-- choose a new existing folder, or rerun the prepared-drive setup there
+- choose a new existing folder, or open **Change prepared drive** for replacement drive work
 - check that the default `backup` network share still points to the intended folder
 
-The prepared-drive rerun flow is intentionally partition-oriented and does not behave like the whole-disk format step.
-If the selected partition is still the live configured backup share, the rerun flow can temporarily disconnect SMB access before unmounting it.
+The prepared-drive change page is a normal authenticated management page, not the first-run setup wizard.
+It has a whole-disk format section and an NTFS partition use section.
+Formatting a disk there is destructive, but it does not update SimpleSaferServer storage by itself.
+The saved storage path, configured UUID, managed `/etc/fstab` entry, marker file, and timers change only after **Use This Drive** succeeds.
+If the selected partition is still the live configured backup share, the change flow can temporarily disconnect SMB access before unmounting it.

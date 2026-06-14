@@ -4,6 +4,7 @@ from simple_safer_server.adapters.command_runner import CommandRunner
 
 BACKUP_DRIVE_COMMAND_TIMEOUT_SECONDS = 30
 BACKUP_DRIVE_MOUNT_TIMEOUT_SECONDS = 120
+BACKUP_DRIVE_FORMAT_TIMEOUT_SECONDS = 300
 
 
 class BackupDriveCommandAdapter:
@@ -127,6 +128,50 @@ class BackupDriveCommandAdapter:
             capture_output=True,
             text=True,
             timeout=BACKUP_DRIVE_COMMAND_TIMEOUT_SECONDS,
+        )
+
+    def whole_disk_type(self, disk: str):
+        return self._command_runner.run(
+            ["lsblk", "-dn", "-o", "TYPE", disk],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=BACKUP_DRIVE_COMMAND_TIMEOUT_SECONDS,
+        )
+
+    def create_partition(self, disk: str, partition_script: bytes):
+        # Formatting is a whole-disk operation; sfdisk receives the exact GPT
+        # script over stdin so the selected device path never goes through a shell.
+        return self._command_runner.run(
+            [
+                "sfdisk",
+                "--wipe",
+                "always",
+                "--wipe-partitions",
+                "always",
+                "--label",
+                "gpt",
+                disk,
+            ],
+            input=partition_script,
+            capture_output=True,
+            timeout=BACKUP_DRIVE_COMMAND_TIMEOUT_SECONDS,
+        )
+
+    def partprobe(self, disk: str):
+        return self._command_runner.run(
+            ["partprobe", disk],
+            capture_output=True,
+            text=True,
+            timeout=BACKUP_DRIVE_COMMAND_TIMEOUT_SECONDS,
+        )
+
+    def format_ntfs(self, partition: str):
+        return self._command_runner.run(
+            ["mkfs.ntfs", "-f", partition],
+            capture_output=True,
+            text=True,
+            timeout=BACKUP_DRIVE_FORMAT_TIMEOUT_SECONDS,
         )
 
     def system_drive(self):

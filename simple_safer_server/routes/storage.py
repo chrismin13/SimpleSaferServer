@@ -6,7 +6,9 @@ from flask import Blueprint, current_app, render_template
 from simple_safer_server.services.backup_drive_setup import (
     BackupDriveSetupError,
     apply_backup_drive_configuration,
+    format_backup_drive,
     list_available_drives,
+    unmount_disk_partitions,
     unmount_selected_partition,
 )
 from simple_safer_server.services.backup_drive_unmount import (
@@ -306,6 +308,44 @@ def api_backup_drive_drives():
         return json_problem(OperationProblem(str(exc), slug="backup-drive-operation-failed"))
 
 
+@storage.route("/api/backup_drive/format-drives", methods=["GET"])
+@api_admin_required
+def api_backup_drive_format_drives():
+    services = _get_services()
+    try:
+        # Formatting is intentionally broader than the NTFS partition picker:
+        # admins need to see blank or non-NTFS disks before preparing them.
+        return json_data(
+            {"drives": list_available_drives(runtime=services.runtime, ntfs_only=False)}
+        )
+    except Exception as exc:
+        current_app.logger.error("Error listing backup format drives: %s", exc)
+        return json_problem(OperationProblem(str(exc), slug="backup-drive-operation-failed"))
+
+
+@storage.route("/api/backup_drive/format", methods=["POST"])
+@api_admin_required
+def api_backup_drive_format():
+    services = _get_services()
+    try:
+        data = json_request_data()
+        # Formatting prepares removable media only; storage config is changed
+        # later by /api/backup_drive/configure after the NTFS partition mounts.
+        result = format_backup_drive(data.get("disk"), runtime=services.runtime)
+        return json_data({"result": result}, message=result["message"])
+    except BackupDriveSetupError as exc:
+        return json_problem(
+            ValidationProblem(
+                str(exc),
+                slug="backup-drive-validation-error",
+                extra={"details": exc.details},
+            )
+        )
+    except Exception as exc:
+        current_app.logger.error("Error formatting backup drive: %s", exc)
+        return json_problem(OperationProblem("Could not format the selected drive."))
+
+
 @storage.route("/api/backup_drive/unmount", methods=["POST"])
 @api_admin_required
 def api_backup_drive_unmount():
@@ -313,6 +353,13 @@ def api_backup_drive_unmount():
     try:
         data = json_request_data()
         partition = data.get("partition")
+        disk = data.get("disk")
+        if disk:
+            # Disk unmount is for the format section. It only clears live mounts
+            # and does not deconfigure the current backup source.
+            message = unmount_disk_partitions(disk, runtime=services.runtime)
+            return json_data({}, message=message)
+
         configured_mount_point = services.config_manager.get_value(
             "backup",
             "mount_point",
@@ -416,6 +463,20 @@ def storage_page():
         safety_checks=_build_storage_safety_checks(status, location),
         drive_config=drive_config,
     )
+
+
+@storage.route("/storage/change-drive")
+@admin_required
+def storage_change_drive_page():
+    services = _get_services()
+    drive_config = {
+        "mount_point": services.config_manager.get_value(
+            "backup", "mount_point", services.runtime.default_mount_point
+        ),
+        "uuid": services.config_manager.get_value("backup", "uuid", ""),
+        "usb_id": services.config_manager.get_value("backup", "usb_id", ""),
+    }
+    return render_template("storage_change_drive.html", drive_config=drive_config)
 
 
 @storage.route("/api/storage/existing-folder", methods=["POST"])

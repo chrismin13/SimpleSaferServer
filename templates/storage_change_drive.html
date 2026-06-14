@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+
+{% block title %}{{ browser_title('Change Prepared Drive') }}{% endblock %}
+{% block header %}Change Prepared Drive{% endblock %}
+
+{% block content %}
+<div class="storage-page storage-change-page">
+  <section class="storage-status-strip storage-change-summary" aria-label="Current prepared drive">
+    <div class="storage-status-item storage-status-location">
+      <div class="storage-status-label"><i class="fas fa-location-dot"></i> Current Mount Point</div>
+      <div class="storage-status-value text-mono">{{ drive_config.mount_point }}</div>
+    </div>
+    <div class="storage-status-item">
+      <div class="storage-status-label"><i class="fas fa-fingerprint"></i> Current UUID</div>
+      <div class="storage-status-value text-mono">{{ drive_config.uuid or '—' }}</div>
+    </div>
+    <div class="storage-status-item">
+      <div class="storage-status-label"><i class="fas fa-usb"></i> Current USB ID</div>
+      <div class="storage-status-value text-mono">{{ drive_config.usb_id or '—' }}</div>
+    </div>
+  </section>
+
+  <section class="card storage-change-section">
+    <div class="card-header">
+      <h2 class="card-title">Format a drive</h2>
+    </div>
+    <div class="card-body">
+      <div class="alert alert-warning storage-mode-note">
+        <div>
+          Formatting deletes files from the selected disk. It prepares an NTFS partition but does not change the SimpleSaferServer storage setting.
+        </div>
+      </div>
+
+      <div class="storage-change-form-grid">
+        <div class="form-group">
+          <label class="form-label" for="formatDriveSelect">Drive</label>
+          <select class="form-control" id="formatDriveSelect">
+            <option value="">Refresh drives to select a disk...</option>
+          </select>
+          <div class="form-hint">Skip this section if the replacement drive already has an NTFS partition.</div>
+        </div>
+      </div>
+
+      <div class="storage-change-actions">
+        <div class="drive-setup-status text-muted" id="formatDriveStatus"></div>
+        <div class="storage-primary-actions">
+          <button type="button" id="refreshFormatDrivesBtn" class="btn btn-secondary btn-sm">
+            <i class="fas fa-rotate me-1"></i> Refresh Drives
+          </button>
+          <button type="button" id="unmountFormatDriveBtn" class="btn btn-secondary btn-sm">
+            <i class="fas fa-eject me-1"></i> Unmount
+          </button>
+          <button type="button" id="formatDriveBtn" class="btn btn-danger btn-sm">
+            <i class="fas fa-triangle-exclamation me-1"></i> Format Drive
+          </button>
+        </div>
+      </div>
+
+      <div id="formatDriveError" class="alert alert-danger d-none storage-feedback-below-actions">
+        <div class="d-flex items-center justify-between gap-3 flex-wrap">
+          <span id="formatDriveErrorText"></span>
+          <button type="button" id="formatDriveErrorDetailsBtn" class="btn btn-secondary btn-sm d-none">Show Details</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card storage-change-section">
+    <div class="card-header">
+      <h2 class="card-title">Use an NTFS partition</h2>
+    </div>
+    <div class="card-body">
+      <div class="alert alert-info storage-mode-note">
+        <div>
+          Use This Drive is the only action on this page that changes SimpleSaferServer storage.
+        </div>
+      </div>
+
+      <div class="storage-change-form-grid">
+        <div class="form-group">
+          <label class="form-label" for="backupDriveSelect">NTFS Partition</label>
+          <select class="form-control" id="backupDriveSelect">
+            <option value="">Refresh partitions to select a target...</option>
+          </select>
+          <div class="form-hint">Select the exact NTFS partition to mount for backups.</div>
+        </div>
+      </div>
+
+      <details class="storage-advanced-options">
+        <summary>Advanced options</summary>
+        <div class="storage-drive-fields">
+          <div class="form-group">
+            <label class="form-label" for="backupDriveMountPoint">Mount Point</label>
+            <input type="text" class="form-control text-mono" id="backupDriveMountPoint" value="{{ drive_config.mount_point }}" placeholder="/media/backup">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="backupDriveNtfsDriver">NTFS Driver</label>
+            <select class="form-control" id="backupDriveNtfsDriver">
+              <option value="ntfs-3g">ntfs-3g</option>
+              <option value="ntfs3">ntfs3</option>
+            </select>
+            <div class="form-hint">Default: ntfs-3g</div>
+          </div>
+        </div>
+      </details>
+
+      <div class="storage-change-actions">
+        <div class="drive-setup-status text-muted" id="partitionDriveStatus"></div>
+        <div class="storage-primary-actions">
+          <button type="button" id="refreshPartitionsBtn" class="btn btn-secondary btn-sm">
+            <i class="fas fa-rotate me-1"></i> Refresh Partitions
+          </button>
+          <button type="button" id="unmountPartitionBtn" class="btn btn-secondary btn-sm">
+            <i class="fas fa-eject me-1"></i> Unmount
+          </button>
+          <button type="button" id="useDriveBtn" class="btn btn-primary btn-sm">
+            <i class="fas fa-circle-check me-1"></i> Use This Drive
+          </button>
+        </div>
+      </div>
+
+      <div id="partitionDriveError" class="alert alert-danger d-none storage-feedback-below-actions">
+        <div class="d-flex items-center justify-between gap-3 flex-wrap">
+          <span id="partitionDriveErrorText"></span>
+          <button type="button" id="partitionDriveErrorDetailsBtn" class="btn btn-secondary btn-sm d-none">Show Details</button>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="modal-overlay" id="backupDriveSetupErrorDetailsModal">
+  <div class="modal-container modal-lg">
+    <div class="modal-header">
+      <h5>Drive Setup Error Details</h5>
+      <button class="modal-close" data-modal-close><i class="fas fa-xmark"></i></button>
+    </div>
+    <div class="modal-body">
+      <pre id="backupDriveSetupErrorDetailsText" style="white-space: pre-wrap; word-break: break-word; margin: 0;"></pre>
+    </div>
+    <div class="modal-footer">
+      <div class="modal-footer-actions">
+        <button class="btn btn-secondary" data-modal-close>Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/storage_change_drive.js') }}"></script>
+{% endblock %}

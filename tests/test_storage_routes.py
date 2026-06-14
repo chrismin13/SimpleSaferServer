@@ -7,12 +7,38 @@ from simple_safer_server.routes.storage import _build_storage_safety_checks, sto
 
 
 def _app_with_services(services):
-    app = Flask(__name__)
+    app = Flask(__name__, template_folder="../templates", static_folder="../static")
     app.secret_key = "test-secret"
     app.config["TESTING"] = True
     app.extensions["simple_safer_server"] = services
+    app.jinja_env.globals["browser_title"] = lambda title: title
     app.register_blueprint(storage)
+    app.add_url_rule("/login", "login", lambda: "login")
+    app.add_url_rule("/", "task_routes.dashboard", lambda: "dashboard")
+    app.add_url_rule("/shares", "network_file_sharing", lambda: "shares")
+    app.add_url_rule("/users", "users_routes.users_page", lambda: "users")
+    app.add_url_rule("/drives", "drive_health_routes.drives", lambda: "drives")
+    app.add_url_rule("/ddns", "ddns_routes.ddns_page", lambda: "ddns")
+    app.add_url_rule("/cloud-backup", "cloud_backup_routes.cloud_backup_page", lambda: "cloud")
+    app.add_url_rule(
+        "/system-updates",
+        "system_updates_routes.system_updates_page",
+        lambda: "updates",
+    )
+    app.add_url_rule("/alerts", "alerts_routes.alerts_page", lambda: "alerts")
+    app.add_url_rule("/logout", "logout", lambda: "logout")
     return app
+
+
+def _admin_get(app, path):
+    client = app.test_client()
+    with client.session_transaction() as session:
+        session["username"] = "admin"
+    with patch(
+        "simple_safer_server.services.user_manager.UserManager",
+        return_value=SimpleNamespace(is_admin=lambda username: username == "admin"),
+    ):
+        return client.get(path)
 
 
 def _admin_post(app, path, json):
@@ -44,7 +70,57 @@ def _services():
         smb_manager=MagicMock(),
         runtime=SimpleNamespace(is_fake=True, default_mount_point="/media/backup"),
         command_runner=MagicMock(),
+        task_service=SimpleNamespace(get_check_mount_next_run=lambda: None),
     )
+
+
+def test_change_drive_page_requires_admin_session():
+    app = _app_with_services(_services())
+
+    response = app.test_client().get("/storage/change-drive")
+
+    assert response.status_code == 302
+    assert "/login" in response.headers["Location"]
+
+
+def test_change_drive_page_renders_inside_storage_shell():
+    app = _app_with_services(_services())
+
+    response = _admin_get(app, "/storage/change-drive")
+
+    assert response.status_code == 200
+    body = response.get_data(as_text=True)
+    assert "Change Prepared Drive" in body
+    assert "Format a drive" in body
+    assert "Use an NTFS partition" in body
+    assert "/static/js/storage_change_drive.js" in body
+
+
+def test_storage_page_links_to_change_prepared_drive_without_scan_action():
+    services = _services()
+    app = _app_with_services(services)
+
+    with (
+        patch(
+            "simple_safer_server.routes.storage.get_storage_location",
+            return_value=SimpleNamespace(
+                mode="prepared_drive",
+                path="/media/backup",
+                app_manages_mount=True,
+            ),
+        ),
+        patch(
+            "simple_safer_server.routes.storage.storage_status",
+            return_value={"ok": True, "error": ""},
+        ),
+    ):
+        response = _admin_get(app, "/storage")
+
+    assert response.status_code == 200
+    body = response.get_data(as_text=True)
+    assert "Change Prepared Drive" in body
+    assert "/storage/change-drive" in body
+    assert "Scan Connected Drives" not in body
 
 
 def test_existing_folder_storage_refreshes_systemd_timers():
@@ -89,6 +165,100 @@ def test_prepared_drive_storage_refreshes_systemd_timers():
     services.system_utils.install_systemd_services_and_timers.assert_called_once_with(
         services.config_manager.get_all_config.return_value
     )
+
+
+def test_prepared_drive_configure_passes_ntfs_driver():
+    services = _services()
+    app = _app_with_services(services)
+
+    with patch(
+        "simple_safer_server.routes.storage.apply_backup_drive_configuration",
+        return_value={"mount_point": "/media/backup"},
+    ) as apply_backup_drive_configuration:
+        with patch("simple_safer_server.routes.storage.mark_prepared_drive_storage"):
+            response = _admin_post(
+                app,
+                "/api/backup_drive/configure",
+                {
+                    "partition": "/dev/sdb1",
+                    "mount_point": "/media/backup",
+                    "ntfs_driver": "ntfs3",
+                },
+            )
+
+    assert response.status_code == 200
+    assert apply_backup_drive_configuration.call_args.kwargs["ntfs_driver"] == "ntfs3"
+
+
+def test_format_drive_list_uses_broad_scan():
+    services = _services()
+    app = _app_with_services(services)
+
+    with patch(
+        "simple_safer_server.routes.storage.list_available_drives",
+        return_value=[{"path": "/dev/sdb", "partitions": []}],
+    ) as list_available_drives:
+        response = _admin_get(app, "/api/backup_drive/format-drives")
+
+    assert response.status_code == 200
+    assert response.get_json()["data"]["drives"][0]["path"] == "/dev/sdb"
+    list_available_drives.assert_called_once_with(runtime=services.runtime, ntfs_only=False)
+
+
+def test_format_drive_requires_disk():
+    services = _services()
+    app = _app_with_services(services)
+
+    response = _admin_post(app, "/api/backup_drive/format", {})
+
+    assert response.status_code == 400
+    assert "No disk selected" in response.get_json()["detail"]
+
+
+def test_format_drive_failure_returns_validation_problem():
+    services = _services()
+    app = _app_with_services(services)
+
+    with patch(
+        "simple_safer_server.routes.storage.format_backup_drive",
+        side_effect=Exception("boom"),
+    ):
+        response = _admin_post(app, "/api/backup_drive/format", {"disk": "/dev/sdb"})
+
+    assert response.status_code == 500
+    assert "Could not format" in response.get_json()["detail"]
+
+
+def test_format_drive_does_not_mutate_storage_config():
+    services = _services()
+    app = _app_with_services(services)
+
+    with patch(
+        "simple_safer_server.routes.storage.format_backup_drive",
+        return_value={
+            "disk": "/dev/sdb",
+            "partition": "/dev/sdb1",
+            "message": "Successfully formatted /dev/sdb1 as NTFS.",
+        },
+    ):
+        response = _admin_post(app, "/api/backup_drive/format", {"disk": "/dev/sdb"})
+
+    assert response.status_code == 200
+    services.config_manager.set_value.assert_not_called()
+
+
+def test_unmount_disk_does_not_mutate_storage_config():
+    services = _services()
+    app = _app_with_services(services)
+
+    with patch(
+        "simple_safer_server.routes.storage.unmount_disk_partitions",
+        return_value="Successfully unmounted 1 partition(s).",
+    ):
+        response = _admin_post(app, "/api/backup_drive/unmount", {"disk": "/dev/sdb"})
+
+    assert response.status_code == 200
+    services.config_manager.set_value.assert_not_called()
 
 
 def test_existing_folder_reports_timer_refresh_failure():

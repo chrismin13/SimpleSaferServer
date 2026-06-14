@@ -86,7 +86,7 @@
         >
           <div class="alert alert-warning storage-mode-note">
             <div>
-              Preparing a drive can erase the selected drive during setup. Use this section only when replacing or reconnecting the storage drive SimpleSaferServer should manage.
+              Change prepared drive opens a separate page for formatting or using a replacement NTFS drive. Formatting removes files, but current storage stays configured until Use This Drive succeeds.
             </div>
           </div>
 
@@ -106,51 +106,16 @@
             </div>
           </div>
 
-          <div class="storage-drive-fields">
-            <div class="form-group">
-              <label class="form-label" for="backupDriveSelect">Drive Partition</label>
-              <select class="form-control" id="backupDriveSelect">
-                <option value="">Select a partition...</option>
-              </select>
-              <div class="form-hint">NTFS only</div>
+          <div class="storage-action-entry">
+            <div>
+              <div class="storage-action-title">Change prepared drive</div>
+              <div class="storage-action-copy">
+                Format or use a replacement NTFS drive without changing storage until the final apply succeeds.
+              </div>
             </div>
-            <div class="form-group">
-              <label class="form-label" for="backupDriveMountPoint">Storage Path</label>
-              <input type="text" class="form-control text-mono" id="backupDriveMountPoint" value="{{ drive_config.mount_point }}" placeholder="/media/backup">
-              <div class="form-hint">Where this drive will be mounted</div>
-            </div>
-            <div class="form-group">
-              <label class="form-label" for="backupDriveNtfsDriver">NTFS Driver</label>
-              <select class="form-control" id="backupDriveNtfsDriver">
-                <option value="ntfs-3g">ntfs-3g</option>
-                <option value="ntfs3">ntfs3</option>
-              </select>
-              <div class="form-hint">Recommended: ntfs-3g</div>
-            </div>
-          </div>
-
-          <div class="storage-drive-actions">
-            <div class="storage-drive-scan">
-              <button type="button" id="scanBackupDrivesBtn" class="btn btn-secondary btn-sm">
-                <i class="fas fa-magnifying-glass me-1"></i> Scan Connected Drives
-              </button>
-              <div id="driveSetupStatus" class="drive-setup-status text-muted"></div>
-            </div>
-            <div class="storage-primary-actions">
-              <button type="button" id="unmountBackupDriveBtn" class="btn btn-secondary btn-sm">
-                <i class="fas fa-eject me-1"></i> Unmount Selected Drive
-              </button>
-              <button type="button" id="applyBackupDriveBtn" class="btn btn-primary btn-sm">
-                <i class="fas fa-circle-check me-1"></i> Apply Drive Setup
-              </button>
-            </div>
-          </div>
-
-          <div id="driveSetupError" class="alert alert-danger d-none mb-4 storage-feedback-below-actions">
-            <div class="d-flex items-center justify-between gap-3 flex-wrap">
-              <span id="driveSetupErrorText"></span>
-              <button type="button" id="driveSetupErrorDetailsBtn" class="btn btn-secondary btn-sm d-none">Show Details</button>
-            </div>
+            <a href="{{ url_for('storage_routes.storage_change_drive_page') }}" class="btn btn-primary btn-sm">
+              <i class="fas fa-hard-drive me-1"></i> Change Prepared Drive
+            </a>
           </div>
         </div>
 
@@ -247,22 +212,6 @@
   </div>
 </div>
 
-<div class="modal-overlay" id="backupDriveSetupErrorDetailsModal">
-  <div class="modal-container modal-lg">
-    <div class="modal-header">
-      <h5>Drive Setup Error Details</h5>
-      <button class="modal-close" data-modal-close><i class="fas fa-xmark"></i></button>
-    </div>
-    <div class="modal-body">
-      <pre id="backupDriveSetupErrorDetailsText" style="white-space: pre-wrap; word-break: break-word; margin: 0;"></pre>
-    </div>
-    <div class="modal-footer">
-      <div class="modal-footer-actions">
-        <button class="btn btn-secondary" data-modal-close>Close</button>
-      </div>
-    </div>
-  </div>
-</div>
 {% endblock %}
 
 {% block extra_js %}

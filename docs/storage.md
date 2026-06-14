@@ -25,6 +25,30 @@ In this mode the app:
 
 This is the simplest mode for the original one-drive setup.
 
+### Change Prepared Drive
+
+Use **Change prepared drive** on the Storage page when replacing the managed backup disk.
+
+The change page has two sections:
+
+- **Format a drive** lists non-system disks that can be prepared. Formatting deletes the selected disk's files and partitions, creates one NTFS partition, and leaves the current SimpleSaferServer storage setting unchanged.
+- **Use an NTFS partition** lists NTFS partitions that can become the managed backup drive. This is the only section that changes SimpleSaferServer storage.
+
+Unmount actions on the change page are temporary preparation steps. Unmounting a selected disk or partition does not clear the saved storage path, configured UUID, `/etc/fstab` entry, marker file, or timers.
+
+The current storage configuration changes only after **Use This Drive** succeeds. On success, SimpleSaferServer:
+
+- mounts the selected NTFS partition at the chosen mount point
+- writes the SimpleSaferServer-managed `/etc/fstab` entry
+- updates `backup.mount_point`, `backup.uuid`, and `backup.usb_id`
+- updates the default `backup` network share path
+- creates the storage marker file in the selected storage location
+- refreshes the generated systemd services and timers
+
+If an administrator leaves the change page after formatting or unmounting but before using a partition, the previous storage configuration remains in place.
+
+The advanced options on the change page allow changing the mount point and choosing the NTFS driver. `ntfs-3g` is the default. `ntfs3` is available for systems where the in-kernel driver is preferred.
+
 ## Existing Folder
 
 Use this mode when the storage is already managed outside SimpleSaferServer.
