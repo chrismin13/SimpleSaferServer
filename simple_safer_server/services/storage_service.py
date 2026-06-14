@@ -103,7 +103,7 @@ class StorageService:
                 if managed_fstab_entry.get("uuid") != uuid:
                     raise ValidationProblem(
                         "Managed fstab entry does not match the configured backup drive UUID. "
-                        "Re-run prepared-drive setup from Storage before mounting.",
+                        "Re-run managed-drive setup from Storage before mounting.",
                         slug="storage-validation-error",
                     )
                 # Prefer the managed fstab entry only after the UUID matches so
@@ -127,6 +127,6 @@ class StorageService:
             raise OperationProblem("Failed to mount drive.") from exc
         except OSError as exc:
             raise OperationProblem(
-                "Could not prepare the mount point. Check that the configured "
+                "Could not create or access the mount point. Check that the configured "
                 "folder path is valid and writable."
             ) from exc

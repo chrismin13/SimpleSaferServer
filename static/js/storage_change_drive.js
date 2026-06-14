@@ -205,7 +205,7 @@ SimpleSaferServer storage will not change until you use the NTFS partition in th
     }
     const confirmed = await window.showConfirmationDialog({
       title: 'Unmount Partition',
-      message: 'This temporarily unmounts the selected partition so it can be used as the prepared drive.',
+      message: 'This temporarily unmounts the selected partition so it can be used as the managed drive.',
       confirmLabel: 'Unmount',
       confirmClass: 'btn-warning'
     });
@@ -248,7 +248,7 @@ SimpleSaferServer storage will not change until you use the NTFS partition in th
     });
     if (!confirmed) return;
 
-    setStatus(partitionFeedback, 'Applying prepared drive...', 'info');
+    setStatus(partitionFeedback, 'Applying managed drive...', 'info');
     window.AsyncButtonState.start(useDriveBtn);
     try {
       const { data } = await window.ApiClient.fetchJson('/api/backup_drive/configure', {
@@ -261,8 +261,8 @@ SimpleSaferServer storage will not change until you use the NTFS partition in th
         })
       });
       const result = data.result || {};
-      setStatus(partitionFeedback, result.message || 'Prepared drive saved.', 'success');
-      if (window.showAlert) window.showAlert(result.message || 'Prepared drive saved.', 'success');
+      setStatus(partitionFeedback, result.message || 'Managed drive saved.', 'success');
+      if (window.showAlert) window.showAlert(result.message || 'Managed drive saved.', 'success');
       window.AsyncButtonState.success(useDriveBtn);
       window.setTimeout(() => {
         window.location.assign('/storage');

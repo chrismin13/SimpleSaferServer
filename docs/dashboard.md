@@ -38,7 +38,7 @@ Four cards display real-time status:
   are rendered in the web log when the journal output includes them.
 
 ## System Actions
-- **Unmount Storage**: Opens a modal to confirm a temporary unmount of the configured backup drive. This action is available only when SimpleSaferServer manages the prepared drive.
+- **Unmount Storage**: Opens a modal to confirm a temporary unmount of the configured backup drive. This action is available only when SimpleSaferServer manages the backup drive.
 - Before unmounting, the app best-effort closes SMB sessions and stops the related background tasks so Samba does not keep the backup share busy.
 - If the backup drive stays connected, SimpleSaferServer may remount it automatically during the next scheduled `Check Mount` run.
 - When the next `Check Mount` run is available, the confirmation dialog explains the remount timing as a relative countdown so the user knows how long they have to remove or swap the drive.

@@ -15,7 +15,7 @@ from simple_safer_server.services.drive_health import (
     get_smartctl_json_support,
     hdsentinel_snapshot_has_health,
     hdsentinel_summary_status,
-    mark_prepared_storage_drive,
+    mark_managed_storage_drive,
     save_hdsentinel_settings,
 )
 from simple_safer_server.services.user_manager import admin_required, api_admin_required
@@ -91,7 +91,7 @@ def drives():
                     services.config_manager,
                     runtime=services.runtime,
                 )
-                hdsentinel_drives = mark_prepared_storage_drive(
+                hdsentinel_drives = mark_managed_storage_drive(
                     hdsentinel_drives,
                     services.config_manager,
                     services.system_utils,

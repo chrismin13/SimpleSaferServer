@@ -7,7 +7,7 @@ from simple_safer_server.services.storage_location import (
     StorageLocationError,
     configure_existing_folder,
     get_storage_location,
-    mark_prepared_drive_storage,
+    mark_managed_drive_storage,
     marker_path,
     repair_storage_marker,
     validate_existing_folder_path,
@@ -173,13 +173,13 @@ def test_mount_identity_mismatch_fails_validation(tmp_path):
         )
 
 
-def test_prepared_drive_validation_requires_matching_mounted_uuid(tmp_path):
+def test_managed_drive_validation_requires_matching_mounted_uuid(tmp_path):
     storage_path = tmp_path / "storage"
     storage_path.mkdir()
     runtime = fake_runtime(tmp_path)
     config = FakeConfigManager(storage_path)
     config.set_value("backup", "uuid", "EXPECTED-UUID")
-    mark_prepared_drive_storage(config, str(storage_path), runtime=runtime)
+    mark_managed_drive_storage(config, str(storage_path), runtime=runtime)
 
     assert validate_storage_ready_for_backup(
         config,
@@ -189,13 +189,13 @@ def test_prepared_drive_validation_requires_matching_mounted_uuid(tmp_path):
     )
 
 
-def test_prepared_drive_validation_fails_on_mounted_uuid_mismatch(tmp_path):
+def test_managed_drive_validation_fails_on_mounted_uuid_mismatch(tmp_path):
     storage_path = tmp_path / "storage"
     storage_path.mkdir()
     runtime = fake_runtime(tmp_path)
     config = FakeConfigManager(storage_path)
     config.set_value("backup", "uuid", "EXPECTED-UUID")
-    mark_prepared_drive_storage(config, str(storage_path), runtime=runtime)
+    mark_managed_drive_storage(config, str(storage_path), runtime=runtime)
 
     with pytest.raises(StorageLocationError, match="does not match"):
         validate_storage_ready_for_backup(
@@ -206,14 +206,14 @@ def test_prepared_drive_validation_fails_on_mounted_uuid_mismatch(tmp_path):
         )
 
 
-def test_prepared_drive_validation_uses_fake_state_uuid_in_fake_runtime(tmp_path, monkeypatch):
+def test_managed_drive_validation_uses_fake_state_uuid_in_fake_runtime(tmp_path, monkeypatch):
     storage_path = tmp_path / "storage"
     storage_path.mkdir()
     runtime = fake_runtime(tmp_path)
     runtime.state_path = tmp_path / "fake-state.json"
     config = FakeConfigManager(storage_path)
     config.set_value("backup", "uuid", "FAKE-UUID-0001")
-    mark_prepared_drive_storage(config, str(storage_path), runtime=runtime)
+    mark_managed_drive_storage(config, str(storage_path), runtime=runtime)
 
     class StorageFakeState:
         def load(self):

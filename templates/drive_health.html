@@ -184,7 +184,7 @@
           <td><code>{{ drive.device }}</code></td>
           <td>{{ drive.model or '—' }}</td>
           <td>
-            {% if drive.is_prepared_storage %}
+            {% if drive.is_managed_storage %}
               <span class="badge badge-info">SimpleSaferServer storage</span>
             {% else %}
               —

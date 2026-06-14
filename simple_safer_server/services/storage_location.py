@@ -10,7 +10,7 @@ from simple_safer_server.services.file_persistence import atomic_write_json, ato
 from simple_safer_server.services.runtime import get_fake_state, get_runtime
 
 STORAGE_SECTION = "storage"
-MODE_PREPARED_DRIVE = "prepared_drive"
+MODE_MANAGED_DRIVE = "managed_drive"
 MODE_EXISTING_FOLDER = "existing_folder"
 STORAGE_MARKER_DIR_NAME = ".simple-safer-server"
 STORAGE_MARKER_FILE_NAME = "storage.json"
@@ -32,7 +32,7 @@ class StorageLocation:
 
     @property
     def app_manages_mount(self) -> bool:
-        return self.mode == MODE_PREPARED_DRIVE
+        return self.mode == MODE_MANAGED_DRIVE
 
 
 ROOT_PATH = Path("/")
@@ -80,10 +80,10 @@ def get_storage_location(config_manager: Any, runtime: Any | None = None) -> Sto
             "uuid": config_manager.get_value("backup", "uuid", ""),
         }
     mode = storage.get("mode") or (
-        MODE_PREPARED_DRIVE if backup.get("uuid") else MODE_EXISTING_FOLDER
+        MODE_MANAGED_DRIVE if backup.get("uuid") else MODE_EXISTING_FOLDER
     )
-    if mode not in {MODE_PREPARED_DRIVE, MODE_EXISTING_FOLDER}:
-        mode = MODE_PREPARED_DRIVE
+    if mode not in {MODE_MANAGED_DRIVE, MODE_EXISTING_FOLDER}:
+        mode = MODE_MANAGED_DRIVE
     path = storage.get("path") or backup.get("mount_point") or runtime.default_mount_point
     return StorageLocation(
         path=path,
@@ -275,7 +275,7 @@ def _fake_mounted_uuid(runtime: Any, storage_path: Path) -> str:
     return str(state.get("uuid", "")).strip()
 
 
-def _verify_prepared_drive_uuid(
+def _verify_managed_drive_uuid(
     config_manager: Any,
     system_utils: Any,
     storage_path: Path,
@@ -284,9 +284,9 @@ def _verify_prepared_drive_uuid(
 ) -> None:
     expected_uuid = str(config_manager.get_value("backup", "uuid", "")).strip()
     if not expected_uuid:
-        raise StorageLocationError("Prepared storage drive UUID is missing from the app config.")
+        raise StorageLocationError("Managed storage drive UUID is missing from the app config.")
     if not system_utils.is_mounted(str(storage_path)):
-        raise StorageLocationError(f"The prepared storage drive is not mounted at {storage_path}.")
+        raise StorageLocationError(f"The managed storage drive is not mounted at {storage_path}.")
 
     # Fake mode simulates a mounted backup drive with FakeState. Using host
     # findmnt here would compare the configured fake UUID against the developer
@@ -344,7 +344,7 @@ def configure_existing_folder(
     return get_storage_location(config_manager, runtime=runtime)
 
 
-def mark_prepared_drive_storage(
+def mark_managed_drive_storage(
     config_manager: Any,
     path: str,
     runtime: Any | None = None,
@@ -359,7 +359,7 @@ def mark_prepared_drive_storage(
     _set_storage_config(
         config_manager,
         path=str(resolved),
-        mode=MODE_PREPARED_DRIVE,
+        mode=MODE_MANAGED_DRIVE,
         storage_id=storage_id,
     )
     return get_storage_location(config_manager, runtime=runtime)
@@ -398,8 +398,8 @@ def validate_storage_ready_for_backup(
         )
     _probe_storage_write(storage_path)
 
-    if location.mode == MODE_PREPARED_DRIVE:
-        _verify_prepared_drive_uuid(
+    if location.mode == MODE_MANAGED_DRIVE:
+        _verify_managed_drive_uuid(
             config_manager,
             system_utils,
             storage_path,

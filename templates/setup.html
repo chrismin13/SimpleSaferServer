@@ -49,7 +49,7 @@
                     <div class="stepper-connector"></div>
                     <div class="stepper-item" data-step="3" onclick="goToStep(3)">
                         <div class="stepper-dot">3</div>
-                        <span class="stepper-label">Prepare Drive</span>
+                        <span class="stepper-label">Set Up Drive</span>
                     </div>
                     <div class="stepper-connector"></div>
                     <div class="stepper-item" data-step="4" onclick="goToStep(4)">
@@ -117,11 +117,11 @@
                             </div>
                             <div class="tabs-container mb-4">
                                 <div class="tabs-nav" role="tablist" aria-label="Storage location type">
-                                    <button type="button" class="tab-btn active" data-storage-mode="prepared_drive" id="storageModePreparedBtn">Prepare a drive for SimpleSaferServer</button>
+                                    <button type="button" class="tab-btn active" data-storage-mode="managed_drive" id="storageModeManagedBtn">Set up a managed drive</button>
                                     <button type="button" class="tab-btn" data-storage-mode="existing_folder" id="storageModeExistingBtn">Use an existing folder</button>
                                 </div>
                             </div>
-                            <div id="preparedDriveSetupFields">
+                            <div id="managedDriveSetupFields">
                                 <div class="alert alert-info mb-4">
                                     <div>
                                         Best if you have a USB drive or extra internal drive for this server. SimpleSaferServer can erase it, format it, mount it, and keep it connected automatically.
@@ -133,7 +133,7 @@
                                     <option value="">Select a drive…</option>
                                 </select>
                                 <div id="driveMountStatusBadge" class="mt-2"></div>
-                                <div class="form-hint"><i class="fas fa-triangle-exclamation text-warning me-1"></i>Formatting removes all files on the selected drive and prepares it as one backup drive.</div>
+                                <div class="form-hint"><i class="fas fa-triangle-exclamation text-warning me-1"></i>Formatting removes all files on the selected drive and sets it up as one backup drive.</div>
                             </div>
                             <div id="driveStatusArea" class="d-flex items-center mb-3" style="min-height:1.5rem;font-size:var(--text-sm);"></div>
                             <div class="d-flex gap-3 mb-4">
@@ -146,7 +146,7 @@ Backup settings are NOT updated until the 'Drive Mount' step.">
                                 </button>
                                 <button id="formatDriveBtn" class="btn btn-danger btn-sm" data-confirm="Are you sure you want to format this drive?
 
-This removes all files on the selected drive and prepares it as one backup drive.">
+This removes all files on the selected drive and sets it up as one backup drive.">
                                     <i class="fas fa-exclamation-triangle me-1"></i> Format Drive
                                 </button>
                             </div>
@@ -183,7 +183,7 @@ This removes all files on the selected drive and prepares it as one backup drive
                     <!-- Step 3: Drive Mount -->
                     <div id="step3" class="setup-step">
                         <div class="setup-card">
-                            <h3>Prepare Drive</h3>
+                            <h3>Set Up Drive</h3>
                             <div class="form-group mb-4">
                                 <label class="form-label">Select Drive to Mount</label>
                                 <select id="mountDriveSelect" class="form-control">
@@ -218,7 +218,7 @@ Backup settings are NOT updated until 'Mount Drive' succeeds.">
                                     <i class="fas fa-plug me-1"></i> Use This Drive
                                 </button>
                             </div>
-                            <div class="form-hint mb-4">Unmount here is temporary preparation for mounting the selected partition. Storage settings change only when Use This Drive succeeds.</div>
+                            <div class="form-hint mb-4">Unmount here is temporary setup work for mounting the selected partition. Storage settings change only when Use This Drive succeeds.</div>
                             <div id="mountError" class="text-danger d-none" style="font-size:var(--text-sm);"></div>
                             <div id="mountDetails" class="text-muted d-none" style="font-size:var(--text-xs);"></div>
                             <button
@@ -451,7 +451,7 @@ unmount the share, then restart SMB automatically."
     <script>
         let currentStep = 1;
         const totalSteps = 6;
-        let setupStorageMode = 'prepared_drive';
+        let setupStorageMode = 'managed_drive';
 
         // --- LocalStorage step persistence ---
         function saveStepToStorage(step) {
@@ -518,9 +518,9 @@ unmount the share, then restart SMB automatically."
 
         function setStorageMode(mode) {
             setupStorageMode = mode;
-            const preparedFields = document.getElementById('preparedDriveSetupFields');
+            const managedFields = document.getElementById('managedDriveSetupFields');
             const existingFields = document.getElementById('existingFolderSetupFields');
-            if (preparedFields) preparedFields.classList.toggle('d-none', mode !== 'prepared_drive');
+            if (managedFields) managedFields.classList.toggle('d-none', mode !== 'managed_drive');
             if (existingFields) existingFields.classList.toggle('d-none', mode !== 'existing_folder');
             document.querySelectorAll('[data-storage-mode]').forEach((button) => {
                 button.classList.toggle('active', button.dataset.storageMode === mode);
@@ -855,7 +855,7 @@ unmount the share, then restart SMB automatically."
             const labels = {
                 'backup.email_address': 'backup alert email address',
                 'backup.mount_point': 'storage location',
-                'backup.uuid': 'prepared drive selection',
+                'backup.uuid': 'managed drive selection',
                 'storage.mode': 'storage choice',
                 'storage.path': 'storage folder',
                 'storage.storage_id': 'storage marker',

@@ -1451,7 +1451,7 @@ table .text-end { text-align: right; }
   }
 }
 
-/* ── Storage redesign matched to the prepared-drive mockups ───── */
+/* ── Storage redesign matched to the managed-drive mockups ───── */
 .page-header:has(h1:empty) {
   display: none;
 }

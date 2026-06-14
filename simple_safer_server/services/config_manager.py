@@ -105,7 +105,7 @@ class ConfigManager:
         }
 
         config['storage'] = {
-            'mode': 'prepared_drive',
+            'mode': 'managed_drive',
             'path': self.runtime.default_mount_point,
             'storage_id': '',
             'mount_source': '',

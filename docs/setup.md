@@ -2,7 +2,7 @@
 
 The Setup Wizard walks through the first-time configuration of the system. The storage portion now has two paths:
 
-- **Prepare a drive for SimpleSaferServer**: the app formats or mounts a disk partition and manages how it is mounted.
+- **Set up a managed drive**: the app formats or mounts a disk partition and manages how it is mounted.
 - **Use an existing folder**: the user provides a folder that already exists on the server.
 
 That split is important because a cloud backup sync can delete remote files if the local storage folder is unexpectedly empty. SimpleSaferServer records a small marker file in the selected storage location and checks it before cloud backups run.
@@ -31,9 +31,9 @@ Choose where SimpleSaferServer should store files.
 
 SimpleSaferServer creates a default network share named `backup`. This is the folder people on your network copy files into from their computers, and it points at the storage location chosen here.
 
-Use **Prepare a drive for SimpleSaferServer** when you want the app to handle the backup disk. This is the simplest path for the original one-drive setup.
+Use **Set up a managed drive** when you want the app to handle the backup disk. This is the simplest path for the original one-drive setup.
 
-Use **Use an existing folder** when the storage is already handled outside SimpleSaferServer. That folder can be on a RAID array, a pooled filesystem, a manually mounted disk, a server folder, or any other local path that is already prepared.
+Use **Use an existing folder** when the storage is already handled outside SimpleSaferServer. That folder can be on a RAID array, a pooled filesystem, a manually mounted disk, a server folder, or any other local path that is already set up.
 
 When an existing folder is selected:
 
@@ -45,9 +45,9 @@ When an existing folder is selected:
 
 The marker file is not backup data. It exists so the app can tell the difference between the intended storage location and an empty folder that only exists because a disk, pool, or remote mount failed to appear.
 
-## Step 3: Prepare Drive
+## Step 3: Set Up Drive
 
-This step is shown for users who chose to let SimpleSaferServer prepare a drive.
+This step is shown for users who chose to let SimpleSaferServer set up a managed drive.
 
 ### Drive Format
 
@@ -63,9 +63,9 @@ This step is disk-oriented.
 
 Why it works this way:
 
-- Formatting is a whole-disk preparation step.
+- Formatting is a whole-disk setup step.
 - Desktop automounters often mount child partitions such as `/dev/sdb1`, so the wizard checks for mounted child partitions before allowing formatting.
-- This is a simple destructive preparation flow. It does not try to preserve or rearrange an existing multi-partition layout.
+- This is a simple destructive setup flow. It does not try to preserve or rearrange an existing multi-partition layout.
 
 ### Drive Mount
 
@@ -77,7 +77,7 @@ This step is partition-oriented.
 - Partitions reported as `ntfs3`, `ntfs-3g`, or confirmed-NTFS `fuseblk` are all exposed to the wizard as NTFS mount targets.
 - Drive labels prefer `lsblk` transport data such as `TRAN=usb`, with `RM` and `HOTPLUG` as fallbacks, so removable backup targets are not mislabeled as internal disks.
 - The unmount button unmounts only the exact selected partition.
-- That unmount action is temporary preparation for this step. It does not deconfigure the old backup drive by itself.
+- That unmount action is temporary setup work for this step. It does not deconfigure the old backup drive by itself.
 - If the exact unmount fails and the selected partition is still the live configured backup drive mounted at the managed backup mount point, the wizard offers a second explicit SMB-safe retry that may temporarily stop SMB access and the related background backup tasks before retrying the unmount.
 - The wizard intentionally does not offer that broader retry based on UUID alone, because cloned replacement disks can legitimately share a filesystem UUID and would make the safety check ambiguous.
 - The mount button mounts that selected NTFS partition at the chosen mount point.
@@ -92,7 +92,7 @@ Persistent backup-drive state changes only when the mount/configure step succeed
 - After the managed `/etc/fstab` entry changes, the app runs `systemctl daemon-reload` so `Check Mount` and the generated mount units immediately follow the new backup-drive definition.
 - If the old backup drive is still the configured backup source and it remains connected, `Check Mount` may mount it again after an unmount-only step.
 
-That NTFS-only scan is shared with the prepared-drive setup flow on the Storage page.
+That NTFS-only scan is shared with the managed-drive setup flow on the Storage page.
 This is worth calling out because the setup wizard and the later Storage page flow need to
 agree about which partitions are selectable, especially for already-mounted
 `ntfs-3g` volumes that appear as `fuseblk`.
@@ -145,13 +145,13 @@ Before every cloud backup, SimpleSaferServer checks the storage marker and confi
 - Optionally set a bandwidth limit.
 - Save to complete setup.
 - Completing setup installs the recurring systemd timers.
-- The mount-check timer is enabled only when SimpleSaferServer manages the prepared drive.
+- The mount-check timer is enabled only when SimpleSaferServer manages the backup drive.
 - The cloud-backup timer is enabled only when cloud backup is configured.
 - Drive-health, app-update, and DDNS timers are enabled after setup.
 - Setup and later unit refreshes preserve active SimpleSaferServer Disable Schedule records so
   regenerating unit files does not silently re-enable a disabled timer.
 - The cloud backup timer stays on the configured time.
-- When the prepared-drive mount check is enabled, it runs 4 minutes before backup.
+- When the managed-drive mount check is enabled, it runs 4 minutes before backup.
 - The generated drive-health check runs 2 minutes before backup. This spacing gives the mount check time to finish before health probes the drive when SimpleSaferServer manages the drive, even with systemd's small randomized delay.
 - The installer may generate those unit files earlier, but it keeps the timers inactive while `system.setup_complete` is false so persistent timers cannot run with placeholder setup values.
 
@@ -160,11 +160,11 @@ Before every cloud backup, SimpleSaferServer checks the storage marker and confi
 If the storage location changes after setup:
 
 - use the Storage page
-- open **Choose folder** for an existing folder, or open **Change drive** for replacement prepared-drive work
+- open **Choose folder** for an existing folder, or open **Change drive** to replace the managed drive
 - check that the default `backup` network share still points to the intended folder
 
-The existing-folder and prepared-drive change pages are normal authenticated management pages, not the first-run setup wizard.
-The prepared-drive page has a whole-disk format section and an NTFS partition use section.
+The existing-folder and managed-drive change pages are normal authenticated management pages, not the first-run setup wizard.
+The managed-drive page has a whole-disk format section and an NTFS partition use section.
 Formatting a disk there is destructive, but it does not update SimpleSaferServer storage by itself.
 The saved storage path, configured UUID, managed `/etc/fstab` entry, marker file, and timers change only after **Use This Drive** succeeds.
 If the selected partition is still the live configured backup share, the change flow can temporarily disconnect SMB access before unmounting it.

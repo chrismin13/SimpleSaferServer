@@ -275,11 +275,11 @@ class DriveHealthTests(unittest.TestCase):
         "simple_safer_server.services.drive_health.resolve_backup_parent_device",
         return_value=("/dev/sdb", "/dev/sdb1", None),
     )
-    def test_mark_prepared_storage_drive_marks_matching_detected_drive(self, _mock_resolve):
+    def test_mark_managed_storage_drive_marks_matching_detected_drive(self, _mock_resolve):
         config_manager = SimpleNamespace(
             get_all_config=lambda: {
                 "storage": {
-                    "mode": "prepared_drive",
+                    "mode": "managed_drive",
                     "path": "/media/backup",
                     "storage_id": "id",
                 },
@@ -294,15 +294,15 @@ class DriveHealthTests(unittest.TestCase):
             {"device": "/dev/sdb", "model": "Backup Disk"},
         ]
 
-        marked = drive_health.mark_prepared_storage_drive(
+        marked = drive_health.mark_managed_storage_drive(
             drives,
             config_manager,
             system_utils=SimpleNamespace(),
             runtime=SimpleNamespace(is_fake=False, default_mount_point="/media/backup"),
         )
 
-        self.assertFalse(marked[0]["is_prepared_storage"])
-        self.assertTrue(marked[1]["is_prepared_storage"])
+        self.assertFalse(marked[0]["is_managed_storage"])
+        self.assertTrue(marked[1]["is_managed_storage"])
 
     @patch("simple_safer_server.services.drive_health._log_and_email_alert")
     @patch("simple_safer_server.services.drive_health.run_hdsentinel_health_monitor")

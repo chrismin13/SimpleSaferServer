@@ -51,7 +51,7 @@ The Dashboard Drive Health tile reads only the latest summary stored in the runn
 
 ## Scheduled Checks
 
-Scheduled Drive Health tries to use HDSentinel's full drive list when it is available. This lets the app monitor more than one disk instead of tying health only to the configured storage path. The Drive Health table marks the prepared SimpleSaferServer storage drive when it can match the detected device safely.
+Scheduled Drive Health tries to use HDSentinel's full drive list when it is available. This lets the app monitor more than one disk instead of tying health only to the configured storage path. The Drive Health table marks the managed SimpleSaferServer storage drive when it can match the detected device safely.
 
 Scheduled Drive Health still treats general SMART read failures as task failures because those failures can signal real device, bridge, or permission problems.
 
@@ -64,8 +64,8 @@ Storage setup has moved to the Storage page.
 Use Storage when:
 
 - the storage folder changes
-- a prepared drive is replaced
-- an existing folder should be used instead of a prepared drive
+- a managed drive is replaced
+- an existing folder should be used instead of a managed drive
 - the cloud-backup storage marker needs to be repaired
 
 Drive Health does not decide where backups are stored. It checks drive health and reports what the local tools can read.

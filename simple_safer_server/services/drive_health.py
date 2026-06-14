@@ -16,7 +16,7 @@ from simple_safer_server.services.alert_notifications import AlertNotifier
 from simple_safer_server.services.file_persistence import atomic_write_json
 from simple_safer_server.services.runtime import get_runtime
 from simple_safer_server.services.storage_location import (
-    MODE_PREPARED_DRIVE,
+    MODE_MANAGED_DRIVE,
     get_storage_location,
 )
 
@@ -682,13 +682,13 @@ def collect_hdsentinel_drive_list(config_manager, runtime=None):
     return drives
 
 
-def mark_prepared_storage_drive(drives, config_manager, system_utils, runtime=None):
+def mark_managed_storage_drive(drives, config_manager, system_utils, runtime=None):
     runtime = runtime or get_runtime()
     location = get_storage_location(config_manager, runtime=runtime)
     marked_drives = [dict(drive) for drive in drives]
     for drive in marked_drives:
-        drive["is_prepared_storage"] = False
-    if location.mode != MODE_PREPARED_DRIVE:
+        drive["is_managed_storage"] = False
+    if location.mode != MODE_MANAGED_DRIVE:
         return marked_drives
 
     parent_device, partition_device, error = resolve_backup_parent_device(
@@ -699,7 +699,7 @@ def mark_prepared_storage_drive(drives, config_manager, system_utils, runtime=No
     expected_devices = {item for item in [parent_device, partition_device] if item}
     for drive in marked_drives:
         if drive.get("device") in expected_devices:
-            drive["is_prepared_storage"] = True
+            drive["is_managed_storage"] = True
     return marked_drives
 
 

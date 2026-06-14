@@ -864,8 +864,8 @@ def format_backup_drive(disk, runtime=None, command_adapter=None):
     result = command_adapter.create_partition(disk, partition_script.encode())
     if result.returncode != 0:
         raise BackupDriveSetupError(
-            'Failed to prepare drive.',
-            details='Could not erase and prepare the selected drive. Make sure it is not in use and try again.',
+            'Failed to set up drive.',
+            details='Could not erase and set up the selected drive. Make sure it is not in use and try again.',
         )
 
     try:

@@ -21,7 +21,7 @@ class FakeConfigManager:
                 "uuid": self.uuid or "",
             },
             "storage": {
-                "mode": "prepared_drive",
+                "mode": "managed_drive",
                 "path": self.mount_point,
             },
         }

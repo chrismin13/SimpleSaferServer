@@ -6,12 +6,12 @@ SimpleSaferServer keeps a default network share named `backup` pointed at the se
 
 The page shows the current storage location, the active storage mode, and whether the cloud-backup safety checks are passing. Configuration changes are started from the Storage actions card:
 
-- **Prepared drive**: SimpleSaferServer mounts and manages one selected drive partition.
+- **Managed drive**: SimpleSaferServer mounts and manages one selected drive partition.
 - **Existing folder**: an administrator provides a folder that already exists on the server.
 
 The Storage actions card keeps repair actions separate from configuration changes. Safety checks stay visible beside the storage actions on wide screens and move below them on narrower screens.
 
-## Prepared Drive
+## Managed Drive
 
 Use this mode when you want SimpleSaferServer to handle the backup disk.
 
@@ -25,16 +25,16 @@ In this mode the app:
 
 This is the simplest mode for the original one-drive setup.
 
-### Change Prepared Drive
+### Change Managed Drive
 
-Use **Change prepared drive** on the Storage page when replacing the managed backup disk.
+Use **Change managed drive** on the Storage page when replacing the managed backup disk.
 
 The change page has two sections:
 
-- **Format a drive** lists non-system disks that can be prepared. Formatting deletes the selected disk's files and partitions, creates one NTFS partition, and leaves the current SimpleSaferServer storage setting unchanged.
+- **Format a drive** lists non-system disks that can be set up for backup storage. Formatting deletes the selected disk's files and partitions, creates one NTFS partition, and leaves the current SimpleSaferServer storage setting unchanged.
 - **Use an NTFS partition** lists NTFS partitions that can become the managed backup drive. This is the only section that changes SimpleSaferServer storage.
 
-Unmount actions on the change page are temporary preparation steps. Unmounting a selected disk or partition does not clear the saved storage path, configured UUID, `/etc/fstab` entry, marker file, or timers.
+Unmount actions on the change page are temporary setup steps. Unmounting a selected disk or partition does not clear the saved storage path, configured UUID, `/etc/fstab` entry, marker file, or timers.
 
 The current storage configuration changes only after **Use This Drive** succeeds. On success, SimpleSaferServer:
 
@@ -101,7 +101,7 @@ Before each cloud backup, the app checks that:
 - the storage folder can be written to
 - a small test file can be read back
 - the small test file can be deleted
-- a prepared drive's mounted filesystem UUID matches the configured drive UUID
+- a managed drive's mounted filesystem UUID matches the configured drive UUID
 
 If any of those checks fail, the cloud backup is blocked.
 

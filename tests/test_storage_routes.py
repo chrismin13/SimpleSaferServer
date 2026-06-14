@@ -90,7 +90,7 @@ def test_change_drive_page_renders_inside_storage_shell():
 
     assert response.status_code == 200
     body = response.get_data(as_text=True)
-    assert "Change Prepared Drive" in body
+    assert "Change Managed Drive" in body
     assert "Format a drive" in body
     assert "Use an NTFS partition" in body
     assert "/static/js/storage_change_drive.js" in body
@@ -130,7 +130,7 @@ def test_storage_page_links_to_configuration_change_pages_without_scan_action():
         patch(
             "simple_safer_server.routes.storage.get_storage_location",
             return_value=SimpleNamespace(
-                mode="prepared_drive",
+                mode="managed_drive",
                 path="/media/backup",
                 app_manages_mount=True,
             ),
@@ -145,7 +145,7 @@ def test_storage_page_links_to_configuration_change_pages_without_scan_action():
 
     assert response.status_code == 200
     body = response.get_data(as_text=True)
-    assert "Change prepared drive" in body
+    assert "Change managed drive" in body
     assert "/storage/change-drive" in body
     assert "Use an existing folder" in body
     assert "Choose folder" in body
@@ -172,16 +172,16 @@ def test_existing_folder_storage_refreshes_systemd_timers():
     )
 
 
-def test_prepared_drive_storage_refreshes_systemd_timers():
+def test_managed_drive_storage_refreshes_systemd_timers():
     services = _services()
-    services.config_manager.get_all_config.return_value["storage"]["mode"] = "prepared_drive"
+    services.config_manager.get_all_config.return_value["storage"]["mode"] = "managed_drive"
     app = _app_with_services(services)
 
     with patch(
         "simple_safer_server.routes.storage.apply_backup_drive_configuration",
         return_value={"mount_point": "/media/backup"},
     ):
-        with patch("simple_safer_server.routes.storage.mark_prepared_drive_storage"):
+        with patch("simple_safer_server.routes.storage.mark_managed_drive_storage"):
             response = _admin_post(
                 app,
                 "/api/backup_drive/configure",
@@ -197,7 +197,7 @@ def test_prepared_drive_storage_refreshes_systemd_timers():
     )
 
 
-def test_prepared_drive_configure_passes_ntfs_driver():
+def test_managed_drive_configure_passes_ntfs_driver():
     services = _services()
     app = _app_with_services(services)
 
@@ -205,7 +205,7 @@ def test_prepared_drive_configure_passes_ntfs_driver():
         "simple_safer_server.routes.storage.apply_backup_drive_configuration",
         return_value={"mount_point": "/media/backup"},
     ) as apply_backup_drive_configuration:
-        with patch("simple_safer_server.routes.storage.mark_prepared_drive_storage"):
+        with patch("simple_safer_server.routes.storage.mark_managed_drive_storage"):
             response = _admin_post(
                 app,
                 "/api/backup_drive/configure",
@@ -338,7 +338,7 @@ def test_storage_safety_checks_stop_after_marker_failure():
             "ok": False,
             "error": "Storage marker is missing at /srv/storage/.simple-safer-server/storage.json.",
         },
-        SimpleNamespace(mode="prepared_drive"),
+        SimpleNamespace(mode="managed_drive"),
     )
 
     assert checks[0]["label"] == "Storage marker file"
@@ -349,25 +349,25 @@ def test_storage_safety_checks_stop_after_marker_failure():
         "detail": "Not checked because the marker check failed.",
     }
     assert checks[2] == {
-        "label": "Prepared drive UUID match",
+        "label": "Managed drive UUID match",
         "state": "pending",
         "detail": "Not checked until earlier checks pass.",
     }
 
 
-def test_storage_safety_checks_show_prepared_drive_identity_failure():
+def test_storage_safety_checks_show_managed_drive_identity_failure():
     checks = _build_storage_safety_checks(
         {
             "ok": False,
             "error": "The drive mounted at the storage location does not match the configured drive UUID.",
         },
-        SimpleNamespace(mode="prepared_drive"),
+        SimpleNamespace(mode="managed_drive"),
     )
 
     assert checks[0]["state"] == "pass"
     assert checks[1]["state"] == "pass"
     assert checks[2] == {
-        "label": "Prepared drive UUID match",
+        "label": "Managed drive UUID match",
         "state": "fail",
         "detail": "The drive mounted at the storage location does not match the configured drive UUID.",
     }

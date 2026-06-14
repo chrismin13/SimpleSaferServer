@@ -203,7 +203,7 @@ account default : simplesaferserver
                 'mega_folder': str(backup_config.get('mega_folder', '')),
             }
             parser['storage'] = {
-                'mode': str(storage_config.get('mode', 'prepared_drive')),
+                'mode': str(storage_config.get('mode', 'managed_drive')),
                 'path': str(
                     storage_config.get(
                         'path',
@@ -478,7 +478,7 @@ WantedBy=timers.target
             storage = config.get('storage', {})
             backup = config.get('backup', {})
             enabled_services = ['check_health', 'ddns_update', 'app_update']
-            if storage.get('mode', 'prepared_drive') == 'prepared_drive':
+            if storage.get('mode', 'managed_drive') == 'managed_drive':
                 enabled_services.insert(0, 'check_mount')
             cloud_backup_enabled = str(backup.get('cloud_enabled', '')).lower() == 'true'
             if cloud_backup_enabled:

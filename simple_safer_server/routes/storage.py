@@ -21,7 +21,7 @@ from simple_safer_server.services.storage_location import (
     StorageLocationError,
     configure_existing_folder,
     get_storage_location,
-    mark_prepared_drive_storage,
+    mark_managed_drive_storage,
     repair_storage_marker,
     storage_status,
 )
@@ -41,7 +41,7 @@ def _get_services() -> Any:
 def _build_storage_safety_checks(status: dict[str, Any], location: Any) -> list[dict[str, str]]:
     """Translate the backup-source validation result into operator-facing checklist rows."""
     identity_label = (
-        "Prepared drive UUID match"
+        "Managed drive UUID match"
         if location.mode != MODE_EXISTING_FOLDER
         else "Folder availability"
     )
@@ -329,7 +329,7 @@ def api_backup_drive_format_drives():
     services = _get_services()
     try:
         # Formatting is intentionally broader than the NTFS partition picker:
-        # admins need to see blank or non-NTFS disks before preparing them.
+        # admins need to see blank or non-NTFS disks before setting them up.
         return json_data(
             {"drives": list_available_drives(runtime=services.runtime, ntfs_only=False)}
         )
@@ -344,7 +344,7 @@ def api_backup_drive_format():
     services = _get_services()
     try:
         data = json_request_data()
-        # Formatting prepares removable media only; storage config is changed
+        # Formatting sets up removable media only; storage config is changed
         # later by /api/backup_drive/configure after the NTFS partition mounts.
         result = format_backup_drive(data.get("disk"), runtime=services.runtime)
         return json_data({"result": result}, message=result["message"])
@@ -431,7 +431,7 @@ def api_backup_drive_configure():
             runtime=services.runtime,
             ntfs_driver=data.get("ntfs_driver", "ntfs-3g"),
         )
-        mark_prepared_drive_storage(
+        mark_managed_drive_storage(
             services.config_manager,
             result.get("mount_point", data.get("mount_point")),
             runtime=services.runtime,

@@ -39,7 +39,7 @@ from simple_safer_server.services.smb_manager import SMBManager
 from simple_safer_server.services.storage_location import (
     StorageLocationError,
     configure_existing_folder,
-    mark_prepared_drive_storage,
+    mark_managed_drive_storage,
 )
 from simple_safer_server.services.system_utils import SystemUtils
 from simple_safer_server.services.user_manager import UserManager
@@ -267,11 +267,11 @@ def setup_page():
             'storage': ['mode', 'path', 'storage_id'],
             'schedule': ['backup_cloud_time'],
         }
-        storage_mode = current_config.get('storage', {}).get('mode', 'prepared_drive')
+        storage_mode = current_config.get('storage', {}).get('mode', 'managed_drive')
         cloud_enabled = (
             str(current_config.get('backup', {}).get('cloud_enabled', 'false')).lower() == 'true'
         )
-        if storage_mode == 'prepared_drive':
+        if storage_mode == 'managed_drive':
             required_fields['backup'].append('uuid')
         if cloud_enabled:
             required_fields['backup'].append('rclone_dir')
@@ -334,7 +334,7 @@ def list_format_drives():
     """List disks for the destructive format step."""
     try:
         # Step 2 is intentionally broader than the mount pickers because it is
-        # the "prepare or erase this disk" step, not the "pick an NTFS backup
+        # the "set up or erase this disk" step, not the "pick an NTFS backup
         # partition" step.
         drives = get_available_backup_drives(runtime=runtime, ntfs_only=False)
         return json_data({'drives': drives})
@@ -351,7 +351,7 @@ def list_mount_drives():
     """List NTFS partitions for the mount step."""
     try:
         # Step 3 is partition-oriented and only accepts NTFS backup targets, so
-        # it must reuse the same NTFS scan as the Storage prepared-drive flow. That
+        # it must reuse the same NTFS scan as the Storage managed-drive flow. That
         # includes the blkid fallback when lsblk reports ntfs-3g mounts as
         # fuseblk, which is easy to miss if this route ever gets "simplified".
         drives = get_available_backup_drives(runtime=runtime, ntfs_only=True)
@@ -451,7 +451,7 @@ def format_drive():
         # nodes use a 'p' separator (e.g. /dev/nvme0n1p1).  Standard SCSI/SATA
         # disks (e.g. /dev/sdb) just append the number (e.g. /dev/sdb1).
         partition = get_partition_node(disk)
-        # Step 2 promises to erase and prepare the whole selected disk, so
+        # Step 2 promises to erase and set up the whole selected disk, so
         # formatting must not quietly reuse an old multi-partition layout.
         # sfdisk creates a fresh GPT layout with one full-size partition that
         # Windows and Linux both recognize as general data storage.
@@ -459,8 +459,8 @@ def format_drive():
         result = setup_command_adapter.create_partition(disk, partition_script.encode())
         if result.returncode != 0:
             return _operation_problem(
-                'Failed to prepare drive',
-                details='Could not erase and prepare the selected drive. Please make sure it is not in use and try again.',
+                'Failed to set up drive',
+                details='Could not erase and set up the selected drive. Please make sure it is not in use and try again.',
             )
 
         # Ask the kernel to re-read the partition table so the new partition
@@ -592,7 +592,7 @@ def mount_drive():
     try:
         data = json_request_data()
         # Step 3 always selects a filesystem-bearing partition, never a whole
-        # disk. That aligns it with the prepared-drive flow on Storage.
+        # disk. That aligns it with the managed-drive flow on Storage.
         partition = data.get('partition')
         if not partition:
             return _validation_problem('partition is required')
@@ -608,7 +608,7 @@ def mount_drive():
             smb_manager,
             runtime=runtime,
         )
-        mark_prepared_drive_storage(
+        mark_managed_drive_storage(
             config_manager, result.get('mount_point', mount_point), runtime=runtime
         )
         logger.info(
@@ -886,11 +886,11 @@ def complete_setup():
             'storage': ['mode', 'path', 'storage_id'],
             'schedule': ['backup_cloud_time'],
         }
-        storage_mode = current_config.get('storage', {}).get('mode', 'prepared_drive')
+        storage_mode = current_config.get('storage', {}).get('mode', 'managed_drive')
         cloud_enabled = (
             str(current_config.get('backup', {}).get('cloud_enabled', 'false')).lower() == 'true'
         )
-        if storage_mode == 'prepared_drive':
+        if storage_mode == 'managed_drive':
             required_fields['backup'].append('uuid')
         if cloud_enabled:
             required_fields['backup'].append('rclone_dir')

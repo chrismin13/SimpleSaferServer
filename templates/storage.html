@@ -4,7 +4,7 @@
 {% block header %}{% endblock %}
 
 {% set is_existing_folder = storage_location.mode == 'existing_folder' %}
-{% set mode_label = 'Existing folder' if is_existing_folder else 'Prepared drive' %}
+{% set mode_label = 'Existing folder' if is_existing_folder else 'Managed drive' %}
 
 {% block content %}
 <div class="storage-page storage-overview-page" data-storage-current-mode="{{ storage_location.mode }}">
@@ -119,7 +119,7 @@
         <div class="storage-change-entry">
           <div class="storage-action-icon"><i class="fas fa-database"></i></div>
           <div class="storage-action-copy">
-            <div class="storage-action-title">Change prepared drive</div>
+            <div class="storage-action-title">Change managed drive</div>
             <div>Format or use a replacement NTFS drive without changing storage until the final apply succeeds.</div>
           </div>
           <a href="{{ url_for('storage_routes.storage_change_drive_page') }}" class="btn btn-primary btn-sm">
