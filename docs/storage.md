@@ -4,12 +4,12 @@ The Storage page controls where SimpleSaferServer stores backup files.
 
 SimpleSaferServer keeps a default network share named `backup` pointed at the selected storage location. This is the folder people on your network copy files into from their computers.
 
-The page shows the current storage location, the active storage mode, and whether the cloud-backup safety checks are passing. The Storage Location selector has two modes:
+The page shows the current storage location, the active storage mode, and whether the cloud-backup safety checks are passing. Configuration changes are started from the Storage actions card:
 
 - **Prepared drive**: SimpleSaferServer mounts and manages one selected drive partition.
 - **Existing folder**: an administrator provides a folder that already exists on the server.
 
-Only the selected mode's controls are shown. Safety checks stay visible beside the storage controls on wide screens and move below them on narrower screens.
+The Storage actions card keeps repair actions separate from configuration changes. Safety checks stay visible beside the storage actions on wide screens and move below them on narrower screens.
 
 ## Prepared Drive
 
@@ -78,6 +78,8 @@ In this mode the app does not:
 - unmount the folder from the Dashboard
 
 The administrator or the operating system is responsible for making sure the folder is available.
+
+Use **Choose folder** on the Storage page to open the existing-folder change page. The page saves the new folder only after **Use This Folder** succeeds. On success, SimpleSaferServer stores the folder path, updates the default `backup` share, creates the storage marker, and refreshes generated task timers.
 
 ## The Storage Marker
 

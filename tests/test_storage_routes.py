@@ -96,7 +96,33 @@ def test_change_drive_page_renders_inside_storage_shell():
     assert "/static/js/storage_change_drive.js" in body
 
 
-def test_storage_page_links_to_change_prepared_drive_without_scan_action():
+def test_existing_folder_page_requires_admin_session():
+    app = _app_with_services(_services())
+
+    response = app.test_client().get("/storage/existing-folder")
+
+    assert response.status_code == 302
+    assert "/login" in response.headers["Location"]
+
+
+def test_existing_folder_page_renders_inside_storage_shell():
+    app = _app_with_services(_services())
+
+    with patch(
+        "simple_safer_server.routes.storage.get_storage_location",
+        return_value=SimpleNamespace(mode="existing_folder", path="/srv/storage"),
+    ):
+        response = _admin_get(app, "/storage/existing-folder")
+
+    assert response.status_code == 200
+    body = response.get_data(as_text=True)
+    assert "Use an existing folder" in body
+    assert "Existing Folder Path" in body
+    assert "Use This Folder" in body
+    assert "/static/js/storage_existing_folder.js" in body
+
+
+def test_storage_page_links_to_configuration_change_pages_without_scan_action():
     services = _services()
     app = _app_with_services(services)
 
@@ -113,13 +139,17 @@ def test_storage_page_links_to_change_prepared_drive_without_scan_action():
             "simple_safer_server.routes.storage.storage_status",
             return_value={"ok": True, "error": ""},
         ),
+        patch("simple_safer_server.routes.storage.get_managed_ntfs_driver", return_value="ntfs-3g"),
     ):
         response = _admin_get(app, "/storage")
 
     assert response.status_code == 200
     body = response.get_data(as_text=True)
-    assert "Change Prepared Drive" in body
+    assert "Change prepared drive" in body
     assert "/storage/change-drive" in body
+    assert "Use an existing folder" in body
+    assert "Choose folder" in body
+    assert "/storage/existing-folder" in body
     assert "Scan Connected Drives" not in body
 
 
@@ -293,6 +323,12 @@ def test_storage_safety_checks_show_existing_folder_success():
         },
         {"label": "Write test", "state": "pass", "detail": "Last checked just now."},
         {"label": "Folder availability", "state": "pass", "detail": "Folder is writable."},
+        {"label": "Folder is writable", "state": "pass", "detail": "Folder is writable."},
+        {
+            "label": "Test file cycle",
+            "state": "pass",
+            "detail": "Write, read, and delete succeeded.",
+        },
     ]
 
 

@@ -1,214 +1,143 @@
 {% extends "base.html" %}
 
 {% block title %}{{ browser_title('Storage') }}{% endblock %}
-{% block header %}Storage{% endblock %}
+{% block header %}{% endblock %}
 
 {% set is_existing_folder = storage_location.mode == 'existing_folder' %}
 {% set mode_label = 'Existing folder' if is_existing_folder else 'Prepared drive' %}
 
 {% block content %}
-<div class="storage-page" data-storage-current-mode="{{ storage_location.mode }}">
-  <section class="storage-status-strip" aria-label="Storage status">
-    <div class="storage-status-item storage-status-location">
-      <div class="storage-status-label"><i class="fas fa-folder-tree"></i> Storage Location</div>
-      <div class="storage-status-value text-mono">{{ storage_location.path }}</div>
+<div class="storage-page storage-overview-page" data-storage-current-mode="{{ storage_location.mode }}">
+  <div class="storage-page-heading">
+    <h1>Storage</h1>
+    <p>Manage where SimpleSaferServer stores backup files.</p>
+  </div>
+
+  <section class="card storage-current-card">
+    <div class="storage-card-title">
+      <i class="fas fa-hard-drive"></i>
+      <h2>Current storage</h2>
     </div>
-    <div class="storage-status-item">
-      <div class="storage-status-label"><i class="fas fa-shield"></i> Mode</div>
-      <div class="storage-status-value storage-status-mode">{{ mode_label }}</div>
-      <div class="storage-status-detail">
-        {% if is_existing_folder %}
-          SimpleSaferServer uses this folder but does not mount it.
-        {% else %}
-          SimpleSaferServer mounts and manages this drive.
-        {% endif %}
+    <div class="storage-current-grid">
+      <div class="storage-current-cell storage-current-location">
+        <div class="storage-field-label">Storage location</div>
+        <div class="storage-current-value text-mono">{{ storage_location.path }}</div>
       </div>
-    </div>
-    <div class="storage-status-item">
-      <div class="storage-status-header">
-        <div class="storage-status-label"><i class="fas fa-shield-halved"></i> Backup Safety</div>
-        {% if storage_status.ok %}
-          <span class="badge badge-success"><i class="fas fa-circle-check"></i> Ready</span>
-        {% else %}
-          <span class="badge badge-danger"><i class="fas fa-circle-xmark"></i> Check failed</span>
-        {% endif %}
+      <div class="storage-current-cell">
+        <div class="storage-field-label">Mode</div>
+        <div class="storage-current-mode">{{ mode_label }}</div>
+        <div class="storage-current-note">
+          {% if is_existing_folder %}
+            SimpleSaferServer uses this folder but does not mount it.
+          {% else %}
+            SimpleSaferServer mounts and manages this drive.
+          {% endif %}
+        </div>
       </div>
-      <div class="storage-status-detail">
+      <div class="storage-current-cell">
+        <div class="storage-field-label">Status</div>
         {% if storage_status.ok %}
-          Cloud backups can use this storage location.
+          <div class="storage-ready-line"><i class="fas fa-circle-check"></i> Ready</div>
+          <div class="storage-current-note">Storage location is ready for backups.</div>
         {% else %}
-          {{ storage_status.error }}
+          <div class="storage-error-line"><i class="fas fa-circle-xmark"></i> Check failed</div>
+          <div class="storage-current-note">{{ storage_status.error }}</div>
         {% endif %}
       </div>
     </div>
   </section>
 
-  <div class="storage-config-grid">
-    <section class="card storage-config-panel">
-      <div class="card-header">
-        <h2 class="card-title">Storage Location</h2>
+  <div class="storage-overview-grid">
+    <section class="card storage-details-card">
+      <div class="storage-card-title">
+        <i class="fas fa-database"></i>
+        <h2>Storage details</h2>
       </div>
-      <div class="card-body">
-        <div class="tabs-container storage-mode-tabs">
-          <div class="tabs-nav" role="tablist" aria-label="Storage location type">
-            <button
-              type="button"
-              class="tab-btn{% if not is_existing_folder %} active{% endif %}"
-              id="storageModePreparedBtn"
-              data-storage-mode="prepared_drive"
-              role="tab"
-              aria-controls="preparedDriveStoragePanel"
-              aria-selected="{{ 'false' if is_existing_folder else 'true' }}"
-            >
-              <i class="fas fa-hard-drive"></i>
-              Prepare a drive for SimpleSaferServer
-            </button>
-            <button
-              type="button"
-              class="tab-btn{% if is_existing_folder %} active{% endif %}"
-              id="storageModeExistingBtn"
-              data-storage-mode="existing_folder"
-              role="tab"
-              aria-controls="existingFolderStoragePanel"
-              aria-selected="{{ 'true' if is_existing_folder else 'false' }}"
-            >
-              <i class="fas fa-folder"></i>
-              Use an existing folder
-            </button>
-          </div>
+
+      <h3 class="storage-subheading">Drive identity</h3>
+      <div class="storage-table">
+        <div class="storage-table-row">
+          <div>Mount point</div>
+          <code>{{ drive_config.mount_point }}</code>
         </div>
-
-        <div
-          id="preparedDriveStoragePanel"
-          class="storage-mode-panel{% if is_existing_folder %} d-none{% endif %}"
-          role="tabpanel"
-          aria-labelledby="storageModePreparedBtn"
-        >
-          <div class="alert alert-warning storage-mode-note">
-            <div>
-              Change prepared drive opens a separate page for formatting or using a replacement NTFS drive. Formatting removes files, but current storage stays configured until Use This Drive succeeds.
-            </div>
-          </div>
-
-          <h3 class="storage-subheading">Current managed drive</h3>
-          <div class="storage-key-values mb-4">
-            <div class="storage-key-value-row">
-              <div>Configured Mount Point</div>
-              <code id="configuredMountPointValue">{{ drive_config.mount_point }}</code>
-            </div>
-            <div class="storage-key-value-row">
-              <div>Configured UUID</div>
-              <code id="configuredUuidValue">{{ drive_config.uuid or '—' }}</code>
-            </div>
-            <div class="storage-key-value-row">
-              <div>Configured USB ID</div>
-              <code id="configuredUsbIdValue">{{ drive_config.usb_id or '—' }}</code>
-            </div>
-          </div>
-
-          <div class="storage-action-entry">
-            <div>
-              <div class="storage-action-title">Change prepared drive</div>
-              <div class="storage-action-copy">
-                Format or use a replacement NTFS drive without changing storage until the final apply succeeds.
-              </div>
-            </div>
-            <a href="{{ url_for('storage_routes.storage_change_drive_page') }}" class="btn btn-primary btn-sm">
-              <i class="fas fa-hard-drive me-1"></i> Change Prepared Drive
-            </a>
-          </div>
+        <div class="storage-table-row">
+          <div>Filesystem</div>
+          <code>{{ drive_config.filesystem }}</code>
         </div>
-
-        <div
-          id="existingFolderStoragePanel"
-          class="storage-mode-panel{% if not is_existing_folder %} d-none{% endif %}"
-          role="tabpanel"
-          aria-labelledby="storageModeExistingBtn"
-        >
-          <div class="alert alert-info storage-mode-note">
-            <div>
-              Use this when storage is already managed outside SimpleSaferServer.
-            </div>
-          </div>
-
-          <div class="form-group mb-4">
-            <label class="form-label" for="existingStoragePath">Existing Folder Path</label>
-            <input
-              type="text"
-              class="form-control text-mono"
-              id="existingStoragePath"
-              value="{{ storage_location.path if is_existing_folder else '' }}"
-              placeholder="/srv/storage"
-            >
-            <div class="form-hint">The folder must already exist and be writable.</div>
-            <div class="form-hint">SimpleSaferServer will create <code>.simple-safer-server/storage.json</code> inside this folder for backup safety checks.</div>
-          </div>
-
-          <div class="storage-mode-muted mb-4">
-            SimpleSaferServer will not mount or format anything in this mode.
-          </div>
-
-          <div class="storage-primary-actions">
-            <button type="button" id="saveExistingStorageBtn" class="btn btn-primary btn-sm">
-              <i class="fas fa-folder me-1"></i> Use This Folder
-            </button>
-          </div>
-          <div id="existingStorageError" class="alert alert-danger d-none mb-4 storage-feedback-below-actions"></div>
+        <div class="storage-table-row">
+          <div>Drive UUID</div>
+          <code>{{ drive_config.uuid or '—' }}</code>
         </div>
+        <div class="storage-table-row">
+          <div>USB ID</div>
+          <code>{{ drive_config.usb_id or '—' }}</code>
+        </div>
+        <div class="storage-table-row">
+          <div>Last verified</div>
+          <code>{{ drive_config.last_verified }}</code>
+        </div>
+      </div>
+
+      <h3 class="storage-subheading">Safety checks</h3>
+      <div class="storage-table storage-safety-table">
+        {% for check in safety_checks %}
+          <div class="storage-table-row storage-check-{{ check.state }}">
+            <div><i class="fas {% if check.state == 'pass' %}fa-circle-check{% elif check.state == 'fail' %}fa-circle-xmark{% else %}fa-circle-minus{% endif %}"></i> {{ check.label }}</div>
+            <span>{{ check.detail }}</span>
+          </div>
+        {% endfor %}
       </div>
     </section>
 
-    <aside class="card storage-safety-panel">
-      <div class="card-header">
-        <h2 class="card-title"><i class="fas fa-shield-halved"></i> Safety checks</h2>
+    <section class="card storage-actions-card">
+      <div class="storage-card-title">
+        <i class="fas fa-screwdriver-wrench"></i>
+        <h2>Storage actions</h2>
       </div>
-      <div class="card-body">
-        <p class="storage-safety-intro">
-          {% if is_existing_folder %}
-            Cloud backups check this folder before sync starts.
-          {% else %}
-            SimpleSaferServer runs these checks before cloud backup starts.
-          {% endif %}
-        </p>
 
-        <div class="storage-check-list">
-          {% for check in safety_checks %}
-            <div class="storage-check-row storage-check-{{ check.state }}">
-              <div class="storage-check-icon" aria-hidden="true">
-                {% if check.state == 'pass' %}
-                  <i class="fas fa-circle-check"></i>
-                {% elif check.state == 'fail' %}
-                  <i class="fas fa-circle-xmark"></i>
-                {% else %}
-                  <i class="fas fa-circle-minus"></i>
-                {% endif %}
-              </div>
-              <div class="storage-check-copy">
-                <div class="storage-check-label">{{ check.label }}</div>
-                <div class="storage-check-detail">{{ check.detail }}</div>
-              </div>
-            </div>
-          {% endfor %}
+      <div class="storage-action-group">
+        <div>
+          <h3>Operational action</h3>
+          <p>Resolve issues without changing storage.</p>
         </div>
-
-        <div class="alert alert-info storage-safety-note">
-          <div>
-            {% if storage_status.ok %}
-              Cloud backups check this storage location before sync starts.
-            {% else %}
-              Cloud backups are blocked when any required safety check fails.
-            {% endif %}
+        <div class="storage-action-row">
+          <div class="storage-action-icon"><i class="fas fa-screwdriver-wrench"></i></div>
+          <div class="storage-action-copy">
+            <div class="storage-action-title">Repair storage marker</div>
+            <div>Recreate the storage marker file.</div>
           </div>
-        </div>
-
-        <div id="repairMarkerError" class="alert alert-danger d-none mb-4"></div>
-        <div class="storage-safety-actions">
           <button type="button" id="repairMarkerBtn" class="btn btn-secondary btn-sm">
-            <i class="fas fa-screwdriver-wrench me-1"></i> Repair Storage Marker
+            Repair marker
           </button>
         </div>
+        <div id="repairMarkerError" class="alert alert-danger d-none storage-feedback-below-actions"></div>
       </div>
-    </aside>
+
+      <div class="storage-config-change">
+        <h3>Configuration change</h3>
+        <p>Choose a new storage target. Current storage stays active until the selected change succeeds.</p>
+        <div class="storage-change-entry">
+          <div class="storage-action-icon"><i class="fas fa-database"></i></div>
+          <div class="storage-action-copy">
+            <div class="storage-action-title">Change prepared drive</div>
+            <div>Format or use a replacement NTFS drive without changing storage until the final apply succeeds.</div>
+          </div>
+          <a href="{{ url_for('storage_routes.storage_change_drive_page') }}" class="btn btn-primary btn-sm">
+            Change drive <i class="fas fa-arrow-right ms-1"></i>
+          </a>
+        </div>
+        <div class="storage-change-entry">
+          <div class="storage-action-icon"><i class="fas fa-folder"></i></div>
+          <div class="storage-action-copy">
+            <div class="storage-action-title">Use an existing folder</div>
+            <div>Use this for ZFS, RAID, mergerfs, SnapRAID, NFS, or a normal folder. SimpleSaferServer will not mount or format anything.</div>
+          </div>
+          <a href="{{ url_for('storage_routes.storage_existing_folder_page') }}" class="btn btn-primary btn-sm">
+            Choose folder <i class="fas fa-arrow-right ms-1"></i>
+          </a>
+        </div>
+      </div>
+    </section>
   </div>
 </div>
 

@@ -7,6 +7,7 @@ from simple_safer_server.services.backup_drive_setup import (
     BackupDriveSetupError,
     apply_backup_drive_configuration,
     format_backup_drive,
+    get_managed_ntfs_driver,
     list_available_drives,
     unmount_disk_partitions,
     unmount_selected_partition,
@@ -58,6 +59,20 @@ def _build_storage_safety_checks(status: dict[str, Any], location: Any) -> list[
             },
             {"label": "Write test", "state": "pass", "detail": "Last checked just now."},
             {"label": identity_label, "state": "pass", "detail": identity_detail},
+            {
+                "label": "Folder is writable"
+                if location.mode == MODE_EXISTING_FOLDER
+                else "Drive is writable",
+                "state": "pass",
+                "detail": "Folder is writable."
+                if location.mode == MODE_EXISTING_FOLDER
+                else "Mount is writable.",
+            },
+            {
+                "label": "Test file cycle",
+                "state": "pass",
+                "detail": "Write, read, and delete succeeded.",
+            },
         ]
 
     error = str(status.get("error") or "Storage checks failed.")
@@ -449,6 +464,12 @@ def storage_page():
         ),
         "uuid": services.config_manager.get_value("backup", "uuid", ""),
         "usb_id": services.config_manager.get_value("backup", "usb_id", ""),
+        "filesystem": (
+            "External"
+            if location.mode == MODE_EXISTING_FOLDER
+            else get_managed_ntfs_driver(runtime=services.runtime).upper()
+        ),
+        "last_verified": "Just now",
     }
     status = storage_status(
         services.config_manager,
@@ -477,6 +498,18 @@ def storage_change_drive_page():
         "usb_id": services.config_manager.get_value("backup", "usb_id", ""),
     }
     return render_template("storage_change_drive.html", drive_config=drive_config)
+
+
+@storage.route("/storage/existing-folder")
+@admin_required
+def storage_existing_folder_page():
+    services = _get_services()
+    location = get_storage_location(services.config_manager, runtime=services.runtime)
+    current_path = location.path if location.mode == MODE_EXISTING_FOLDER else ""
+    return render_template(
+        "storage_existing_folder.html",
+        current_path=current_path,
+    )
 
 
 @storage.route("/api/storage/existing-folder", methods=["POST"])

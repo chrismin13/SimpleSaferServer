@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block title %}{{ browser_title('Use an Existing Folder') }}{% endblock %}
+{% block header %}{% endblock %}
+
+{% block content %}
+<div class="storage-page storage-existing-page">
+  <div class="storage-change-topline">
+    <a href="{{ url_for('storage_routes.storage_page') }}" class="btn btn-secondary btn-sm storage-back-btn">
+      <i class="fas fa-arrow-left"></i> Back to Storage
+    </a>
+    <div class="storage-breadcrumb">Storage <span>/</span> Use an existing folder</div>
+  </div>
+
+  <div class="storage-page-heading storage-change-heading">
+    <h1>Use an existing folder</h1>
+    <p>Point SimpleSaferServer at storage that is already prepared and mounted outside the app.</p>
+  </div>
+
+  <section class="card storage-existing-card">
+    <div class="storage-card-title">
+      <i class="fas fa-folder"></i>
+      <h2>Folder storage</h2>
+    </div>
+
+    <div class="storage-inline-info storage-existing-info">
+      <i class="fas fa-circle-info"></i>
+      <span>Use this for ZFS, RAID, mergerfs, SnapRAID, NFS, or a normal folder. SimpleSaferServer will not mount or format anything.</span>
+    </div>
+
+    <div class="form-group storage-existing-field">
+      <label class="form-label" for="existingStoragePath">Existing Folder Path</label>
+      <input
+        type="text"
+        class="form-control text-mono"
+        id="existingStoragePath"
+        value="{{ current_path }}"
+        placeholder="/srv/storage"
+      >
+      <div class="form-hint">The folder must already exist and be writable.</div>
+      <div class="form-hint">SimpleSaferServer will create <code>.simple-safer-server/storage.json</code> inside this folder for backup safety checks.</div>
+    </div>
+
+    <h3 class="storage-subheading">What changes</h3>
+    <div class="storage-table storage-change-table">
+      <div class="storage-table-row">
+        <div><i class="fas fa-circle-check"></i> Storage path saved</div>
+        <span>The app stores this folder as the backup location.</span>
+      </div>
+      <div class="storage-table-row">
+        <div><i class="fas fa-circle-check"></i> Backup share points to this folder</div>
+        <span>The default <code>backup</code> network share is updated.</span>
+      </div>
+      <div class="storage-table-row">
+        <div><i class="fas fa-circle-check"></i> Storage marker is created</div>
+        <span>Cloud backup safety checks use the marker before sync.</span>
+      </div>
+      <div class="storage-table-row">
+        <div><i class="fas fa-circle-info"></i> No mount or format actions</div>
+        <span>The operating system or administrator keeps this folder available.</span>
+      </div>
+    </div>
+
+    <div class="storage-existing-footer">
+      <div>
+        <div class="drive-setup-status text-muted" id="existingStorageStatus"></div>
+        <div id="existingStorageError" class="alert alert-danger d-none storage-feedback-below-actions"></div>
+      </div>
+      <div class="storage-existing-actions">
+        <span>Current storage changes only after Use This Folder succeeds.</span>
+        <button type="button" id="saveExistingStorageBtn" class="btn btn-primary btn-sm">
+          Use This Folder <i class="fas fa-arrow-right ms-1"></i>
+        </button>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/storage_existing_folder.js') }}"></script>
+{% endblock %}
