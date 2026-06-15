@@ -271,6 +271,41 @@ class DriveHealthTests(unittest.TestCase):
             saved = drive_health.load_hdsentinel_drive_state(runtime)
             self.assertEqual(saved["serial:SERIAL-B"]["health_pct"], 70)
 
+    def test_hdsentinel_drive_key_uses_device_for_placeholder_serials(self):
+        for serial in ("-", "?", "unknown", "Unknown", " unknown "):
+            with self.subTest(serial=serial):
+                self.assertEqual(
+                    drive_health.hdsentinel_drive_key(
+                        {"device": "/dev/sda", "serial": serial}
+                    ),
+                    "device:/dev/sda",
+                )
+
+        self.assertEqual(
+            drive_health.hdsentinel_drive_key({"device": "/dev/sda", "serial": "SERIAL-A"}),
+            "serial:SERIAL-A",
+        )
+
+    def test_hdsentinel_drive_state_keeps_placeholder_serial_drives_separate(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime = SimpleNamespace(
+                is_fake=False,
+                data_dir=Path(temp_dir),
+                bin_dir=Path(temp_dir),
+            )
+
+            drive_health.save_hdsentinel_drive_state(
+                [
+                    {"available": True, "device": "/dev/sda", "serial": "-", "health_pct": 90},
+                    {"available": True, "device": "/dev/sdb", "serial": "-", "health_pct": 80},
+                ],
+                runtime=runtime,
+            )
+
+            saved = drive_health.load_hdsentinel_drive_state(runtime)
+            self.assertEqual(saved["device:/dev/sda"]["health_pct"], 90)
+            self.assertEqual(saved["device:/dev/sdb"]["health_pct"], 80)
+
     @patch(
         "simple_safer_server.services.drive_health.resolve_backup_parent_device",
         return_value=("/dev/sdb", "/dev/sdb1", None),

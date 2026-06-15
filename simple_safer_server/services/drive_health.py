@@ -499,9 +499,14 @@ def save_hdsentinel_drive_state(drives, runtime=None):
     _write_json_atomically(path, {"drives": drive_map, "last_snapshot": worst_snapshot})
 
 
+_HDSENTINEL_PLACEHOLDER_SERIALS = {"-", "?", "unknown"}
+
+
 def hdsentinel_drive_key(snapshot):
     serial = (snapshot or {}).get("serial")
-    if serial:
+    # HDSentinel can report the same placeholder serial for different drives.
+    # Device paths are safer than collapsing several drives into one saved key.
+    if serial and str(serial).strip().casefold() not in _HDSENTINEL_PLACEHOLDER_SERIALS:
         return f"serial:{serial}"
     device = (snapshot or {}).get("device")
     if device:
