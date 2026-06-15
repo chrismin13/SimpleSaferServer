@@ -23,11 +23,15 @@ class StorageService:
         fake_state: Any,
         config_manager: Any,
         command_adapter: Any,
+        system_utils: Any,
+        command_runner: Any,
     ) -> None:
         self._runtime = runtime
         self._fake_state = fake_state
         self._config_manager = config_manager
         self._command_adapter = command_adapter
+        self._system_utils = system_utils
+        self._command_runner = command_runner
 
     def restart_system(self) -> str:
         if self._runtime.is_fake:
@@ -52,8 +56,9 @@ class StorageService:
         if location.mode == MODE_EXISTING_FOLDER:
             status = storage_status(
                 self._config_manager,
-                self._command_adapter,
+                self._system_utils,
                 runtime=self._runtime,
+                command_runner=self._command_runner,
             )
             if not status["ok"]:
                 raise ValidationProblem(status["error"], slug="storage-validation-error")

@@ -154,6 +154,8 @@ def create_app() -> Flask:
         fake_state=fake_state,
         config_manager=config_manager,
         command_adapter=storage_command_adapter,
+        system_utils=system_utils,
+        command_runner=command_runner,
     )
     drive_health_summary_service = DriveHealthSummaryService()
     app.extensions["simple_safer_server"] = AppServices(

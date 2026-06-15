@@ -10,9 +10,15 @@ from simple_safer_server.web.problems import OperationProblem, ValidationProblem
 
 
 class FakeConfigManager:
-    def __init__(self, mount_point, uuid: str | None = "drive-uuid"):
+    def __init__(
+        self,
+        mount_point,
+        uuid: str | None = "drive-uuid",
+        storage_mode: str = "managed_drive",
+    ):
         self.mount_point = mount_point
         self.uuid = uuid
+        self.storage_mode = storage_mode
 
     def get_all_config(self):
         return {
@@ -21,7 +27,7 @@ class FakeConfigManager:
                 "uuid": self.uuid or "",
             },
             "storage": {
-                "mode": "managed_drive",
+                "mode": self.storage_mode,
                 "path": self.mount_point,
             },
         }
@@ -79,6 +85,10 @@ class FakeStorageCommandAdapter:
         self.started.append(unit_name)
 
 
+class FakeSystemUtils:
+    pass
+
+
 class StorageServiceTests(unittest.TestCase):
     def build_service(
         self,
@@ -86,6 +96,7 @@ class StorageServiceTests(unittest.TestCase):
         is_fake=False,
         mount_point=None,
         uuid: str | None = "drive-uuid",
+        storage_mode: str = "managed_drive",
     ):
         runtime = SimpleNamespace(
             is_fake=is_fake,
@@ -94,16 +105,24 @@ class StorageServiceTests(unittest.TestCase):
         )
         fake_state = FakeState()
         adapter = FakeStorageCommandAdapter()
+        system_utils = FakeSystemUtils()
+        command_runner = object()
         service = StorageService(
             runtime=runtime,
             fake_state=fake_state,
-            config_manager=FakeConfigManager(runtime.default_mount_point, uuid=uuid),
+            config_manager=FakeConfigManager(
+                runtime.default_mount_point,
+                uuid=uuid,
+                storage_mode=storage_mode,
+            ),
             command_adapter=adapter,
+            system_utils=system_utils,
+            command_runner=command_runner,
         )
-        return service, fake_state, adapter
+        return service, fake_state, adapter, system_utils, command_runner
 
     def test_restart_and_shutdown_delegate_to_command_adapter(self):
-        service, _fake_state, adapter = self.build_service()
+        service, _fake_state, adapter, _system_utils, _command_runner = self.build_service()
 
         self.assertEqual(service.restart_system(), "System is restarting...")
         self.assertEqual(service.shutdown_system(), "System is shutting down...")
@@ -112,15 +131,40 @@ class StorageServiceTests(unittest.TestCase):
 
     def test_fake_mount_sets_fake_state_without_system_commands(self):
         with tempfile.TemporaryDirectory() as mount_point:
-            service, fake_state, adapter = self.build_service(is_fake=True, mount_point=mount_point)
+            service, fake_state, adapter, _system_utils, _command_runner = self.build_service(
+                is_fake=True,
+                mount_point=mount_point,
+            )
 
             self.assertEqual(service.mount_dashboard_drive(), "Local backup source connected.")
             self.assertTrue(fake_state.mounted)
             self.assertEqual(adapter.mounted, [])
 
+    def test_existing_folder_mount_checks_storage_with_system_utils_and_command_runner(self):
+        with tempfile.TemporaryDirectory() as mount_point:
+            service, _fake_state, _adapter, system_utils, command_runner = self.build_service(
+                mount_point=mount_point,
+                storage_mode="existing_folder",
+            )
+
+            with patch(
+                "simple_safer_server.services.storage_service.storage_status",
+                return_value={"ok": True, "error": ""},
+            ) as active_status:
+                self.assertEqual(service.mount_dashboard_drive(), "Storage folder is available.")
+
+            active_status.assert_called_once_with(
+                service._config_manager,
+                system_utils,
+                runtime=service._runtime,
+                command_runner=command_runner,
+            )
+
     def test_real_mount_starts_related_services(self):
         with tempfile.TemporaryDirectory() as mount_point:
-            service, _fake_state, adapter = self.build_service(mount_point=mount_point)
+            service, _fake_state, adapter, _system_utils, _command_runner = self.build_service(
+                mount_point=mount_point
+            )
 
             self.assertEqual(
                 service.mount_dashboard_drive(), "Drive mounted and available for use."
@@ -139,7 +183,9 @@ class StorageServiceTests(unittest.TestCase):
 
     def test_real_mount_prefers_managed_fstab_entry(self):
         with tempfile.TemporaryDirectory() as mount_point:
-            service, _fake_state, adapter = self.build_service(mount_point=mount_point)
+            service, _fake_state, adapter, _system_utils, _command_runner = self.build_service(
+                mount_point=mount_point
+            )
 
             with patch(
                 "simple_safer_server.services.storage_service.get_managed_fstab_entry_for_mount_point",
@@ -154,7 +200,9 @@ class StorageServiceTests(unittest.TestCase):
 
     def test_real_mount_rejects_stale_managed_fstab_uuid(self):
         with tempfile.TemporaryDirectory() as mount_point:
-            service, _fake_state, adapter = self.build_service(mount_point=mount_point)
+            service, _fake_state, adapter, _system_utils, _command_runner = self.build_service(
+                mount_point=mount_point
+            )
 
             with patch(
                 "simple_safer_server.services.storage_service.get_managed_fstab_entry_for_mount_point",
@@ -168,7 +216,9 @@ class StorageServiceTests(unittest.TestCase):
 
     def test_real_mount_rejects_ambiguous_uuid_matches(self):
         with tempfile.TemporaryDirectory() as mount_point:
-            service, _fake_state, adapter = self.build_service(mount_point=mount_point)
+            service, _fake_state, adapter, _system_utils, _command_runner = self.build_service(
+                mount_point=mount_point
+            )
             adapter.device = "/dev/sdb1\n/dev/sdc1\n"
 
             with self.assertRaisesRegex(ValidationProblem, "Multiple connected drives"):
@@ -178,7 +228,9 @@ class StorageServiceTests(unittest.TestCase):
             self.assertEqual(adapter.managed_mounted, [])
 
     def test_real_mount_reports_missing_uuid_without_system_commands(self):
-        service, _fake_state, adapter = self.build_service(uuid=None)
+        service, _fake_state, adapter, _system_utils, _command_runner = self.build_service(
+            uuid=None
+        )
 
         with self.assertRaisesRegex(ValidationProblem, "No drive UUID configured"):
             service.mount_dashboard_drive()
@@ -186,7 +238,9 @@ class StorageServiceTests(unittest.TestCase):
 
     def test_real_mount_uses_stable_error_message(self):
         with tempfile.TemporaryDirectory() as mount_point:
-            service, _fake_state, adapter = self.build_service(mount_point=mount_point)
+            service, _fake_state, adapter, _system_utils, _command_runner = self.build_service(
+                mount_point=mount_point
+            )
             adapter.raise_on_mount = subprocess.CalledProcessError(1, ["mount"])
 
             with self.assertRaisesRegex(OperationProblem, "Failed to mount drive\\."):
