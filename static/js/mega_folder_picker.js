@@ -42,6 +42,7 @@ window.openMegaFolderPicker = function openMegaFolderPicker(options) {
 
   let currentPath = startPath || '/';
   let parentPath = '/';
+  let activeLoadId = 0;
 
   function showError(msg) {
     if (!errorEl) return;
@@ -66,6 +67,15 @@ window.openMegaFolderPicker = function openMegaFolderPicker(options) {
     return (basePath || '/').replace(/\/$/, '') + '/' + name;
   }
 
+  function parentForPath(path) {
+    const normalized = path || '/';
+    if (normalized === '/') return null;
+    const withoutTrailingSlash = normalized.replace(/\/+$/, '') || '/';
+    if (withoutTrailingSlash === '/') return null;
+    const parent = withoutTrailingSlash.split('/').slice(0, -1).join('/');
+    return parent || '/';
+  }
+
   function responseEntries(data) {
     if (Array.isArray(data.entries)) {
       return showFiles ? data.entries : data.entries.filter(entry => entry.type === 'folder');
@@ -74,7 +84,13 @@ window.openMegaFolderPicker = function openMegaFolderPicker(options) {
   }
 
   function loadDirs(path) {
+    const loadId = activeLoadId + 1;
+    activeLoadId = loadId;
+    currentPath = path || '/';
+    parentPath = parentForPath(currentPath) || '/';
     clearError();
+    if (currentPathEl) window.renderPathBreadcrumbs(currentPathEl, currentPath, loadDirs);
+    if (upBtn) upBtn.disabled = !parentForPath(currentPath);
     if (dirsListEl) {
       dirsListEl.innerHTML = `
         <div class="folder-list-loading" aria-live="polite">
@@ -93,6 +109,7 @@ window.openMegaFolderPicker = function openMegaFolderPicker(options) {
       body: JSON.stringify(requestBody)
     })
       .then(({ data }) => {
+        if (loadId !== activeLoadId) return;
         currentPath = data.path;
         parentPath = data.parent || '/';
         if (currentPathEl) window.renderPathBreadcrumbs(currentPathEl, currentPath, loadDirs);
@@ -137,12 +154,15 @@ window.openMegaFolderPicker = function openMegaFolderPicker(options) {
         clearError();
       })
       .catch(e => {
+        if (loadId !== activeLoadId) return;
         if (dirsListEl) dirsListEl.innerHTML = '';
         showError(e.message || 'Could not load folders.');
       });
   }
 
-  if (upBtn) upBtn.onclick = () => loadDirs(parentPath);
+  if (upBtn) upBtn.onclick = () => {
+    if (parentForPath(currentPath)) loadDirs(parentPath);
+  };
   if (selectCurrentBtn) selectCurrentBtn.onclick = () => {
     if (onSelect) onSelect(currentPath);
     BunkerModal.hide(resolvedId);

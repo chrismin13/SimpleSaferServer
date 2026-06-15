@@ -353,6 +353,9 @@ let currentDeleteShare = null;
 let allUsers = [];
 let unmanagedShareNames = [];
 let currentServerName = '';
+let folderPickerCurrentPath = '/';
+let folderPickerParentPath = '/';
+let folderPickerLoadId = 0;
 
 document.addEventListener('DOMContentLoaded', function() {
   loadServerIdentity();
@@ -498,8 +501,8 @@ function setupFolderPicker(browseBtnId, pathInputId) {
   if (!browseBtn) return;
   browseBtn.addEventListener('click', function() {
     const pathInput = document.getElementById(pathInputId);
-    let currentPath = pathInput.value || '/';
-    loadFolderPicker(currentPath);
+    folderPickerCurrentPath = pathInput.value || '/';
+    loadFolderPicker(folderPickerCurrentPath);
     document.getElementById('pickerSelectCurrentBtn').onclick = function() {
       pathInput.value = document.getElementById('pickerCurrentPath').dataset.path || '/';
       BunkerModal.hide('folderPickerModal');
@@ -508,16 +511,37 @@ function setupFolderPicker(browseBtnId, pathInputId) {
   });
 }
 
+function getPickerParentPath(path) {
+  const normalized = path || '/';
+  if (normalized === '/') return null;
+  const withoutTrailingSlash = normalized.replace(/\/+$/, '') || '/';
+  if (withoutTrailingSlash === '/') return null;
+  const parent = withoutTrailingSlash.split('/').slice(0, -1).join('/');
+  return parent || '/';
+}
+
 function loadFolderPicker(path) {
   const dirsEl = document.getElementById('pickerDirsList');
   const pathEl = document.getElementById('pickerCurrentPath');
   const errorEl = document.getElementById('pickerError');
   const normalizedPath = path || '/';
+  const loadId = folderPickerLoadId + 1;
+  folderPickerLoadId = loadId;
+  folderPickerCurrentPath = normalizedPath;
+  folderPickerParentPath = getPickerParentPath(normalizedPath) || '/';
   clearFolderPickerError();
+  window.renderPathBreadcrumbs(pathEl, normalizedPath, loadFolderPicker);
+  document.getElementById('pickerUpBtn').disabled = !getPickerParentPath(normalizedPath);
+  document.getElementById('pickerUpBtn').onclick = () => {
+    if (getPickerParentPath(folderPickerCurrentPath)) loadFolderPicker(folderPickerParentPath);
+  };
   dirsEl.innerHTML = '<span class="spinner"></span>';
 
   window.ApiClient.fetchJson(`/api/list_dirs?path=${encodeURIComponent(normalizedPath)}`)
     .then(({ data }) => {
+      if (loadId !== folderPickerLoadId) return;
+      folderPickerCurrentPath = data.path;
+      folderPickerParentPath = data.parent || '/';
       window.renderPathBreadcrumbs(pathEl, data.path, loadFolderPicker);
       dirsEl.innerHTML = '';
 
@@ -539,7 +563,7 @@ function loadFolderPicker(path) {
           label.textContent = dir;
           item.appendChild(document.createTextNode(' '));
           item.appendChild(label);
-          item.addEventListener('click', () => loadFolderPicker(data.path.replace(/\/$/, '') + '/' + dir));
+          item.addEventListener('click', () => loadFolderPicker(folderPickerCurrentPath.replace(/\/$/, '') + '/' + dir));
           dirsEl.appendChild(item);
         });
       } else {
@@ -547,6 +571,7 @@ function loadFolderPicker(path) {
       }
     })
     .catch(e => {
+      if (loadId !== folderPickerLoadId) return;
       dirsEl.innerHTML = '';
       errorEl.innerHTML = `<i class="fas fa-circle-exclamation"></i><span>${e.message || 'Could not load directories.'}</span>`;
       errorEl.classList.add('visible');
