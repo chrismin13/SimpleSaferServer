@@ -499,6 +499,9 @@ WantedBy=timers.target
                 self.run_command(
                     ['systemctl', 'disable', '--now', f'{service_name}.timer'], check=False
                 )
+                self.run_command(
+                    ['systemctl', 'disable', f'{service_name}.service'], check=False
+                )
                 self.logger.info(f"Left {service_name} timer disabled by configuration")
 
             for service_name in enabled_services:

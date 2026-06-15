@@ -1,7 +1,9 @@
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
+from simple_safer_server.services import storage_location
 from simple_safer_server.services.storage_location import (
     MODE_EXISTING_FOLDER,
     StorageLocationError,
@@ -11,6 +13,7 @@ from simple_safer_server.services.storage_location import (
     marker_path,
     passive_storage_status,
     repair_storage_marker,
+    storage_status,
     validate_existing_folder_path,
     validate_storage_ready_for_backup,
 )
@@ -136,6 +139,70 @@ def test_storage_validation_fails_when_write_probe_readback_does_not_match(tmp_p
         validate_storage_ready_for_backup(config, FakeSystemUtils(), runtime=runtime)
 
 
+def test_storage_status_handles_marker_read_errors(tmp_path, monkeypatch):
+    storage_path = tmp_path / "storage"
+    storage_path.mkdir()
+    runtime = fake_runtime(tmp_path)
+    config = FakeConfigManager(storage_path)
+    configure_existing_folder(config, str(storage_path), runtime=runtime)
+    marker = marker_path(storage_path).resolve()
+    original_read_text = Path.read_text
+
+    def fail_marker_read(path, *args, **kwargs):
+        if path.resolve() == marker:
+            raise PermissionError("marker is not readable")
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", fail_marker_read)
+
+    status = storage_status(config, FakeSystemUtils(), runtime=runtime)
+
+    assert status["ok"] is False
+    assert "Could not read storage marker" in status["error"]
+
+
+def test_storage_status_handles_probe_write_errors(tmp_path, monkeypatch):
+    storage_path = tmp_path / "storage"
+    storage_path.mkdir()
+    runtime = fake_runtime(tmp_path)
+    config = FakeConfigManager(storage_path)
+    configure_existing_folder(config, str(storage_path), runtime=runtime)
+
+    def fail_probe_write(path, _payload, mode=0o600):
+        raise PermissionError("probe is not writable")
+
+    monkeypatch.setattr(
+        "simple_safer_server.services.storage_location.atomic_write_text",
+        fail_probe_write,
+    )
+
+    status = storage_status(config, FakeSystemUtils(), runtime=runtime)
+
+    assert status["ok"] is False
+    assert "Storage write probe failed" in status["error"]
+
+
+def test_storage_status_handles_probe_readback_errors(tmp_path, monkeypatch):
+    storage_path = tmp_path / "storage"
+    storage_path.mkdir()
+    runtime = fake_runtime(tmp_path)
+    config = FakeConfigManager(storage_path)
+    configure_existing_folder(config, str(storage_path), runtime=runtime)
+    original_read_text = Path.read_text
+
+    def fail_probe_read(path, *args, **kwargs):
+        if path.name == storage_location.PROBE_FILE_NAME:
+            raise PermissionError("probe is not readable")
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", fail_probe_read)
+
+    status = storage_status(config, FakeSystemUtils(), runtime=runtime)
+
+    assert status["ok"] is False
+    assert "Storage write probe failed" in status["error"]
+
+
 def test_repair_storage_marker_restores_missing_marker(tmp_path):
     storage_path = tmp_path / "storage"
     storage_path.mkdir()
@@ -155,6 +222,29 @@ def test_existing_folder_rejects_app_owned_paths(tmp_path):
 
     with pytest.raises(StorageLocationError, match="dedicated storage folder"):
         validate_existing_folder_path(str(runtime.config_dir), runtime=runtime)
+
+
+def test_existing_folder_rejects_root_path(tmp_path):
+    runtime = fake_runtime(tmp_path)
+
+    with pytest.raises(StorageLocationError, match="dedicated storage folder"):
+        validate_existing_folder_path("/", runtime=runtime)
+
+
+def test_root_path_is_not_used_as_blocked_ancestor():
+    assert storage_location.ROOT_PATH not in storage_location.UNSAFE_STORAGE_PATHS
+
+
+def test_existing_folder_allows_absolute_path_outside_blocked_roots(tmp_path, monkeypatch):
+    storage_path = tmp_path / "storage"
+    storage_path.mkdir()
+    runtime = fake_runtime(tmp_path)
+    runtime.is_fake = False
+    monkeypatch.setattr(storage_location, "UNSAFE_STORAGE_PATHS", {Path("/etc")})
+
+    assert (
+        validate_existing_folder_path(str(storage_path), runtime=runtime) == storage_path.resolve()
+    )
 
 
 def test_existing_folder_rejects_relative_paths(tmp_path, monkeypatch):

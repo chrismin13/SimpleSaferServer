@@ -37,7 +37,6 @@ class StorageLocation:
 
 ROOT_PATH = Path("/")
 UNSAFE_STORAGE_PATHS = {
-    ROOT_PATH,
     ROOT_PATH / "bin",
     ROOT_PATH / "boot",
     ROOT_PATH / "dev",
@@ -131,6 +130,12 @@ def _normalize_storage_path(path: str) -> Path:
 def validate_existing_folder_path(path: str, runtime: Any | None = None) -> Path:
     runtime = runtime or get_runtime()
     resolved = _normalize_storage_path(path)
+    # "/" must be rejected exactly. It cannot live in UNSAFE_STORAGE_PATHS because
+    # every absolute path has "/" as a parent.
+    if resolved == ROOT_PATH:
+        raise StorageLocationError(
+            f"Do not use {resolved} as storage. Choose a dedicated storage folder."
+        )
     blocked = set() if runtime.is_fake else {path.resolve() for path in UNSAFE_STORAGE_PATHS}
     blocked.update(
         {
@@ -179,11 +184,15 @@ def _write_storage_marker(path: str | Path, storage_id: str) -> None:
 def _read_storage_marker(path: str | Path) -> dict[str, Any]:
     marker = marker_path(path)
     try:
-        return json.loads(marker.read_text(encoding="utf-8"))
+        marker_text = marker.read_text(encoding="utf-8")
     except FileNotFoundError as exc:
         raise StorageLocationError(
             f"Storage marker is missing at {marker}. Cloud backup will not run."
         ) from exc
+    except Exception as exc:
+        raise StorageLocationError(f"Could not read storage marker at {marker}: {exc}") from exc
+    try:
+        return json.loads(marker_text)
     except json.JSONDecodeError as exc:
         raise StorageLocationError(f"Storage marker at {marker} is not valid JSON.") from exc
 
@@ -195,12 +204,16 @@ def _probe_storage_write(path: str | Path) -> None:
         atomic_write_text(probe_path, token, mode=0o600)
         if probe_path.read_text(encoding="utf-8") != token:
             raise StorageLocationError("Storage write probe could not read back the same value.")
+    except StorageLocationError:
+        raise
+    except Exception as exc:
+        raise StorageLocationError(f"Storage write probe failed at {probe_path}: {exc}") from exc
     finally:
         try:
             probe_path.unlink()
         except FileNotFoundError:
             pass
-        except OSError as exc:
+        except Exception as exc:
             raise StorageLocationError(
                 f"Storage write probe succeeded but the temporary file could not be deleted: {exc}"
             ) from exc

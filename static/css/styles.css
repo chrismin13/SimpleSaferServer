@@ -1229,7 +1229,7 @@ table .text-end { text-align: right; }
   min-width: 0;
 }
 
-.drive-setup-status {
+.storage-drive-scan .drive-setup-status {
   font-size: var(--text-sm);
 }
 

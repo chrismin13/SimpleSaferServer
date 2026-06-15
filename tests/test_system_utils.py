@@ -140,6 +140,10 @@ class SystemUtilsTimerActivationTests(unittest.TestCase):
                 (["systemctl", "disable", "--now", "backup_cloud.timer"], False),
                 system_utils.commands,
             )
+            self.assertIn(
+                (["systemctl", "disable", "backup_cloud.service"], False),
+                system_utils.commands,
+            )
             self.assertNotIn(
                 (["systemctl", "start", "backup_cloud.timer"], True),
                 system_utils.commands,
