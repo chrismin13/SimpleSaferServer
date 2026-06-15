@@ -285,6 +285,7 @@ def create_app() -> Flask:
     @app.context_processor
     def inject_template_context():
         username = session.get("username")
+        current_commit = app_update_manager.current_commit_short()
 
         def browser_title(page_name):
             hostname = ""
@@ -302,6 +303,9 @@ def create_app() -> Flask:
             "username": username,
             "runtime_mode": runtime.mode,
             "default_mount_point": runtime.default_mount_point,
+            "app_version_label": f"Commit {current_commit}"
+            if current_commit
+            else "Commit unavailable",
             "browser_title": browser_title,
             # Expose admin status so templates can conditionally show admin-only nav items.
             "is_admin": user_manager.is_admin(username) if username else False,

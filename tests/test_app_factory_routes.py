@@ -208,6 +208,48 @@ def test_login_title_uses_configured_hostname_without_auto_login():
         runtime._fake_state = previous_fake_state
 
 
+def test_login_page_shows_commit_indicator_above_username():
+    previous_runtime = runtime._runtime
+    previous_fake_state = runtime._fake_state
+    try:
+        with TemporaryDirectory() as temp_dir:
+            app = _create_fake_app(temp_dir, skip_login=False)
+            services = _finish_fake_setup(app)
+            services.app_update_manager.current_commit_short = lambda: "abc1234"
+
+            with app.test_client() as client:
+                response = client.get("/login")
+
+            page = response.get_data(as_text=True)
+            assert response.status_code == 200
+            assert "Commit abc1234" in page
+            assert page.index("Commit abc1234") < page.index("Username")
+    finally:
+        runtime._runtime = previous_runtime
+        runtime._fake_state = previous_fake_state
+
+
+def test_sidebar_shows_commit_indicator_above_signed_in_username():
+    previous_runtime = runtime._runtime
+    previous_fake_state = runtime._fake_state
+    try:
+        with TemporaryDirectory() as temp_dir:
+            app = _create_fake_app(temp_dir)
+            services = _finish_fake_setup(app)
+            services.app_update_manager.current_commit_short = lambda: "abc1234"
+
+            with app.test_client() as client:
+                response = client.get("/dashboard")
+
+            page = response.get_data(as_text=True)
+            assert response.status_code == 200
+            assert "Commit abc1234" in page
+            assert page.index("sidebar-version-indicator") < page.index("sidebar-user")
+    finally:
+        runtime._runtime = previous_runtime
+        runtime._fake_state = previous_fake_state
+
+
 def test_setup_title_keeps_product_name_before_server_name_is_chosen():
     previous_runtime = runtime._runtime
     previous_fake_state = runtime._fake_state

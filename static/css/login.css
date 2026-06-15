@@ -76,6 +76,25 @@
     -webkit-backdrop-filter: blur(12px);
 }
 
+.login-version-indicator {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    width: fit-content;
+    max-width: 100%;
+    margin-bottom: var(--sp-4);
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    line-height: var(--leading-tight);
+}
+
+.login-version-indicator span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 /* ── Layout Stability: Feedback Slot ───────────────────────── */
 .login-feedback-slot {
     position: absolute;

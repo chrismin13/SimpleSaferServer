@@ -269,6 +269,24 @@ body.fake-mode-active .sidebar {
   flex-shrink: 0;
 }
 
+.sidebar-version-indicator {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-2);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: var(--leading-tight);
+  min-width: 0;
+}
+
+.sidebar-version-indicator span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .sidebar-user {
   display: flex;
   align-items: center;

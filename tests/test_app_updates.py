@@ -74,6 +74,23 @@ class AppUpdateManagerTests(unittest.TestCase):
 
         self.assertEqual(manager.repo_path, runtime.repo_root)
 
+    def test_current_commit_short_returns_git_commit(self):
+        temp_dir, root, _remote, clone = self.make_repo_pair()
+        with temp_dir:
+            expected = git(clone, "rev-parse", "--short", "HEAD").stdout.strip()
+
+            self.assertEqual(self.manager(root, clone).current_commit_short(), expected)
+
+    def test_current_commit_short_returns_empty_when_not_git_checkout(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            command_adapter = MagicMock()
+
+            commit = self.manager(root, root / "not-a-repo", command_adapter).current_commit_short()
+
+        self.assertEqual(commit, "")
+        command_adapter.run_git.assert_not_called()
+
     def test_status_reports_branch_behind(self):
         temp_dir, root, _remote, clone = self.make_repo_pair()
         with temp_dir:

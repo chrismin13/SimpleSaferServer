@@ -182,6 +182,16 @@ class AppUpdateManager:
         commit = self._git_stdout(["rev-parse", "--short", "HEAD"], check=False)
         return "detached", commit
 
+    def current_commit_short(self) -> str:
+        """Return the short Git commit used by small, always-visible UI labels."""
+        if not (self.repo_path / ".git").exists():
+            return ""
+
+        try:
+            return self._git_stdout(["rev-parse", "--short", "HEAD"], check=True)
+        except CalledProcessError, OSError:
+            return ""
+
     def list_remote_branches(self, *, fetch_remote: bool = False) -> list[str]:
         """Return switchable branch names advertised by the origin remote."""
         if fetch_remote:

@@ -9,6 +9,8 @@ The broader access model is documented in [Access and Permissions](access.md).
 - **Password**: Enter your password.
 
 ## Features
+- **App commit**: The page shows the installed app commit above the username field. This helps an
+  administrator confirm which code is running before signing in.
 - **Validation**: Both fields are required.
 - **Feedback**: Error and success messages are displayed above the form (e.g., invalid credentials, lack of admin privileges).
 - **Button**: `Sign in` (submits the form).
