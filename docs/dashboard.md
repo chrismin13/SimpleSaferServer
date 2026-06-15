@@ -5,7 +5,7 @@ The Dashboard is the main interface for monitoring and managing the system. It p
 ## Status Indicators
 Four cards display real-time status:
 - **Storage**: Shows drive connection status, used/total storage, and usage percentage.
-- **Network File Sharing**: Summarizes `smbd`, `nmbd`, and `wsdd2`. The tile is operational when
+- **SMB Network Shares**: Summarizes `smbd`, `nmbd`, and `wsdd2`. The tile is operational when
   `smbd` is active and discovery services are either active or unavailable (not installed), partial
   when `smbd` is active but at least one discovery service is inactive, and down
   when `smbd` is not active.

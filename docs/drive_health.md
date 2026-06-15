@@ -138,7 +138,7 @@ Manual recovery rules:
 - Update only the SimpleSaferServer-managed `/etc/fstab` entry.
 - Use `ntfs-3g` or `ntfs3` as the filesystem type for the managed backup-drive line.
 - Run `sudo systemctl daemon-reload` after manually changing `/etc/fstab` so systemd forgets the old generated mount unit state.
-- If the mount point changes, also check `/etc/samba/simple_safer_server_shares.conf` (see [Network File Sharing](network_file_sharing.md)).
+- If the mount point changes, also check `/etc/samba/simple_safer_server_shares.conf` (see [SMB Network Shares](network_file_sharing.md)).
 - Do not modify unrelated `/etc/fstab` entries.
 - Back up `/etc/fstab` before editing it manually.
 
