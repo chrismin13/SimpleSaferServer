@@ -1,6 +1,7 @@
 (function () {
   const existingPathInput = document.getElementById('existingStoragePath');
   const saveExistingBtn = document.getElementById('saveExistingStorageBtn');
+  const browseExistingBtn = document.getElementById('browseExistingStorageBtn');
   const existingError = document.getElementById('existingStorageError');
   const existingStatus = document.getElementById('existingStorageStatus');
 
@@ -57,5 +58,21 @@
     }
   }
 
+  function browseExistingStorage() {
+    if (!window.openMegaFolderPicker || !existingPathInput) return;
+    window.openMegaFolderPicker({
+      modalId: 'existingStorageFolderPickerModal',
+      listUrl: '/api/storage/list-path',
+      startPath: existingPathInput.value.trim() || '/',
+      canCreate: false,
+      showFiles: true,
+      onSelect: (folderPath) => {
+        existingPathInput.value = folderPath;
+        hideInlineError();
+      }
+    });
+  }
+
+  if (browseExistingBtn) browseExistingBtn.addEventListener('click', browseExistingStorage);
   if (saveExistingBtn) saveExistingBtn.addEventListener('click', saveExistingStorage);
 })();

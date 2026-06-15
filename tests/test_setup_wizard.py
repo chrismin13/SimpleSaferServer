@@ -1,7 +1,9 @@
 import importlib
 import sys
+import tempfile
 import types
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from flask import Flask
@@ -162,6 +164,30 @@ class SetupWizardTests(unittest.TestCase):
         self.assertEqual(response.status_code, 401)
         self.assertProblemDetail(response, 'Please log in again.')
         mock_get_available_backup_drives.assert_not_called()
+
+    def test_setup_list_path_returns_folders_and_files(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            temp_path = Path(tempdir)
+            (temp_path / "media").mkdir()
+            (temp_path / "readme.txt").write_text("hello", encoding="utf-8")
+
+            with self.app.test_client() as client:
+                response = client.post("/api/setup/list-path", json={"path": tempdir})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertDataResponse(
+            response,
+            {
+                "path": tempdir,
+                "parent": str(Path(tempdir).parent),
+                "dirs": ["media"],
+                "files": ["readme.txt"],
+                "entries": [
+                    {"name": "media", "type": "folder"},
+                    {"name": "readme.txt", "type": "file"},
+                ],
+            },
+        )
 
     def test_setup_mega_connect_delegates_to_cloud_backup_service(self):
         with self.app.test_client() as client:

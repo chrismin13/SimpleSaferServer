@@ -16,6 +16,7 @@ from simple_safer_server.services.backup_drive_unmount import (
     is_selected_partition_managed_backup_drive,
     unmount_managed_backup_drive,
 )
+from simple_safer_server.services.filesystem_browser import list_local_path
 from simple_safer_server.services.storage_location import (
     MODE_EXISTING_FOLDER,
     StorageLocationError,
@@ -537,6 +538,19 @@ def api_existing_folder():
     except Exception:
         current_app.logger.exception("Could not configure existing storage folder")
         return json_problem(OperationProblem("Could not configure the storage folder."))
+
+
+@storage.route("/api/storage/list-path", methods=["POST"])
+@api_admin_required
+def api_storage_list_path():
+    try:
+        data = json_request_data()
+        return json_data(list_local_path(data.get("path", "/")))
+    except NotADirectoryError as exc:
+        return json_problem(ValidationProblem(str(exc), slug="storage-validation-error"))
+    except OSError:
+        current_app.logger.exception("Could not list local storage picker path")
+        return json_problem(OperationProblem("Could not list that folder."))
 
 
 @storage.route("/api/storage/repair-marker", methods=["POST"])

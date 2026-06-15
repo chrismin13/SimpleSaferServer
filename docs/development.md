@@ -87,8 +87,6 @@ Remove standalone proof-of-concept scripts once their behavior is supported insi
 
 ## Frontend Rules
 
-Use the `frontend-design` and `uncodixfy` skills for UI work.
-
 Reuse existing Bunker interface patterns and check `docs/internal_ui_patterns.md` before adding new UI behavior.
 
 ## Dependency Management

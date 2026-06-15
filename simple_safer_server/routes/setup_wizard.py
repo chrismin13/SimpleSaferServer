@@ -25,6 +25,7 @@ from simple_safer_server.services.backup_drive_unmount import (
 )
 from simple_safer_server.services.cloud_backup_service import normalize_bandwidth_limit
 from simple_safer_server.services.config_manager import ConfigManager
+from simple_safer_server.services.filesystem_browser import list_local_path
 from simple_safer_server.services.runtime import get_fake_state, get_runtime
 from simple_safer_server.services.schedule_time import (
     ScheduleTimeError,
@@ -653,6 +654,22 @@ def setup_existing_folder():
     except Exception as exc:
         logger.error("Error configuring existing storage folder: %s", exc)
         return _operation_problem('Could not configure the storage folder')
+
+
+@setup.route('/api/setup/list-path', methods=['POST'])
+@setup_api_access_required
+def setup_list_path():
+    """List local folders and files for the existing-folder setup picker."""
+    try:
+        data = json_request_data()
+        return json_data(list_local_path(data.get('path', '/')))
+    except NotADirectoryError as exc:
+        return _validation_problem(str(exc))
+    except ApiProblem:
+        raise
+    except OSError as exc:
+        logger.error("Error listing local setup picker path: %s", exc)
+        return _operation_problem('Could not list that folder')
 
 
 @setup.route('/api/setup/cloud-backup/skip', methods=['POST'])

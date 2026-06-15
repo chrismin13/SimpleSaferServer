@@ -119,6 +119,9 @@ def test_existing_folder_page_renders_inside_storage_shell():
     assert "Use an existing folder" in body
     assert "Existing Folder Path" in body
     assert "Use This Folder" in body
+    assert "browseExistingStorageBtn" in body
+    assert "existingStorageFolderPickerModal" in body
+    assert "/static/js/mega_folder_picker.js" in body
     assert "/static/js/storage_existing_folder.js" in body
 
 
@@ -170,6 +173,25 @@ def test_existing_folder_storage_refreshes_systemd_timers():
     services.system_utils.install_systemd_services_and_timers.assert_called_once_with(
         services.config_manager.get_all_config.return_value
     )
+
+
+def test_storage_list_path_returns_folders_and_files(tmp_path):
+    services = _services()
+    app = _app_with_services(services)
+    (tmp_path / "photos").mkdir()
+    (tmp_path / "notes.txt").write_text("hello", encoding="utf-8")
+
+    response = _admin_post(app, "/api/storage/list-path", {"path": str(tmp_path)})
+
+    assert response.status_code == 200
+    payload = response.get_json()["data"]
+    assert payload["path"] == str(tmp_path)
+    assert payload["dirs"] == ["photos"]
+    assert payload["files"] == ["notes.txt"]
+    assert payload["entries"] == [
+        {"name": "photos", "type": "folder"},
+        {"name": "notes.txt", "type": "file"},
+    ]
 
 
 def test_managed_drive_storage_refreshes_systemd_timers():

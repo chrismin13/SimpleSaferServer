@@ -1,8 +1,8 @@
-import os
 from typing import Any
 
 from flask import Blueprint, current_app, request
 
+from simple_safer_server.services.filesystem_browser import list_local_path
 from simple_safer_server.services.smb_manager import SMB_DOCS_URL, SMBConfigError, SMBOperationError
 from simple_safer_server.services.user_manager import api_admin_required
 from simple_safer_server.web.api import json_data, json_problem, json_request_data
@@ -253,18 +253,10 @@ def api_update_share_users(share_name):
 @smb.route("/api/list_dirs", methods=["GET"])
 @api_admin_required
 def api_list_dirs():
-    path = os.path.abspath(request.args.get("path", "/"))
     try:
-        if not os.path.isdir(path):
-            return json_problem(ValidationProblem("Not a directory."))
-        entries = []
-        for entry in os.listdir(path):
-            full_path = os.path.join(path, entry)
-            if os.path.isdir(full_path):
-                entries.append(entry)
-        entries.sort()
-        parent = os.path.dirname(path) if path != "/" else None
-        return json_data({"path": path, "parent": parent, "dirs": entries})
+        return json_data(list_local_path(request.args.get("path", "/")))
+    except NotADirectoryError:
+        return json_problem(ValidationProblem("Not a directory."))
     except Exception:
         current_app.logger.exception("Error listing directories")
         return json_problem(OperationProblem("Could not list folders for that path."))

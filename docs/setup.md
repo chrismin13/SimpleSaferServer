@@ -35,6 +35,8 @@ Use **Set up a managed drive** when you want the app to handle the backup disk. 
 
 Use **Use an existing folder** when the storage is already handled outside SimpleSaferServer. That folder can be on a RAID array, a pooled filesystem, a manually mounted disk, a server folder, or any other local path that is already set up.
 
+The folder path can be typed by hand, or selected with **Browse**. The picker shows folders and files in the current server path so the user can recognize the right location, but only folders can be opened or selected.
+
 When an existing folder is selected:
 
 - SimpleSaferServer stores that path as the storage location.

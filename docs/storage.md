@@ -79,7 +79,9 @@ In this mode the app does not:
 
 The administrator or the operating system is responsible for making sure the folder is available.
 
-Use **Choose folder** on the Storage page to open the existing-folder change page. The page saves the new folder only after **Use This Folder** succeeds. On success, SimpleSaferServer stores the folder path, updates the default `backup` share, creates the storage marker, and refreshes generated task timers.
+Use **Choose folder** on the Storage page to open the existing-folder change page. The path can be typed by hand, or selected with **Browse**. The picker shows folders and files in the current server path so the administrator can see what is already there, but only folders can be opened or selected.
+
+The page saves the new folder only after **Use This Folder** succeeds. On success, SimpleSaferServer stores the folder path, updates the default `backup` share, creates the storage marker, and refreshes generated task timers.
 
 ## The Storage Marker
 

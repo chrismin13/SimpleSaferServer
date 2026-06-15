@@ -3161,6 +3161,17 @@ pre code {
 .folder-list-item:last-child { border-bottom: none; }
 .folder-list-item:hover { background: var(--bg-hover); color: var(--text-primary); }
 .folder-list-item i { color: var(--accent-text); }
+.folder-list-item-file {
+  cursor: default;
+  color: var(--text-muted);
+}
+.folder-list-item-file:hover {
+  background: transparent;
+  color: var(--text-muted);
+}
+.folder-list-item-file i {
+  color: var(--text-muted);
+}
 
 .path-breadcrumbs {
   display: flex;
