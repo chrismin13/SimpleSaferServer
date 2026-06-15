@@ -578,28 +578,29 @@ body.fake-mode-active .toast-stack {
   color: var(--text-on-accent);
   border-color: var(--accent);
 }
-.btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+/* Anchor buttons also match `a:hover`, so button hover states must own text color. */
+.btn-primary:hover { background: var(--accent-hover); color: var(--text-on-accent); border-color: var(--accent-hover); }
 
 .btn-danger {
   background: var(--danger);
   color: #fff;
   border-color: var(--danger);
 }
-.btn-danger:hover { background: hsl(0, 68%, 48%); border-color: hsl(0, 68%, 48%); }
+.btn-danger:hover { background: hsl(0, 68%, 48%); color: #fff; border-color: hsl(0, 68%, 48%); }
 
 .btn-success {
   background: var(--success);
   color: #fff;
   border-color: var(--success);
 }
-.btn-success:hover { background: hsl(152, 58%, 38%); border-color: hsl(152, 58%, 38%); }
+.btn-success:hover { background: hsl(152, 58%, 38%); color: #fff; border-color: hsl(152, 58%, 38%); }
 
 .btn-warning {
   background: var(--warning);
   color: var(--text-on-accent);
   border-color: var(--warning);
 }
-.btn-warning:hover { background: hsl(38, 90%, 45%); border-color: hsl(38, 90%, 45%); }
+.btn-warning:hover { background: hsl(38, 90%, 45%); color: var(--text-on-accent); border-color: hsl(38, 90%, 45%); }
 
 .btn-secondary {
   background: var(--bg-overlay);
