@@ -139,8 +139,8 @@ def test_storage_page_links_to_configuration_change_pages_without_scan_action():
             ),
         ),
         patch(
-            "simple_safer_server.routes.storage.storage_status",
-            return_value={"ok": True, "error": ""},
+            "simple_safer_server.routes.storage.passive_storage_status",
+            return_value={"checked": False, "ok": True, "error": ""},
         ),
         patch("simple_safer_server.routes.storage.get_managed_ntfs_driver", return_value="ntfs-3g"),
     ):
@@ -154,6 +154,83 @@ def test_storage_page_links_to_configuration_change_pages_without_scan_action():
     assert "Choose folder" in body
     assert "/storage/existing-folder" in body
     assert "Scan Connected Drives" not in body
+    assert "Run safety check" in body
+
+
+def test_storage_page_does_not_run_active_storage_status():
+    services = _services()
+    app = _app_with_services(services)
+
+    with (
+        patch(
+            "simple_safer_server.routes.storage.get_storage_location",
+            return_value=SimpleNamespace(
+                mode="managed_drive",
+                path="/media/backup",
+                app_manages_mount=True,
+            ),
+        ),
+        patch(
+            "simple_safer_server.routes.storage.passive_storage_status",
+            return_value={"checked": False, "ok": True, "error": ""},
+        ) as passive_status,
+        patch("simple_safer_server.routes.storage.storage_status") as active_status,
+        patch("simple_safer_server.routes.storage.get_managed_ntfs_driver", return_value="ntfs-3g"),
+    ):
+        response = _admin_get(app, "/storage")
+
+    assert response.status_code == 200
+    passive_status.assert_called_once()
+    active_status.assert_not_called()
+
+
+def test_manual_storage_safety_check_runs_active_storage_status():
+    services = _services()
+    app = _app_with_services(services)
+
+    with patch(
+        "simple_safer_server.routes.storage.storage_status",
+        return_value={
+            "checked": True,
+            "ok": True,
+            "error": "",
+            "location": SimpleNamespace(mode="existing_folder"),
+        },
+    ) as active_status:
+        response = _admin_post(app, "/api/storage/safety-check", {})
+
+    assert response.status_code == 200
+    active_status.assert_called_once()
+    payload = response.get_json()
+    assert payload["data"]["ok"] is True
+    assert payload["data"]["safety_checks"][1]["label"] == "Write test"
+
+
+def test_storage_status_api_uses_passive_status():
+    services = _services()
+    app = _app_with_services(services)
+
+    with (
+        patch(
+            "simple_safer_server.routes.storage.passive_storage_status",
+            return_value={"checked": False, "ok": True, "error": ""},
+        ) as passive_status,
+        patch("simple_safer_server.routes.storage.storage_status") as active_status,
+        patch(
+            "simple_safer_server.routes.storage.psutil.disk_usage",
+            return_value=SimpleNamespace(
+                used=10 * 1024**3,
+                total=100 * 1024**3,
+                percent=10.0,
+            ),
+        ),
+    ):
+        response = _admin_get(app, "/api/storage/status")
+
+    assert response.status_code == 200
+    passive_status.assert_called_once()
+    active_status.assert_not_called()
+    assert response.get_json()["data"]["storage_usage"] == "10.0%"
 
 
 def test_existing_folder_storage_refreshes_systemd_timers():

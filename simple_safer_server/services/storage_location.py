@@ -424,7 +424,33 @@ def storage_status(
             runtime=runtime,
             command_runner=command_runner,
         )
-        return {"ok": True, "error": "", "location": location}
+        return {"checked": True, "ok": True, "error": "", "location": location}
     except StorageLocationError as exc:
         location = get_storage_location(config_manager, runtime=runtime)
-        return {"ok": False, "error": str(exc), "location": location}
+        return {"checked": True, "ok": False, "error": str(exc), "location": location}
+
+
+def passive_storage_status(
+    config_manager: Any,
+    system_utils: Any,
+    runtime: Any | None = None,
+) -> dict[str, Any]:
+    """Return display status without reading from or writing to the storage path."""
+    runtime = runtime or get_runtime()
+    location = get_storage_location(config_manager, runtime=runtime)
+    if location.mode == MODE_MANAGED_DRIVE:
+        mounted = system_utils.is_mounted(location.path)
+        return {
+            "checked": False,
+            "ok": mounted,
+            "error": ""
+            if mounted
+            else f"The managed storage drive is not mounted at {location.path}.",
+            "location": location,
+        }
+    return {
+        "checked": False,
+        "ok": True,
+        "error": "",
+        "location": location,
+    }

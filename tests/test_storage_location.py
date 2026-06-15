@@ -9,6 +9,7 @@ from simple_safer_server.services.storage_location import (
     get_storage_location,
     mark_managed_drive_storage,
     marker_path,
+    passive_storage_status,
     repair_storage_marker,
     validate_existing_folder_path,
     validate_storage_ready_for_backup,
@@ -88,6 +89,20 @@ def test_storage_validation_fails_when_marker_is_missing(tmp_path):
 
     with pytest.raises(StorageLocationError, match="Storage marker is missing"):
         validate_storage_ready_for_backup(config, FakeSystemUtils(), runtime=runtime)
+
+
+def test_passive_storage_status_does_not_read_missing_marker(tmp_path):
+    storage_path = tmp_path / "storage"
+    storage_path.mkdir()
+    runtime = fake_runtime(tmp_path)
+    config = FakeConfigManager(storage_path)
+    configure_existing_folder(config, str(storage_path), runtime=runtime)
+    marker_path(storage_path).unlink()
+
+    status = passive_storage_status(config, FakeSystemUtils(), runtime=runtime)
+
+    assert status["checked"] is False
+    assert status["ok"] is True
 
 
 def test_storage_validation_fails_when_marker_id_does_not_match(tmp_path):

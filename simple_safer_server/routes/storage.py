@@ -23,6 +23,7 @@ from simple_safer_server.services.storage_location import (
     configure_existing_folder,
     get_storage_location,
     mark_managed_drive_storage,
+    passive_storage_status,
     repair_storage_marker,
     storage_status,
 )
@@ -46,6 +47,25 @@ def _build_storage_safety_checks(status: dict[str, Any], location: Any) -> list[
         if location.mode != MODE_EXISTING_FOLDER
         else "Folder availability"
     )
+    if not status.get("checked", True):
+        return [
+            {
+                "label": "Storage marker file",
+                "state": "pending",
+                "detail": "Not checked.",
+            },
+            {
+                "label": "Write test",
+                "state": "pending",
+                "detail": "Not checked.",
+            },
+            {
+                "label": identity_label,
+                "state": "pending",
+                "detail": "Not checked.",
+            },
+        ]
+
     if status.get("ok"):
         identity_detail = (
             "Configured drive matches app config."
@@ -239,21 +259,16 @@ def api_storage_status():
     location = get_storage_location(services.config_manager, runtime=services.runtime)
     mount_point = location.path
     mounted = services.system_utils.is_mounted(mount_point) if location.app_manages_mount else False
-    available = False
-    try:
-        status = storage_status(
-            services.config_manager,
-            services.system_utils,
-            runtime=services.runtime,
-            command_runner=services.command_runner,
-        )
-        available = status["ok"]
-        storage_error = status["error"]
-    except Exception as exc:
-        storage_error = str(exc)
+    status = passive_storage_status(
+        services.config_manager,
+        services.system_utils,
+        runtime=services.runtime,
+    )
+    storage_error = status["error"]
     try:
         # Usage only needs the path to be readable. The stricter available/error
-        # fields still tell the UI if cloud backup safety checks are passing.
+        # fields avoid marker/probe I/O so opening the dashboard does not wake
+        # drives just to prove cloud-backup safety.
         disk = psutil.disk_usage(mount_point)
         used_storage = f"{disk.used / (1024**3):.1f}"
         total_storage = f"{disk.total / (1024**3):.1f}"
@@ -261,6 +276,9 @@ def api_storage_status():
     except Exception:
         used_storage = total_storage = storage_usage = None
     disk_available = total_storage is not None
+    available = bool(status["ok"] and (disk_available if not location.app_manages_mount else True))
+    if not available and not storage_error and not location.app_manages_mount:
+        storage_error = "Storage path is not readable."
     return json_data(
         {
             "mounted": mounted,
@@ -470,13 +488,12 @@ def storage_page():
             if location.mode == MODE_EXISTING_FOLDER
             else get_managed_ntfs_driver(runtime=services.runtime).upper()
         ),
-        "last_verified": "Just now",
+        "last_verified": "Manual check required",
     }
-    status = storage_status(
+    status = passive_storage_status(
         services.config_manager,
         services.system_utils,
         runtime=services.runtime,
-        command_runner=services.command_runner,
     )
     return render_template(
         "storage.html",
@@ -485,6 +502,33 @@ def storage_page():
         safety_checks=_build_storage_safety_checks(status, location),
         drive_config=drive_config,
     )
+
+
+@storage.route("/api/storage/safety-check", methods=["POST"])
+@api_admin_required
+def api_storage_safety_check():
+    services = _get_services()
+    try:
+        status = storage_status(
+            services.config_manager,
+            services.system_utils,
+            runtime=services.runtime,
+            command_runner=services.command_runner,
+        )
+        status["checked"] = True
+        location = status["location"]
+        message = "Storage safety check passed." if status["ok"] else "Storage safety check failed."
+        return json_data(
+            {
+                "ok": status["ok"],
+                "error": status["error"],
+                "safety_checks": _build_storage_safety_checks(status, location),
+            },
+            message=message,
+        )
+    except Exception:
+        current_app.logger.exception("Could not run storage safety check")
+        return json_problem(OperationProblem("Could not run the storage safety check."))
 
 
 @storage.route("/storage/change-drive")

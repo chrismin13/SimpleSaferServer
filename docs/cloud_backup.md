@@ -55,6 +55,8 @@ For a drive managed by SimpleSaferServer, the check also confirms that the app-m
 
 These checks are deliberately cautious. The safest failure is to skip a backup and alert the administrator. The unsafe failure would be syncing an empty or wrong folder to the cloud and deleting good remote files.
 
+The web UI does not run this full read-write check during normal Dashboard or Storage page loads. That keeps page views from waking sleeping backup drives. Cloud Backup still runs the full check because it is about to read the storage folder anyway.
+
 If the marker file is deleted, SimpleSaferServer treats that as unsafe and blocks Cloud Backup. Use the Storage page to repair the marker after confirming the folder is the correct storage location.
 
 ## Fake Mode

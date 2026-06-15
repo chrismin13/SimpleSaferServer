@@ -36,12 +36,20 @@
       </div>
       <div class="storage-current-cell">
         <div class="storage-field-label">Status</div>
-        {% if storage_status.ok %}
-          <div class="storage-ready-line"><i class="fas fa-circle-check"></i> Ready</div>
-          <div class="storage-current-note">Storage location is ready for backups.</div>
+        {% if not storage_status.checked %}
+          {% if storage_status.ok %}
+            <div class="storage-ready-line" id="storageCurrentStatusLine"><i class="fas fa-circle-check"></i> Configured</div>
+            <div class="storage-current-note" id="storageCurrentStatusNote">Safety checks have not run yet.</div>
+          {% else %}
+            <div class="storage-error-line" id="storageCurrentStatusLine"><i class="fas fa-circle-xmark"></i> Not mounted</div>
+            <div class="storage-current-note" id="storageCurrentStatusNote">{{ storage_status.error }}</div>
+          {% endif %}
+        {% elif storage_status.ok %}
+          <div class="storage-ready-line" id="storageCurrentStatusLine"><i class="fas fa-circle-check"></i> Safety check passed</div>
+          <div class="storage-current-note" id="storageCurrentStatusNote">Storage location is ready for cloud backups.</div>
         {% else %}
-          <div class="storage-error-line"><i class="fas fa-circle-xmark"></i> Check failed</div>
-          <div class="storage-current-note">{{ storage_status.error }}</div>
+          <div class="storage-error-line" id="storageCurrentStatusLine"><i class="fas fa-circle-xmark"></i> Check failed</div>
+          <div class="storage-current-note" id="storageCurrentStatusNote">{{ storage_status.error }}</div>
         {% endif %}
       </div>
     </div>
@@ -74,12 +82,12 @@
         </div>
         <div class="storage-table-row">
           <div>Last verified</div>
-          <code>{{ drive_config.last_verified }}</code>
+          <code id="storageLastVerified">{{ drive_config.last_verified }}</code>
         </div>
       </div>
 
       <h3 class="storage-subheading">Safety checks</h3>
-      <div class="storage-table storage-safety-table">
+      <div class="storage-table storage-safety-table" id="storageSafetyChecks">
         {% for check in safety_checks %}
           <div class="storage-table-row storage-check-{{ check.state }}">
             <div><i class="fas {% if check.state == 'pass' %}fa-circle-check{% elif check.state == 'fail' %}fa-circle-xmark{% else %}fa-circle-minus{% endif %}"></i> {{ check.label }}</div>
@@ -100,6 +108,17 @@
           <h3>Operational action</h3>
           <p>Resolve issues without changing storage.</p>
         </div>
+        <div class="storage-action-row">
+          <div class="storage-action-icon"><i class="fas fa-shield-halved"></i></div>
+          <div class="storage-action-copy">
+            <div class="storage-action-title">Run safety check</div>
+            <div>Checks that the configured storage is ready.</div>
+          </div>
+          <button type="button" id="runSafetyCheckBtn" class="btn btn-secondary btn-sm">
+            Run check
+          </button>
+        </div>
+        <div id="runSafetyCheckError" class="alert alert-danger d-none storage-feedback-below-actions"></div>
         <div class="storage-action-row">
           <div class="storage-action-icon"><i class="fas fa-screwdriver-wrench"></i></div>
           <div class="storage-action-copy">

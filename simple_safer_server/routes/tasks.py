@@ -11,7 +11,10 @@ from flask import (
     url_for,
 )
 
-from simple_safer_server.services.storage_location import get_storage_location, storage_status
+from simple_safer_server.services.storage_location import (
+    get_storage_location,
+    passive_storage_status,
+)
 from simple_safer_server.services.task_service import TASK_LOG_LINE_LIMIT, clamp_task_log_lines
 from simple_safer_server.services.user_manager import admin_required, api_admin_required
 from simple_safer_server.web.api import json_data, json_problem
@@ -47,11 +50,10 @@ def dashboard():
         if storage_location.app_manages_mount
         else False
     )
-    location_status = storage_status(
+    location_status = passive_storage_status(
         services.config_manager,
         services.system_utils,
         runtime=services.runtime,
-        command_runner=services.command_runner,
     )
     disk = None
     try:

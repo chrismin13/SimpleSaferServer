@@ -4,7 +4,7 @@ The Dashboard is the main interface for monitoring and managing the system. It p
 
 ## Status Indicators
 Four cards display real-time status:
-- **Storage**: Shows whether the configured storage location is available, plus used/total storage and usage percentage when that information can be read.
+- **Storage**: Shows passive storage status, plus used/total storage and usage percentage when that information can be read. The Dashboard does not read the storage marker or write a test file during page load, because that can wake a sleeping backup drive.
 - **Network File Sharing**: Summarizes `smbd`, `nmbd`, and `wsdd2`. The tile is operational when
   `smbd` is active and discovery services are either active or unavailable (not installed), partial
   when `smbd` is active but at least one discovery service is inactive, and down
@@ -54,6 +54,7 @@ Four cards display real-time status:
 
 ## Live Updates
 - Status cards and system resources update live using background API calls.
+- Storage live updates stay passive. They may read disk-usage statistics, but they do not run the cloud-backup marker check or the read-write probe. Use **Run safety check** on the Storage page when you want the full check.
 - Drive Health uses RAM-only last-known state. After the web app restarts, the tile shows
   `No check yet` until a manual dashboard refresh or an in-process health check publishes a new
   summary. This avoids extra SD-card writes and avoids waking a sleeping backup drive on every

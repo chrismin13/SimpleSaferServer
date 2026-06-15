@@ -4,12 +4,37 @@ The Storage page controls where SimpleSaferServer stores backup files.
 
 SimpleSaferServer keeps a default network share named `backup` pointed at the selected storage location. This is the folder people on your network copy files into from their computers.
 
-The page shows the current storage location, the active storage mode, and whether the cloud-backup safety checks are passing. Configuration changes are started from the Storage actions card:
+The page shows the current storage location, the active storage mode, and a passive storage status. It does not run the full cloud-backup safety check just because the page opened. Configuration changes are started from the Storage actions card:
 
 - **Managed drive**: SimpleSaferServer mounts and manages one selected drive partition.
 - **Existing folder**: an administrator provides a folder that already exists on the server.
 
 The Storage actions card keeps repair actions separate from configuration changes. Safety checks stay visible beside the storage actions on wide screens and move below them on narrower screens.
+
+## Passive Status And Sleeping Drives
+
+The Storage page and Dashboard avoid read-write safety checks during normal page loads. This is deliberate.
+
+Many backup drives are allowed to spin down when idle. Reading the storage marker or writing a test file can wake a sleeping drive. A page view should not do that.
+
+Automatic page status is therefore passive:
+
+- it reads the saved app config
+- for managed drives, it checks mount state from the operating system mount table
+- it may show disk usage when the operating system can provide it
+- it does not read the marker file
+- it does not write the test file
+- it does not list the storage folder
+
+Disk usage stays visible because it uses the operating system's filesystem statistics path. On Linux, `statvfs()` and `statfs()` return information about a mounted filesystem, and `/proc/mounts` lists mounted filesystems from kernel state:
+
+- `statvfs(3)`: `https://man7.org/linux/man-pages/man3/statvfs.3.html`
+- `statfs(2)`: `https://man7.org/linux/man-pages/man2/statfs.2.html`
+- `/proc/pid/mounts`: `https://man7.org/linux/man-pages/man5/proc_pid_mounts.5.html`
+
+That does not prove every filesystem and every drive firmware will stay asleep forever, but it is much less direct than opening the storage marker or creating a test file. In practice, disk usage has not been the wake-up problem for SimpleSaferServer. The read-write probe has.
+
+Use **Run safety check** when you want the full check from the Storage page. That action may wake the drive.
 
 ## Managed Drive
 
@@ -106,6 +131,8 @@ Before each cloud backup, the app checks that:
 - a managed drive's mounted filesystem UUID matches the configured drive UUID
 
 If any of those checks fail, the cloud backup is blocked.
+
+The same full check also runs when an administrator chooses a new storage target, repairs the marker, or manually runs **Run safety check**. Those actions are allowed to touch the drive because the administrator asked for storage work or the cloud backup is about to read the drive anyway.
 
 ## Repairing The Marker
 
