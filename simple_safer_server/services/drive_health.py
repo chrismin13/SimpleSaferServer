@@ -484,7 +484,15 @@ def load_hdsentinel_drive_state(runtime=None):
 def save_hdsentinel_state(snapshot, runtime=None):
     runtime = runtime or get_runtime()
     path = get_hdsentinel_state_path(runtime)
-    _write_json_atomically(path, {"last_snapshot": snapshot})
+    # The fallback single-drive check shares this file with the per-drive monitor.
+    # Keep per-drive baselines so the next full drive-list run can compare them.
+    _write_json_atomically(
+        path,
+        {
+            "drives": load_hdsentinel_drive_state(runtime),
+            "last_snapshot": snapshot,
+        },
+    )
 
 
 def save_hdsentinel_drive_state(drives, runtime=None):
@@ -664,7 +672,10 @@ def collect_hdsentinel_drive_list(config_manager, runtime=None):
     binary_path = get_hdsentinel_binary_path(runtime)
     if not settings["enabled"] or not binary_path.exists():
         return []
-    result = _run_hdsentinel_command(binary_path, ["-solid"])
+    try:
+        result = _run_hdsentinel_command(binary_path, ["-solid"])
+    except TimeoutExpired:
+        return []
     if result.returncode != 0:
         return []
     checked_at = datetime.now().isoformat(timespec="seconds")
