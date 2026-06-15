@@ -55,6 +55,7 @@ This step is disk-oriented.
 
 - The selector shows disks, not partitions.
 - The selector intentionally detects eligible non-system disks whether they are blank, already formatted, or currently formatted with the wrong filesystem.
+- The refresh button rescans candidate disks, which is useful after plugging in a drive, changing mounts, or waiting for the OS to publish a device.
 - The unmount button unmounts every currently mounted partition that belongs to the selected disk.
 - That unmount action only clears live mounts so the format step can proceed safely.
 - It does not clear the saved backup-drive config and it does not remove the SimpleSaferServer-managed `/etc/fstab` entry.
@@ -73,6 +74,7 @@ This step is partition-oriented.
 
 - The selector shows NTFS partitions, not whole disks.
 - The selector uses a dedicated NTFS-partition scan instead of the broader step-2 disk scan.
+- The refresh button rescans NTFS partitions without leaving the setup wizard, which is useful after formatting a disk or manually changing a mount.
 - If a mounted `ntfs-3g` partition shows up from `lsblk` as `fuseblk`, the wizard verifies the underlying on-disk type with `blkid` before treating it as NTFS.
 - Partitions reported as `ntfs3`, `ntfs-3g`, or confirmed-NTFS `fuseblk` are all exposed to the wizard as NTFS mount targets.
 - Drive labels prefer `lsblk` transport data such as `TRAN=usb`, with `RM` and `HOTPLUG` as fallbacks, so removable backup targets are not mislabeled as internal disks.

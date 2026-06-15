@@ -128,7 +128,12 @@
                                     </div>
                                 </div>
                             <div class="form-group mb-4">
-                                <label class="form-label">Select Drive to Format</label>
+                                <div class="storage-field-action-row">
+                                    <label class="form-label" for="formatDriveSelect">Select Drive to Format</label>
+                                    <button type="button" id="refreshFormatDrivesBtn" class="btn btn-secondary btn-sm">
+                                        <i class="fas fa-rotate me-1"></i> Refresh drives
+                                    </button>
+                                </div>
                                 <select id="formatDriveSelect" class="form-control">
                                     <option value="">Select a drive…</option>
                                 </select>
@@ -185,7 +190,12 @@ This removes all files on the selected drive and sets it up as one backup drive.
                         <div class="setup-card">
                             <h3>Set Up Drive</h3>
                             <div class="form-group mb-4">
-                                <label class="form-label">Select Drive to Mount</label>
+                                <div class="storage-field-action-row">
+                                    <label class="form-label" for="mountDriveSelect">Select Drive to Mount</label>
+                                    <button type="button" id="refreshPartitionsBtn" class="btn btn-secondary btn-sm">
+                                        <i class="fas fa-rotate me-1"></i> Refresh partitions
+                                    </button>
+                                </div>
                                 <select id="mountDriveSelect" class="form-control">
                                     <option value="">Select a drive…</option>
                                 </select>
@@ -623,25 +633,61 @@ unmount the share, then restart SMB automatically."
             }
         }
 
-        async function loadFormatDrives() {
+        async function loadFormatDrives(options = {}) {
+            const refreshBtn = options.button || null;
+            if (options.showStatus) {
+                hideFormatError();
+                setDriveStatus('Refreshing drives…', 'info');
+            }
+            if (refreshBtn) window.AsyncButtonState.start(refreshBtn);
             try {
                 const { data } = await window.ApiClient.fetchJson('/api/setup/format-drives');
                 populateFormatDriveSelect(data.drives || []);
+                if (options.showStatus) setDriveStatus('Drive list refreshed.', 'success');
+                if (refreshBtn) window.AsyncButtonState.success(refreshBtn);
             } catch (error) {
                 console.error('Error:', error);
                 showFormatError('Failed to load drives for formatting');
+                if (options.showStatus) setDriveStatus('Failed to refresh drives.', 'error');
+                if (refreshBtn) window.AsyncButtonState.error(refreshBtn);
             }
         }
 
-        async function loadMountDrives() {
+        async function loadMountDrives(options = {}) {
+            const refreshBtn = options.button || null;
+            if (options.showStatus) {
+                hideMountError();
+                setMountStatus('Refreshing partitions…', 'info');
+            }
+            if (refreshBtn) window.AsyncButtonState.start(refreshBtn);
             try {
                 const { data } = await window.ApiClient.fetchJson('/api/setup/mount-drives');
                 populateMountDriveSelect(data.drives || []);
                 setManagedUnmountRetryState(false);
+                if (options.showStatus) setMountStatus('Partition list refreshed.', 'success');
+                if (refreshBtn) window.AsyncButtonState.success(refreshBtn);
             } catch (error) {
                 console.error('Error:', error);
                 showMountError('Failed to load NTFS drives for mounting');
+                if (options.showStatus) setMountStatus('Failed to refresh partitions.', 'error');
+                if (refreshBtn) window.AsyncButtonState.error(refreshBtn);
             }
+        }
+
+        function refreshFormatDrives() {
+            // Operators often plug in, format, or unmount drives outside the browser during setup.
+            return loadFormatDrives({
+                button: document.getElementById('refreshFormatDrivesBtn'),
+                showStatus: true
+            });
+        }
+
+        function refreshMountDrives() {
+            // The NTFS partition list can change after a format, udev settle, or manual mount action.
+            return loadMountDrives({
+                button: document.getElementById('refreshPartitionsBtn'),
+                showStatus: true
+            });
         }
 
         async function loadDrives() {
@@ -1020,6 +1066,10 @@ unmount the share, then restart SMB automatically."
             if (saveExistingFolderBtn) saveExistingFolderBtn.addEventListener('click', saveExistingFolder);
             const skipCloudBackupBtn = document.getElementById('skipCloudBackupBtn');
             if (skipCloudBackupBtn) skipCloudBackupBtn.addEventListener('click', skipCloudBackup);
+            const refreshFormatBtn = document.getElementById('refreshFormatDrivesBtn');
+            if (refreshFormatBtn) refreshFormatBtn.addEventListener('click', refreshFormatDrives);
+            const refreshPartitionsBtn = document.getElementById('refreshPartitionsBtn');
+            if (refreshPartitionsBtn) refreshPartitionsBtn.addEventListener('click', refreshMountDrives);
             const unmountBtn = document.getElementById('unmountDriveBtn');
             if (unmountBtn) unmountBtn.addEventListener('click', function(e) { if (e.defaultPrevented) return; unmountDrive(); });
             const formatBtn = document.getElementById('formatDriveBtn');
