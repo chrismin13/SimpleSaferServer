@@ -20,6 +20,7 @@ class AppServices:
     fake_state: Any
     command_runner: CommandRunner
     config_manager: Any
+    feature_manager: Any
     system_utils: Any
     system_updates_manager: Any
     app_update_manager: AppUpdateManager

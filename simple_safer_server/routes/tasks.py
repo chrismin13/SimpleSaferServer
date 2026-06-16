@@ -38,7 +38,9 @@ def dashboard():
         return redirect(url_for("setup.setup_page"))
 
     config = services.config_manager.get_all_config()
-    task_summaries = services.task_service.task_summaries()
+    task_summaries = services.feature_manager.filter_task_summaries(
+        services.task_service.task_summaries()
+    )
     mount_point = services.config_manager.get_value(
         "backup",
         "mount_point",
@@ -249,7 +251,14 @@ def enable_schedule(task_name):
 @api_admin_required
 def api_tasks_schedule():
     try:
-        return json_data({"tasks": _get_services().task_service.task_summaries()})
+        services = _get_services()
+        return json_data(
+            {
+                "tasks": services.feature_manager.filter_task_summaries(
+                    services.task_service.task_summaries()
+                )
+            }
+        )
     except Exception:
         current_app.logger.exception("Failed to load task schedule")
         return json_problem(OperationProblem("Failed to load task schedule."))

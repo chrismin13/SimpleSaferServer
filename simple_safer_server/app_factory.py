@@ -37,6 +37,7 @@ from simple_safer_server.services.container import AppServices
 from simple_safer_server.services.ddns_service import DdnsService
 from simple_safer_server.services.disabled_timers import DisabledTimerService
 from simple_safer_server.services.drive_health import DriveHealthSummaryService
+from simple_safer_server.services.feature_flags import FeatureManager
 from simple_safer_server.services.runtime import get_fake_state, get_flask_secret_key, get_runtime
 from simple_safer_server.services.server_identity import ServerIdentityService
 from simple_safer_server.services.smb_manager import SMB_DOCS_URL, SMBManager
@@ -102,6 +103,7 @@ def create_app() -> Flask:
         )
 
     config_manager = ConfigManager(runtime=runtime)
+    feature_manager = FeatureManager(config_manager)
     command_runner = CommandRunner()
     systemd_adapter = SystemdAdapter(command_runner)
     rclone_adapter = RcloneAdapter(command_runner)
@@ -161,6 +163,7 @@ def create_app() -> Flask:
         fake_state=fake_state,
         command_runner=command_runner,
         config_manager=config_manager,
+        feature_manager=feature_manager,
         system_utils=system_utils,
         system_updates_manager=system_updates_manager,
         app_update_manager=app_update_manager,
@@ -191,14 +194,17 @@ def create_app() -> Flask:
     def index():
         if not config_manager.is_setup_complete():
             return redirect(url_for("setup.setup_page"))
-        return redirect(url_for("task_routes.dashboard"))
+        endpoint = feature_manager.first_visible_endpoint()
+        if endpoint is None:
+            return redirect(url_for("features_disabled"))
+        return redirect(url_for(endpoint))
 
     @app.route("/login", methods=["GET", "POST"])
     def login():
         if not config_manager.is_setup_complete():
             return redirect(url_for("setup.setup_page"))
         if "username" in session:
-            return redirect(url_for("task_routes.dashboard"))
+            return redirect(url_for(default_landing_endpoint()))
 
         if request.method == "POST":
             user_manager.reload_users()
@@ -210,9 +216,10 @@ def create_app() -> Flask:
                 if user_manager.is_admin(username):
                     session["username"] = username
                     session.pop("skip_login_disabled", None)
+                    redirect_url = url_for(default_landing_endpoint())
                     if request.accept_mimetypes.best == "application/json":
-                        return json_data({"redirect": url_for("task_routes.dashboard")})
-                    return redirect(url_for("task_routes.dashboard"))
+                        return json_data({"redirect": redirect_url})
+                    return redirect(redirect_url)
                 msg = (
                     "This account does not have administrator privileges. Only administrators can access the "
                     "SimpleSaferServer management interface. Please contact your system administrator for access "
@@ -243,6 +250,9 @@ def create_app() -> Flask:
         user_manager.reload_users()
         return user_manager.get_preferred_admin_username(configured_username)
 
+    def default_landing_endpoint():
+        return feature_manager.first_visible_endpoint() or "features_disabled"
+
     @app.before_request
     def auto_login_fake_mode_user():
         if not runtime.is_fake or not runtime.skip_login:
@@ -262,6 +272,26 @@ def create_app() -> Flask:
             session["auto_logged_in"] = True
         return None
 
+    @app.before_request
+    def block_disabled_features():
+        if not session.get("username"):
+            return None
+        feature_key = feature_manager.feature_for_endpoint(request.endpoint, request.view_args)
+        if not feature_key or not feature_manager.is_feature_disabled(feature_key):
+            return None
+
+        label = feature_manager.feature_label(feature_key)
+        message = (
+            f"{label} is disabled in /etc/SimpleSaferServer/config.conf. "
+            "This setting hides the feature from the Web UI and blocks its Web UI endpoints, "
+            "but it is not a security boundary."
+        )
+        if request.path.startswith("/api/") or request.accept_mimetypes.best == "application/json":
+            return json_problem(
+                ForbiddenProblem(message, title="Feature disabled", slug="feature-disabled")
+            )
+        return render_template("feature_disabled.html", feature_label=label), 403
+
     @app.route("/network_file_sharing")
     @admin_required
     def network_file_sharing():
@@ -274,6 +304,11 @@ def create_app() -> Flask:
             backup_mount_point=backup_mount_point,
             smb_docs_url=SMB_DOCS_URL,
         )
+
+    @app.route("/features-disabled")
+    @admin_required
+    def features_disabled():
+        return render_template("feature_disabled.html", feature_label="All configured features")
 
     @app.route("/logout")
     def logout():
@@ -303,6 +338,11 @@ def create_app() -> Flask:
             "runtime_mode": runtime.mode,
             "default_mount_point": runtime.default_mount_point,
             "browser_title": browser_title,
+            "nav_features": feature_manager.visible_nav_features(),
+            "active_feature_key": feature_manager.feature_for_endpoint(
+                request.endpoint, request.view_args
+            ),
+            "disabled_features": feature_manager.disabled_feature_keys(),
             # Expose admin status so templates can conditionally show admin-only nav items.
             "is_admin": user_manager.is_admin(username) if username else False,
         }

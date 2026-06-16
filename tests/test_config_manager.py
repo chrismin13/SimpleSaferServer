@@ -68,6 +68,11 @@ class ConfigManagerDefaultsTests(unittest.TestCase):
         self.assertEqual(manager.get_value("apt_updates", "managed"), "false")
         self.assertEqual(manager.get_value("apt_updates", "autoclean_interval"), "7")
 
+    def test_disabled_features_default_to_empty_csv(self):
+        manager = create_config_manager()
+
+        self.assertEqual(manager.get_value("system", "disabled_features"), "")
+
     def test_secret_files_are_created_private(self):
         manager = create_config_manager()
 

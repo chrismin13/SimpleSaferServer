@@ -23,6 +23,7 @@
   </div>
 
   <!-- Drive Health -->
+  {% if 'drive_health' not in disabled_features %}
   <div class="status-tile" id="health-tile">
     <div class="status-tile-header">
       <span class="status-tile-label"><i class="fas fa-heart-pulse"></i> Drive Health</span>
@@ -37,8 +38,10 @@
       </button>
     </div>
   </div>
+  {% endif %}
 
   <!-- Cloud Backup -->
+  {% if 'cloud_backup' not in disabled_features %}
   <div class="status-tile" id="backup-tile">
     <div class="status-tile-header">
       <span class="status-tile-label"><i class="fas fa-cloud-arrow-up"></i> Cloud Backup</span>
@@ -47,8 +50,10 @@
     <div class="status-tile-value" id="backup-last-run">—</div>
     <div class="status-tile-detail" id="backup-detail">—</div>
   </div>
+  {% endif %}
 
   <!-- Network Sharing -->
+  {% if 'file_sharing' not in disabled_features %}
   <div class="status-tile" id="sharing-tile">
     <div class="status-tile-header">
       <span class="status-tile-label"><i class="fas fa-share-nodes"></i> File Sharing</span>
@@ -57,6 +62,7 @@
     <div class="status-tile-value" id="sharing-status">—</div>
     <div class="status-tile-detail" id="sharing-detail">—</div>
   </div>
+  {% endif %}
 
   <!-- System Resources -->
   <div class="status-tile" id="resources-tile">
@@ -773,16 +779,16 @@ Remove the drive now if you do not want it mounted again.`;
   bindInteractiveRows();
   applyRelativeTaskTimes();
   bindDashboardActionForms();
-  if (healthRefreshButton) {
+  if (healthRefreshButton && {{ ('drive_health' not in disabled_features) | tojson }}) {
     healthRefreshButton.addEventListener('click', refreshHealth);
   }
 
   // Initial load
   updateTaskSchedule();
   updateStorage();
-  updateHealth();
-  updateBackup();
-  updateSharing();
+  if ({{ ('drive_health' not in disabled_features) | tojson }}) updateHealth();
+  if ({{ ('cloud_backup' not in disabled_features) | tojson }}) updateBackup();
+  if ({{ ('file_sharing' not in disabled_features) | tojson }}) updateSharing();
   updateResources();
 
   // Poll dashboard data

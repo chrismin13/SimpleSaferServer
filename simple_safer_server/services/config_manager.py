@@ -91,7 +91,12 @@ class ConfigManager:
     def _default_config_parser(self):
         """Build the first-run configuration without touching disk."""
         config = configparser.ConfigParser()
-        config['system'] = {'username': '', 'server_name': '', 'setup_complete': 'false'}
+        config['system'] = {
+            'username': '',
+            'server_name': '',
+            'setup_complete': 'false',
+            'disabled_features': '',
+        }
 
         config['backup'] = {
             'email_address': '',

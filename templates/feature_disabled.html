@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block title %}{{ browser_title('Feature Disabled') }}{% endblock %}
+{% block header %}Feature Disabled{% endblock %}
+
+{% block content %}
+<section class="card">
+  <div class="d-flex align-items-start gap-3">
+    <span class="badge badge-warning"><i class="fas fa-eye-slash"></i> Disabled</span>
+    <div>
+      <h2 class="mb-2" style="font-size: var(--text-lg);">{{ feature_label }} is disabled</h2>
+      <p class="text-muted mb-3">
+        This feature is listed in <code>/etc/SimpleSaferServer/config.conf</code> under
+        <code>disabled_features</code>.
+      </p>
+      <p class="text-muted mb-0">
+        This setting hides menus and blocks matching Web UI endpoints. It is an admin convenience,
+        not a security boundary, and it does not stop system services or timers by itself.
+      </p>
+    </div>
+  </div>
+</section>
+{% endblock %}

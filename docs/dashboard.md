@@ -17,6 +17,9 @@ Four cards display real-time status:
 
 ## Task Schedule
 - **Table**: Lists all scheduled tasks with columns for Task, Status, Last Run, and Next Run.
+- Tasks for disabled features are hidden from the Dashboard task table. For example, if
+  `cloud_backup` is listed in `disabled_features`, the Dashboard no longer shows the `Cloud Backup`
+  task row.
 - **Next Run**: Shows the active next run time or a short schedule state label. Temporary disables
   show `Disabled until 18:00`, `Disabled until Tomorrow 18:00`, or a later date such as
   `Disabled until May 16 18:00`. Permanent disables show `Disabled`. Timers disabled outside
@@ -53,6 +56,7 @@ Four cards display real-time status:
 
 ## Live Updates
 - Status cards and system resources update live using background API calls.
+- Status cards for disabled features are hidden, and the Dashboard does not poll their APIs.
 - Drive Health uses RAM-only last-known state. After the web app restarts, the tile shows
   `No check yet` until a manual dashboard refresh or an in-process health check publishes a new
   summary. This avoids extra SD-card writes and avoids waking a sleeping backup drive on every
@@ -66,4 +70,8 @@ Four cards display real-time status:
 
 ---
 
-The Dashboard is the central hub for all system monitoring and management. 
+The Dashboard is the central hub for all system monitoring and management.
+
+## Related Documentation
+
+- [Feature Visibility](feature_visibility.md)

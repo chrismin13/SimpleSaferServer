@@ -16,6 +16,8 @@ SimpleSaferServer separates management access from file-share access.
 - API authentication failures return JSON responses with HTTP status codes instead of redirecting to a web page.
 - `401` means the browser does not have a valid management session.
 - `403` means the session exists but the account is not currently an administrator.
+- A disabled feature also returns `403` for its Web UI APIs. That means the feature is hidden by
+  `/etc/SimpleSaferServer/config.conf`, not that the administrator has lost server access.
 
 ## Admin Trust Model
 
@@ -25,6 +27,12 @@ configuration when that is useful for inspection or edits.
 
 The app should still avoid accidental credential spread. Do not put secrets in broad status
 responses, unrelated UI, logs, process arguments, or world-readable files.
+
+## Feature Visibility
+
+Administrators can hide top-level menus with `disabled_features` in
+`/etc/SimpleSaferServer/config.conf`. This only cleans up the Web UI and blocks matching Web UI
+endpoints. It does not stop systemd timers, uninstall packages, or act as a security boundary.
 
 ## Non-Admin Accounts
 
@@ -43,5 +51,6 @@ responses, unrelated UI, logs, process arguments, or world-readable files.
 - [Setup Wizard](setup.md)
 - [Login Page](login.md)
 - [Users](users.md)
+- [Feature Visibility](feature_visibility.md)
 - [System Updates](system_updates.md)
 - [Fake Mode](fake_mode.md)
