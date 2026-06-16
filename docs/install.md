@@ -44,7 +44,9 @@ active afterward, the installer continues with a warning so you can fix reboot p
 service state before relying on the server. If `smbd` is not active, the installer stops and points
 you to `systemctl status smbd` and `journalctl -u smbd --no-pager`.
 
-After the installer finishes, open the printed Web UI URL and complete the setup wizard.
+After the installer finishes, open one of the printed Web UI URLs and complete the setup wizard.
+The installer always tries to print local IPv4 URLs. If Tailscale is already installed and
+connected, it also prints Tailscale MagicDNS and Tailscale IP URLs.
 
 For step-by-step installation without the automated installer, use the
 [Manual Installation Guide](manual_install.md).

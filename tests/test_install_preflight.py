@@ -1,5 +1,6 @@
 import os
 import subprocess
+import sys
 import tempfile
 import textwrap
 import unittest
@@ -732,6 +733,36 @@ class InstallPreflightTests(unittest.TestCase):
         self.assertIn("smbd: active", result.stdout)
         self.assertIn("nmbd: active", result.stdout)
         self.assertIn("wsdd2: unavailable", result.stdout)
+
+    def test_tailscale_access_urls_include_magicdns_and_tailscale_ips(self):
+        snippet = textwrap.dedent(
+            f"""\
+            set -e
+            {self.installer_function("print_tailscale_access_urls")}
+            GREEN=""; NC=""
+            VENV_DIR="/missing"
+            SSS_INSTALLER_TEST_PYTHON="{sys.executable}"
+            tailscale() {{
+              if [ "$*" = "status --json" ]; then
+                printf '%s\\n' '{{"BackendState":"Running","MagicDNSSuffix":"tailnet.ts.net.","Self":{{"HostName":"family-nas","DNSName":"family-nas.tailnet.ts.net.","TailscaleIPs":["100.64.0.8","fd7a:115c:a1e0::8"]}}}}'
+              fi
+            }}
+            print_tailscale_access_urls
+            """
+        )
+
+        result = subprocess.run(
+            ["bash", "-lc", snippet],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertIn("Tailscale:", result.stdout)
+        self.assertIn("http://family-nas.tailnet.ts.net:5000", result.stdout)
+        self.assertIn("http://100.64.0.8:5000", result.stdout)
+        self.assertIn("http://[fd7a:115c:a1e0::8]:5000", result.stdout)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+
+{% block title %}{{ browser_title('Tailscale') }}{% endblock %}
+{% block header %}Tailscale{% endblock %}
+
+{% block content %}
+{% set badge_class = {
+  'connected': 'badge-success',
+  'not_connected': 'badge-warning',
+  'not_installed': 'badge-neutral',
+  'unavailable': 'badge-danger',
+}.get(summary.status, 'badge-neutral') %}
+
+<div class="status-grid mb-6">
+  <div class="status-tile">
+    <div class="status-tile-header">
+      <span class="status-tile-label"><i class="fas fa-diagram-project"></i> Connection</span>
+      <span class="badge {{ badge_class }}">{{ summary.status_label }}</span>
+    </div>
+    <div class="status-tile-value">{{ summary.backend_state or '—' }}</div>
+    <div class="status-tile-detail">{{ summary.message }}</div>
+  </div>
+
+  <div class="status-tile">
+    <div class="status-tile-header">
+      <span class="status-tile-label"><i class="fas fa-server"></i> Host</span>
+    </div>
+    <div class="status-tile-value">{{ summary.hostname or '—' }}</div>
+    <div class="status-tile-detail">Name reported by Tailscale for this server.</div>
+  </div>
+
+  <div class="status-tile">
+    <div class="status-tile-header">
+      <span class="status-tile-label"><i class="fas fa-link"></i> MagicDNS Names</span>
+    </div>
+    <div class="status-tile-value">{{ summary.dns_names | length }}</div>
+    <div class="status-tile-detail">
+      {% if summary.dns_names %}
+        {{ summary.dns_names[0] }}
+      {% else %}
+        No Tailscale DNS name found.
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<section class="card mb-6">
+  <div class="card-header">
+    <h2 class="card-title"><i class="fas fa-arrow-up-right-from-square"></i> Access URLs</h2>
+    <a class="btn btn-secondary btn-sm" href="{{ url_for('tailscale_routes.tailscale_page') }}">
+      <i class="fas fa-rotate-right"></i> Refresh
+    </a>
+  </div>
+  <div class="card-body">
+    <p class="status-tile-detail mb-4">
+      These URLs work only from devices that can reach this server through your Tailscale tailnet.
+      SimpleSaferServer reads this status but does not install, log in, or configure Tailscale.
+    </p>
+
+    {% if summary.access_urls %}
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>URL</th>
+              <th>Type</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for dns_name in summary.dns_names %}
+            <tr>
+              {% set url = 'http://' ~ dns_name ~ ':5000' %}
+              <td class="text-mono"><a href="{{ url }}" target="_blank" rel="noopener">{{ url }}</a></td>
+              <td>MagicDNS</td>
+            </tr>
+            {% endfor %}
+            {% for ip in summary.ips %}
+            <tr>
+              {% set url = 'http://[' ~ ip ~ ']:5000' if ':' in ip else 'http://' ~ ip ~ ':5000' %}
+              <td class="text-mono"><a href="{{ url }}" target="_blank" rel="noopener">{{ url }}</a></td>
+              <td>Tailscale IP</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="p-4" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md);">
+        <strong>No Tailscale access URL is available.</strong>
+        <p class="status-tile-detail mt-2">
+          Install Tailscale and connect this server to your tailnet, then refresh this page.
+        </p>
+      </div>
+    {% endif %}
+  </div>
+</section>
+
+<section class="card">
+  <div class="card-header">
+    <h2 class="card-title"><i class="fas fa-circle-info"></i> Details</h2>
+  </div>
+  <div class="card-body">
+    <div class="table-container">
+      <table>
+        <tbody>
+          <tr>
+            <th>DNS names</th>
+            <td class="text-mono">{{ summary.dns_names | join(', ') if summary.dns_names else '—' }}</td>
+          </tr>
+          <tr>
+            <th>Tailscale IP addresses</th>
+            <td class="text-mono">{{ summary.ips | join(', ') if summary.ips else '—' }}</td>
+          </tr>
+          <tr>
+            <th>Managed by</th>
+            <td>the <code>tailscale</code> command line tool and Tailscale system service</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+{% endblock %}

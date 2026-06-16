@@ -9,6 +9,7 @@ from simple_safer_server.services.ddns_service import DdnsService
 from simple_safer_server.services.drive_health import DriveHealthSummaryService
 from simple_safer_server.services.server_identity import ServerIdentityService
 from simple_safer_server.services.storage_service import StorageService
+from simple_safer_server.services.tailscale import TailscaleService
 from simple_safer_server.services.task_service import TaskService
 
 
@@ -32,3 +33,4 @@ class AppServices:
     server_identity_service: ServerIdentityService
     storage_service: StorageService
     drive_health_summary_service: DriveHealthSummaryService
+    tailscale_service: TailscaleService
