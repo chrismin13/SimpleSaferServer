@@ -59,6 +59,9 @@
                     <i class="fas fa-hard-drive fa-fw"></i> Drive Health
                 </a>
                 {% if is_admin %}
+                <a href="{{ url_for('pivpn_routes.pivpn_page') }}" class="nav-item {% if request.endpoint == 'pivpn_routes.pivpn_page' %}active{% endif %}">
+                    <i class="fas fa-shield-halved fa-fw"></i> PiVPN
+                </a>
                 <a href="{{ url_for('ddns_routes.ddns_page') }}" class="nav-item {% if request.endpoint == 'ddns_routes.ddns_page' %}active{% endif %}">
                     <i class="fas fa-globe fa-fw"></i> DDNS
                 </a>

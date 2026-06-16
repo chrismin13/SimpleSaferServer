@@ -93,6 +93,34 @@ def test_network_file_sharing_renders_three_service_status_labels_and_help_text(
         runtime._fake_state = previous_fake_state
 
 
+def test_pivpn_page_renders_status_tiles_commands_and_sidebar_link():
+    previous_runtime = runtime._runtime
+    previous_fake_state = runtime._fake_state
+    try:
+        with TemporaryDirectory() as temp_dir:
+            app = _create_fake_app(temp_dir)
+            _finish_fake_setup(app)
+
+            with app.test_client() as client:
+                response = client.get("/pivpn")
+
+            assert response.status_code == 200
+            page = response.get_data(as_text=True)
+            assert "<title>PiVPN - family-nas</title>" in page
+            assert "WireGuard" in page
+            assert "OpenVPN" in page
+            assert "Useful commands" in page
+            assert "pivpn -c" in page
+            assert "pivpn -a" in page
+            assert "pivpn -r" in page
+            assert "pivpn -d" in page
+            assert 'href="/pivpn"' in page
+            assert "This page is read-only" in page
+    finally:
+        runtime._runtime = previous_runtime
+        runtime._fake_state = previous_fake_state
+
+
 def test_smb_status_api_returns_flat_three_service_object():
     previous_runtime = runtime._runtime
     previous_fake_state = runtime._fake_state

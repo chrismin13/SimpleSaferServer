@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+
+{% block title %}{{ browser_title('PiVPN') }}{% endblock %}
+{% block header %}PiVPN{% endblock %}
+
+{% block extra_css %}
+<style>
+  .pivpn-command-list {
+    display: grid;
+    gap: var(--sp-3);
+  }
+
+  .pivpn-command-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) max-content;
+    gap: var(--sp-3);
+    align-items: center;
+    padding: var(--sp-3);
+    background: hsla(220, 16%, 12%, 0.58);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+  }
+
+  .pivpn-command-copy {
+    min-width: 5.25rem;
+  }
+
+  @media (max-width: 640px) {
+    .pivpn-command-row {
+      grid-template-columns: 1fr;
+    }
+
+    .pivpn-command-copy {
+      width: 100%;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="grid-3 mb-5">
+  <div class="status-tile">
+    <div class="status-tile-header">
+      <span class="status-tile-label"><i class="fas fa-shield-halved"></i> Installation</span>
+      <span class="badge {{ pivpn_status.install_status.badge_class }}">{{ pivpn_status.install_status.label }}</span>
+    </div>
+    <div class="status-tile-detail mt-3">{{ pivpn_status.install_status.detail }}</div>
+  </div>
+
+  <div class="status-tile">
+    <div class="status-tile-header">
+      <span class="status-tile-label"><i class="fas fa-network-wired"></i> WireGuard</span>
+      <span class="badge {{ pivpn_status.wireguard_status.badge_class }}">{{ pivpn_status.wireguard_status.label }}</span>
+    </div>
+    <div class="status-tile-detail mt-3">{{ pivpn_status.wireguard_status.detail }}</div>
+    {% if pivpn_status.wireguard_status.unit_name %}
+    <div class="status-tile-detail text-mono">{{ pivpn_status.wireguard_status.unit_name }}</div>
+    {% endif %}
+  </div>
+
+  <div class="status-tile">
+    <div class="status-tile-header">
+      <span class="status-tile-label"><i class="fas fa-key"></i> OpenVPN</span>
+      <span class="badge {{ pivpn_status.openvpn_status.badge_class }}">{{ pivpn_status.openvpn_status.label }}</span>
+    </div>
+    <div class="status-tile-detail mt-3">{{ pivpn_status.openvpn_status.detail }}</div>
+    {% if pivpn_status.openvpn_status.unit_name %}
+    <div class="status-tile-detail text-mono">{{ pivpn_status.openvpn_status.unit_name }}</div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="alert alert-info mb-5" style="font-size: var(--text-sm);">
+  <div class="alert-content">
+    <i class="fas fa-circle-info"></i>
+    <span class="alert-message">This page is read-only. Use the terminal commands below when you need to add, remove, or check VPN clients.</span>
+  </div>
+</div>
+
+<div class="grid-2">
+  <section class="card">
+    <div class="card-header">
+      <h5><i class="fas fa-terminal"></i> Useful commands</h5>
+    </div>
+    <div class="card-body">
+      <div class="pivpn-command-list">
+        {% for command in pivpn_status.commands %}
+        <div class="pivpn-command-row">
+          <div class="min-w-0">
+            <div class="d-flex items-center gap-2 flex-wrap mb-1">
+              <strong>{{ command.label }}</strong>
+              <code class="text-mono">{{ command.command }}</code>
+            </div>
+            <div class="text-muted" style="font-size: var(--text-sm);">{{ command.description }}</div>
+          </div>
+          <button class="btn btn-secondary btn-sm pivpn-command-copy" type="button" data-copy-command="{{ command.command }}" aria-label="Copy {{ command.label }} command">
+            <i class="fas fa-copy"></i> Copy
+          </button>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-header">
+      <h5><i class="fas fa-book"></i> Documentation</h5>
+    </div>
+    <div class="card-body">
+      <p class="text-muted mb-4" style="font-size: var(--text-sm);">
+        PiVPN manages VPN users and profile files from the server terminal. SimpleSaferServer only shows status and quick commands here.
+      </p>
+      <div class="d-flex flex-column gap-3">
+        <a class="btn btn-secondary" href="{{ pivpn_status.app_docs_url }}" target="_blank" rel="noopener">
+          <i class="fas fa-file-lines"></i> SimpleSaferServer PiVPN notes
+        </a>
+        <a class="btn btn-secondary" href="{{ pivpn_status.docs_url }}" target="_blank" rel="noopener">
+          <i class="fas fa-arrow-up-right-from-square"></i> PiVPN docs
+        </a>
+      </div>
+      {% if not pivpn_status.installed %}
+      <div class="alert alert-warning mt-4" style="font-size: var(--text-sm);">
+        <div class="alert-content">
+          <i class="fas fa-triangle-exclamation"></i>
+          <span class="alert-message">PiVPN was not found in the web service path. Install PiVPN from a terminal before relying on this page.</span>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </section>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  document.querySelectorAll('[data-copy-command]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const command = button.getAttribute('data-copy-command');
+      try {
+        await navigator.clipboard.writeText(command);
+        window.showAlert('Command copied.', 'success');
+      } catch {
+        window.showAlert('Could not copy command. Select the command text instead.', 'warning');
+      }
+    });
+  });
+</script>
+{% endblock %}
