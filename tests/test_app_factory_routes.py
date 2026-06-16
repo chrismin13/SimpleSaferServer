@@ -208,6 +208,82 @@ def test_login_title_uses_configured_hostname_without_auto_login():
         runtime._fake_state = previous_fake_state
 
 
+def test_login_form_includes_remember_me_checkbox():
+    previous_runtime = runtime._runtime
+    previous_fake_state = runtime._fake_state
+    try:
+        with TemporaryDirectory() as temp_dir:
+            app = _create_fake_app(temp_dir, skip_login=False)
+            _finish_fake_setup(app)
+
+            with app.test_client() as client:
+                response = client.get("/login")
+
+            page = response.get_data(as_text=True)
+            assert response.status_code == 200
+            assert 'name="remember_me"' in page
+            assert "Remember me on this browser" in page
+    finally:
+        runtime._runtime = previous_runtime
+        runtime._fake_state = previous_fake_state
+
+
+def test_login_without_remember_me_uses_browser_session_cookie():
+    previous_runtime = runtime._runtime
+    previous_fake_state = runtime._fake_state
+    try:
+        with TemporaryDirectory() as temp_dir:
+            app = _create_fake_app(temp_dir, skip_login=False)
+            _finish_fake_setup(app)
+
+            with app.test_client() as client:
+                response = client.post(
+                    "/login",
+                    data={"username": "admin", "password": "password"},
+                )
+
+                with client.session_transaction() as session:
+                    assert session["username"] == "admin"
+                    assert session.permanent is False
+
+            assert response.status_code == 302
+            assert "Expires=" not in response.headers["Set-Cookie"]
+    finally:
+        runtime._runtime = previous_runtime
+        runtime._fake_state = previous_fake_state
+
+
+def test_login_with_remember_me_sets_permanent_session_cookie():
+    previous_runtime = runtime._runtime
+    previous_fake_state = runtime._fake_state
+    try:
+        with TemporaryDirectory() as temp_dir:
+            app = _create_fake_app(temp_dir, skip_login=False)
+            _finish_fake_setup(app)
+
+            with app.test_client() as client:
+                response = client.post(
+                    "/login",
+                    data={
+                        "username": "admin",
+                        "password": "password",
+                        "remember_me": "on",
+                    },
+                    headers={"Accept": "application/json"},
+                )
+
+                with client.session_transaction() as session:
+                    assert session["username"] == "admin"
+                    assert session.permanent is True
+
+            assert response.status_code == 200
+            assert response.get_json()["data"]["redirect"] == "/dashboard"
+            assert "Expires=" in response.headers["Set-Cookie"]
+    finally:
+        runtime._runtime = previous_runtime
+        runtime._fake_state = previous_fake_state
+
+
 def test_setup_title_keeps_product_name_before_server_name_is_chosen():
     previous_runtime = runtime._runtime
     previous_fake_state = runtime._fake_state
