@@ -55,7 +55,28 @@ def parse_systemd_datetime(value: str) -> datetime | None:
             return datetime.strptime(value, fmt)
         except ValueError:
             continue
+    parts = value.split()
+    if len(parts) == 4:
+        try:
+            return datetime.strptime(" ".join(parts[:3]), "%a %Y-%m-%d %H:%M:%S")
+        except ValueError:
+            pass
     return None
+
+
+def format_run_duration(total_seconds: int) -> str:
+    total_seconds = max(0, int(total_seconds))
+    days, remainder = divmod(total_seconds, 86400)
+    hours, remainder = divmod(remainder, 3600)
+    minutes, seconds = divmod(remainder, 60)
+
+    if days:
+        return f"{days}d {hours}h" if hours else f"{days}d"
+    if hours:
+        return f"{hours}h {minutes}m" if minutes else f"{hours}h"
+    if minutes:
+        return f"{minutes}m {seconds}s" if seconds else f"{minutes}m"
+    return f"{seconds}s"
 
 
 def format_compact_schedule_datetime(value: datetime | None, now: datetime) -> str:
@@ -114,6 +135,10 @@ class Task:
         return self._service.get_last_run_duration(self)
 
     @property
+    def run_for(self) -> str:
+        return self._service.get_run_for(self)
+
+    @property
     def status(self) -> str:
         return self._service.get_status(self)
 
@@ -164,12 +189,14 @@ class TaskService:
     def task_summary(self, task: Task) -> dict[str, Any]:
         try:
             schedule = self.schedule_state(task)
+            status = task.status
             return {
                 "name": task.name,
                 "next_run": schedule["label"],
                 "last_run": task.last_run,
-                "status": task.status,
+                "status": status,
                 "last_run_duration": task.last_run_duration,
+                "run_for": self.get_run_for(task, status=status),
                 "schedule": schedule,
             }
         except Exception as exc:
@@ -181,6 +208,7 @@ class TaskService:
                 "last_run": "Error",
                 "status": "Error",
                 "last_run_duration": "Error",
+                "run_for": "Error",
                 "schedule": {
                     "state": "issue",
                     "label": "Schedule issue",
@@ -456,6 +484,30 @@ class TaskService:
         except CalledProcessError:
             return "Retrieval Error"
 
+    def get_run_for(self, task: Task, *, status: str | None = None) -> str:
+        status = status or task.status
+        if status != Status.RUNNING:
+            return "-"
+
+        if self.runtime.is_fake:
+            task_state = self._require_fake_state().get_task_state(task.name)
+            started_at = parse_systemd_datetime(task_state.get("running_started_at", ""))
+        else:
+            try:
+                output = self.systemd_adapter.show_property(
+                    task.service_name, "ExecMainStartTimestamp"
+                )
+            except CalledProcessError:
+                return "Retrieval Error"
+            started_at = parse_systemd_datetime(output.split("=", 1)[-1].strip())
+
+        if started_at is None:
+            return "Unknown"
+
+        # Keep this server-side so the dashboard and JSON API agree during refreshes.
+        elapsed = datetime.now() - started_at
+        return format_run_duration(int(elapsed.total_seconds()))
+
     def get_status(self, task: Task) -> str:
         if self.runtime.is_fake:
             task_state = self._require_fake_state().get_task_state(task.name)
@@ -535,7 +587,11 @@ class TaskService:
             cancel_event = threading.Event()
             self._fake_task_cancel_events[task_name] = cancel_event
 
-            fake_state.set_task_state(task_name, status=Status.RUNNING)
+            fake_state.set_task_state(
+                task_name,
+                status=Status.RUNNING,
+                running_started_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            )
             fake_state.append_task_log(task_name, f"Starting {task_name} in fake mode.")
 
             thread = threading.Thread(
@@ -569,6 +625,7 @@ class TaskService:
                 status=Status.SUCCESS,
                 last_run=start_time.strftime("%Y-%m-%d %H:%M:%S"),
                 last_run_duration=f"{duration}s",
+                running_started_at="",
             )
             fake_state.append_task_log(task_name, f"{task_name} finished successfully.")
         except Exception as exc:
@@ -579,6 +636,7 @@ class TaskService:
                     status=Status.STOPPED,
                     last_run=start_time.strftime("%Y-%m-%d %H:%M:%S"),
                     last_run_duration=f"{duration}s",
+                    running_started_at="",
                 )
             else:
                 fake_state.set_task_state(
@@ -586,6 +644,7 @@ class TaskService:
                     status=Status.FAILURE,
                     last_run=start_time.strftime("%Y-%m-%d %H:%M:%S"),
                     last_run_duration=f"{duration}s",
+                    running_started_at="",
                 )
                 fake_state.append_task_log(task_name, f"{task_name} failed: {exc}")
                 if self.logger:

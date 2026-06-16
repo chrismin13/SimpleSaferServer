@@ -58,6 +58,7 @@ def test_fake_dashboard_renders_storage_action_urls():
             assert 'action="/unmount"' in page
             assert 'action="/mount"' in page
             assert 'id="health-refresh-button"' in page
+            assert "<th>Run For</th>" in page
             assert "<th>Next Run</th>" in page
             assert "Disable Schedule" in page
             assert "Enable Schedule" in page
