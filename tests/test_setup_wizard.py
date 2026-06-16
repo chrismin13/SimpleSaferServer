@@ -41,6 +41,35 @@ class FakeServerIdentityService:
         return types.SimpleNamespace(server_name=server_name, hostname=server_name, warning="")
 
 
+class FakeSetupSelfBackupService:
+    def __init__(self):
+        self.calls = []
+
+    def list_backups(self):
+        self.calls.append(("list_backups",))
+        return [{"name": "setup-self-backup-20260616T010000Z.tar.gz"}]
+
+    def create_backup(self):
+        self.calls.append(("create_backup",))
+        return {"archive": "/media/backup/archive.tar.gz", "file_count": 3}
+
+    def resolve_backup_name(self, archive):
+        self.calls.append(("resolve_backup_name", archive))
+        if archive == "missing.tar.gz":
+            raise self_setup_error("Backup archive was not found.")
+        return f"/media/backup/SimpleSaferServer-self-backups/{archive}"
+
+    def restore_backup(self, archive_path, force_setup_incomplete=True):
+        self.calls.append(("restore_backup", archive_path, force_setup_incomplete))
+        return {"archive": archive_path, "restored": ["config/config.conf"]}
+
+
+def self_setup_error(message):
+    from simple_safer_server.services.setup_self_backup import SetupSelfBackupError
+
+    return SetupSelfBackupError(message)
+
+
 class SetupWizardTests(unittest.TestCase):
     def setUp(self):
         config_manager_module = types.ModuleType("config_manager")
@@ -90,6 +119,7 @@ class SetupWizardTests(unittest.TestCase):
         self.app.secret_key = 'test-secret'
         self.cloud_backup_service = FakeCloudBackupService()
         self.server_identity_service = FakeServerIdentityService()
+        self.setup_self_backup_service = FakeSetupSelfBackupService()
         self.app.extensions["simple_safer_server"] = types.SimpleNamespace(
             cloud_backup_service=self.cloud_backup_service,
             server_identity_service=self.server_identity_service,
@@ -602,6 +632,90 @@ class SetupWizardTests(unittest.TestCase):
             response, 'Username must match the admin account created during setup'
         )
         config_manager.set_value.assert_not_called()
+
+    def test_setup_self_backup_list_route_returns_archives(self):
+        with patch.object(
+            self.setup_wizard,
+            "_setup_self_backup_service",
+            return_value=self.setup_self_backup_service,
+        ):
+            with self.app.test_client() as client:
+                response = client.get("/api/setup/self-backups")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertDataResponse(
+            response,
+            {"backups": [{"name": "setup-self-backup-20260616T010000Z.tar.gz"}]},
+        )
+        self.assertEqual(self.setup_self_backup_service.calls, [("list_backups",)])
+
+    def test_setup_self_backup_create_route_returns_archive(self):
+        with patch.object(
+            self.setup_wizard,
+            "_setup_self_backup_service",
+            return_value=self.setup_self_backup_service,
+        ):
+            with self.app.test_client() as client:
+                response = client.post("/api/setup/self-backups", json={})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertDataResponse(
+            response,
+            {"archive": "/media/backup/archive.tar.gz", "file_count": 3},
+        )
+        self.assertEqual(self.setup_self_backup_service.calls, [("create_backup",)])
+
+    def test_setup_self_backup_restore_route_forces_setup_incomplete(self):
+        config_manager = MagicMock()
+        config_manager.is_setup_complete.return_value = False
+
+        with patch.object(self.setup_wizard, "config_manager", config_manager):
+            with patch.object(
+                self.setup_wizard,
+                "_setup_self_backup_service",
+                return_value=self.setup_self_backup_service,
+            ):
+                with self.app.test_client() as client:
+                    response = client.post(
+                        "/api/setup/self-backups/restore",
+                        json={"archive": "setup-self-backup-20260616T010000Z.tar.gz"},
+                    )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertDataResponse(
+            response,
+            {
+                "archive": "/media/backup/SimpleSaferServer-self-backups/setup-self-backup-20260616T010000Z.tar.gz",
+                "restored": ["config/config.conf"],
+            },
+        )
+        self.assertEqual(
+            self.setup_self_backup_service.calls,
+            [
+                ("resolve_backup_name", "setup-self-backup-20260616T010000Z.tar.gz"),
+                (
+                    "restore_backup",
+                    "/media/backup/SimpleSaferServer-self-backups/setup-self-backup-20260616T010000Z.tar.gz",
+                    True,
+                ),
+            ],
+        )
+        config_manager.load_config.assert_called_once_with()
+
+    def test_setup_self_backup_restore_route_rejects_missing_archive(self):
+        with patch.object(
+            self.setup_wizard,
+            "_setup_self_backup_service",
+            return_value=self.setup_self_backup_service,
+        ):
+            with self.app.test_client() as client:
+                response = client.post(
+                    "/api/setup/self-backups/restore",
+                    json={"archive": "missing.tar.gz"},
+                )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertProblemDetail(response, "Backup archive was not found.")
 
     def test_setup_email_rejects_out_of_range_smtp_port(self):
         system_utils = MagicMock()

@@ -35,6 +35,10 @@ from simple_safer_server.services.server_identity import (
     ServerIdentityError,
     ServerIdentityService,
 )
+from simple_safer_server.services.setup_self_backup import (
+    SetupSelfBackupError,
+    SetupSelfBackupService,
+)
 from simple_safer_server.services.smb_manager import SMBManager
 from simple_safer_server.services.system_utils import SystemUtils
 from simple_safer_server.services.user_manager import UserManager
@@ -84,6 +88,11 @@ def _server_identity_service():
     if services is not None and hasattr(services, "server_identity_service"):
         return services.server_identity_service
     return server_identity_service
+
+
+def _setup_self_backup_service():
+    """Return the small backup helper used before and during setup recovery."""
+    return SetupSelfBackupService(runtime, config_manager)
 
 
 def _valid_tcp_port(value):
@@ -854,6 +863,14 @@ def complete_setup():
         config_manager.mark_setup_complete()
         config_manager.load_config()  # Ensure in-memory config is up to date
 
+        try:
+            _setup_self_backup_service().create_backup()
+        except SetupSelfBackupError as e:
+            # A self-backup is useful, but first-run setup should not fail if
+            # the drive was unplugged after the mount step. The scheduled timer
+            # will retry after the backup drive is mounted again.
+            logger.warning("Setup self-backup was skipped after completion: %s", e)
+
         logger.info(
             "Setup completed successfully, systemd tasks installed, and SMB share configured."
         )
@@ -900,6 +917,55 @@ def setup_system_info():
     except Exception as e:
         logger.error(f"Error saving system info: {e}")
         return _operation_problem('Could not save system information')
+
+
+@setup.route('/api/setup/self-backups', methods=['GET'])
+@setup_api_access_required
+def list_setup_self_backups():
+    """List setup self-backup archives from the configured backup drive."""
+    try:
+        return json_data({"backups": _setup_self_backup_service().list_backups()})
+    except ApiProblem:
+        raise
+    except Exception as e:
+        logger.error("Error listing setup self-backups: %s", e)
+        return _operation_problem("Could not list setup self-backups")
+
+
+@setup.route('/api/setup/self-backups', methods=['POST'])
+@setup_api_access_required
+def create_setup_self_backup():
+    """Create a setup self-backup archive on the configured backup drive."""
+    try:
+        return json_data(_setup_self_backup_service().create_backup())
+    except SetupSelfBackupError as e:
+        return _validation_problem(str(e))
+    except ApiProblem:
+        raise
+    except Exception as e:
+        logger.error("Error creating setup self-backup: %s", e)
+        return _operation_problem("Could not create setup self-backup")
+
+
+@setup.route('/api/setup/self-backups/restore', methods=['POST'])
+@setup_api_access_required
+def restore_setup_self_backup():
+    """Restore a setup self-backup archive before setup completion."""
+    try:
+        data = json_request_data()
+        archive = data.get("archive")
+        service = _setup_self_backup_service()
+        archive_path = service.resolve_backup_name(archive)
+        result = service.restore_backup(archive_path, force_setup_incomplete=True)
+        config_manager.load_config()
+        return json_data(result)
+    except SetupSelfBackupError as e:
+        return _validation_problem(str(e))
+    except ApiProblem:
+        raise
+    except Exception as e:
+        logger.error("Error restoring setup self-backup: %s", e)
+        return _operation_problem("Could not restore setup self-backup")
 
 
 @setup.route('/api/setup/mega/connect', methods=['POST'])

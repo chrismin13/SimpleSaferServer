@@ -115,6 +115,10 @@ Advanced mode:
   gives the mount check time to finish before health probes the drive, even with systemd's small
   randomized delay.
 - The installer may generate those unit files earlier, but it keeps the timers inactive while `system.setup_complete` is false so persistent timers cannot run with placeholder setup values.
+- Setup creates a small self-backup archive on the mounted backup drive after completion.
+- A daily self-backup timer then runs one minute before cloud backup, so cloud backup can copy the fresh setup archive too.
+- Self-backup archives include SimpleSaferServer-owned setup config, rclone config, msmtp config, and owned Samba include files. They do not include `/etc/fstab` or a full system backup.
+- Manual backup and restore commands are documented in [Setup Self-Backup](setup_self_backup.md).
 
 ## Later Changes
 
