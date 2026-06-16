@@ -25,8 +25,8 @@ def test_manual_recovery_references_sss_shares_file():
 
 def test_manual_recovery_references_network_file_sharing_page():
     section = _manual_recovery_section()
-    # Should point operators to the Network File Sharing docs page
-    assert "network_file_sharing" in section.lower() or "Network File Sharing" in section
+    # Should point operators to the SMB Network Shares docs page
+    assert "network_file_sharing" in section.lower() or "SMB Network Shares" in section
 
 
 def test_manual_recovery_does_not_present_smb_conf_as_managed_share_config():

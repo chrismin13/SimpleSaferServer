@@ -48,10 +48,10 @@
     <div class="status-tile-detail" id="backup-detail">—</div>
   </div>
 
-  <!-- Network Sharing -->
+  <!-- SMB Network Shares -->
   <div class="status-tile" id="sharing-tile">
     <div class="status-tile-header">
-      <span class="status-tile-label"><i class="fas fa-share-nodes"></i> File Sharing</span>
+      <span class="status-tile-label"><i class="fas fa-share-nodes"></i> SMB Network Shares</span>
       <span class="badge badge-neutral" id="sharing-status-badge">Checking…</span>
     </div>
     <div class="status-tile-value" id="sharing-status">—</div>
@@ -729,7 +729,7 @@ Remove the drive now if you do not want it mounted again.`;
           badge.textContent = 'Partial';
           val.textContent = 'Degraded';
           // Keep the compact detail explicit so the dashboard matches the
-          // File Sharing page without adding another explanatory panel.
+          // SMB Network Shares page without adding another explanatory panel.
           detail.textContent = `smbd: ${data.smbd}, nmbd: ${data.nmbd}, wsdd2: ${data.wsdd2}`;
         } else {
           badge.className = 'badge badge-danger';

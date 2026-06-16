@@ -57,6 +57,7 @@ def test_fake_dashboard_renders_storage_action_urls():
             assert "Unavailable / Unavailable GB used" not in page
             assert 'action="/unmount"' in page
             assert 'action="/mount"' in page
+            assert "SMB Network Shares" in page
             assert 'id="health-refresh-button"' in page
             assert "<th>Next Run</th>" in page
             assert "Disable Schedule" in page
@@ -81,6 +82,8 @@ def test_network_file_sharing_renders_three_service_status_labels_and_help_text(
 
             assert response.status_code == 200
             page = response.get_data(as_text=True)
+            assert "SMB Network Shares" in page
+            assert "Network File Sharing" not in page
             assert "SMB Daemon (smbd)" in page
             assert "NetBIOS Discovery (nmbd)" in page
             assert "Windows Discovery (wsdd2)" in page

@@ -1,6 +1,6 @@
-# Network File Sharing
+# SMB Network Shares
 
-The Network File Sharing page manages Samba shares and Samba service status.
+The SMB Network Shares page manages Samba shares and Samba service status.
 It also includes the server name. This is the name you'll use to find this
 server on your network. Scheduled task alert emails include it in the subject.
 
@@ -175,7 +175,7 @@ If the share depends on unsupported Samba directives, leave it unmanaged and mai
 3. Remove it from the unmanaged config source and add it to `/etc/samba/simple_safer_server_shares.conf`.
 4. Keep only the supported share settings.
 5. Restart Samba.
-6. Reload the Network File Sharing page and confirm the share appears in the managed table.
+6. Reload the SMB Network Shares page and confirm the share appears in the managed table.
 
 ### Example
 
@@ -209,7 +209,7 @@ Restarting Samba disconnects anyone who is currently connected to a share, so ac
 sudo systemctl restart smbd nmbd wsdd2
 ```
 
-Reload the Network File Sharing page after that.
+Reload the SMB Network Shares page after that.
 
 ## Setup Wizard Behavior
 
