@@ -161,7 +161,6 @@ class SambaLayoutService:
     def _remove_marker_block(self, lines: list[str], begin_marker: str, end_marker: str):
         result = []
         index = 0
-        removed = False
 
         while index < len(lines):
             stripped = lines[index].strip()
@@ -172,9 +171,9 @@ class SambaLayoutService:
                 index += 1
                 continue
 
-            if removed:
-                raise SambaLayoutError("SSS Samba include marker block is malformed.")
-            removed = True
+            # A complete duplicate owned block is safe to repair. A half block
+            # is not safe because we cannot know which nearby admin lines belong
+            # to SimpleSaferServer and which ones belong to the operator.
             index += 1
             while index < len(lines) and lines[index].strip() != end_marker:
                 if lines[index].strip() == begin_marker:

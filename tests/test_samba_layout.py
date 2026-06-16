@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 from simple_safer_server.services.samba_layout import (
     SSS_GLOBALS_INCLUDE_BEGIN,
+    SSS_GLOBALS_INCLUDE_END,
     SSS_SHARES_INCLUDE_BEGIN,
     SSS_SHARES_INCLUDE_END,
     SambaLayoutError,
@@ -103,6 +104,70 @@ class SambaLayoutServiceTests(unittest.TestCase):
         self.assertEqual(self.read_main_config(), first_content)
         self.assertEqual(self.read_main_config().count(SSS_GLOBALS_INCLUDE_BEGIN), 1)
         self.assertEqual(self.read_main_config().count(SSS_SHARES_INCLUDE_BEGIN), 1)
+
+    def test_duplicate_complete_include_blocks_are_repaired(self):
+        self.write_main_config(
+            "\n".join(
+                [
+                    "[global]",
+                    "   workgroup = WORKGROUP",
+                    SSS_GLOBALS_INCLUDE_BEGIN,
+                    "   include = /etc/samba/simple_safer_server_globals.conf",
+                    SSS_GLOBALS_INCLUDE_END,
+                    SSS_GLOBALS_INCLUDE_BEGIN,
+                    "   include = /etc/samba/simple_safer_server_globals.conf",
+                    SSS_GLOBALS_INCLUDE_END,
+                    "",
+                    "[media]",
+                    "   path = /srv/media",
+                    "",
+                    SSS_SHARES_INCLUDE_BEGIN,
+                    "include = /etc/samba/simple_safer_server_shares.conf",
+                    SSS_SHARES_INCLUDE_END,
+                    SSS_SHARES_INCLUDE_BEGIN,
+                    "include = /etc/samba/simple_safer_server_shares.conf",
+                    SSS_SHARES_INCLUDE_END,
+                    "",
+                ]
+            )
+        )
+
+        self.service.ensure_layout()
+
+        content = self.read_main_config()
+        self.assertEqual(content.count(SSS_GLOBALS_INCLUDE_BEGIN), 1)
+        self.assertEqual(content.count(SSS_SHARES_INCLUDE_BEGIN), 1)
+        self.assertIn("[media]\n   path = /srv/media\n", content)
+
+    def test_long_edited_config_keeps_admin_lines_while_adding_includes(self):
+        admin_lines = [
+            f"# site tuning note {index}\n   veto files = /tmp{index}/\n" for index in range(250)
+        ]
+        config = (
+            "# custom header\n"
+            "[global]\n"
+            "   workgroup = WORKGROUP\n"
+            "   include = relative-site-global.conf\n"
+            "\n"
+            "[media]\n"
+            "   path = /srv/media\n"
+            "   comment = Existing admin share\n" + "".join(admin_lines) + "\n"
+            "[photos]\n"
+            "   path = /srv/photos\n"
+        )
+        self.write_main_config(config)
+
+        self.service.ensure_layout()
+
+        content = self.read_main_config()
+        self.assertIn("# custom header\n[global]\n", content)
+        self.assertIn("   include = relative-site-global.conf\n", content)
+        self.assertIn("[media]\n   path = /srv/media\n", content)
+        self.assertIn("   comment = Existing admin share\n", content)
+        self.assertIn(admin_lines[-1], content)
+        self.assertIn("[photos]\n   path = /srv/photos\n", content)
+        self.assertEqual(content.count(SSS_GLOBALS_INCLUDE_BEGIN), 1)
+        self.assertEqual(content.count(SSS_SHARES_INCLUDE_BEGIN), 1)
 
     def test_malformed_marker_blocks_fail_closed(self):
         self.write_main_config(

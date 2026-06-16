@@ -70,6 +70,12 @@ SimpleSaferServer marker-wrapped include blocks. It validates the effective Samb
 configuration before publishing the layout and restores the original files if
 validation fails.
 
+If `smb.conf` already has more than one complete SimpleSaferServer include block,
+the helper treats that as repairable cleanup: it removes the duplicate owned blocks
+and writes one fresh block for globals and one fresh block for shares. If a
+SimpleSaferServer marker block is incomplete or nested, the helper stops instead
+of rewriting `smb.conf`, because it cannot safely tell where the owned block ends.
+
 File paths are the ownership boundary:
 
 - `/etc/samba/smb.conf` remains the system/admin-owned Samba entrypoint.
