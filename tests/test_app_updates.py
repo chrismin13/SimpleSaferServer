@@ -5,7 +5,12 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from simple_safer_server.services.app_updates import AppUpdateError, AppUpdateManager
+from simple_safer_server.adapters.app_update_commands import APP_UPDATE_COMMAND_TIMEOUT_SECONDS
+from simple_safer_server.services.app_updates import (
+    FETCH_ORIGIN_BRANCHES_ARGS,
+    AppUpdateError,
+    AppUpdateManager,
+)
 
 
 def make_runtime(root):
@@ -189,7 +194,7 @@ class AppUpdateManagerTests(unittest.TestCase):
             clone,
             ["pull", "--ff-only"],
             check=False,
-            timeout=None,
+            timeout=APP_UPDATE_COMMAND_TIMEOUT_SECONDS,
         )
         adapter.run_installer.assert_called_once_with(clone)
 
@@ -219,7 +224,7 @@ class AppUpdateManagerTests(unittest.TestCase):
             clone,
             ["pull", "--ff-only"],
             check=False,
-            timeout=None,
+            timeout=APP_UPDATE_COMMAND_TIMEOUT_SECONDS,
         )
         adapter.run_installer_for_journal.assert_called_once_with(clone)
         adapter.run_git.assert_not_called()
@@ -257,7 +262,7 @@ class AppUpdateManagerTests(unittest.TestCase):
             [
                 ["reset", "--hard", "HEAD"],
                 ["clean", "-fd"],
-                ["fetch", "--prune", "--tags", "origin"],
+                FETCH_ORIGIN_BRANCHES_ARGS,
                 ["pull", "--ff-only"],
             ],
         )
@@ -308,6 +313,34 @@ class AppUpdateManagerTests(unittest.TestCase):
             branches = self.manager(root, clone).list_remote_branches(fetch_remote=True)
 
         self.assertEqual(branches, ["feature/demo", "master"])
+
+    def test_remote_branch_choices_fetch_new_branches_for_narrow_origin_refspec(self):
+        temp_dir, root, _remote, clone = self.make_repo_pair()
+        with temp_dir:
+            git(
+                clone,
+                "config",
+                "--replace-all",
+                "remote.origin.fetch",
+                "+refs/heads/master:refs/remotes/origin/master",
+            )
+            other = root / "other"
+            subprocess.run(
+                ["git", "clone", str(root / "remote.git"), str(other)],
+                check=True,
+                capture_output=True,
+            )
+            git(other, "config", "user.email", "admin@example.com")
+            git(other, "config", "user.name", "Admin")
+            git(other, "checkout", "-b", "feature/remote-only")
+            (other / "remote.txt").write_text("remote\n", encoding="utf-8")
+            git(other, "add", "remote.txt")
+            git(other, "commit", "-m", "remote branch")
+            git(other, "push", "-u", "origin", "feature/remote-only")
+
+            branches = self.manager(root, clone).list_remote_branches(fetch_remote=True)
+
+        self.assertEqual(branches, ["feature/remote-only", "master"])
 
     def test_switch_branch_runs_fetch_switch_pull_and_installer(self):
         temp_dir, root, _remote, clone = self.make_repo_pair()

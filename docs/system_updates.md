@@ -44,13 +44,15 @@ cleanup tooltip so the recovery path does not disappear.
 
 The advanced app version source control supports deliberate source switching for testing or
 recovery. It lists branches from `origin` only. It does not show tags, detached commits,
-local-only branches, or `origin/HEAD`. Switching to a non-`main` branch uses a deliberately strong
-confirmation because branch switching is an escape hatch for testing a specific fix or recovering an
-install, not a routine update path. Non-`main` branches can be unfinished, temporary, outdated, or
-removed without notice. The switch reruns the installer from that branch. The collapsed **Advanced**
-row does not include a dynamic branch-relationship summary; the current source, update status, and
-**Switch to main** action provide the useful scan points, while GitHub remains the detailed branch
-comparison surface.
+local-only branches, or `origin/HEAD`. Before listing or validating branch choices, the updater
+fetches all branch heads from `origin`, even when the local Git checkout was made with a
+single-branch fetch setting. Switching to a non-`main` branch uses a deliberately strong
+confirmation because branch switching is an escape hatch for testing a specific fix or recovering
+an install, not a routine update path. Non-`main` branches can be unfinished, temporary, outdated,
+or removed without notice. The switch reruns the installer from that branch. The collapsed
+**Advanced** row does not include a dynamic branch-relationship summary; the current source,
+update status, and **Switch to main** action provide the useful scan points, while GitHub remains
+the detailed branch comparison surface.
 
 Branch switching requires a clean app checkout. If Git reports changed tracked files or untracked
 files in `/opt/SimpleSaferServer`, clean up or review those files before switching branches. The
@@ -61,12 +63,12 @@ When the app checkout is dirty, the **Advanced** branch selector remains visible
 hint explains that the app folder must be cleaned up before switching branches, which keeps the
 available recovery action discoverable without making it clickable while Git would refuse it.
 
-App version source switching runs through the `App Update` scheduled task. The task fetches `origin`,
-switches to the selected branch, fast-forwards with `git pull --ff-only`, and reruns the installer
-immediately so dependencies, systemd units, helper scripts, templates, static assets, and the running
-web app match the selected branch. Validation problems found before the task starts are shown on the
-System Updates page. Git or installer failures after the task starts are shown in the `App Update`
-task journal.
+App version source switching runs through the `App Update` scheduled task. The task fetches all
+branch heads from `origin`, switches to the selected branch, fast-forwards with `git pull --ff-only`,
+and reruns the installer immediately so dependencies, systemd units, helper scripts, templates,
+static assets, and the running web app match the selected branch. Validation problems found before
+the task starts are shown on the System Updates page. Git or installer failures after the task
+starts are shown in the `App Update` task journal.
 
 The branch switch implementation uses Git commands available on Debian 10-era installs, so legacy
 systems can still move between published branches even when newer Git subcommands are unavailable.

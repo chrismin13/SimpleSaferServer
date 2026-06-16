@@ -6,7 +6,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from simple_safer_server.adapters.app_update_commands import AppUpdateCommandAdapter
+from simple_safer_server.adapters.app_update_commands import (
+    APP_UPDATE_COMMAND_TIMEOUT_SECONDS,
+    AppUpdateCommandAdapter,
+)
 from simple_safer_server.adapters.command_runner import CalledProcessError
 from simple_safer_server.services.file_persistence import atomic_write_json, read_json
 from simple_safer_server.services.runtime import get_runtime
@@ -17,6 +20,14 @@ class AppUpdateError(RuntimeError):
 
 
 BRANCH_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
+ORIGIN_BRANCH_REFSPEC = "+refs/heads/*:refs/remotes/origin/*"
+FETCH_ORIGIN_BRANCHES_ARGS = [
+    "fetch",
+    "--prune",
+    "--tags",
+    "origin",
+    ORIGIN_BRANCH_REFSPEC,
+]
 
 
 def _format_process_failure(
@@ -47,7 +58,7 @@ class AppUpdateManager:
     def _now(self) -> str:
         return datetime.now().isoformat(timespec="seconds")
 
-    def _git(self, args, *, check=False, timeout=None):
+    def _git(self, args, *, check=False, timeout=APP_UPDATE_COMMAND_TIMEOUT_SECONDS):
         return self.command_adapter.run_git(
             self.repo_path,
             list(args),
@@ -55,7 +66,7 @@ class AppUpdateManager:
             timeout=timeout,
         )
 
-    def _git_for_journal(self, args, *, check=False, timeout=None):
+    def _git_for_journal(self, args, *, check=False, timeout=APP_UPDATE_COMMAND_TIMEOUT_SECONDS):
         return self.command_adapter.run_git_for_journal(
             self.repo_path,
             list(args),
@@ -85,6 +96,12 @@ class AppUpdateManager:
             result.stdout or "",
             result.stderr or "",
         )
+
+    def _fetch_origin_branches(self) -> None:
+        # Some installs can have a narrow fetch refspec from a single-branch clone.
+        # Fetch all origin heads explicitly so branch lists and update checks see
+        # newly published or pruned remote branches.
+        self._git(FETCH_ORIGIN_BRANCHES_ARGS, check=True)
 
     def _empty_status(self, status: str, message: str) -> dict[str, Any]:
         return {
@@ -185,7 +202,7 @@ class AppUpdateManager:
     def list_remote_branches(self, *, fetch_remote: bool = False) -> list[str]:
         """Return switchable branch names advertised by the origin remote."""
         if fetch_remote:
-            self._git(["fetch", "--prune", "--tags", "origin"], check=True)
+            self._fetch_origin_branches()
         output = self._git_stdout(
             [
                 "for-each-ref",
@@ -368,7 +385,7 @@ class AppUpdateManager:
 
         if fetch_remote:
             try:
-                self._git(["fetch", "--prune", "--tags", "origin"], check=True)
+                self._fetch_origin_branches()
                 status = self._apply_counts(status)
             except (CalledProcessError, OSError, ValueError) as exc:
                 status["status"] = "unavailable"
@@ -424,8 +441,8 @@ class AppUpdateManager:
             (["reset", "--hard", "HEAD"], ["git", "reset", "--hard", "HEAD"]),
             (["clean", "-fd"], ["git", "clean", "-fd"]),
             (
-                ["fetch", "--prune", "--tags", "origin"],
-                ["git", "fetch", "--prune", "--tags", "origin"],
+                FETCH_ORIGIN_BRANCHES_ARGS,
+                ["git", *FETCH_ORIGIN_BRANCHES_ARGS],
             ),
             (["pull", "--ff-only"], ["git", "pull", "--ff-only"]),
         ]
