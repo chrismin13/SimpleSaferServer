@@ -327,7 +327,7 @@ def create_app() -> Flask:
     def handle_not_found(error):
         if request.path.startswith("/api/"):
             return json_problem(NotFoundProblem("Not found."))
-        return error
+        return render_template("404.html", requested_path=request.path), 404
 
     @app.route("/favicon.ico")
     def favicon():

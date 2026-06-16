@@ -208,6 +208,52 @@ def test_login_title_uses_configured_hostname_without_auto_login():
         runtime._fake_state = previous_fake_state
 
 
+def test_browser_404_renders_bunker_navigation():
+    previous_runtime = runtime._runtime
+    previous_fake_state = runtime._fake_state
+    try:
+        with TemporaryDirectory() as temp_dir:
+            app = _create_fake_app(temp_dir)
+            _finish_fake_setup(app, server_name="family-nas")
+
+            with app.test_client() as client:
+                response = client.get("/missing-page")
+
+            page = response.get_data(as_text=True)
+            assert response.status_code == 404
+            assert "<title>Page not found - family-nas</title>" in page
+            assert "This page is not here" in page
+            assert "/missing-page" in page
+            assert 'href="/dashboard"' in page
+            assert "Go to Overview" in page
+            assert "File Sharing" in page
+            assert "Drive Health" in page
+            assert "Cloud Backup" in page
+            assert "Alerts" in page
+    finally:
+        runtime._runtime = previous_runtime
+        runtime._fake_state = previous_fake_state
+
+
+def test_api_404_still_returns_problem_details():
+    previous_runtime = runtime._runtime
+    previous_fake_state = runtime._fake_state
+    try:
+        with TemporaryDirectory() as temp_dir:
+            app = _create_fake_app(temp_dir)
+            _finish_fake_setup(app)
+
+            with app.test_client() as client:
+                response = client.get("/api/missing")
+
+            assert response.status_code == 404
+            assert response.get_json()["title"] == "Not found"
+            assert response.get_json()["detail"] == "Not found."
+    finally:
+        runtime._runtime = previous_runtime
+        runtime._fake_state = previous_fake_state
+
+
 def test_setup_title_keeps_product_name_before_server_name_is_chosen():
     previous_runtime = runtime._runtime
     previous_fake_state = runtime._fake_state
