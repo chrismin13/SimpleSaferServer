@@ -174,14 +174,40 @@ function getUserRowActions(user) {
   ];
 }
 
+function parseUserTimestamp(value) {
+  if (!value) return null;
+
+  const timestamp = String(value).trim();
+  if (!timestamp) return null;
+
+  const normalizedTimestamp = timestamp.replace(/^(\d{4}-\d{2}-\d{2}) /, '$1T');
+  const hasTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(normalizedTimestamp);
+  // Current records already include +00:00. Older records may be UTC strings
+  // without an offset, so only add Z when the stored value has no timezone.
+  const parsedDate = new Date(hasTimezone ? normalizedTimestamp : `${normalizedTimestamp}Z`);
+  if (Number.isNaN(parsedDate.getTime())) return null;
+  return parsedDate;
+}
+
+function formatUserDate(value, fallback) {
+  const parsedDate = parseUserTimestamp(value);
+  if (!parsedDate) return fallback;
+  return parsedDate.toLocaleDateString();
+}
+
+function formatUserDateTime(value, fallback) {
+  const parsedDate = parseUserTimestamp(value);
+  if (!parsedDate) return fallback;
+  return parsedDate.toLocaleString();
+}
+
 function renderUsersTable() {
   const tbody = document.getElementById('usersTableBody');
   tbody.innerHTML = '';
   currentUsers.forEach(user => {
     const row = document.createElement('tr');
-    function parseUTC(dateStr) { if (!dateStr) return null; return new Date(dateStr.endsWith('Z') ? dateStr : dateStr + 'Z'); }
-    const createdDate = user.created_at ? parseUTC(user.created_at).toLocaleDateString() : 'N/A';
-    const lastLoginDate = user.last_login ? parseUTC(user.last_login).toLocaleString() : 'Never';
+    const createdDate = formatUserDate(user.created_at, 'Unknown');
+    const lastLoginDate = formatUserDateTime(user.last_login, 'Never');
     row.innerHTML = `
       <td class="fw-medium">${user.username}</td>
       <td><span class="badge ${user.is_admin ? 'badge-accent' : 'badge-neutral'}">${user.is_admin ? 'Admin' : 'User'}</span></td>

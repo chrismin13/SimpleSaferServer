@@ -4,6 +4,7 @@ The Users page allows administrators to manage user accounts.
 
 ## User Table
 - **Columns**: Username, Role (Admin/User), Created, Last Login, Actions.
+- **Dates**: New users store dates with a UTC timezone. Older user records may have no timezone or no created date. The page still loads those users and shows `Unknown` or `Never` instead of a broken date.
 - **Actions**: Edit or delete users (cannot delete your own account).
 
 ## Add User
