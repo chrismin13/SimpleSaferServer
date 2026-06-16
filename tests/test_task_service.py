@@ -17,15 +17,17 @@ from simple_safer_server.services.task_service import (
 
 
 class FakeConfigManager:
-    def __init__(self, mount_point, rclone_dir=""):
+    def __init__(self, mount_point, rclone_dir="", healthchecks_ping_url=""):
         self.mount_point = mount_point
         self.rclone_dir = rclone_dir
+        self.healthchecks_ping_url = healthchecks_ping_url
 
     def get_value(self, section, key, default=None):
         values = {
             ("backup", "mount_point"): self.mount_point,
             ("backup", "rclone_dir"): self.rclone_dir,
             ("backup", "bandwidth_limit"): "",
+            ("backup", "healthchecks_ping_url"): self.healthchecks_ping_url,
             ("schedule", "backup_cloud_time"): "03:00",
         }
         return values.get((section, key), default)
@@ -153,6 +155,7 @@ class TaskServiceTests(unittest.TestCase):
         is_fake=True,
         systemd_adapter=None,
         rclone_dir="",
+        healthchecks_ping_url="",
     ):
         runtime = SimpleNamespace(
             is_fake=is_fake,
@@ -164,7 +167,11 @@ class TaskServiceTests(unittest.TestCase):
         fake_state = FakeState()
         service = TaskService(
             runtime=runtime,
-            config_manager=FakeConfigManager(mount_point, rclone_dir=rclone_dir),
+            config_manager=FakeConfigManager(
+                mount_point,
+                rclone_dir=rclone_dir,
+                healthchecks_ping_url=healthchecks_ping_url,
+            ),
             system_utils=MagicMock(),
             fake_state=fake_state,
             logger=MagicMock(),
@@ -258,6 +265,39 @@ class TaskServiceTests(unittest.TestCase):
             ("Cloud Backup", "copied"),
             fake_state.logs,
         )
+
+    @patch("simple_safer_server.services.task_service.ping_healthchecks_url")
+    def test_fake_cloud_backup_pings_healthchecks_after_success(self, mock_ping):
+        service, fake_state = self.build_service(
+            mount_point=".",
+            rclone_dir="/tmp/fake-backup",
+            healthchecks_ping_url="https://hc-ping.com/check-id",
+        )
+        service.rclone_adapter = MagicMock()
+        service.rclone_adapter.sync.return_value = FakeProcess(stdout="copied\n")
+
+        service._run_fake_cloud_backup(threading.Event())
+
+        mock_ping.assert_called_once_with("https://hc-ping.com/check-id")
+        self.assertIn(
+            ("Cloud Backup", "Healthchecks.io success ping sent."),
+            fake_state.logs,
+        )
+
+    @patch("simple_safer_server.services.task_service.ping_healthchecks_url")
+    def test_fake_cloud_backup_does_not_ping_healthchecks_after_failure(self, mock_ping):
+        service, _fake_state = self.build_service(
+            mount_point=".",
+            rclone_dir="/tmp/fake-backup",
+            healthchecks_ping_url="https://hc-ping.com/check-id",
+        )
+        service.rclone_adapter = MagicMock()
+        service.rclone_adapter.sync.return_value = FakeProcess(returncode=1, stderr="failed\n")
+
+        with self.assertRaisesRegex(RuntimeError, "failed"):
+            service._run_fake_cloud_backup(threading.Event())
+
+        mock_ping.assert_not_called()
 
     @patch("simple_safer_server.services.task_service.run_scheduled_drive_health_check")
     def test_fake_drive_health_logs_smart_collection(self, mock_health_check):

@@ -131,6 +131,14 @@ class CloudBackupServiceTests(unittest.TestCase):
         self.assertNotIn("mega_pass", payload)
         self.assertEqual(payload["rclone_config"], "[remote]\ntype = test\n")
 
+    def test_get_config_includes_healthchecks_ping_url_for_editor(self):
+        service, config, _system_utils, _runtime = self.make_service()
+        config.config["backup"] = {"healthchecks_ping_url": "https://hc-ping.com/check-id"}
+
+        payload = service.get_config()
+
+        self.assertEqual(payload["healthchecks_ping_url"], "https://hc-ping.com/check-id")
+
     def test_status_and_manual_run_use_cloud_backup_task(self):
         task = FakeTask()
         service, _config, _system_utils, _runtime = self.make_service(task=task)
@@ -149,6 +157,35 @@ class CloudBackupServiceTests(unittest.TestCase):
         self.assertEqual(config.config["backup"]["bandwidth_limit"], "4M")
         self.assertFalse(system_utils.created_systemd_config)
         self.assertFalse(system_utils.installed_timers)
+
+    def test_fake_schedule_save_stores_healthchecks_ping_url(self):
+        service, config, _system_utils, _runtime = self.make_service(is_fake=True)
+
+        result = service.save_schedule(
+            {
+                "backup_cloud_time": "04:00",
+                "bandwidth_limit": "4M",
+                "healthchecks_ping_url": " https://hc-ping.com/check-id ",
+            }
+        )
+
+        self.assertEqual(result, {})
+        self.assertEqual(
+            config.config["backup"]["healthchecks_ping_url"], "https://hc-ping.com/check-id"
+        )
+
+    def test_schedule_save_rejects_invalid_healthchecks_ping_url(self):
+        service, config, _system_utils, _runtime = self.make_service(is_fake=True)
+
+        with self.assertRaisesRegex(ValidationProblem, "http:// or https://"):
+            service.save_schedule(
+                {
+                    "backup_cloud_time": "04:00",
+                    "healthchecks_ping_url": "notaurl",
+                }
+            )
+
+        self.assertNotIn("healthchecks_ping_url", config.config["backup"])
 
     def test_schedule_save_rejects_unsafe_bandwidth_limit(self):
         service, config, _system_utils, _runtime = self.make_service(is_fake=True)
@@ -201,6 +238,19 @@ class CloudBackupServiceTests(unittest.TestCase):
         self.assertTrue(system_utils.created_systemd_config)
         self.assertEqual(config.config["schedule"]["backup_cloud_time"], "03:00")
         self.assertEqual(config.config["backup"]["bandwidth_limit"], "8M")
+
+    def test_real_schedule_save_allows_healthchecks_only_update_without_timer_reinstall(self):
+        service, config, system_utils, _runtime = self.make_service(is_fake=False)
+        config.config["schedule"] = {"backup_cloud_time": "03:00"}
+
+        result = service.save_schedule({"healthchecks_ping_url": "https://hc-ping.com/check-id"})
+
+        self.assertEqual(result, {})
+        self.assertFalse(system_utils.created_systemd_config)
+        self.assertFalse(system_utils.installed_timers)
+        self.assertEqual(
+            config.config["backup"]["healthchecks_ping_url"], "https://hc-ping.com/check-id"
+        )
 
     def test_advanced_config_requires_remote_and_rclone_config(self):
         service, _config, _system_utils, _runtime = self.make_service()

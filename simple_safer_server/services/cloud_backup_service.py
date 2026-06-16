@@ -6,6 +6,7 @@ from tempfile import NamedTemporaryFile
 from typing import Any
 
 from simple_safer_server.adapters.command_runner import PIPE, CommandRunner
+from simple_safer_server.services.healthchecks import normalize_healthchecks_ping_url
 from simple_safer_server.services.schedule_time import (
     ScheduleTimeError,
     normalize_ui_schedule_time,
@@ -73,6 +74,7 @@ class CloudBackupService:
             "mega_folder": backup.get("mega_folder", ""),
             "rclone_dir": backup.get("rclone_dir", ""),
             "bandwidth_limit": backup.get("bandwidth_limit", ""),
+            "healthchecks_ping_url": backup.get("healthchecks_ping_url", ""),
             "backup_cloud_time": schedule.get("backup_cloud_time", ""),
         }
         rclone_conf_path = self._runtime.rclone_config_dir / "rclone.conf"
@@ -199,12 +201,20 @@ class CloudBackupService:
         return {
             "backup_cloud_time": schedule.get("backup_cloud_time", ""),
             "bandwidth_limit": backup.get("bandwidth_limit", ""),
+            "healthchecks_ping_url": backup.get("healthchecks_ping_url", ""),
         }
 
     def save_schedule(self, data: dict[str, Any]) -> dict[str, Any]:
         backup_time = data.get("backup_cloud_time")
         has_bandwidth_limit = "bandwidth_limit" in data
         bandwidth_limit = normalize_bandwidth_limit(data.get("bandwidth_limit"))
+        has_healthchecks_ping_url = "healthchecks_ping_url" in data
+        try:
+            healthchecks_ping_url = normalize_healthchecks_ping_url(
+                data.get("healthchecks_ping_url")
+            )
+        except ValueError as exc:
+            raise ValidationProblem(str(exc)) from exc
         if backup_time:
             try:
                 backup_time = normalize_ui_schedule_time(backup_time)
@@ -216,25 +226,34 @@ class CloudBackupService:
                 self._config_manager.set_value("schedule", "backup_cloud_time", backup_time)
             if has_bandwidth_limit:
                 self._config_manager.set_value("backup", "bandwidth_limit", bandwidth_limit)
+            if has_healthchecks_ping_url:
+                self._config_manager.set_value(
+                    "backup", "healthchecks_ping_url", healthchecks_ping_url
+                )
             return {}
 
-        config = self._config_manager.get_all_config()
-        if backup_time:
-            config.setdefault("schedule", {})["backup_cloud_time"] = backup_time
-        if has_bandwidth_limit:
-            config.setdefault("backup", {})["bandwidth_limit"] = bandwidth_limit
-        ok, err = self._system_utils.create_systemd_config_file(config)
-        if not ok:
-            raise OperationProblem(f"Failed to update systemd config: {err}")
+        if backup_time or has_bandwidth_limit:
+            config = self._config_manager.get_all_config()
+            if backup_time:
+                config.setdefault("schedule", {})["backup_cloud_time"] = backup_time
+            if has_bandwidth_limit:
+                config.setdefault("backup", {})["bandwidth_limit"] = bandwidth_limit
+            if has_healthchecks_ping_url:
+                config.setdefault("backup", {})["healthchecks_ping_url"] = healthchecks_ping_url
+            ok, err = self._system_utils.create_systemd_config_file(config)
+            if not ok:
+                raise OperationProblem(f"Failed to update systemd config: {err}")
 
-        ok, err = self._system_utils.install_systemd_services_and_timers(config)
-        if not ok:
-            raise OperationProblem(f"Failed to update systemd timers: {err}")
+            ok, err = self._system_utils.install_systemd_services_and_timers(config)
+            if not ok:
+                raise OperationProblem(f"Failed to update systemd timers: {err}")
 
         if backup_time:
             self._config_manager.set_value("schedule", "backup_cloud_time", backup_time)
         if has_bandwidth_limit:
             self._config_manager.set_value("backup", "bandwidth_limit", bandwidth_limit)
+        if has_healthchecks_ping_url:
+            self._config_manager.set_value("backup", "healthchecks_ping_url", healthchecks_ping_url)
         return {}
 
     def validate_mega(self, data: dict[str, Any]) -> None:
