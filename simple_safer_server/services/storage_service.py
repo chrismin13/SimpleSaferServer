@@ -3,7 +3,9 @@ from typing import Any
 
 from simple_safer_server.adapters.command_runner import CalledProcessError
 from simple_safer_server.services.backup_drive_setup import (
+    BACKUP_TARGET_FOLDER,
     get_managed_fstab_entry_for_mount_point,
+    normalize_backup_target_type,
     split_uuid_device_lookup,
 )
 from simple_safer_server.web.problems import OperationProblem, ValidationProblem
@@ -49,6 +51,21 @@ class StorageService:
         if not mount_point:
             raise ValidationProblem("No mount point configured.", slug="storage-validation-error")
         uuid = self._config_manager.get_value("backup", "uuid", None)
+        target_type = normalize_backup_target_type(
+            self._config_manager.get_value("backup", "target_type", None)
+        )
+        if target_type == BACKUP_TARGET_FOLDER:
+            if not os.path.isdir(mount_point):
+                raise ValidationProblem(
+                    f"Backup folder not found: {mount_point}", slug="storage-validation-error"
+                )
+            if self._runtime.is_fake:
+                self._fake_state.set_mount(True, mount_point=mount_point)
+                self._fake_state.append_task_log(
+                    "Check Mount", f"Backup source connected at {mount_point}."
+                )
+            return "Backup folder is available."
+
         if self._runtime.is_fake:
             if not os.path.isdir(mount_point):
                 raise ValidationProblem(

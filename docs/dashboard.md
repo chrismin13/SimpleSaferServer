@@ -43,6 +43,7 @@ Four cards display real-time status:
 - If the backup drive stays connected, SimpleSaferServer may remount it automatically during the next scheduled `Check Mount` run.
 - When the next `Check Mount` run is available, the confirmation dialog explains the remount timing as a relative countdown so the user knows how long they have to remove or swap the drive.
 - **Mount Storage**: Opens a modal to mount the storage drive. When a SimpleSaferServer-managed `/etc/fstab` entry exists for the mount point, the app verifies that the entry's `UUID=` still matches the configured backup drive before using it for the remount.
+- Folder storage targets show as available when the configured folder exists. They do not show mount or unmount drive buttons, because there is no separate drive mount to change.
 - **Restart System**: Opens a modal to confirm and restart the system.
 - **Shutdown System**: Opens a modal to confirm and shut down the system.
 - Restart and shutdown are blocked while apt or dpkg is active so package operations are not interrupted.

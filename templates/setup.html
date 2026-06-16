@@ -49,7 +49,7 @@
                     <div class="stepper-connector"></div>
                     <div class="stepper-item" data-step="3" onclick="goToStep(3)">
                         <div class="stepper-dot">3</div>
-                        <span class="stepper-label">Mount Drive</span>
+                        <span class="stepper-label">Storage Target</span>
                     </div>
                     <div class="stepper-connector"></div>
                     <div class="stepper-item" data-step="4" onclick="goToStep(4)">
@@ -147,56 +147,89 @@ This removes all files on the selected drive and prepares it as one backup drive
                     <!-- Step 3: Drive Mount -->
                     <div id="step3" class="setup-step">
                         <div class="setup-card">
-                            <h3>Drive Mount</h3>
-                            <div class="form-group mb-4">
-                                <label class="form-label">Select Drive to Mount</label>
-                                <select id="mountDriveSelect" class="form-control">
-                                    <option value="">Select a drive…</option>
-                                </select>
-                                <div class="form-hint">Only NTFS partitions are shown</div>
-                            </div>
-                            <div id="mountStatusArea" class="d-flex items-center mb-3" style="min-height:1.5rem;font-size:var(--text-sm);"></div>
-                            <!-- Advanced Options -->
-                            <div class="mb-4">
-                                <button class="collapse-trigger" data-collapse-target="mountAdvancedOptions">
-                                    <i class="fas fa-chevron-right collapse-icon"></i>
-                                    <span>Advanced Options</span>
-                                </button>
-                                <div class="collapse-content mt-3" id="mountAdvancedOptions">
-                                    <div class="form-group mb-3">
-                                        <label class="form-label">Mount Point</label>
-                                        <input type="text" id="mountPoint" value="{{ default_mount_point }}" class="form-control">
-                                    </div>
-                                    <div class="form-hint">The backup drive is registered for automatic remounts during boot and scheduled mount checks.</div>
+                            <h3>Storage Target</h3>
+                            <div class="tabs-container mb-4">
+                                <div class="tabs-nav" role="tablist" aria-label="Storage target type">
+                                    <button type="button" class="tab-btn active" data-storage-target="drive" id="tab-storage-drive" role="tab" aria-selected="true" aria-controls="driveTargetFields">External drive</button>
+                                    <button type="button" class="tab-btn" data-storage-target="folder" id="tab-storage-folder" role="tab" aria-selected="false" aria-controls="folderTargetFields">Local folder</button>
+                                </div>
+
+                                <div class="d-none">
+                                    <input type="radio" name="storageTargetMode" id="storageTargetDrive" value="drive" checked>
+                                    <input type="radio" name="storageTargetMode" id="storageTargetFolder" value="folder">
                                 </div>
                             </div>
-                            <div class="d-flex gap-2 justify-end mb-4">
-                                <button id="unmountMountDriveBtn" class="btn btn-warning btn-sm" data-confirm="Unmount this drive?
+
+                            <div id="driveTargetFields" class="tab-pane active" role="tabpanel" aria-labelledby="tab-storage-drive">
+                                <div class="form-group mb-4">
+                                    <label class="form-label">Select Drive to Mount</label>
+                                    <select id="mountDriveSelect" class="form-control">
+                                        <option value="">Select a drive…</option>
+                                    </select>
+                                    <div class="form-hint">Only NTFS partitions are shown</div>
+                                </div>
+                                <div id="mountStatusArea" class="d-flex items-center mb-3" style="min-height:1.5rem;font-size:var(--text-sm);"></div>
+                                <!-- Advanced Options -->
+                                <div class="mb-4">
+                                    <button class="collapse-trigger" data-collapse-target="mountAdvancedOptions">
+                                        <i class="fas fa-chevron-right collapse-icon"></i>
+                                        <span>Advanced Options</span>
+                                    </button>
+                                    <div class="collapse-content mt-3" id="mountAdvancedOptions">
+                                        <div class="form-group mb-3">
+                                            <label class="form-label">Mount Point</label>
+                                            <input type="text" id="mountPoint" value="{{ default_mount_point }}" class="form-control">
+                                        </div>
+                                        <div class="form-hint">The backup drive is registered for automatic remounts during boot and scheduled mount checks.</div>
+                                    </div>
+                                </div>
+                                <div class="d-flex gap-2 justify-end mb-4">
+                                    <button id="unmountMountDriveBtn" class="btn btn-warning btn-sm" data-confirm="Unmount this drive?
 
 This only clears the live mount so you can configure the partition.
 
 Backup settings are NOT updated until 'Mount Drive' succeeds.">
-                                    <i class="fas fa-eject me-1"></i> Unmount
-                                </button>
-                                <button id="mountDriveBtn" class="btn btn-primary btn-sm" data-confirm="Are you sure you want to mount this drive?">
-                                    <i class="fas fa-plug me-1"></i> Mount Drive
-                                </button>
-                            </div>
-                            <div class="form-hint mb-4">Unmount here is temporary preparation for mounting the selected partition. Backup-drive settings change only when Mount Drive succeeds.</div>
-                            <div id="mountError" class="text-danger d-none" style="font-size:var(--text-sm);"></div>
-                            <div id="mountDetails" class="text-muted d-none" style="font-size:var(--text-xs);"></div>
-                            <button
-                                id="retryManagedUnmountBtn"
-                                class="btn btn-warning btn-sm d-none mt-3"
-                                data-confirm="Retry using the SMB-safe unmount path?
+                                        <i class="fas fa-eject me-1"></i> Unmount
+                                    </button>
+                                    <button id="mountDriveBtn" class="btn btn-primary btn-sm" data-confirm="Are you sure you want to mount this drive?">
+                                        <i class="fas fa-plug me-1"></i> Mount Drive
+                                    </button>
+                                </div>
+                                <div class="form-hint mb-4">Unmount here is temporary preparation for mounting the selected partition. Backup-drive settings change only when Mount Drive succeeds.</div>
+                                <div id="mountError" class="text-danger d-none" style="font-size:var(--text-sm);"></div>
+                                <div id="mountDetails" class="text-muted d-none" style="font-size:var(--text-xs);"></div>
+                                <button
+                                    id="retryManagedUnmountBtn"
+                                    class="btn btn-warning btn-sm d-none mt-3"
+                                    data-confirm="Retry using the SMB-safe unmount path?
 
 This will temporarily stop SMB and background tasks to safely
 unmount the share, then restart SMB automatically."
-                                data-confirm-button="Retry SMB-safe Unmount"
-                                data-confirm-class="btn-warning"
-                            >
-                                <i class="fas fa-triangle-exclamation me-1"></i> Retry SMB-safe Unmount
-                            </button>
+                                    data-confirm-button="Retry SMB-safe Unmount"
+                                    data-confirm-class="btn-warning"
+                                >
+                                    <i class="fas fa-triangle-exclamation me-1"></i> Retry SMB-safe Unmount
+                                </button>
+                            </div>
+
+                            <div id="folderTargetFields" class="tab-pane" role="tabpanel" aria-labelledby="tab-storage-folder">
+                                <div class="form-group mb-4">
+                                    <label class="form-label">Backup Folder</label>
+                                    <input type="text" id="backupFolderPath" value="{{ default_mount_point }}" class="form-control" placeholder="/srv/backups">
+                                    <div class="invalid-feedback">Use an absolute folder path, like /srv/backups.</div>
+                                    <div class="form-hint">Use an existing folder or enter a new folder path that setup should create.</div>
+                                </div>
+                                <div class="alert alert-warning mb-4" style="font-size: var(--text-sm);">
+                                    Folder mode does not edit <code>/etc/fstab</code>, mount a drive, or store a drive UUID.
+                                </div>
+                                <div class="d-flex gap-2 justify-end mb-4">
+                                    <button id="useFolderTargetBtn" class="btn btn-primary btn-sm" type="button">
+                                        <i class="fas fa-folder-open me-1"></i> Use Folder
+                                    </button>
+                                </div>
+                                <div id="folderTargetError" class="text-danger d-none" style="font-size:var(--text-sm);"></div>
+                                <div id="folderTargetDetails" class="text-muted d-none" style="font-size:var(--text-xs);"></div>
+                            </div>
                         </div>
                     </div>
 
@@ -644,6 +677,25 @@ unmount the share, then restart SMB automatically."
         }
         function clearMountStatus() { setMountStatus('', 'info'); }
 
+        function getStorageTargetMode() {
+            const radio = document.querySelector('input[name="storageTargetMode"]:checked');
+            return radio ? radio.value : 'drive';
+        }
+
+        function showStorageTargetFields() {
+            const mode = getStorageTargetMode();
+            const driveFields = document.getElementById('driveTargetFields');
+            const folderFields = document.getElementById('folderTargetFields');
+            if (driveFields) driveFields.classList.toggle('active', mode === 'drive');
+            if (folderFields) folderFields.classList.toggle('active', mode === 'folder');
+
+            document.querySelectorAll('#step3 .tab-btn[data-storage-target]').forEach(btn => {
+                const isActive = btn.getAttribute('data-storage-target') === mode;
+                btn.classList.toggle('active', isActive);
+                btn.setAttribute('aria-selected', isActive);
+            });
+        }
+
         async function mountDrive() {
             const mountBtn = document.getElementById('mountDriveBtn');
             const partition = document.getElementById('mountDriveSelect').value;
@@ -655,6 +707,33 @@ unmount the share, then restart SMB automatically."
                 await window.ApiClient.fetchJson('/api/setup/mount', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ partition, mount_point: mountPoint }) });
                 window.AsyncButtonState.success(mountBtn); localStorage.setItem('mountSuccess', '1'); nextStep(); hideMountError(); setMountStatus('Drive mounted successfully.', 'success'); await loadDrives();
             } catch (error) { window.AsyncButtonState.error(mountBtn); setMountStatus('Failed to mount drive.', 'error'); showMountError(error.message || 'An error occurred while mounting the drive', error.details); }
+        }
+
+        async function useFolderTarget() {
+            const folderBtn = document.getElementById('useFolderTargetBtn');
+            const folderInput = document.getElementById('backupFolderPath');
+            const folderPath = folderInput ? folderInput.value.trim() : '';
+            if (!folderPath || !folderPath.startsWith('/')) {
+                if (folderInput) folderInput.classList.add('is-invalid');
+                showFolderTargetError('Use an absolute folder path, like /srv/backups.');
+                return;
+            }
+            if (folderInput) folderInput.classList.remove('is-invalid');
+            window.AsyncButtonState.start(folderBtn);
+            try {
+                await window.ApiClient.fetchJson('/api/setup/folder-target', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ folder_path: folderPath })
+                });
+                window.AsyncButtonState.success(folderBtn);
+                localStorage.setItem('mountSuccess', '1');
+                hideFolderTargetError();
+                nextStep();
+            } catch (error) {
+                window.AsyncButtonState.error(folderBtn);
+                showFolderTargetError(error.message || 'An error occurred while saving the backup folder.', error.details);
+            }
         }
 
         async function unmountMountDrive() {
@@ -700,6 +779,15 @@ unmount the share, then restart SMB automatically."
             document.getElementById('mountDetails').classList.add('d-none');
             setManagedUnmountRetryState(false);
         }
+
+        function showFolderTargetError(error, details = null) {
+            const errorDiv = document.getElementById('folderTargetError');
+            const detailsDiv = document.getElementById('folderTargetDetails');
+            errorDiv.textContent = error;
+            errorDiv.classList.remove('d-none');
+            if (details) { detailsDiv.textContent = details; detailsDiv.classList.remove('d-none'); } else { detailsDiv.classList.add('d-none'); }
+        }
+        function hideFolderTargetError() { document.getElementById('folderTargetError').classList.add('d-none'); document.getElementById('folderTargetDetails').classList.add('d-none'); }
 
         // --- Email ---
         async function setupEmail() {
@@ -818,7 +906,7 @@ unmount the share, then restart SMB automatically."
 
         function showPersistentStepSuccess() {
             if (currentStep === 2 && localStorage.getItem('formatSuccess') === '1') setDriveStatus('Drive formatted successfully.', 'success');
-            if (currentStep === 3 && localStorage.getItem('mountSuccess') === '1') setMountStatus('Drive mounted successfully.', 'success');
+            if (currentStep === 3 && localStorage.getItem('mountSuccess') === '1') setMountStatus('Storage target saved successfully.', 'success');
         }
 
         function showError(message, errorDivId = 'scheduleError') {
@@ -910,10 +998,25 @@ unmount the share, then restart SMB automatically."
             if (unmountMountBtn) unmountMountBtn.addEventListener('click', function(e) { if (e.defaultPrevented) return; unmountMountDrive(); });
             const retryManagedUnmountBtn = document.getElementById('retryManagedUnmountBtn');
             if (retryManagedUnmountBtn) retryManagedUnmountBtn.addEventListener('click', function(e) { if (e.defaultPrevented) return; retryManagedUnmount(); });
+            document.querySelectorAll('#step3 .tab-btn[data-storage-target]').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const mode = this.getAttribute('data-storage-target');
+                    const radio = document.querySelector(`input[name="storageTargetMode"][value="${mode}"]`);
+                    if (radio) {
+                        radio.checked = true;
+                        showStorageTargetFields();
+                    }
+                });
+            });
+            const useFolderTargetBtn = document.getElementById('useFolderTargetBtn');
+            if (useFolderTargetBtn) useFolderTargetBtn.addEventListener('click', function(e) { if (e.defaultPrevented) return; useFolderTarget(); });
+            const backupFolderPath = document.getElementById('backupFolderPath');
+            if (backupFolderPath) backupFolderPath.addEventListener('input', function() { this.classList.remove('is-invalid'); hideFolderTargetError(); });
             const mountDriveSelect = document.getElementById('mountDriveSelect');
             if (mountDriveSelect) mountDriveSelect.addEventListener('change', function() {
                 if (canRetryManagedUnmount) hideMountError();
             });
+            showStorageTargetFields();
         });
     </script>
 </body>

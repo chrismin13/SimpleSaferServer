@@ -10,14 +10,16 @@ from simple_safer_server.web.problems import OperationProblem, ValidationProblem
 
 
 class FakeConfigManager:
-    def __init__(self, mount_point, uuid: str | None = "drive-uuid"):
+    def __init__(self, mount_point, uuid: str | None = "drive-uuid", target_type="drive"):
         self.mount_point = mount_point
         self.uuid = uuid
+        self.target_type = target_type
 
     def get_value(self, section, key, default=None):
         values = {
             ("backup", "mount_point"): self.mount_point,
             ("backup", "uuid"): self.uuid,
+            ("backup", "target_type"): self.target_type,
         }
         return values.get((section, key), default)
 
@@ -74,6 +76,7 @@ class StorageServiceTests(unittest.TestCase):
         is_fake=False,
         mount_point=None,
         uuid: str | None = "drive-uuid",
+        target_type="drive",
     ):
         runtime = SimpleNamespace(
             is_fake=is_fake,
@@ -85,7 +88,11 @@ class StorageServiceTests(unittest.TestCase):
         service = StorageService(
             runtime=runtime,
             fake_state=fake_state,
-            config_manager=FakeConfigManager(runtime.default_mount_point, uuid=uuid),
+            config_manager=FakeConfigManager(
+                runtime.default_mount_point,
+                uuid=uuid,
+                target_type=target_type,
+            ),
             command_adapter=adapter,
         )
         return service, fake_state, adapter
@@ -171,6 +178,20 @@ class StorageServiceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValidationProblem, "No drive UUID configured"):
             service.mount_dashboard_drive()
         self.assertEqual(adapter.mounted, [])
+
+    def test_folder_target_mount_only_checks_folder(self):
+        with tempfile.TemporaryDirectory() as mount_point:
+            service, _fake_state, adapter = self.build_service(
+                mount_point=mount_point,
+                uuid=None,
+                target_type="folder",
+            )
+
+            self.assertEqual(service.mount_dashboard_drive(), "Backup folder is available.")
+
+        self.assertEqual(adapter.mounted, [])
+        self.assertEqual(adapter.managed_mounted, [])
+        self.assertEqual(adapter.started, [])
 
     def test_real_mount_uses_stable_error_message(self):
         with tempfile.TemporaryDirectory() as mount_point:

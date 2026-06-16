@@ -17,6 +17,9 @@ LEGACY_FSTAB_MARKER = "SimpleSaferServer"
 DEFAULT_NTFS_DRIVER = 'ntfs-3g'
 SUPPORTED_NTFS_DRIVERS = {DEFAULT_NTFS_DRIVER, 'ntfs3'}
 NTFS_FILESYSTEM_TYPES = {'ntfs', 'ntfs3', 'ntfs-3g'}
+BACKUP_TARGET_DRIVE = 'drive'
+BACKUP_TARGET_FOLDER = 'folder'
+SUPPORTED_BACKUP_TARGET_TYPES = {BACKUP_TARGET_DRIVE, BACKUP_TARGET_FOLDER}
 
 
 @dataclass(frozen=True)
@@ -115,6 +118,13 @@ def normalize_ntfs_driver(ntfs_driver):
     if normalized_driver not in SUPPORTED_NTFS_DRIVERS:
         raise BackupDriveSetupError('Unsupported NTFS driver. Choose ntfs-3g or ntfs3.')
     return normalized_driver
+
+
+def normalize_backup_target_type(target_type):
+    normalized_target_type = (target_type or BACKUP_TARGET_DRIVE).strip().lower()
+    if normalized_target_type not in SUPPORTED_BACKUP_TARGET_TYPES:
+        return BACKUP_TARGET_DRIVE
+    return normalized_target_type
 
 
 def _is_ntfs_filesystem(filesystem_type):
@@ -760,6 +770,85 @@ def _restore_backup_share(smb_manager, share_rollback, fake_mode=False):
             LOGGER.error('Failed to restore backup share after drive setup error: %s', share_exc)
 
 
+def _normalize_backup_folder_path(folder_path):
+    folder_path = (folder_path or '').strip()
+    if not folder_path:
+        raise BackupDriveSetupError('Backup folder is required.')
+    if not folder_path.startswith('/'):
+        raise BackupDriveSetupError('Backup folder must be an absolute path.')
+
+    normalized_path = os.path.abspath(folder_path)
+    if normalized_path == '/':
+        raise BackupDriveSetupError('Backup folder cannot be the filesystem root.')
+    return normalized_path
+
+
+def apply_backup_folder_configuration(
+    folder_path,
+    config_manager,
+    smb_manager,
+    runtime=None,
+):
+    runtime = runtime or get_runtime()
+    selected_path = _normalize_backup_folder_path(folder_path)
+    path = Path(selected_path)
+
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise BackupDriveSetupError(
+            'Could not create the backup folder. Check the path and permissions.'
+        ) from exc
+    if not path.is_dir():
+        raise BackupDriveSetupError('Backup folder must be a directory.')
+
+    previous_mount_point = config_manager.get_value(
+        'backup', 'mount_point', runtime.default_mount_point
+    )
+    previous_uuid = config_manager.get_value('backup', 'uuid', '')
+    previous_usb_id = config_manager.get_value('backup', 'usb_id', '')
+    previous_target_type = config_manager.get_value('backup', 'target_type', BACKUP_TARGET_DRIVE)
+    share_backup = None
+    config_updated = False
+
+    try:
+        # Folder targets deliberately do not create or modify a managed fstab
+        # line. The path is already part of the local filesystem.
+        share_backup = _replace_backup_share_path(smb_manager, selected_path, previous_mount_point)
+
+        config_updated = True
+        config_manager.set_value('backup', 'mount_point', selected_path)
+        config_manager.set_value('backup', 'uuid', '')
+        config_manager.set_value('backup', 'usb_id', '')
+        config_manager.set_value('backup', 'target_type', BACKUP_TARGET_FOLDER)
+
+        if runtime.is_fake:
+            fake_state = get_fake_state(runtime)
+            if fake_state is None:
+                raise RuntimeError('Fake runtime is missing fake state.')
+            fake_state.set_mount(True, mount_point=selected_path)
+
+        return {
+            'message': f'Successfully configured backup folder at {selected_path}',
+            'mount_point': selected_path,
+            'target_type': BACKUP_TARGET_FOLDER,
+        }
+    except Exception:
+        _restore_backup_share(smb_manager, share_backup, fake_mode=runtime.is_fake)
+        if config_updated:
+            try:
+                config_manager.set_value('backup', 'mount_point', previous_mount_point)
+                config_manager.set_value('backup', 'uuid', previous_uuid)
+                config_manager.set_value('backup', 'usb_id', previous_usb_id)
+                config_manager.set_value('backup', 'target_type', previous_target_type)
+            except Exception as config_exc:
+                LOGGER.error(
+                    'Failed to restore backup folder config after setup error: %s',
+                    config_exc,
+                )
+        raise
+
+
 def apply_backup_drive_configuration(
     partition,
     mount_point,
@@ -784,6 +873,7 @@ def apply_backup_drive_configuration(
     )
     previous_uuid = config_manager.get_value('backup', 'uuid', '')
     previous_usb_id = config_manager.get_value('backup', 'usb_id', '')
+    previous_target_type = config_manager.get_value('backup', 'target_type', BACKUP_TARGET_DRIVE)
 
     if runtime.is_fake:
         if fake_state is None:
@@ -825,6 +915,7 @@ def apply_backup_drive_configuration(
             config_manager.set_value('backup', 'mount_point', selected_path_str)
             config_manager.set_value('backup', 'uuid', uuid)
             config_manager.set_value('backup', 'usb_id', usb_id)
+            config_manager.set_value('backup', 'target_type', BACKUP_TARGET_DRIVE)
             fake_state.set_mount(
                 True, mount_point=selected_path_str, drive=partition or '/dev/fakebackup1'
             )
@@ -845,6 +936,7 @@ def apply_backup_drive_configuration(
                     config_manager.set_value('backup', 'mount_point', previous_mount_point)
                     config_manager.set_value('backup', 'uuid', previous_uuid)
                     config_manager.set_value('backup', 'usb_id', previous_usb_id)
+                    config_manager.set_value('backup', 'target_type', previous_target_type)
                 except Exception as config_exc:
                     LOGGER.error(
                         'Failed to restore fake backup config after drive setup error: %s',
@@ -903,6 +995,7 @@ def apply_backup_drive_configuration(
         config_manager.set_value('backup', 'mount_point', mount_point)
         config_manager.set_value('backup', 'uuid', uuid)
         config_manager.set_value('backup', 'usb_id', usb_id)
+        config_manager.set_value('backup', 'target_type', BACKUP_TARGET_DRIVE)
 
         return {
             'message': f'Successfully configured {partition} at {mount_point}',
@@ -923,6 +1016,7 @@ def apply_backup_drive_configuration(
                 config_manager.set_value('backup', 'mount_point', previous_mount_point)
                 config_manager.set_value('backup', 'uuid', previous_uuid)
                 config_manager.set_value('backup', 'usb_id', previous_usb_id)
+                config_manager.set_value('backup', 'target_type', previous_target_type)
             except Exception as config_exc:
                 LOGGER.error(
                     'Failed to restore backup config after drive setup error: %s', config_exc

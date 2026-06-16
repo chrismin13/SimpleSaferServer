@@ -1,9 +1,14 @@
 # Setup Wizard
 
-The Setup Wizard walks through the first-time configuration of the system. The backup-drive portion has two different target types on purpose:
+The Setup Wizard walks through the first-time configuration of the system. The storage target step has two choices:
+
+- Use an external drive when SimpleSaferServer should manage an NTFS backup drive.
+- Use a local folder when the backup source is already part of the server filesystem.
+
+The external-drive setup still has two different drive steps on purpose:
 
 - Step 2 works on a whole disk when the user wants to prepare or erase a drive.
-- Step 3 works on an NTFS partition when the user wants to mount and configure the backup destination.
+- External-drive mode in step 3 works on an NTFS partition when the user wants to mount and configure the backup destination.
 
 That split is important because the safety checks are different.
 
@@ -43,7 +48,14 @@ Why it works this way:
 - Desktop automounters often mount child partitions such as `/dev/sdb1`, so the wizard checks for mounted child partitions before allowing formatting.
 - This is a simple destructive preparation flow. It does not try to preserve or rearrange an existing multi-partition layout.
 
-## Step 3: Drive Mount
+## Step 3: Storage Target
+
+Choose one target type:
+
+- **External drive** mounts and manages an NTFS partition.
+- **Local folder** uses a normal folder path and does not mount a drive.
+
+### External Drive
 
 This step is partition-oriented.
 
@@ -76,6 +88,21 @@ Boot behavior:
 
 - The managed `/etc/fstab` entry uses `ntfs-3g` with `defaults,nofail`.
 - That means the system should still boot if the backup drive is disconnected.
+
+### Local Folder
+
+Folder mode is for cases where the backup source already lives on the server, such as `/srv/backups`.
+
+- Enter an absolute folder path, such as `/srv/backups`.
+- If the folder does not exist, setup creates it.
+- The folder path becomes `backup.mount_point`.
+- Setup stores `backup.target_type = folder`.
+- Setup clears `backup.uuid` and `backup.usb_id`, because there is no external drive to find.
+- Folder mode does not create, update, or remove a SimpleSaferServer-managed `/etc/fstab` entry.
+- The `Check Mount` task only checks that the folder exists and is readable.
+- The Drive Health scheduled check is skipped for folder targets because there is no backup drive device to inspect.
+
+If you switch from a managed drive to a folder, the old SimpleSaferServer-managed `/etc/fstab` line is not changed by folder mode. It is ignored by normal app behavior because the stored target type is `folder`, but you can remove old managed mount entries during uninstall or by editing `/etc/fstab` carefully.
 
 ## Step 4: Backup Configuration
 

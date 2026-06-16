@@ -1,12 +1,15 @@
+import os
 from typing import Any
 
 import psutil
 from flask import Blueprint, current_app
 
 from simple_safer_server.services.backup_drive_setup import (
+    BACKUP_TARGET_FOLDER,
     BackupDriveSetupError,
     apply_backup_drive_configuration,
     list_available_drives,
+    normalize_backup_target_type,
     unmount_selected_partition,
 )
 from simple_safer_server.services.backup_drive_unmount import (
@@ -54,7 +57,16 @@ def unmount():
         "backup", "mount_point", services.runtime.default_mount_point
     )
     configured_uuid = services.config_manager.get_value("backup", "uuid", None)
+    target_type = normalize_backup_target_type(
+        services.config_manager.get_value("backup", "target_type", None)
+    )
     try:
+        if target_type == BACKUP_TARGET_FOLDER:
+            return json_data(
+                {},
+                message="Backup folder targets do not need to be unmounted.",
+            )
+
         if services.runtime.is_fake:
             services.fake_state.set_mount(False)
             services.fake_state.append_task_log(
@@ -138,7 +150,12 @@ def api_storage_status():
     mount_point = services.config_manager.get_value(
         "backup", "mount_point", services.runtime.default_mount_point
     )
-    mounted = services.system_utils.is_mounted(mount_point)
+    target_type = normalize_backup_target_type(
+        services.config_manager.get_value("backup", "target_type", None)
+    )
+    mounted = (
+        mount_point and target_type == BACKUP_TARGET_FOLDER and os.path.isdir(mount_point)
+    ) or services.system_utils.is_mounted(mount_point)
     if mounted:
         try:
             disk = psutil.disk_usage(mount_point)
@@ -158,6 +175,7 @@ def api_storage_status():
             "total_storage": total_storage,
             "storage_usage": storage_usage,
             "mount_point": mount_point,
+            "target_type": target_type,
         }
     )
 

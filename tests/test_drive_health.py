@@ -303,6 +303,23 @@ class DriveHealthTests(unittest.TestCase):
             config_manager, system_utils, runtime=runtime
         )
 
+    def test_scheduled_drive_health_skips_folder_targets(self):
+        config_manager = MagicMock()
+        config_manager.get_value.side_effect = lambda section, key, default=None: {
+            ("backup", "target_type"): "folder",
+            ("backup", "mount_point"): "/srv/backups",
+        }.get((section, key), default)
+        system_utils = MagicMock()
+
+        result = drive_health.run_scheduled_drive_health_check(
+            config_manager,
+            system_utils,
+            runtime=SimpleNamespace(is_fake=False, default_mount_point="/media/backup"),
+        )
+
+        self.assertTrue(result["hdsentinel"]["skipped"])
+        system_utils.is_mounted.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

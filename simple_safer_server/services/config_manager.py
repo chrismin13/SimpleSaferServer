@@ -96,6 +96,7 @@ class ConfigManager:
         config['backup'] = {
             'email_address': '',
             'from_address': '',
+            'target_type': 'drive',
             'uuid': '',
             'usb_id': '',
             'mount_point': self.runtime.default_mount_point,

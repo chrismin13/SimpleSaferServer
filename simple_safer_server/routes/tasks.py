@@ -1,3 +1,4 @@
+import os
 from typing import Any
 
 import psutil
@@ -11,6 +12,10 @@ from flask import (
     url_for,
 )
 
+from simple_safer_server.services.backup_drive_setup import (
+    BACKUP_TARGET_FOLDER,
+    normalize_backup_target_type,
+)
 from simple_safer_server.services.task_service import TASK_LOG_LINE_LIMIT, clamp_task_log_lines
 from simple_safer_server.services.user_manager import admin_required, api_admin_required
 from simple_safer_server.web.api import json_data, json_problem
@@ -44,7 +49,12 @@ def dashboard():
         "mount_point",
         services.runtime.default_mount_point,
     )
-    mounted = services.system_utils.is_mounted(mount_point)
+    target_type = normalize_backup_target_type(
+        services.config_manager.get_value("backup", "target_type", None)
+    )
+    mounted = (
+        mount_point and target_type == BACKUP_TARGET_FOLDER and os.path.isdir(mount_point)
+    ) or services.system_utils.is_mounted(mount_point)
     disk = None
     if mounted:
         try:
@@ -68,6 +78,7 @@ def dashboard():
             "is_mounted": mounted,
             "disk_available": disk is not None,
             "mount_point": mount_point,
+            "target_type": target_type,
         },
         tasks=task_summaries,
     )

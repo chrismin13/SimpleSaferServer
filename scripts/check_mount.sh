@@ -19,6 +19,7 @@ get_config_value() {
 }
 
 MOUNT_POINT=$(get_config_value backup mount_point)
+TARGET_TYPE=$(get_config_value backup target_type)
 USB_ID=$(get_config_value backup usb_id)
 FROM_ADDRESS=$(get_config_value backup from_address)
 EMAIL_ADDRESS=$(get_config_value backup email_address)
@@ -33,6 +34,20 @@ function send_email {
 }
 
 echo "Checking if the backup drive is available."
+
+if [ "$TARGET_TYPE" = "folder" ]; then
+  echo "Checking local backup folder at $MOUNT_POINT."
+  if [ ! -d "$MOUNT_POINT" ]; then
+    send_email "Backup folder is missing at $MOUNT_POINT" "Backup Folder Error"
+    exit 1
+  fi
+  if ! ls "$MOUNT_POINT" >/dev/null 2>&1; then
+    send_email "Backup folder at $MOUNT_POINT is not readable" "Backup Folder Error"
+    exit 1
+  fi
+  echo "Backup folder is available"
+  exit 0
+fi
 
 # Check if the device is plugged in (only if USB_ID is set)
 if [ -n "$USB_ID" ]; then

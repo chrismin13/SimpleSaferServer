@@ -2,6 +2,8 @@
 
 The Drive Health page is the main place to inspect the configured backup drive and to rerun backup-drive configuration if the physical backup device changes.
 
+If setup uses a local folder target instead of an external drive, scheduled drive-health checks are skipped. Folder targets do not have a backup drive UUID or SMART-capable backup device for this page to inspect.
+
 It combines:
 
 - SMART attribute collection and raw attribute display

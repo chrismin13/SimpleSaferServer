@@ -479,6 +479,53 @@ class BackupDriveSetupTests(unittest.TestCase):
         self.assertEqual(command_adapter.unmounted_partitions, ['/dev/sdb1'])
         mock_get_mount.assert_called_once_with('/dev/sdb1', command_adapter=command_adapter)
 
+    @patch('simple_safer_server.services.backup_drive_setup.update_managed_fstab')
+    def test_apply_backup_folder_configuration_skips_fstab_and_drive_uuid(self, mock_update_fstab):
+        with tempfile.TemporaryDirectory() as tempdir:
+            folder = Path(tempdir) / 'folder-backup'
+            runtime = SimpleNamespace(is_fake=False, default_mount_point='/media/backup')
+            config_manager = MagicMock()
+            config_manager.get_value.side_effect = ['/media/backup', 'OLD-UUID', 'OLD-USB', 'drive']
+            smb_manager = MagicMock()
+            smb_manager.get_managed_share.return_value = {
+                'path': '/media/backup',
+                'writable': True,
+                'comment': 'Managed backup share',
+                'valid_users': ['admin'],
+            }
+
+            result = backup_drive_setup.apply_backup_folder_configuration(
+                str(folder),
+                config_manager,
+                smb_manager,
+                runtime=runtime,
+            )
+            self.assertTrue(folder.is_dir())
+
+        self.assertEqual(result['target_type'], backup_drive_setup.BACKUP_TARGET_FOLDER)
+        self.assertEqual(result['mount_point'], str(folder))
+        mock_update_fstab.assert_not_called()
+        config_manager.set_value.assert_any_call('backup', 'mount_point', str(folder))
+        config_manager.set_value.assert_any_call('backup', 'uuid', '')
+        config_manager.set_value.assert_any_call('backup', 'usb_id', '')
+        config_manager.set_value.assert_any_call(
+            'backup', 'target_type', backup_drive_setup.BACKUP_TARGET_FOLDER
+        )
+
+    def test_apply_backup_folder_configuration_requires_absolute_path(self):
+        runtime = SimpleNamespace(is_fake=False, default_mount_point='/media/backup')
+
+        with self.assertRaisesRegex(
+            backup_drive_setup.BackupDriveSetupError,
+            'absolute path',
+        ):
+            backup_drive_setup.apply_backup_folder_configuration(
+                'relative/backups',
+                MagicMock(),
+                MagicMock(),
+                runtime=runtime,
+            )
+
     @patch('simple_safer_server.services.backup_drive_setup.os.makedirs')
     @patch('simple_safer_server.services.backup_drive_setup._reload_systemd_mount_units')
     @patch('simple_safer_server.services.backup_drive_setup.update_managed_fstab')
@@ -499,7 +546,7 @@ class BackupDriveSetupTests(unittest.TestCase):
         runtime = SimpleNamespace(is_fake=False, default_mount_point='/media/backup')
         command_adapter = FakeBackupDriveCommandAdapter()
         config_manager = MagicMock()
-        config_manager.get_value.side_effect = ['/media/backup', '', '']
+        config_manager.get_value.side_effect = ['/media/backup', '', '', 'drive']
         smb_manager = MagicMock()
         smb_manager.get_managed_share.return_value = None
 
@@ -548,7 +595,7 @@ class BackupDriveSetupTests(unittest.TestCase):
         runtime = SimpleNamespace(is_fake=False, default_mount_point='/media/backup')
         command_adapter = FakeBackupDriveCommandAdapter()
         config_manager = MagicMock()
-        config_manager.get_value.side_effect = ['/media/backup', '', '']
+        config_manager.get_value.side_effect = ['/media/backup', '', '', 'drive']
         smb_manager = MagicMock()
         smb_manager.get_managed_share.return_value = None
 
@@ -598,7 +645,7 @@ class BackupDriveSetupTests(unittest.TestCase):
         command_adapter = FakeBackupDriveCommandAdapter()
         command_adapter.find_device_by_uuid_result = '/dev/sdb1\n/dev/sdc1\n'
         config_manager = MagicMock()
-        config_manager.get_value.side_effect = ['/media/backup', '', '']
+        config_manager.get_value.side_effect = ['/media/backup', '', '', 'drive']
         smb_manager = MagicMock()
 
         mock_get_mount.return_value = None
@@ -643,7 +690,12 @@ class BackupDriveSetupTests(unittest.TestCase):
         runtime = SimpleNamespace(is_fake=False, default_mount_point='/media/backup')
         command_adapter = FakeBackupDriveCommandAdapter()
         config_manager = MagicMock()
-        config_manager.get_value.side_effect = ['/media/backup', 'OLD-UUID', '1234:5678']
+        config_manager.get_value.side_effect = [
+            '/media/backup',
+            'OLD-UUID',
+            '1234:5678',
+            'drive',
+        ]
         smb_manager = MagicMock()
         smb_manager.get_managed_share.return_value = None
 
@@ -692,7 +744,12 @@ class BackupDriveSetupTests(unittest.TestCase):
         runtime = SimpleNamespace(is_fake=False, default_mount_point='/media/backup')
         command_adapter = FakeBackupDriveCommandAdapter()
         config_manager = MagicMock()
-        config_manager.get_value.side_effect = ['/media/backup', 'OLD-UUID', '1234:5678']
+        config_manager.get_value.side_effect = [
+            '/media/backup',
+            'OLD-UUID',
+            '1234:5678',
+            'drive',
+        ]
         smb_manager = MagicMock()
         smb_manager.get_managed_share.return_value = None
 
@@ -752,7 +809,12 @@ class BackupDriveSetupTests(unittest.TestCase):
             mock_update_fstab.return_value = '/tmp/fstab.backup'
 
             config_manager = MagicMock()
-            config_manager.get_value.side_effect = ['/media/backup', 'OLD-UUID', 'OLD-USB']
+            config_manager.get_value.side_effect = [
+                '/media/backup',
+                'OLD-UUID',
+                'OLD-USB',
+                'drive',
+            ]
             config_manager.set_value.side_effect = [None, None, RuntimeError('boom')]
 
             smb_manager = MagicMock()
@@ -816,7 +878,12 @@ class BackupDriveSetupTests(unittest.TestCase):
             mock_update_fstab.return_value = '/tmp/fstab.backup'
 
             config_manager = MagicMock()
-            config_manager.get_value.side_effect = ['/media/backup', 'OLD-UUID', 'OLD-USB']
+            config_manager.get_value.side_effect = [
+                '/media/backup',
+                'OLD-UUID',
+                'OLD-USB',
+                'drive',
+            ]
             config_manager.set_value.side_effect = [None, None, RuntimeError('boom')]
 
             managed_share = {

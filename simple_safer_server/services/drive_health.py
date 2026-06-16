@@ -13,6 +13,10 @@ from simple_safer_server.adapters.drive_health_commands import (
     TimeoutExpired,
 )
 from simple_safer_server.services.alert_notifications import AlertNotifier
+from simple_safer_server.services.backup_drive_setup import (
+    BACKUP_TARGET_FOLDER,
+    normalize_backup_target_type,
+)
 from simple_safer_server.services.file_persistence import atomic_write_json
 from simple_safer_server.services.runtime import get_runtime
 
@@ -283,6 +287,12 @@ def resolve_backup_partition_device(config_manager, runtime=None):
     runtime = runtime or get_runtime()
     if runtime.is_fake:
         return "/dev/fakebackup1", None
+
+    target_type = normalize_backup_target_type(
+        config_manager.get_value("backup", "target_type", None)
+    )
+    if target_type == BACKUP_TARGET_FOLDER:
+        return None, "Folder backup targets do not have a drive health device."
 
     uuid = config_manager.get_value("backup", "uuid", None)
     if not uuid:
@@ -783,6 +793,18 @@ def run_hdsentinel_health_monitor(config_manager, system_utils, runtime=None):
 
 def run_scheduled_drive_health_check(config_manager, system_utils, runtime=None):
     runtime = runtime or get_runtime()
+    target_type = normalize_backup_target_type(
+        config_manager.get_value("backup", "target_type", None)
+    )
+    if target_type == BACKUP_TARGET_FOLDER:
+        return {
+            "device": None,
+            "smart": None,
+            "missing_attrs": None,
+            "hdsentinel": {"skipped": True},
+            "skipped": "Folder backup targets do not have a drive health device.",
+        }
+
     mount_point = config_manager.get_value("backup", "mount_point", runtime.default_mount_point)
 
     if not system_utils.is_mounted(mount_point):

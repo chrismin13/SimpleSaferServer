@@ -10,9 +10,13 @@ from flask import Blueprint, current_app, redirect, render_template, session
 from simple_safer_server.adapters.command_runner import CalledProcessError, SubprocessError
 from simple_safer_server.adapters.setup_commands import SetupCommandAdapter
 from simple_safer_server.services.backup_drive_setup import (
+    BACKUP_TARGET_DRIVE,
+    BACKUP_TARGET_FOLDER,
     BackupDriveSetupError,
     _get_mounted_partitions_for_disk,
     apply_backup_drive_configuration,
+    apply_backup_folder_configuration,
+    normalize_backup_target_type,
     unmount_disk_partitions,
     unmount_selected_partition,
 )
@@ -159,6 +163,20 @@ def _get_configured_backup_drive_identity():
     )
 
 
+def _required_setup_fields(current_config):
+    backup = current_config.get('backup', {})
+    target_type = normalize_backup_target_type(backup.get('target_type', BACKUP_TARGET_DRIVE))
+    backup_fields = ['mount_point', 'email_address']
+    if target_type != BACKUP_TARGET_FOLDER:
+        backup_fields.append('uuid')
+
+    return {
+        'system': ['username', 'server_name'],
+        'backup': backup_fields,
+        'schedule': ['backup_cloud_time'],
+    }
+
+
 def _is_busy_unmount_error(error):
     return 'busy' in str(error).lower()
 
@@ -248,11 +266,7 @@ def setup_page():
             return redirect('/')
 
         # Check if we have all required fields
-        required_fields = {
-            'system': ['username', 'server_name'],
-            'backup': ['mount_point', 'uuid', 'email_address'],
-            'schedule': ['backup_cloud_time'],
-        }
+        required_fields = _required_setup_fields(current_config)
 
         missing_fields = []
         for section, fields in required_fields.items():
@@ -602,6 +616,33 @@ def mount_drive():
         )
 
 
+@setup.route('/api/setup/folder-target', methods=['POST'])
+@setup_api_access_required
+def setup_folder_target():
+    """Use a local folder as the backup source instead of a managed drive."""
+    try:
+        data = json_request_data()
+        folder_path = data.get('folder_path')
+        result = apply_backup_folder_configuration(
+            folder_path,
+            config_manager,
+            smb_manager,
+            runtime=runtime,
+        )
+        logger.info("Backup folder configured at %s", result.get('mount_point', folder_path))
+        return json_data({'result': result}, message=result['message'])
+    except BackupDriveSetupError as e:
+        return _validation_problem(str(e), details=e.details)
+    except ApiProblem:
+        raise
+    except Exception as e:
+        logger.error(f"Error configuring backup folder: {e!s}")
+        return _operation_problem(
+            'Error configuring backup folder',
+            details='An unexpected error occurred. Please check the system logs for more information.',
+        )
+
+
 @setup.route('/api/setup/rclone', methods=['POST'])
 @setup_api_access_required
 def setup_rclone():
@@ -811,11 +852,7 @@ def complete_setup():
         logger.debug("Completing setup after loading current configuration")
 
         # Validate required fields
-        required_fields = {
-            'system': ['username', 'server_name'],
-            'backup': ['mount_point', 'uuid', 'email_address'],
-            'schedule': ['backup_cloud_time'],
-        }
+        required_fields = _required_setup_fields(current_config)
 
         missing_fields = []
         for section, fields in required_fields.items():

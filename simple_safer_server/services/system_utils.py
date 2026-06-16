@@ -185,6 +185,7 @@ account default : simplesaferserver
                 'setup_complete': str(system_config.get('setup_complete', 'false')),
             }
             parser['backup'] = {
+                'target_type': str(backup_config.get('target_type', 'drive')),
                 'mount_point': str(
                     backup_config.get('mount_point', self.runtime.default_mount_point)
                 ),

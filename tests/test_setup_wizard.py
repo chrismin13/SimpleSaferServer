@@ -407,6 +407,44 @@ class SetupWizardTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertProblemDetail(response, 'partition is required')
 
+    def test_setup_folder_target_delegates_to_folder_configuration_service(self):
+        config_manager = MagicMock()
+        config_manager.is_setup_complete.return_value = False
+
+        with patch.object(self.setup_wizard, 'config_manager', config_manager):
+            with patch.object(
+                self.setup_wizard,
+                'apply_backup_folder_configuration',
+                return_value={
+                    'message': 'Successfully configured backup folder at /srv/backups',
+                    'mount_point': '/srv/backups',
+                    'target_type': 'folder',
+                },
+            ) as mock_apply_folder:
+                with self.app.test_client() as client:
+                    response = client.post(
+                        '/api/setup/folder-target',
+                        json={'folder_path': '/srv/backups'},
+                    )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertDataResponse(
+            response,
+            {
+                'result': {
+                    'message': 'Successfully configured backup folder at /srv/backups',
+                    'mount_point': '/srv/backups',
+                    'target_type': 'folder',
+                }
+            },
+        )
+        mock_apply_folder.assert_called_once_with(
+            '/srv/backups',
+            config_manager,
+            self.setup_wizard.smb_manager,
+            runtime=self.setup_wizard.runtime,
+        )
+
     # ------------------------------------------------------------------
     # get_partition_node helper — NVMe/MMC partition naming
     # ------------------------------------------------------------------
@@ -691,6 +729,40 @@ class SetupWizardTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertProblemDetail(response, 'Missing required fields')
         config_manager.set_value.assert_not_called()
+
+    def test_complete_setup_allows_folder_target_without_uuid(self):
+        config_manager = MagicMock()
+        config_manager.is_setup_complete.return_value = False
+        config_manager.get_all_config.return_value = {
+            'system': {'username': 'admin', 'server_name': 'simple-safer'},
+            'backup': {
+                'target_type': 'folder',
+                'mount_point': '/srv/backups',
+                'uuid': '',
+                'email_address': 'admin@example.com',
+            },
+            'schedule': {'backup_cloud_time': '03:00'},
+        }
+        user_manager = MagicMock()
+        user_manager.users = {'admin': {}}
+
+        with patch.object(self.setup_wizard, 'config_manager', config_manager):
+            with patch.object(self.setup_wizard, 'user_manager', user_manager):
+                with patch.object(
+                    self.setup_wizard, 'install_systemd_tasks', return_value=(True, None)
+                ) as mock_install:
+                    with patch.object(
+                        self.setup_wizard, 'setup_smb_share', return_value=(True, None)
+                    ) as mock_smb:
+                        with self.app.test_client() as client:
+                            with client.session_transaction() as session:
+                                session['username'] = 'admin'
+                            response = client.post('/api/setup/complete')
+
+        self.assertEqual(response.status_code, 200)
+        mock_install.assert_called_once()
+        mock_smb.assert_called_once()
+        config_manager.mark_setup_complete.assert_called_once_with()
 
     def test_format_drive_rejects_non_string_disk(self):
         # JSON clients can send numeric or other non-string values; reject cleanly.
