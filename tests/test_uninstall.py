@@ -236,6 +236,9 @@ class UninstallScriptTests(unittest.TestCase):
         self.assertIn('remove_systemd_unit "simple_safer_server_restore_schedules.timer"', script)
         self.assertIn('remove_systemd_unit "simple_safer_server_restore_schedules.service"', script)
         self.assertIn("restore_disabled_timers.py", script)
+        self.assertIn('remove_systemd_unit "${svc}.timer"', script)
+        self.assertIn("setup_self_backup", script)
+        self.assertIn("setup_self_backup.py", script)
         self.assertIn('rm -rf "$DATA_DIR"', script)
 
     def test_managed_hostname_summary_reads_hostname_metadata(self):

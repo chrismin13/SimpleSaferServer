@@ -140,6 +140,7 @@ account default : simplesaferserver
                 'check_health.sh',
                 'check_health.py',
                 'backup_cloud.sh',
+                'setup_self_backup.py',
                 'app_update.sh',
                 'app_update.py',
                 'log_alert.py',
@@ -248,6 +249,14 @@ account default : simplesaferserver
                 minutes_before=2,
             )
             check_health_time = f"{check_health_hour:02d}:{check_health_minute:02d}:00"
+            setup_self_backup_hour, setup_self_backup_minute = _time_before(
+                backup_hour,
+                backup_minute,
+                minutes_before=1,
+            )
+            setup_self_backup_time = (
+                f"{setup_self_backup_hour:02d}:{setup_self_backup_minute:02d}:00"
+            )
 
             check_mount_hour, check_mount_minute = _time_before(
                 backup_hour,
@@ -306,6 +315,22 @@ StandardError=journal
 [Install]
 WantedBy=multi-user.target
 """,
+                'setup_self_backup.service': """[Unit]
+Description=Back up SimpleSaferServer setup configuration to the backup drive
+After=check_health.service
+Wants=check_health.service
+
+[Service]
+Type=oneshot
+# Bypass the script shebang here so systemd never falls back to distro Python.
+ExecStart=/opt/SimpleSaferServer/.venv/bin/python /opt/SimpleSaferServer/scripts/setup_self_backup.py create
+User=root
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+""",
                 'check_mount.timer': f"""[Unit]
 Description=Run mount check at scheduled time
 
@@ -335,6 +360,17 @@ Description=Run cloud backup at scheduled time
 OnCalendar=*-*-* {backup_cloud_time}
 Persistent=true
 RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target
+""",
+                'setup_self_backup.timer': f"""[Unit]
+Description=Back up setup configuration before cloud backup
+
+[Timer]
+OnCalendar=*-*-* {setup_self_backup_time}
+Persistent=true
+RandomizedDelaySec=30
 
 [Install]
 WantedBy=timers.target
@@ -438,6 +474,7 @@ WantedBy=timers.target
                     'check_mount',
                     'check_health',
                     'backup_cloud',
+                    'setup_self_backup',
                     'ddns_update',
                     'app_update',
                 ]:
@@ -461,6 +498,7 @@ WantedBy=timers.target
                 'check_mount',
                 'check_health',
                 'backup_cloud',
+                'setup_self_backup',
                 'ddns_update',
                 'app_update',
             ]:
