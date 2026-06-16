@@ -225,6 +225,27 @@ def test_setup_title_keeps_product_name_before_server_name_is_chosen():
         runtime._fake_state = previous_fake_state
 
 
+def test_setup_complete_button_renders_busy_state_markup():
+    previous_runtime = runtime._runtime
+    previous_fake_state = runtime._fake_state
+    try:
+        with TemporaryDirectory() as temp_dir:
+            app = _create_fake_app(temp_dir)
+
+            with app.test_client() as client:
+                response = client.get("/setup")
+
+            assert response.status_code == 200
+            page = response.get_data(as_text=True)
+            assert 'id="setupCompleteBtn"' in page
+            assert "setup-complete-spinner" in page
+            assert "Completing Setup" in page
+            assert "setupCompletionPending" in page
+    finally:
+        runtime._runtime = previous_runtime
+        runtime._fake_state = previous_fake_state
+
+
 def test_smb_share_list_returns_validation_error_for_malformed_sss_shares_file():
     previous_runtime = runtime._runtime
     previous_fake_state = runtime._fake_state

@@ -349,8 +349,12 @@ unmount the share, then restart SMB automatically."
                                 <div class="invalid-feedback">Bandwidth limit must be a valid format (e.g. 4M, 1G, 500k).</div>
                             </div>
                             <div class="setup-actions">
-                                <button onclick="saveSchedule()" class="btn btn-primary btn-lg">
-                                    <i class="fas fa-check me-1"></i> Complete Setup
+                                <button id="setupCompleteBtn" type="button" onclick="saveSchedule()" class="btn btn-primary btn-lg setup-complete-btn">
+                                    <span class="setup-complete-ready"><i class="fas fa-check me-1"></i> Complete Setup</span>
+                                    <span class="setup-complete-pending">
+                                        <span class="setup-complete-spinner"></span>
+                                        Completing Setup
+                                    </span>
                                 </button>
                             </div>
                         </div>
@@ -412,6 +416,7 @@ unmount the share, then restart SMB automatically."
     <script>
         let currentStep = 1;
         const totalSteps = 6;
+        let setupCompletionPending = false;
 
         // --- LocalStorage step persistence ---
         function saveStepToStorage(step) {
@@ -721,21 +726,28 @@ unmount the share, then restart SMB automatically."
 
         // --- Schedule ---
         async function saveSchedule() {
+            if (setupCompletionPending) return;
             hideError();
             const valid = [validateBackupTime(), validateBandwidthLimit()];
             if (valid.includes(false)) { showError('Please correct the highlighted fields.'); return; }
             const time = document.getElementById('backupTime').value;
             const bandwidthLimit = document.getElementById('bandwidthLimit').value;
             if (!time) { showError('Please select a backup time.'); return; }
-            const saveBtn = document.querySelector('button[onclick="saveSchedule()"]');
+            const saveBtn = document.getElementById('setupCompleteBtn');
+            setupCompletionPending = true;
             window.AsyncButtonState.start(saveBtn);
             try {
                 await window.ApiClient.fetchJson('/api/setup/schedule', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ time, bandwidth_limit: bandwidthLimit }) });
                 hideError();
                 const completed = await completeSetup();
                 if (completed) window.AsyncButtonState.success(saveBtn);
-                else window.AsyncButtonState.error(saveBtn);
-            } catch (error) { window.AsyncButtonState.error(saveBtn); showError('Error saving schedule: ' + (error.message || error)); }
+                // Successful completion redirects away, so only clear this lock when the page stays here.
+                else { setupCompletionPending = false; window.AsyncButtonState.error(saveBtn); }
+            } catch (error) {
+                setupCompletionPending = false;
+                window.AsyncButtonState.error(saveBtn);
+                showError('Error saving schedule: ' + (error.message || error));
+            }
         }
 
         // --- Complete ---

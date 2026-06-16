@@ -1677,6 +1677,45 @@ pre code {
   font-size: var(--text-md);
 }
 
+.setup-complete-btn {
+  min-width: 12.5rem;
+}
+
+.setup-complete-ready,
+.setup-complete-pending {
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.setup-complete-ready {
+  display: inline-flex;
+}
+
+.setup-complete-pending {
+  display: none;
+}
+
+.setup-complete-btn.is-async-pending .setup-complete-ready {
+  display: none;
+}
+
+.setup-complete-btn.is-async-pending .setup-complete-pending {
+  display: inline-flex;
+}
+
+.setup-complete-spinner {
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid hsla(0, 0%, 100%, 0.35);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: setup-complete-spin 0.8s linear infinite;
+}
+
+@keyframes setup-complete-spin {
+  to { transform: rotate(360deg); }
+}
+
 .setup-nav-note {
   margin-top: var(--sp-4);
   display: inline-flex;
