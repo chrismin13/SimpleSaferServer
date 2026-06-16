@@ -21,6 +21,7 @@ from simple_safer_server.routes.alerts import alerts as alerts_routes
 from simple_safer_server.routes.cloud_backup import cloud_backup as cloud_backup_routes
 from simple_safer_server.routes.ddns import ddns as ddns_routes
 from simple_safer_server.routes.drive_health import drive_health as drive_health_routes
+from simple_safer_server.routes.pivpn import pivpn as pivpn_routes
 from simple_safer_server.routes.server_identity import server_identity as server_identity_routes
 from simple_safer_server.routes.setup_wizard import setup
 from simple_safer_server.routes.smb import smb as smb_routes
@@ -37,6 +38,7 @@ from simple_safer_server.services.container import AppServices
 from simple_safer_server.services.ddns_service import DdnsService
 from simple_safer_server.services.disabled_timers import DisabledTimerService
 from simple_safer_server.services.drive_health import DriveHealthSummaryService
+from simple_safer_server.services.pivpn_service import PiVpnService
 from simple_safer_server.services.runtime import get_fake_state, get_flask_secret_key, get_runtime
 from simple_safer_server.services.server_identity import ServerIdentityService
 from simple_safer_server.services.smb_manager import SMB_DOCS_URL, SMBManager
@@ -156,6 +158,7 @@ def create_app() -> Flask:
         command_adapter=storage_command_adapter,
     )
     drive_health_summary_service = DriveHealthSummaryService()
+    pivpn_service = PiVpnService(runtime=runtime, systemd_adapter=systemd_adapter)
     app.extensions["simple_safer_server"] = AppServices(
         runtime=runtime,
         fake_state=fake_state,
@@ -173,6 +176,7 @@ def create_app() -> Flask:
         server_identity_service=server_identity_service,
         storage_service=storage_service,
         drive_health_summary_service=drive_health_summary_service,
+        pivpn_service=pivpn_service,
     )
 
     app.register_blueprint(setup)
@@ -186,6 +190,7 @@ def create_app() -> Flask:
     app.register_blueprint(users_routes)
     app.register_blueprint(storage_routes)
     app.register_blueprint(drive_health_routes)
+    app.register_blueprint(pivpn_routes)
 
     @app.route("/")
     def index():
