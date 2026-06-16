@@ -26,6 +26,7 @@ from simple_safer_server.routes.setup_wizard import setup
 from simple_safer_server.routes.smb import smb as smb_routes
 from simple_safer_server.routes.storage import storage as storage_routes
 from simple_safer_server.routes.system_updates import system_updates as system_updates_routes
+from simple_safer_server.routes.tailscale import tailscale as tailscale_routes
 from simple_safer_server.routes.tasks import tasks as task_routes
 from simple_safer_server.routes.users import users as users_routes
 from simple_safer_server.services.alert_notifications import AlertNotifier
@@ -43,6 +44,7 @@ from simple_safer_server.services.smb_manager import SMB_DOCS_URL, SMBManager
 from simple_safer_server.services.storage_service import StorageService
 from simple_safer_server.services.system_updates import SystemUpdatesManager
 from simple_safer_server.services.system_utils import SystemUtils
+from simple_safer_server.services.tailscale import TailscaleService
 from simple_safer_server.services.task_service import TaskService
 from simple_safer_server.services.user_manager import UserManager, admin_required
 from simple_safer_server.web.api import json_data, json_problem
@@ -156,6 +158,7 @@ def create_app() -> Flask:
         command_adapter=storage_command_adapter,
     )
     drive_health_summary_service = DriveHealthSummaryService()
+    tailscale_service = TailscaleService(command_runner)
     app.extensions["simple_safer_server"] = AppServices(
         runtime=runtime,
         fake_state=fake_state,
@@ -173,6 +176,7 @@ def create_app() -> Flask:
         server_identity_service=server_identity_service,
         storage_service=storage_service,
         drive_health_summary_service=drive_health_summary_service,
+        tailscale_service=tailscale_service,
     )
 
     app.register_blueprint(setup)
@@ -186,6 +190,7 @@ def create_app() -> Flask:
     app.register_blueprint(users_routes)
     app.register_blueprint(storage_routes)
     app.register_blueprint(drive_health_routes)
+    app.register_blueprint(tailscale_routes)
 
     @app.route("/")
     def index():

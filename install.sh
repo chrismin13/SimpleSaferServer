@@ -570,6 +570,83 @@ configure_samba_discovery_services() {
   echo -e "${GREEN}✔ Samba service setup complete.${NC}\n"
 }
 
+print_tailscale_access_urls() {
+  local python_bin="${SSS_INSTALLER_TEST_PYTHON:-$VENV_DIR/bin/python3}"
+  local status_json=""
+  local tailscale_urls=""
+  local url=""
+
+  if ! command -v tailscale >/dev/null 2>&1; then
+    return 0
+  fi
+  if [ ! -x "$python_bin" ]; then
+    return 0
+  fi
+
+  # Tailscale status does not include auth keys, and the installer only prints
+  # browser URLs that help the admin reach this server after setup.
+  status_json="$(tailscale status --json 2>/dev/null || true)"
+  if [ -z "$status_json" ]; then
+    return 0
+  fi
+
+  tailscale_urls="$(TAILSCALE_STATUS_JSON="$status_json" "$python_bin" <<'PY' || true
+import ipaddress
+import json
+import os
+
+WEB_UI_PORT = 5000
+
+
+def clean_dns_name(value):
+    return str(value or "").strip().rstrip(".")
+
+
+def append_unique(items, value):
+    if value and value not in items:
+        items.append(value)
+
+
+try:
+    payload = json.loads(os.environ.get("TAILSCALE_STATUS_JSON", "{}"))
+except json.JSONDecodeError:
+    raise SystemExit(0)
+
+self_node = payload.get("Self") if isinstance(payload.get("Self"), dict) else {}
+dns_names = []
+append_unique(dns_names, clean_dns_name(self_node.get("DNSName")))
+
+hostname = clean_dns_name(self_node.get("HostName"))
+suffix = clean_dns_name(payload.get("MagicDNSSuffix"))
+if hostname and suffix:
+    append_unique(dns_names, f"{hostname}.{suffix}")
+
+urls = [f"http://{dns_name}:{WEB_UI_PORT}" for dns_name in dns_names]
+for raw_ip in self_node.get("TailscaleIPs") or []:
+    ip = str(raw_ip).strip()
+    try:
+        parsed = ipaddress.ip_address(ip)
+    except ValueError:
+        continue
+    host = f"[{ip}]" if parsed.version == 6 else ip
+    urls.append(f"http://{host}:{WEB_UI_PORT}")
+
+print("\n".join(urls))
+PY
+)"
+
+  if [ -z "$tailscale_urls" ]; then
+    return 0
+  fi
+
+  echo -e "${GREEN}Tailscale:${NC}"
+  while IFS= read -r url; do
+    if [ -n "$url" ]; then
+      echo "  $url"
+    fi
+  done <<<"$tailscale_urls"
+}
+
 # 1. Install system dependencies. Python application dependencies are resolved
 #    by uv into /opt/SimpleSaferServer/.venv so distro Python packages do not
 #    decide the app runtime or dependency versions.
@@ -778,6 +855,7 @@ else
     fi
   done
 fi
+print_tailscale_access_urls
 echo
 
 echo -e "${GREEN}✔ Installation/update complete!${NC}"

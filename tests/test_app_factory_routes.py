@@ -176,6 +176,7 @@ def test_browser_titles_use_configured_hostname_after_setup():
                 dashboard_response = client.get("/dashboard")
                 task_response = client.get("/task/App%20Update")
                 ddns_response = client.get("/ddns")
+                tailscale_response = client.get("/tailscale")
 
             assert dashboard_response.status_code == 200
             assert "<title>Overview - family-nas</title>" in dashboard_response.get_data(
@@ -185,6 +186,31 @@ def test_browser_titles_use_configured_hostname_after_setup():
             assert "<title>App Update - family-nas</title>" in task_response.get_data(as_text=True)
             assert ddns_response.status_code == 200
             assert "<title>DDNS - family-nas</title>" in ddns_response.get_data(as_text=True)
+            assert tailscale_response.status_code == 200
+            assert "<title>Tailscale - family-nas</title>" in tailscale_response.get_data(
+                as_text=True
+            )
+    finally:
+        runtime._runtime = previous_runtime
+        runtime._fake_state = previous_fake_state
+
+
+def test_tailscale_page_renders_read_only_status():
+    previous_runtime = runtime._runtime
+    previous_fake_state = runtime._fake_state
+    try:
+        with TemporaryDirectory() as temp_dir:
+            app = _create_fake_app(temp_dir)
+            _finish_fake_setup(app)
+
+            with app.test_client() as client:
+                page_response = client.get("/tailscale")
+
+            assert page_response.status_code == 200
+            page = page_response.get_data(as_text=True)
+            assert "Tailscale" in page
+            assert "SimpleSaferServer reads this status but does not install" in page
+            assert "Managed by" in page
     finally:
         runtime._runtime = previous_runtime
         runtime._fake_state = previous_fake_state
