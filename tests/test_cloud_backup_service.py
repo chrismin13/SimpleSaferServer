@@ -8,6 +8,8 @@ from tempfile import TemporaryDirectory
 from simple_safer_server.services.cloud_backup_service import (
     RCLONE_ADMIN_TIMEOUT_SECONDS,
     CloudBackupService,
+    parse_additional_mount_points,
+    serialize_additional_mount_points,
 )
 from simple_safer_server.web.problems import OperationProblem, ValidationProblem
 
@@ -120,6 +122,7 @@ class CloudBackupServiceTests(unittest.TestCase):
             "mega_email": "user@example.com",
             "mega_pass": "secret",
             "rclone_dir": "remote:/backups",
+            "additional_mount_points": '["/media/photos","/media/videos"]',
         }
         config.config["schedule"] = {"backup_cloud_time": "02:30"}
         rclone_path = runtime.rclone_config_dir / "rclone.conf"
@@ -130,6 +133,10 @@ class CloudBackupServiceTests(unittest.TestCase):
         self.assertEqual(payload["mega_email"], "user@example.com")
         self.assertNotIn("mega_pass", payload)
         self.assertEqual(payload["rclone_config"], "[remote]\ntype = test\n")
+        self.assertEqual(
+            payload["additional_mount_points"],
+            ["/media/photos", "/media/videos"],
+        )
 
     def test_status_and_manual_run_use_cloud_backup_task(self):
         task = FakeTask()
@@ -201,6 +208,43 @@ class CloudBackupServiceTests(unittest.TestCase):
         self.assertTrue(system_utils.created_systemd_config)
         self.assertEqual(config.config["schedule"]["backup_cloud_time"], "03:00")
         self.assertEqual(config.config["backup"]["bandwidth_limit"], "8M")
+
+    def test_save_config_stores_additional_mount_points_as_json(self):
+        service, config, _system_utils, _runtime = self.make_service(is_fake=True)
+
+        service.save_config(
+            {
+                "cloud_mode": "",
+                "additional_mount_points": ["/media/photos", "/media/photos", "/media/videos"],
+            }
+        )
+
+        self.assertEqual(
+            config.config["backup"]["additional_mount_points"],
+            '["/media/photos","/media/videos"]',
+        )
+
+    def test_save_config_rejects_relative_additional_mount_point(self):
+        service, config, _system_utils, _runtime = self.make_service(is_fake=True)
+
+        with self.assertRaisesRegex(ValidationProblem, "absolute paths"):
+            service.save_config({"cloud_mode": "", "additional_mount_points": ["relative"]})
+
+        self.assertNotIn("additional_mount_points", config.config["backup"])
+
+    def test_additional_mount_point_parser_accepts_json_and_legacy_text(self):
+        self.assertEqual(
+            parse_additional_mount_points('["/media/photos","/media/videos"]'),
+            ["/media/photos", "/media/videos"],
+        )
+        self.assertEqual(
+            parse_additional_mount_points("/media/photos,\n/media/videos"),
+            ["/media/photos", "/media/videos"],
+        )
+        self.assertEqual(
+            serialize_additional_mount_points(["/media/photos"]),
+            '["/media/photos"]',
+        )
 
     def test_advanced_config_requires_remote_and_rclone_config(self):
         service, _config, _system_utils, _runtime = self.make_service()

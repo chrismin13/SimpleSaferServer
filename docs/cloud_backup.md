@@ -31,6 +31,35 @@ The Cloud Backup page manages cloud backup settings, schedules, and status.
 - **Remote Name and Path**: Enter in the format `remotename:/path`.
 - **Warning**: rclone will synchronize the remote path to match the local backup directory.
 
+## Multiple Mounted Sources
+
+Cloud Backup always treats `backup.mount_point` as the primary local source.
+That source keeps the old behavior: it is synced directly to `backup.rclone_dir`.
+
+Extra mounted sources can be added after setup with the `backup.additional_mount_points`
+config value in `/etc/SimpleSaferServer/config.conf`.
+Store it as a JSON list on one line:
+
+```ini
+[backup]
+mount_point = /media/backup
+additional_mount_points = ["/media/photos","/media/videos"]
+```
+
+The scheduled mount check tries to mount each configured source through its
+systemd mount unit. In practice, that means each extra source needs its own
+working `/etc/fstab` entry or another systemd `.mount` unit. SimpleSaferServer
+still creates and manages only the primary backup drive entry.
+
+During cloud backup:
+
+- `/media/backup` syncs to `backup.rclone_dir`
+- `/media/photos` syncs to `backup.rclone_dir/mounted-sources/media-photos`
+- `/media/videos` syncs to `backup.rclone_dir/mounted-sources/media-videos`
+
+The primary sync runs first. That keeps removed extra sources from leaving old
+folders behind in the remote backup folder.
+
 ## Fake Mode
 
 Fake mode avoids local system changes, but cloud-backup provider calls can still run when real

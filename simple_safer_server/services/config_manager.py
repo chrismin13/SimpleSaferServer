@@ -99,6 +99,7 @@ class ConfigManager:
             'uuid': '',
             'usb_id': '',
             'mount_point': self.runtime.default_mount_point,
+            'additional_mount_points': '',
             'rclone_dir': '',
             'bandwidth_limit': '',
         }

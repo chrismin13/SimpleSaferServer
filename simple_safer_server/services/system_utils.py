@@ -188,6 +188,7 @@ account default : simplesaferserver
                 'mount_point': str(
                     backup_config.get('mount_point', self.runtime.default_mount_point)
                 ),
+                'additional_mount_points': str(backup_config.get('additional_mount_points', '')),
                 'uuid': str(backup_config.get('uuid', '')),
                 'usb_id': str(backup_config.get('usb_id', '')),
                 'email_address': str(backup_config.get('email_address', '')),

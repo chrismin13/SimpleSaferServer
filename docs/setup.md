@@ -126,3 +126,10 @@ If the backup drive changes after setup:
 
 That rerun flow is intentionally partition-oriented and does not behave like the whole-disk format step.
 If the selected partition is still the live configured backup share, the rerun flow can temporarily disconnect SMB access before unmounting it.
+
+If you need to back up more mounted drives after setup, keep the Drive Health
+flow for the primary backup drive and add the other mount points to
+`backup.additional_mount_points` in `/etc/SimpleSaferServer/config.conf`.
+Those extra drives must already have their own `/etc/fstab` entries or systemd
+mount units. SimpleSaferServer will check and mount them before cloud backup,
+then back them up under `mounted-sources/` inside the configured cloud folder.

@@ -2,6 +2,7 @@ import json
 import os
 import re
 from dataclasses import dataclass
+from pathlib import PurePosixPath
 from tempfile import NamedTemporaryFile
 from typing import Any
 
@@ -30,6 +31,41 @@ class MegaFolderList:
 
 BANDWIDTH_LIMIT_RE = re.compile(r"^\d+(?:k|M|G)$", re.IGNORECASE)
 RCLONE_ADMIN_TIMEOUT_SECONDS = 60
+
+
+def parse_additional_mount_points(value: Any) -> list[str]:
+    """Return extra local backup sources stored in config or submitted by the API."""
+    if value is None:
+        return []
+    if isinstance(value, list):
+        candidates = value
+    else:
+        text = str(value).strip()
+        if not text:
+            return []
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            candidates = re.split(r"[\n,]", text)
+        else:
+            candidates = parsed if isinstance(parsed, list) else [parsed]
+
+    paths: list[str] = []
+    seen = set()
+    for candidate in candidates:
+        path = str(candidate).strip()
+        if not path or path in seen:
+            continue
+        if not PurePosixPath(path).is_absolute():
+            raise ValidationProblem("Additional mount points must be absolute paths.")
+        paths.append(path)
+        seen.add(path)
+    return paths
+
+
+def serialize_additional_mount_points(paths: list[str]) -> str:
+    """Store the list on one INI line so shell scripts can read it safely."""
+    return json.dumps(paths, separators=(",", ":"))
 
 
 def normalize_bandwidth_limit(value: Any) -> str:
@@ -73,6 +109,9 @@ class CloudBackupService:
             "mega_folder": backup.get("mega_folder", ""),
             "rclone_dir": backup.get("rclone_dir", ""),
             "bandwidth_limit": backup.get("bandwidth_limit", ""),
+            "additional_mount_points": parse_additional_mount_points(
+                backup.get("additional_mount_points", "")
+            ),
             "backup_cloud_time": schedule.get("backup_cloud_time", ""),
         }
         rclone_conf_path = self._runtime.rclone_config_dir / "rclone.conf"
@@ -92,6 +131,13 @@ class CloudBackupService:
 
         backup_time = data.get("backup_cloud_time")
         bandwidth_limit = data.get("bandwidth_limit")
+        if "additional_mount_points" in data:
+            mount_points = parse_additional_mount_points(data.get("additional_mount_points"))
+            self._config_manager.set_value(
+                "backup",
+                "additional_mount_points",
+                serialize_additional_mount_points(mount_points),
+            )
         if backup_time or bandwidth_limit is not None:
             # Schedule-related values affect generated systemd units, so they
             # must flow through save_schedule before becoming durable config.

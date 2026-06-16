@@ -347,6 +347,36 @@ class SystemUtilsTimerActivationTests(unittest.TestCase):
             self.assertEqual(parser.get("backup", "email_address"), "admin@example.com")
             self.assertEqual(parser.get("backup", "from_address"), "server@example.com")
 
+    def test_create_systemd_config_file_includes_additional_mount_points(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime = types.SimpleNamespace(
+                is_fake=False,
+                config_dir=Path(temp_dir) / "config",
+                default_mount_point="/media/backup",
+            )
+            system_utils = RecordingSystemUtils(runtime)
+
+            ok, error = system_utils.create_systemd_config_file(
+                {
+                    "backup": {
+                        "mount_point": "/media/backup",
+                        "additional_mount_points": '["/media/photos","/media/videos"]',
+                    },
+                    "system": {},
+                    "schedule": {},
+                    "hdsentinel": {},
+                    "ddns": {},
+                }
+            )
+
+            self.assertTrue(ok, error)
+            parser = configparser.ConfigParser()
+            parser.read(runtime.config_dir / "config.conf")
+            self.assertEqual(
+                parser.get("backup", "additional_mount_points"),
+                '["/media/photos","/media/videos"]',
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
