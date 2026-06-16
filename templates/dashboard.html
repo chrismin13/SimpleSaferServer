@@ -95,6 +95,7 @@
         <tr>
           <th>Task</th>
           <th>Status</th>
+          <th>Run For</th>
           <th>Last Run</th>
           <th>Next Run</th>
         </tr>
@@ -120,6 +121,7 @@
               <span class="badge badge-warning">{{ task.status }}</span>
             {% endif %}
           </td>
+          <td class="text-mono" style="font-size: var(--text-xs);">{{ task.run_for or '-' }}</td>
           <td class="text-mono task-time-cell" style="font-size: var(--text-xs);" data-timestamp="{{ task.last_run or '' }}">{{ task.last_run or '—' }}</td>
           {# Keep this state list aligned with TaskService.schedule_state() labels. #}
           {% set disabled_schedule_states = ['temporary', 'permanent', 'restore_failed', 'external_disabled'] %}
@@ -282,6 +284,7 @@ Remove the drive now if you do not want it mounted again.`;
   function renderTaskRow(task) {
     const url = `/task/${encodeURIComponent(task.name)}`;
     const lastRun = task.last_run || '';
+    const runFor = task.run_for || '-';
     const schedule = task.schedule || {};
     const nextRun = schedule.raw_next_run || task.next_run || '';
     const scheduleLabel = schedule.label || task.next_run || '';
@@ -302,6 +305,12 @@ Remove the drive now if you do not want it mounted again.`;
     const tdStatus = document.createElement('td');
     tdStatus.innerHTML = renderTaskStatusBadge(task.status);
     row.appendChild(tdStatus);
+
+    const tdRunFor = document.createElement('td');
+    tdRunFor.className = 'text-mono';
+    tdRunFor.style.fontSize = 'var(--text-xs)';
+    tdRunFor.textContent = runFor;
+    row.appendChild(tdRunFor);
 
     const tdLastRun = document.createElement('td');
     tdLastRun.className = 'text-mono task-time-cell';

@@ -16,7 +16,9 @@ Four cards display real-time status:
 - **System Resources**: Displays CPU and RAM usage, and live network traffic (up/down rates).
 
 ## Task Schedule
-- **Table**: Lists all scheduled tasks with columns for Task, Status, Last Run, and Next Run.
+- **Table**: Lists all scheduled tasks with columns for Task, Status, Run For, Last Run, and Next Run.
+- **Run For**: Shows how long the task has been running when its status is `Running`. Tasks that
+  are not currently running show `-`.
 - **Next Run**: Shows the active next run time or a short schedule state label. Temporary disables
   show `Disabled until 18:00`, `Disabled until Tomorrow 18:00`, or a later date such as
   `Disabled until May 16 18:00`. Permanent disables show `Disabled`. Timers disabled outside

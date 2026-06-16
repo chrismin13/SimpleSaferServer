@@ -88,6 +88,7 @@ class FakeState:
                     "status": "Not Run Yet",
                     "last_run": "",
                     "last_run_duration": "-",
+                    "running_started_at": "",
                     "log": "",
                 }
                 for task_name in self.TASK_NAMES
@@ -176,6 +177,7 @@ class FakeState:
         status: str | None = None,
         last_run: str | None = None,
         last_run_duration: str | None = None,
+        running_started_at: str | None = None,
         log: str | None = None,
     ) -> None:
         with self._lock:
@@ -187,6 +189,8 @@ class FakeState:
                 task_state["last_run"] = last_run
             if last_run_duration is not None:
                 task_state["last_run_duration"] = last_run_duration
+            if running_started_at is not None:
+                task_state["running_started_at"] = running_started_at
             if log is not None:
                 task_state["log"] = log
             self.save(state)
@@ -211,7 +215,13 @@ class FakeState:
         state = self.load()
         return state.setdefault("tasks", {}).setdefault(
             task_name,
-            {"status": "Not Run Yet", "last_run": "", "last_run_duration": "-", "log": ""},
+            {
+                "status": "Not Run Yet",
+                "last_run": "",
+                "last_run_duration": "-",
+                "running_started_at": "",
+                "log": "",
+            },
         )
 
     def get_next_run(self, task_name: str, backup_time: str) -> str:

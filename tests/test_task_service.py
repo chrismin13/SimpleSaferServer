@@ -13,6 +13,8 @@ from simple_safer_server.services.task_service import (
     Status,
     TaskService,
     format_compact_schedule_datetime,
+    format_run_duration,
+    parse_systemd_datetime,
 )
 
 
@@ -198,6 +200,7 @@ class TaskServiceTests(unittest.TestCase):
                 "last_run": "Error",
                 "status": "Error",
                 "last_run_duration": "Error",
+                "run_for": "Error",
                 "schedule": {
                     "state": "issue",
                     "label": "Schedule issue",
@@ -297,6 +300,40 @@ class TaskServiceTests(unittest.TestCase):
         self.assertEqual(task.last_run, "Sun 2026-04-26 03:00:00 UTC")
         self.assertEqual(task.last_run_duration, "3s")
         self.assertEqual(task.status, Status.SUCCESS)
+        self.assertEqual(service.task_summary(task)["run_for"], "-")
+
+    def test_real_running_task_summary_reports_run_for(self):
+        class FixedDatetime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return cls(2026, 4, 26, 3, 2, 5)
+
+        systemd_adapter = FakeSystemdAdapter()
+        systemd_adapter.active = "activating"
+        service, _fake_state = self.build_service(is_fake=False, systemd_adapter=systemd_adapter)
+        task = service.get_task("Cloud Backup")
+        assert task is not None
+
+        with patch("simple_safer_server.services.task_service.datetime", FixedDatetime):
+            self.assertEqual(service.task_summary(task)["run_for"], "2m 5s")
+
+    def test_fake_running_task_summary_reports_run_for(self):
+        class FixedDatetime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return cls(2026, 4, 26, 3, 2, 5)
+
+        service, fake_state = self.build_service()
+        task = service.get_task("Cloud Backup")
+        assert task is not None
+        fake_state.set_task_state(
+            "Cloud Backup",
+            status=Status.RUNNING,
+            running_started_at="2026-04-26 03:00:00",
+        )
+
+        with patch("simple_safer_server.services.task_service.datetime", FixedDatetime):
+            self.assertEqual(service.task_summary(task)["run_for"], "2m 5s")
 
     def test_real_task_start_stop_and_logs_use_systemd_adapter(self):
         systemd_adapter = FakeSystemdAdapter()
@@ -431,4 +468,16 @@ class TaskServiceTests(unittest.TestCase):
         self.assertEqual(
             format_compact_schedule_datetime(datetime(2026, 5, 16, 18, 0, 0), now),
             "May 16 18:00",
+        )
+
+    def test_run_duration_formatting_stays_compact(self):
+        self.assertEqual(format_run_duration(8), "8s")
+        self.assertEqual(format_run_duration(125), "2m 5s")
+        self.assertEqual(format_run_duration(7380), "2h 3m")
+        self.assertEqual(format_run_duration(90000), "1d 1h")
+
+    def test_systemd_datetime_parser_accepts_local_timezone_names(self):
+        self.assertEqual(
+            parse_systemd_datetime("Tue 2026-06-16 21:38:12 EEST"),
+            datetime(2026, 6, 16, 21, 38, 12),
         )
