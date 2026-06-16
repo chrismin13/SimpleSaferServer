@@ -821,7 +821,10 @@ body.fake-mode-active .toast-stack {
 
 .not-found-path code {
   color: var(--text-secondary);
-  word-break: break-word;
+.not-found-path code {
+  color: var(--text-secondary);
+  overflow-wrap: break-word;
+}
 }
 
 @media (max-width: 640px) {
