@@ -23,6 +23,7 @@ from simple_safer_server.services.drive_health import (
     hdsentinel_snapshot_has_health,
     run_scheduled_drive_health_check,
 )
+from simple_safer_server.services.healthchecks import HealthchecksPingError, ping_healthchecks_url
 
 
 class Status:
@@ -524,6 +525,21 @@ class TaskService:
             raise RuntimeError("Cloud backup was cancelled.")
         if proc.returncode != 0:
             raise RuntimeError(output.strip() or "Cloud backup failed.")
+        self._ping_healthchecks_after_cloud_backup_success(fake_state)
+
+    def _ping_healthchecks_after_cloud_backup_success(self, fake_state: Any) -> None:
+        ping_url = self.config_manager.get_value("backup", "healthchecks_ping_url", "").strip()
+        if not ping_url:
+            return
+        try:
+            ping_healthchecks_url(ping_url)
+            fake_state.append_task_log("Cloud Backup", "Healthchecks.io success ping sent.")
+        except (HealthchecksPingError, ValueError) as exc:
+            # A Healthchecks network problem should not turn a completed cloud
+            # backup into a failed backup. Keep the URL out of fake task logs.
+            fake_state.append_task_log(
+                "Cloud Backup", f"Healthchecks.io success ping failed: {exc}"
+            )
 
     def _start_fake_task(self, task_name: str) -> None:
         fake_state = self._require_fake_state()

@@ -1,7 +1,8 @@
 #!/bin/bash
 
-CONFIG_FILE="/etc/SimpleSaferServer/config.conf"
-PYTHON_BIN="/opt/SimpleSaferServer/.venv/bin/python"
+CONFIG_FILE="${SSS_CONFIG_FILE:-/etc/SimpleSaferServer/config.conf}"
+PYTHON_BIN="${SSS_PYTHON_BIN:-/opt/SimpleSaferServer/.venv/bin/python}"
+SCRIPTS_DIR="${SSS_SCRIPTS_DIR:-/opt/SimpleSaferServer/scripts}"
 
 if [ ! -x "$PYTHON_BIN" ]; then
   echo "Missing SimpleSaferServer Python environment at $PYTHON_BIN" >&2
@@ -24,6 +25,7 @@ EMAIL_ADDRESS=$(get_config_value backup email_address)
 SERVER_NAME=$(get_config_value system server_name)
 RCLONE_DIR=$(get_config_value backup rclone_dir)
 BANDWIDTH_LIMIT=$(get_config_value backup bandwidth_limit)
+HEALTHCHECKS_PING_URL=$(get_config_value backup healthchecks_ping_url)
 
 # Function to send email and log alert
 function send_email {
@@ -31,6 +33,19 @@ function send_email {
   echo -e "Subject: $1 - $SERVER_NAME\nFrom: $FROM_ADDRESS\n\n$2" | msmtp --from="$FROM_ADDRESS" -- "$EMAIL_ADDRESS"
   # Log alert using the standalone script
   "$PYTHON_BIN" /opt/SimpleSaferServer/scripts/log_alert.py "$1" "$2" "error" "backup_cloud"
+}
+
+function ping_healthchecks_success {
+  if [ -z "$HEALTHCHECKS_PING_URL" ]; then
+    return 0
+  fi
+  # The ping URL contains the Healthchecks check UUID. Pass it on stdin so it
+  # does not appear in process arguments or journal lines.
+  if printf '%s' "$HEALTHCHECKS_PING_URL" | "$PYTHON_BIN" "$SCRIPTS_DIR/ping_healthchecks.py"; then
+    echo "Healthchecks.io success ping sent."
+  else
+    echo "Healthchecks.io success ping failed." >&2
+  fi
 }
 
 echo "Starting cloud backup process..."
@@ -73,5 +88,6 @@ if ! rclone sync "$MOUNT_POINT" "$RCLONE_DIR" --create-empty-src-dirs -v "${extr
   exit 1
 fi
 
+ping_healthchecks_success
 echo "Cloud backup completed successfully"
 exit 0

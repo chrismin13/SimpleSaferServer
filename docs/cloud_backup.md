@@ -11,6 +11,9 @@ The Cloud Backup page manages cloud backup settings, schedules, and status.
 ## Backup Schedule & Bandwidth
 - **Backup Time**: Set the daily backup time in two-digit 24-hour `HH:MM` format.
 - **Bandwidth Limit**: (Optional) Limit backup bandwidth (e.g., 4M for 4 MB/s).
+- **Healthchecks Success Ping URL**: (Optional) Ping a Healthchecks.io check only after the
+  cloud backup finishes successfully. Failed backups, drive checks, DDNS updates, and other tasks do
+  not send this ping.
 - **Save**: Button to save schedule settings by disabling during the request.
 - **Error/Success Feedback**: Inline messages for save actions.
 
@@ -36,6 +39,9 @@ The Cloud Backup page manages cloud backup settings, schedules, and status.
 Fake mode avoids local system changes, but cloud-backup provider calls can still run when real
 credentials and destinations are configured. Use a test destination when developing against a real
 provider from fake mode.
+
+If a Healthchecks success ping URL is configured in fake mode, a successful fake Cloud Backup run can
+send the same success ping. Use a test Healthchecks check when developing.
 
 - **Save**: Button to save backup configuration by disabling during the request.
 - **Error/Success Feedback**: Inline messages for save actions.

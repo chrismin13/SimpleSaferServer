@@ -101,6 +101,7 @@ class ConfigManager:
             'mount_point': self.runtime.default_mount_point,
             'rclone_dir': '',
             'bandwidth_limit': '',
+            'healthchecks_ping_url': '',
         }
 
         config['schedule'] = {'backup_cloud_time': '03:00'}

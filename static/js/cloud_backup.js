@@ -74,6 +74,7 @@ document.addEventListener('DOMContentLoaded', function () {
   const remoteName = document.getElementById('remoteName');
   const backupTime = document.getElementById('backupTime');
   const bandwidthLimit = document.getElementById('bandwidthLimit');
+  const healthchecksPingUrl = document.getElementById('healthchecksPingUrl');
 
   const scheduleForm = document.getElementById('cloud-backup-schedule-form');
   const scheduleSaveBtn = document.getElementById('cloud-backup-schedule-save-btn');
@@ -106,6 +107,7 @@ document.addEventListener('DOMContentLoaded', function () {
   function fillScheduleForm(cfg) {
     backupTime.value = (cfg.backup_cloud_time || '').padStart(5, '0');
     bandwidthLimit.value = cfg.bandwidth_limit || '';
+    healthchecksPingUrl.value = cfg.healthchecks_ping_url || '';
   }
 
   function loadSchedule() {
@@ -124,6 +126,9 @@ document.addEventListener('DOMContentLoaded', function () {
     if (!backupTime.value) {
       backupTime.classList.add('is-invalid'); valid = false;
     } else { backupTime.classList.remove('is-invalid'); }
+    if (healthchecksPingUrl.value.trim() && !/^https?:\/\/\S+$/.test(healthchecksPingUrl.value.trim())) {
+      healthchecksPingUrl.classList.add('is-invalid'); valid = false;
+    } else { healthchecksPingUrl.classList.remove('is-invalid'); }
     if (!valid) {
       return;
     }
@@ -133,7 +138,8 @@ document.addEventListener('DOMContentLoaded', function () {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         backup_cloud_time: backupTime.value,
-        bandwidth_limit: bandwidthLimit.value.trim()
+        bandwidth_limit: bandwidthLimit.value.trim(),
+        healthchecks_ping_url: healthchecksPingUrl.value.trim()
       })
     })
       .then(() => {
