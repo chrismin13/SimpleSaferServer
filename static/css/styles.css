@@ -545,6 +545,112 @@ body.fake-mode-active .toast-stack {
 .task-schedule-danger { color: var(--danger-text); }
 .task-schedule-warning { color: var(--warning-text); }
 
+/* ── Toggle Switches ───────────────────────────────────────── */
+.toggle-switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 44px;
+  height: 24px;
+  flex: 0 0 44px;
+}
+
+.toggle-switch input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  margin: 0;
+  z-index: 1;
+}
+
+.toggle-slider {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-full);
+  background: var(--bg-overlay);
+  border: 1px solid var(--border-default);
+  transition: background var(--dur-fast) var(--ease-default),
+    border-color var(--dur-fast) var(--ease-default);
+}
+
+.toggle-slider::before {
+  content: "";
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  top: 2px;
+  left: 2px;
+  border-radius: 50%;
+  background: var(--text-secondary);
+  box-shadow: var(--shadow-sm);
+  transition: transform var(--dur-fast) var(--ease-default),
+    background var(--dur-fast) var(--ease-default);
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background: var(--success-subtle);
+  border-color: var(--success);
+}
+
+.toggle-switch input:checked + .toggle-slider::before {
+  transform: translateX(20px);
+  background: var(--success-text);
+}
+
+.toggle-switch input:focus-visible + .toggle-slider {
+  box-shadow: 0 0 0 3px var(--accent-subtle);
+}
+
+.toggle-switch input:disabled {
+  cursor: not-allowed;
+}
+
+.toggle-switch input:disabled + .toggle-slider {
+  opacity: 0.55;
+}
+
+.toggle-switch-sm {
+  width: 38px;
+  height: 22px;
+  flex-basis: 38px;
+}
+
+.toggle-switch-sm .toggle-slider::before {
+  width: 16px;
+  height: 16px;
+}
+
+.toggle-switch-sm input:checked + .toggle-slider::before {
+  transform: translateX(16px);
+}
+
+.task-schedule-toggle-control {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.task-schedule-toggle-control-compact {
+  min-width: 5.5rem;
+}
+
+.task-schedule-toggle-copy {
+  color: var(--text-muted);
+}
+
+.task-schedule-toggle-state {
+  min-width: 1.6rem;
+  color: var(--text-secondary);
+}
+
 /* ── Buttons ────────────────────────────────────────────────── */
 .btn {
   display: inline-flex;

@@ -46,6 +46,18 @@
         <i class="fas {{ schedule_icon_class }}"></i> {{ task_summary.schedule.label }}
       </span>
 
+      {% if task.schedule_toggle_supported %}
+      {% set automatic_runs_enabled = task_summary.schedule.state == 'active' %}
+      <label class="task-schedule-toggle-control" for="task-schedule-toggle">
+        <span class="task-schedule-toggle-copy">Automatic Runs</span>
+        <span class="toggle-switch toggle-switch-sm">
+          <input type="checkbox" id="task-schedule-toggle" data-task-name="{{ task.name }}" {% if automatic_runs_enabled %}checked{% endif %}>
+          <span class="toggle-slider"></span>
+        </span>
+        <span class="task-schedule-toggle-state" id="task-schedule-toggle-state">{{ 'On' if automatic_runs_enabled else 'Off' }}</span>
+      </label>
+      {% endif %}
+
       <div class="btn-group">
         <form method="post" action="{{ url_for('task_routes.start_task', task_name=task.name) }}" class="d-inline">
           <button id="start-task-btn" type="submit" class="btn btn-success btn-sm"

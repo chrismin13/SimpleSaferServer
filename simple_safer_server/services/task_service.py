@@ -36,6 +36,7 @@ class Status:
 
 
 TERMINAL_FAKE_STATUSES = {Status.SUCCESS, Status.FAILURE, Status.ERROR, Status.STOPPED}
+SCHEDULE_TOGGLE_TASK_NAMES = frozenset({"Check Mount", "Drive Health Check", "Cloud Backup"})
 
 # Keep one app-wide task-log window so routes, auto-refresh, and service defaults
 # do not quietly drift apart after app-update output grows or shrinks.
@@ -100,6 +101,10 @@ class Task:
 
     def enable_schedule(self) -> None:
         self._service.enable_schedule(self)
+
+    @property
+    def schedule_toggle_supported(self) -> bool:
+        return self.name in SCHEDULE_TOGGLE_TASK_NAMES
 
     @property
     def next_run(self) -> str:
@@ -171,6 +176,7 @@ class TaskService:
                 "status": task.status,
                 "last_run_duration": task.last_run_duration,
                 "schedule": schedule,
+                "schedule_toggle_supported": task.schedule_toggle_supported,
             }
         except Exception as exc:
             if self.logger:
@@ -181,6 +187,7 @@ class TaskService:
                 "last_run": "Error",
                 "status": "Error",
                 "last_run_duration": "Error",
+                "schedule_toggle_supported": task.schedule_toggle_supported,
                 "schedule": {
                     "state": "issue",
                     "label": "Schedule issue",
@@ -272,6 +279,16 @@ class TaskService:
 
     def enable_schedule(self, task: Task) -> None:
         self.disabled_timer_service.enable(task.timer_name)
+
+    def set_schedule_enabled(self, task: Task, enabled: bool) -> None:
+        if not task.schedule_toggle_supported:
+            raise ValueError(f"Automatic-run toggle is not available for {task.name}.")
+        # The dashboard switch is a plain on/off control, so off maps to a
+        # permanent timer disable. The existing modal still covers timed pauses.
+        if enabled:
+            self.enable_schedule(task)
+        else:
+            self.disable_schedule(task, "permanent")
 
     def schedule_state(self, task: Task) -> dict[str, Any]:
         raw_next_run = self.get_next_run(task)

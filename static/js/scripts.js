@@ -13,6 +13,8 @@ document.addEventListener("DOMContentLoaded", function () {
     const statusBadge = document.getElementById("task-status-badge");
     const scheduleBadge = document.getElementById("task-schedule-badge");
     const manageScheduleBtn = document.getElementById("manage-schedule-btn");
+    const scheduleToggle = document.getElementById("task-schedule-toggle");
+    const scheduleToggleState = document.getElementById("task-schedule-toggle-state");
     let currentScheduleCanEnable = manageScheduleBtn
       ? manageScheduleBtn.dataset.scheduleCanEnable === "true"
       : false;
@@ -125,6 +127,13 @@ document.addEventListener("DOMContentLoaded", function () {
       if (manageScheduleBtn) {
         manageScheduleBtn.dataset.scheduleCanEnable = currentScheduleCanEnable ? "true" : "false";
       }
+      if (scheduleToggle) {
+        const enabled = schedule.state === "active";
+        scheduleToggle.checked = enabled;
+        if (scheduleToggleState) {
+          scheduleToggleState.textContent = enabled ? "On" : "Off";
+        }
+      }
     }
 
     async function enableSchedule() {
@@ -143,6 +152,31 @@ document.addEventListener("DOMContentLoaded", function () {
       } catch (error) {
         window.AsyncButtonState.error(manageScheduleBtn);
         showAlert(error.message || "Schedule enable failed.", "danger");
+      }
+    }
+
+    async function setScheduleEnabled(enabled) {
+      if (!scheduleToggle) return;
+      scheduleToggle.disabled = true;
+      try {
+        const response = await window.ApiClient.fetchJson(
+          `/task/${encodeURIComponent(taskName)}/schedule-enabled`,
+          {
+            method: "POST",
+            headers: { "Accept": "application/json", "Content-Type": "application/json" },
+            body: JSON.stringify({ enabled })
+          }
+        );
+        updateScheduleControls(response.data && response.data.task && response.data.task.schedule);
+        showAlert(response.message || "Automatic runs updated.", "success");
+      } catch (error) {
+        scheduleToggle.checked = !enabled;
+        if (scheduleToggleState) {
+          scheduleToggleState.textContent = scheduleToggle.checked ? "On" : "Off";
+        }
+        showAlert(error.message || "Automatic runs update failed.", "danger");
+      } finally {
+        scheduleToggle.disabled = false;
       }
     }
 
@@ -235,6 +269,12 @@ document.addEventListener("DOMContentLoaded", function () {
           }
         ];
         window.ActionContextMenu.show(items, event.clientX, event.clientY);
+      });
+    }
+
+    if (scheduleToggle) {
+      scheduleToggle.addEventListener("change", () => {
+        setScheduleEnabled(scheduleToggle.checked);
       });
     }
   }

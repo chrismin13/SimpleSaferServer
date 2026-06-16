@@ -59,6 +59,31 @@ def test_task_detail_renders_stable_schedule_toolbar_buttons():
         runtime._fake_state = previous_fake_state
 
 
+def test_task_detail_renders_automatic_runs_toggle_for_supported_task():
+    previous_runtime = runtime._runtime
+    previous_fake_state = runtime._fake_state
+    try:
+        with TemporaryDirectory() as temp_dir:
+            app = _create_fake_app(temp_dir)
+
+            with app.test_client() as client:
+                supported_response = client.get("/task/Cloud%20Backup")
+                unsupported_response = client.get("/task/App%20Update")
+
+            assert supported_response.status_code == 200
+            assert unsupported_response.status_code == 200
+            supported_page = supported_response.get_data(as_text=True)
+            unsupported_page = unsupported_response.get_data(as_text=True)
+
+            assert 'id="task-schedule-toggle"' in supported_page
+            assert "Automatic Runs" in supported_page
+            assert 'data-task-name="Cloud Backup"' in supported_page
+            assert 'id="task-schedule-toggle"' not in unsupported_page
+    finally:
+        runtime._runtime = previous_runtime
+        runtime._fake_state = previous_fake_state
+
+
 def test_task_detail_renders_strict_custom_duration_modal():
     previous_runtime = runtime._runtime
     previous_fake_state = runtime._fake_state
@@ -136,6 +161,30 @@ def test_dashboard_uses_shared_task_schedule_control_modal():
             assert "selectedDashboardDisableDuration" not in page
             assert "disableScheduleFromDashboard" not in page
             assert "openDashboardDisableScheduleModal" not in page
+    finally:
+        runtime._runtime = previous_runtime
+        runtime._fake_state = previous_fake_state
+
+
+def test_dashboard_renders_automatic_runs_column_for_requested_tasks_only():
+    previous_runtime = runtime._runtime
+    previous_fake_state = runtime._fake_state
+    try:
+        with TemporaryDirectory() as temp_dir:
+            app = _create_fake_app(temp_dir)
+
+            with app.test_client() as client:
+                response = client.get("/dashboard")
+
+            assert response.status_code == 200
+            page = response.get_data(as_text=True)
+
+            assert "<th>Automatic Runs</th>" in page
+            assert page.count('class="task-schedule-toggle"') == 3
+            assert 'data-task-name="Check Mount"' in page
+            assert 'data-task-name="Drive Health Check"' in page
+            assert 'data-task-name="Cloud Backup"' in page
+            assert "setTaskScheduleEnabled" in page
     finally:
         runtime._runtime = previous_runtime
         runtime._fake_state = previous_fake_state
