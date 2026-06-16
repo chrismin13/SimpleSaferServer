@@ -219,6 +219,75 @@ class InstallPreflightTests(unittest.TestCase):
             "systemd does not appear to be running as the host init system", result.stdout
         )
 
+    def test_installer_discloses_install_plan_and_web_service_status(self):
+        text = INSTALL_SCRIPT.read_text()
+
+        self.assertIn("Ubuntu Server 26.04", text)
+        self.assertIn("x86-64 (amd64) and ARM64 (arm64)", text)
+        self.assertIn("openssh-server", text)
+        self.assertIn("Expected time", text)
+        self.assertIn("Expected extra disk use", text)
+        self.assertIn("systemctl --no-pager status simple_safer_server_web.service", text)
+
+    def test_existing_root_rclone_config_is_backed_up_once(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            rclone_dir = root / "rclone"
+            rclone_dir.mkdir()
+            config_path = rclone_dir / "rclone.conf"
+            config_path.write_text("[old]\ntype = local\n")
+
+            snippet = textwrap.dedent(
+                f"""\
+                set -e
+                {self.installer_function("backup_existing_rclone_config")}
+                RED=""; GREEN=""; YELLOW=""; BLUE=""; NC=""
+                RCLONE_CONFIG_PATH="{config_path}"
+                backup_existing_rclone_config
+                backup_existing_rclone_config
+                cat "{config_path}.before-simplesaferserver"
+                """
+            )
+
+            result = subprocess.run(
+                ["bash", "-lc", snippet],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+            self.assertIn("[old]", result.stdout)
+
+    def test_configure_ssh_service_enables_packaged_unit(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            calls_path = Path(temp_dir) / "calls"
+            snippet = textwrap.dedent(
+                f"""\
+                set -e
+                {self.installer_function("configure_ssh_service")}
+                RED=""; GREEN=""; YELLOW=""; BLUE=""; NC=""
+                systemctl() {{
+                  printf '%s\\n' "$*" >> "{calls_path}"
+                  return 0
+                }}
+                configure_ssh_service
+                cat "{calls_path}"
+                """
+            )
+
+            result = subprocess.run(
+                ["bash", "-lc", snippet],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+            self.assertIn("cat ssh", result.stdout)
+            self.assertIn("enable ssh", result.stdout)
+            self.assertIn("start ssh", result.stdout)
+
     def uv_helper_functions(self):
         return "\n".join(
             [
@@ -479,16 +548,18 @@ class InstallPreflightTests(unittest.TestCase):
 
     def test_core_dependency_install_does_not_include_optional_wsdd_daemons(self):
         text = INSTALL_SCRIPT.read_text()
-        core_install_line = next(
-            line for line in text.splitlines() if "apt-get install -y git ca-certificates" in line
-        )
+        packages_start = text.index("APT_PACKAGES=(")
+        packages_end = text.index(")\n\n", packages_start)
+        core_packages = text[packages_start:packages_end]
 
-        self.assertIn("samba", core_install_line)
-        self.assertNotIn("python3-flask", core_install_line)
-        self.assertNotIn("python3-psutil", core_install_line)
-        self.assertNotIn("python3-cryptography", core_install_line)
-        self.assertNotIn("wsdd2", core_install_line)
-        self.assertNotIn("wsdd", core_install_line)
+        self.assertIn("samba", core_packages)
+        self.assertIn("openssh-server", core_packages)
+        self.assertNotIn("python3-flask", core_packages)
+        self.assertNotIn("python3-psutil", core_packages)
+        self.assertNotIn("python3-cryptography", core_packages)
+        self.assertNotIn("wsdd2", core_packages)
+        self.assertNotIn("wsdd", core_packages)
+        self.assertIn('apt-get install -y "${APT_PACKAGES[@]}"', text)
 
     def test_optional_wsdd2_install_warns_and_continues(self):
         snippet = textwrap.dedent(

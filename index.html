@@ -145,10 +145,12 @@
             <button class="copy-btn" onclick="copyCmd('install-cmd', this)"><i class="fa-regular fa-copy"></i> Copy</button>
         </div>
         <div class="note">
-            <i class="fa-solid fa-circle-info"></i> <strong>Note:</strong> Run as <code>root</code> or with <code>sudo</code> on a clean Debian or Ubuntu based system.<br>
+            <i class="fa-solid fa-circle-info"></i> <strong>Note:</strong> Run as <code>root</code> or with <code>sudo</code> on a clean Debian or Ubuntu based system. Ubuntu Server 26.04 is recommended. x86-64 and ARM64 are supported.<br>
             The installer checks for APT, dpkg, systemd, and Debian/Ubuntu OS-family metadata before installing packages. Derivatives continue with a warning when they expose Debian/Ubuntu ancestry.<br>
-            The script installs host tools, syncs the uv-managed Python runtime from <code>uv.lock</code>, prepares SimpleSaferServer-owned Samba include files, optionally installs <code>wsdd2</code> discovery support, sets up the service, and prints your Web UI address.<br>
-            The management Web UI is admin-only, and the first account created during setup becomes the initial administrator.
+            Main APT packages: <code>git</code>, <code>ca-certificates</code>, <code>smartmontools</code>, <code>samba</code>, <code>openssh-server</code>, <code>msmtp</code>, <code>curl</code>, <code>unzip</code>, <code>rsync</code>, <code>fdisk</code>, <code>ntfs-3g</code>, and <code>unattended-upgrades</code>. The installer also tries <code>wsdd2</code> when available.<br>
+            Plan for about 10-20 minutes and about 1-2 GB of extra disk use on a normal server and network. The script also installs uv, rclone, and bundled HDSentinel when available.<br>
+            It prepares SimpleSaferServer-owned Samba include files, starts SSH and Samba, sets up the web service, prints your Web UI address, and shows <code>systemctl --no-pager status simple_safer_server_web.service</code> for troubleshooting.<br>
+            The first setup step connects an existing Linux user as the initial web admin and creates the matching Samba account.
         </div>
         <hr>
         <!-- README links to this anchor so the website stays the canonical documentation index. -->
@@ -185,12 +187,14 @@
         <p class="note">
             <i class="fa-solid fa-circle-info"></i>
             This removes SimpleSaferServer files, services, timers, app data, the managed <code>/etc/fstab</code> entry,
-            Samba users synced from SimpleSaferServer accounts, SimpleSaferServer include blocks in <code>/etc/samba/smb.conf</code>,
+            SimpleSaferServer include blocks in <code>/etc/samba/smb.conf</code>,
             and the owned Samba files under <code>/etc/samba</code>. Owned Samba files are still removed when
             <code>smb.conf</code> cannot be rewritten safely.
             Active Samba file transfers will be interrupted when <code>smbd</code> is restarted.
-            Shared system packages and services such as Samba, <code>wsdd2</code>, uv, and rclone stay installed.
+            Shared system packages and services such as Samba, <code>wsdd2</code>, OpenSSH, uv, and rclone stay installed.
             Unmanaged Samba share blocks stay in <code>/etc/samba/smb.conf</code> for safety.
+            Samba users are left in place because they may belong to real Linux accounts or other Samba shares.
+            Root rclone config stays in place because other jobs may use it.
             <strong>This process is irreversible.</strong>
         </p>
         <div class="text-center mt-4">

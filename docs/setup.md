@@ -13,16 +13,17 @@ That split is important because the safety checks are different.
 - Validation is inline for the form fields.
 - Async buttons disable themselves while work is in progress.
 
-## Step 1: Create Admin Account
+## Step 1: Server Identity
 
-- Enter the admin username.
+- Enter the username for an existing Linux user on the server.
 - Enter the server name. This is the name you use to find the server on your
   network, and it appears in alert emails.
 - Server names may contain letters, numbers, and hyphens. They cannot contain
   spaces or start/end with a hyphen.
 - Enter and confirm the password.
-- On success, the wizard logs the user in and moves to the next step.
-- That first account becomes the initial administrator for the web UI.
+- On success, the wizard creates the matching SimpleSaferServer admin record and Samba account for that Linux username, logs the user in, and moves to the next step.
+- The wizard does not create a Linux user. Create the Linux user before setup if it does not already exist.
+- That first connected account becomes the initial administrator for the web UI.
 - Only administrator accounts can sign in to the management interface after setup.
 
 ## Step 2: Drive Format (Optional)
@@ -92,7 +93,7 @@ MEGA mode:
 
 Advanced mode:
 
-- Paste the rclone config.
+- Paste the rclone config. If `/root/.config/rclone/rclone.conf` already existed before SimpleSaferServer managed cloud backup, the app keeps a one-time backup at `/root/.config/rclone/rclone.conf.before-simplesaferserver`.
 - Enter the remote in `remote:/path` form.
 
 ## Step 5: Email Setup

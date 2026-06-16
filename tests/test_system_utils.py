@@ -37,6 +37,22 @@ class SystemUtilsTimerActivationTests(unittest.TestCase):
             "schedule": {"backup_cloud_time": "03:00"},
         }
 
+    def test_setup_rclone_backs_up_existing_root_config_before_replacing_it(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime = self._runtime(temp_dir)
+            runtime.rclone_config_dir = Path(temp_dir) / "rclone"
+            runtime.rclone_config_dir.mkdir()
+            config_path = runtime.rclone_config_dir / "rclone.conf"
+            backup_path = runtime.rclone_config_dir / "rclone.conf.before-simplesaferserver"
+            config_path.write_text("[old]\ntype = local\n")
+            system_utils = RecordingSystemUtils(runtime)
+
+            ok = system_utils.setup_rclone("[new]\ntype = mega\n")
+
+            self.assertTrue(ok)
+            self.assertEqual(backup_path.read_text(), "[old]\ntype = local\n")
+            self.assertEqual(config_path.read_text(), "[new]\ntype = mega\n")
+
     def test_install_systemd_services_can_refresh_units_without_starting_timers(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             runtime = self._runtime(temp_dir)

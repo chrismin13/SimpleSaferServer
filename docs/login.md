@@ -17,6 +17,7 @@ The broader access model is documented in [Access and Permissions](access.md).
 - Only administrators can log in to the management interface.
 - Non-admin users are shown an error message and cannot access the interface.
 - After successful login, users are redirected to the Dashboard.
+- During first setup, the setup wizard connects an existing Linux user and creates the matching SimpleSaferServer admin and Samba account. After setup is complete, normal login uses the SimpleSaferServer account created by that setup step.
 
 ---
 

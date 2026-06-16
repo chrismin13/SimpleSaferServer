@@ -81,7 +81,7 @@ class UserManager:
             logger.error(f"Error saving users: {e}")
             raise
 
-    def _sync_user_to_samba(self, username, password):
+    def _sync_user_to_samba(self, username, password, *, create_system_user=True):
         """Sync a user to the Samba user database"""
         if self.runtime.is_fake:
             logger.info(f"Fake mode: skipping Samba sync for {username}")
@@ -89,6 +89,9 @@ class UserManager:
         try:
             # First, ensure the user exists in the system
             if not self.command_adapter.system_user_exists(username):
+                if not create_system_user:
+                    logger.error("System user %s does not exist", username)
+                    return False
                 # User doesn't exist, create them
                 logger.info(f"Creating system user {username}")
                 self.command_adapter.create_system_user(username)
@@ -123,7 +126,7 @@ class UserManager:
             logger.error(f"Error removing user {username} from Samba: {e}")
             return False
 
-    def create_user(self, username, password, is_admin=False):
+    def create_user(self, username, password, is_admin=False, *, create_system_user=True):
         """Create a new user with explicit admin elevation at call sites."""
         # Validate username
         if not re.match(r'^[a-zA-Z0-9_-]+$', username):
@@ -149,11 +152,13 @@ class UserManager:
         }
 
         # Sync to Samba
-        if not self._sync_user_to_samba(username, password):
+        if not self._sync_user_to_samba(username, password, create_system_user=create_system_user):
             # Keep JSON and in-memory users aligned with Samba; callers retry
             # failed creates, so a half-created user would turn into "exists".
             self.users.pop(username, None)
-            return False, "User creation failed: could not sync with Samba"
+            if create_system_user:
+                return False, "User creation failed: could not sync with Samba"
+            return False, "User creation failed: Linux user does not exist or Samba sync failed"
 
         try:
             self._save_users()

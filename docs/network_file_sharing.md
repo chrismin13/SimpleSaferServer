@@ -233,10 +233,13 @@ It does not remove:
 
 - unmanaged share blocks
 - unrelated Samba configuration
-- shared packages or services such as Samba, `wsdd2`, Python, or rclone
+- Samba users
+- shared packages or services such as Samba, `wsdd2`, OpenSSH, Python, or rclone
 
 That means manually maintained Samba shares survive uninstall unless they were moved into
 `/etc/samba/simple_safer_server_shares.conf`.
+Samba users also survive uninstall because they may belong to real Linux accounts or other Samba
+shares outside SimpleSaferServer.
 
 ## Operational Notes
 

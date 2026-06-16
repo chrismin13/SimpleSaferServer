@@ -39,7 +39,7 @@
                 <div class="stepper-rail" id="stepperRail">
                     <div class="stepper-item current" data-step="1" onclick="goToStep(1)">
                         <div class="stepper-dot">1</div>
-                        <span class="stepper-label">Admin Account</span>
+                        <span class="stepper-label">Server Identity</span>
                     </div>
                     <div class="stepper-connector"></div>
                     <div class="stepper-item" data-step="2" onclick="goToStep(2)">
@@ -70,17 +70,20 @@
 
                 <!-- Step Content -->
                 <div>
-                    <!-- Step 1: Create Admin -->
+                    <!-- Step 1: Server Identity -->
                     <div id="step1" class="setup-step active">
                         <div class="setup-card">
-                            <h3>Create Admin Account</h3>
+                            <h3>Server Identity</h3>
                             <div class="feedback-slot feedback-slot-compact mb-4">
                                 <div id="adminError" class="alert alert-danger d-none"></div>
                             </div>
+                            <div class="alert alert-info mb-4">
+                                Use an existing Linux user for this first setup step. SimpleSaferServer creates the matching admin and Samba account for that same username.
+                            </div>
                             <div class="form-group mb-4">
-                                <label class="form-label">Username</label>
-                                <input type="text" id="username" class="form-control" placeholder="Enter username">
-                                <div class="invalid-feedback">Username may only contain letters, numbers, hyphens, and underscores.</div>
+                                <label class="form-label">Linux Username</label>
+                                <input type="text" id="username" class="form-control" placeholder="e.g., christos" autocomplete="username">
+                                <div class="invalid-feedback">Use an existing Linux username with only letters, numbers, hyphens, and underscores.</div>
                             </div>
                             <div class="form-group mb-4">
                                 <label class="form-label">Server Name</label>
@@ -90,8 +93,8 @@
                             </div>
                             <div class="form-group mb-4">
                                 <label class="form-label">Password</label>
-                                <input type="password" id="password" class="form-control" placeholder="Enter password">
-                                <div id="passwordHelp" class="form-hint">Password must be at least 4 characters long</div>
+                                <input type="password" id="password" class="form-control" placeholder="Enter password" autocomplete="current-password">
+                                <div id="passwordHelp" class="form-hint">This password is saved for the web UI and synced to Samba for file sharing.</div>
                             </div>
                             <div class="form-group mb-4">
                                 <label class="form-label">Confirm Password</label>
@@ -100,7 +103,7 @@
                             </div>
                             <div class="setup-actions">
                                 <button onclick="createUser()" class="btn btn-primary">
-                                    Create Admin Account <i class="fas fa-arrow-right ms-1"></i>
+                                    Save Identity <i class="fas fa-arrow-right ms-1"></i>
                                 </button>
                             </div>
                         </div>
@@ -788,7 +791,7 @@ unmount the share, then restart SMB automatically."
             return false;
         }
 
-        // --- Create user ---
+        // --- Connect first Linux user ---
         async function createUser() {
             hideError('adminError');
             const valid = [validateUsername(), validateServerName(), validatePassword(), validateConfirmPassword()];
@@ -802,7 +805,7 @@ unmount the share, then restart SMB automatically."
                 await window.ApiClient.fetchJson('/api/setup/user', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
             } catch (error) {
                 window.AsyncButtonState.error(createUserBtn);
-                showError('Error creating user: ' + (error.message || 'An error occurred while creating the user'), 'adminError');
+                showError('Error connecting Linux user: ' + (error.message || 'Check that the Linux user already exists, then try again.'), 'adminError');
                 return;
             }
             try {

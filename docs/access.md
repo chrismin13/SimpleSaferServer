@@ -5,7 +5,8 @@ SimpleSaferServer separates management access from file-share access.
 ## Management Web UI
 
 - The SimpleSaferServer web UI is for administrators only.
-- The first account created during setup is an administrator.
+- During first setup, you connect an existing Linux user. SimpleSaferServer creates the matching app admin record and Samba account for that same username.
+- That first connected account is an administrator.
 - Any later account must also have the admin flag enabled before it can sign in to the web UI.
 - A valid username and password are not enough for web UI access by themselves. The account must also be marked as an administrator.
 - Protected management pages re-check administrator status on every request. If an account is demoted after signing in, its existing web session no longer has management access.

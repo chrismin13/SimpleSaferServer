@@ -280,7 +280,7 @@ def setup_page():
 @setup.route('/api/setup/user', methods=['POST'])
 @setup_api_access_required
 def create_user():
-    """Create the initial admin user"""
+    """Connect an existing Linux user as the initial admin and Samba user."""
     try:
         data = json_request_data()
         username = data.get('username')
@@ -289,11 +289,15 @@ def create_user():
         if not username or not password:
             return _validation_problem('Username and password are required')
 
-        success, message = user_manager.create_user(username, password, is_admin=True)
+        success, message = user_manager.create_user(
+            username,
+            password,
+            is_admin=True,
+            create_system_user=False,
+        )
         if success:
-            # The setup admin is the account Samba and completion checks must
-            # use later; keep this tied to the account creation step so the
-            # system-info step cannot drift into a second source of truth.
+            # The setup admin must match a real Linux user because Samba maps
+            # share access to system users, not just app-local account names.
             config_manager.set_value('system', 'username', username)
             # Log in the user
             session['username'] = username

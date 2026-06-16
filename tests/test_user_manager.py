@@ -16,14 +16,15 @@ class FakeUserCommandAdapter:
         self.fail_remove = False
         self.fail_sync = False
         self.passwords = {}
+        self.system_users = set()
+        self.created_system_users = []
 
     def system_user_exists(self, username):
-        # Tests avoid real system user lookups; every requested user exists.
-        return True
+        return username in self.system_users
 
     def create_system_user(self, username):
-        # System user creation is a no-op because tests only assert manager behavior.
-        return None
+        self.system_users.add(username)
+        self.created_system_users.append(username)
 
     def samba_users(self):
         # Samba users are tracked in memory so sync behavior can be asserted.
@@ -64,6 +65,34 @@ class UserManagerTests(unittest.TestCase):
 
         self.assertTrue(success, message)
         self.assertFalse(manager.users["operator"]["is_admin"])
+
+    def test_create_user_can_require_existing_linux_user(self):
+        manager, adapter = self.make_manager()
+
+        success, message = manager.create_user(
+            "operator",
+            "OperatorPassw0rd!",
+            is_admin=True,
+            create_system_user=False,
+        )
+
+        self.assertFalse(success)
+        self.assertEqual(
+            message, "User creation failed: Linux user does not exist or Samba sync failed"
+        )
+        self.assertNotIn("operator", adapter.created_system_users)
+
+        adapter.system_users.add("operator")
+        success, message = manager.create_user(
+            "operator",
+            "OperatorPassw0rd!",
+            is_admin=True,
+            create_system_user=False,
+        )
+
+        self.assertTrue(success, message)
+        self.assertTrue(manager.users["operator"]["is_admin"])
+        self.assertEqual(adapter.created_system_users, [])
 
     def test_admin_set_password_syncs_samba(self):
         manager, adapter = self.make_manager()

@@ -12,9 +12,24 @@ echo -e "${BLUE}===============================================${NC}"
 echo -e "${BLUE}   SimpleSaferServer Installer${NC}"
 echo -e "${BLUE}===============================================${NC}\n"
 
+INSTALL_STARTED_AT=$(date +%s)
 UNSUPPORTED_OS_OK="${SSS_UNSUPPORTED_OS_OK:-0}"
 PREFLIGHT_ONLY="${SSS_INSTALLER_PREFLIGHT_ONLY:-0}"
 OS_RELEASE_PATH="${SSS_OS_RELEASE_PATH:-}"
+APT_PACKAGES=(
+  git
+  ca-certificates
+  smartmontools
+  samba
+  openssh-server
+  msmtp
+  curl
+  unzip
+  rsync
+  fdisk
+  ntfs-3g
+  unattended-upgrades
+)
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -148,6 +163,18 @@ ensure_git_safe_directory() {
   git config --system --add safe.directory "$repo_path"
 }
 
+print_install_summary() {
+  echo -e "${BLUE}Install summary:${NC}"
+  echo -e "  Recommended OS: Ubuntu Server 26.04"
+  echo -e "  Supported CPU/userspace: x86-64 (amd64) and ARM64 (arm64)"
+  echo -e "  Main APT packages: ${APT_PACKAGES[*]}"
+  echo -e "  Optional APT package: wsdd2, when available"
+  echo -e "  Other installers: uv official installer, rclone official installer, bundled HDSentinel when available"
+  echo -e "  Expected time: usually 10-20 minutes on a normal server and network"
+  echo -e "  Expected extra disk use: roughly 1-2 GB for packages, app files, uv-managed Python, and logs"
+  echo
+}
+
 run_installer_preflight() {
   local release_file=""
   local os_id=""
@@ -251,6 +278,7 @@ run_installer_preflight
 if [ "$PREFLIGHT_ONLY" = "1" ]; then
   exit 0
 fi
+print_install_summary
 
 # Determine if we are in a SimpleSaferServer repo
 if [ -f "install.sh" ] && [ -d ".git" ] && grep -q 'SimpleSaferServer' README.md 2>/dev/null; then
@@ -286,6 +314,7 @@ UV_INSTALL_URL="https://astral.sh/uv/install.sh"
 SERVICE_FILE="/etc/systemd/system/simple_safer_server_web.service"
 HDSENTINEL_BIN="/usr/local/bin/hdsentinel"
 HDSENTINEL_ASSET_DIR="$SRC_DIR/third_party/hdsentinel"
+RCLONE_CONFIG_PATH="/root/.config/rclone/rclone.conf"
 
 uv_version_number() {
   uv --version | awk '{print $2}'
@@ -470,6 +499,43 @@ install_optional_wsdd2() {
   fi
 }
 
+backup_existing_rclone_config() {
+  local backup_path=""
+
+  if [ ! -f "$RCLONE_CONFIG_PATH" ]; then
+    return 0
+  fi
+
+  backup_path="${RCLONE_CONFIG_PATH}.before-simplesaferserver"
+  if [ -f "$backup_path" ]; then
+    echo -e "${YELLOW}Existing root rclone config detected at $RCLONE_CONFIG_PATH.${NC}"
+    echo -e "${YELLOW}Existing backup already present at $backup_path.${NC}\n"
+    return 0
+  fi
+
+  cp "$RCLONE_CONFIG_PATH" "$backup_path"
+  chmod 600 "$backup_path" 2>/dev/null || true
+  echo -e "${YELLOW}Existing root rclone config detected at $RCLONE_CONFIG_PATH.${NC}"
+  echo -e "${YELLOW}Backed it up to $backup_path before SimpleSaferServer cloud setup can manage that path.${NC}\n"
+}
+
+configure_ssh_service() {
+  local ssh_unit="ssh"
+
+  echo -e "${YELLOW}Configuring SSH remote access...${NC}"
+  if ! systemctl cat "$ssh_unit" >/dev/null 2>&1; then
+    ssh_unit="sshd"
+  fi
+
+  if systemctl enable "$ssh_unit" && systemctl start "$ssh_unit"; then
+    echo -e "${GREEN}✔ SSH service enabled and started (${ssh_unit}).${NC}\n"
+    return 0
+  fi
+
+  echo -e "${YELLOW}WARNING: OpenSSH server was installed, but ${ssh_unit} could not be enabled or started.${NC}"
+  echo -e "${YELLOW}Check it with: systemctl status ${ssh_unit}${NC}\n"
+}
+
 configure_samba_discovery_services() {
   local smbd_state=""
   local nmbd_state=""
@@ -577,11 +643,13 @@ echo -e "${YELLOW}Step 1: Installing system dependencies...${NC}"
 apt-get update
 # Preseed AppArmor prompt for msmtp only to ensure non-interactive install
 echo "msmtp msmtp/apply_apparmor boolean true" | debconf-set-selections
-DEBIAN_FRONTEND=noninteractive apt-get install -y git ca-certificates smartmontools samba msmtp curl unzip rsync fdisk ntfs-3g unattended-upgrades
+DEBIAN_FRONTEND=noninteractive apt-get install -y "${APT_PACKAGES[@]}"
 
 echo -e "${GREEN}✔ System dependencies installed.${NC}\n"
+configure_ssh_service
 install_optional_wsdd2
 ensure_uv
+backup_existing_rclone_config
 
 # 2. Install rclone using the official install script
 #    The apt version of rclone is missing support for many cloud services (e.g., MEGA, Google Drive, etc).
@@ -782,6 +850,13 @@ echo
 
 echo -e "${GREEN}✔ Installation/update complete!${NC}"
 echo -e "${YELLOW}If this is your first install, visit the above address in your browser to complete setup via the web UI.${NC}"
+echo
+echo -e "${BLUE}Web service status for troubleshooting:${NC}"
+systemctl --no-pager status simple_safer_server_web.service || true
+INSTALL_FINISHED_AT=$(date +%s)
+INSTALL_ELAPSED_SECONDS=$((INSTALL_FINISHED_AT - INSTALL_STARTED_AT))
+echo
+echo -e "${BLUE}Install elapsed time: ${INSTALL_ELAPSED_SECONDS} seconds.${NC}"
 echo -e "${BLUE}===============================================${NC}\n"
 
 # At the end, clean up if we cloned

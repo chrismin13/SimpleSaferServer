@@ -12,7 +12,6 @@ NC='\033[0m' # No Color
 APP_DIR="/opt/SimpleSaferServer"
 CONFIG_DIR="/etc/SimpleSaferServer"
 CONFIG_FILE="$CONFIG_DIR/config.conf"
-USERS_FILE="$CONFIG_DIR/users.json"
 DATA_DIR="/var/lib/SimpleSaferServer"
 VOLATILE_DIR="/run/SimpleSaferServer"
 LOG_DIR="/var/log/SimpleSaferServer"
@@ -45,18 +44,6 @@ SCRIPT_FILES=(
   restore_disabled_timers.py
 )
 
-# The installer writes rclone config where the root-owned scheduled tasks can
-# read it later, so the uninstaller needs to look there instead of under /etc.
-ROOT_HOME=""
-if command -v getent >/dev/null 2>&1; then
-  ROOT_HOME="$(getent passwd root 2>/dev/null | cut -d: -f6 || true)"
-fi
-if [ -z "$ROOT_HOME" ]; then
-  ROOT_HOME="/root"
-fi
-RCLONE_CONFIG_DIR="$ROOT_HOME/.config/rclone"
-RCLONE_CONFIG_PATH="$RCLONE_CONFIG_DIR/rclone.conf"
-
 make_atomic_temp_file() {
   local target_path="$1"
   local target_dir=""
@@ -73,38 +60,6 @@ require_python3() {
     echo "ERROR: python3 is required to $reason during uninstall." >&2
     return 1
   fi
-}
-
-collect_samba_users() {
-  if [ ! -f "$USERS_FILE" ]; then
-    return 0
-  fi
-
-  require_python3 "read $USERS_FILE" || return 1
-
-  python3 - "$USERS_FILE" <<'PY'
-import json
-import sys
-
-path = sys.argv[1]
-
-try:
-    with open(path, "r", encoding="utf-8") as handle:
-        data = json.load(handle)
-except Exception:
-    raise SystemExit(1)
-
-if isinstance(data, dict):
-    for username in data.keys():
-        if isinstance(username, str) and username.strip():
-            print(username)
-elif isinstance(data, list):
-    for item in data:
-        if isinstance(item, dict):
-            username = item.get("username")
-            if isinstance(username, str) and username.strip():
-                print(username)
-PY
 }
 
 apt_updates_were_managed() {
@@ -426,27 +381,8 @@ main() {
   echo "Removing installed HDSentinel binary..."
   rm -f /usr/local/bin/hdsentinel
 
-  # Gather Samba usernames before deleting the config directory because the
-  # app stores the source of truth in users.json rather than in a manifest.
-  local samba_users_output=""
-  local -a SAMBA_USERS=()
-  if ! samba_users_output="$(collect_samba_users)"; then
-    echo "ERROR: Failed to read SimpleSaferServer users from $USERS_FILE."
-    exit 1
-  fi
-  if [ -n "$samba_users_output" ]; then
-    mapfile -t SAMBA_USERS <<<"$samba_users_output"
-  fi
-
-  if [ "${#SAMBA_USERS[@]}" -gt 0 ]; then
-    echo "Removing SimpleSaferServer users from Samba..."
-    for username in "${SAMBA_USERS[@]}"; do
-      echo "Removing Samba user: $username"
-      smbpasswd -x "$username" 2>/dev/null || true
-    done
-  else
-    echo "No SimpleSaferServer Samba users found in $USERS_FILE."
-  fi
+  echo "Leaving Samba user accounts in place."
+  echo "Samba users can belong to real Linux accounts and may be used outside SimpleSaferServer."
 
   echo "Removing application files and data..."
   rm -rf "$APP_DIR"
@@ -458,9 +394,8 @@ main() {
   echo "Removing SimpleSaferServer Git trust entry if present..."
   remove_git_safe_directory "$APP_DIR"
 
-  echo "Removing SimpleSaferServer rclone configuration if present..."
-  rm -f "$RCLONE_CONFIG_PATH"
-  rmdir "$RCLONE_CONFIG_DIR" 2>/dev/null || true
+  echo "Leaving root rclone configuration in place."
+  echo "Root rclone remotes may have existed before SimpleSaferServer or may be used by other jobs."
 
   echo "Removing legacy SimpleSaferServer user and group if present..."
   userdel -r SimpleSaferServer 2>/dev/null || true
@@ -471,8 +406,9 @@ main() {
 
   echo -e "${GREEN}Uninstallation complete!${NC}"
   echo "SimpleSaferServer application files, services, timers, data, and managed mount entries have been removed."
-  echo "Shared system packages and services such as Samba, wsdd2, Python, and rclone were left installed."
-  echo "Samba user accounts created from SimpleSaferServer users were removed."
+  echo "Shared system packages and services such as Samba, wsdd2, OpenSSH, Python, and rclone were left installed."
+  echo "Root rclone configuration was left in place."
+  echo "Samba user accounts were left in place. Remove them manually only if you know they are no longer used."
   echo "SimpleSaferServer-owned Samba include files and include blocks were removed."
   echo "Unmanaged Samba share blocks in $SMB_CONF were left untouched."
   if [ "$apt_updates_managed" = "true" ]; then

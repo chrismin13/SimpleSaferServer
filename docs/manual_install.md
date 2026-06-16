@@ -8,7 +8,7 @@ SimpleSaferServer uses APT packages for host tools and `uv` for the Python app r
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y git ca-certificates smartmontools samba msmtp rsync curl unzip fdisk ntfs-3g unattended-upgrades
+sudo apt-get install -y git ca-certificates smartmontools samba openssh-server msmtp rsync curl unzip fdisk ntfs-3g unattended-upgrades
 ```
 
 Install `uv` if it is not already available. SimpleSaferServer needs `uv 0.11.13` or newer because
@@ -22,6 +22,11 @@ uv --version
 ## 2. Install rclone
 
 The automated installer uses rclone's official installer because distro rclone packages can miss newer cloud backends.
+If root already has `/root/.config/rclone/rclone.conf`, copy it before cloud-backup setup so you can recover any old remotes:
+
+```bash
+sudo cp /root/.config/rclone/rclone.conf /root/.config/rclone/rclone.conf.before-simplesaferserver
+```
 
 ```bash
 curl -fsSL https://rclone.org/install.sh -o /tmp/rclone-install.sh
@@ -29,7 +34,14 @@ sudo bash /tmp/rclone-install.sh
 rm -f /tmp/rclone-install.sh
 ```
 
-## 3. Install HDSentinel
+## 3. Enable SSH
+
+```bash
+sudo systemctl enable ssh
+sudo systemctl start ssh
+```
+
+## 4. Install HDSentinel
 
 HDSentinel is optional but recommended for the Drive Health page and the dashboard health meter.
 
@@ -48,7 +60,7 @@ sudo install -m 755 /tmp/hdsentinel/HDSentinel /usr/local/bin/hdsentinel
 /usr/local/bin/hdsentinel
 ```
 
-## 4. Copy Application Files
+## 5. Copy Application Files
 
 ```bash
 sudo mkdir -p /opt/SimpleSaferServer /var/lib/SimpleSaferServer
@@ -59,7 +71,7 @@ sudo rsync -a --delete templates /opt/SimpleSaferServer/
 
 Durable app data, including HDSentinel state, belongs in `/var/lib/SimpleSaferServer`. Configuration belongs in `/etc/SimpleSaferServer`, logs in `/var/log/SimpleSaferServer`, and volatile runtime state in `/run/SimpleSaferServer`.
 
-## 5. Sync Python Runtime And Dependencies
+## 6. Sync Python Runtime And Dependencies
 
 Run uv from the installed app directory so it reads `.python-version`, `pyproject.toml`, and `uv.lock`.
 
@@ -71,7 +83,7 @@ sudo uv sync --frozen --no-dev
 
 The app environment is `/opt/SimpleSaferServer/.venv`. Do not use distro Python packages as the app runtime.
 
-## 6. Install Helper Scripts
+## 7. Install Helper Scripts
 
 ```bash
 sudo mkdir -p /usr/local/bin
@@ -79,7 +91,7 @@ sudo cp scripts/* /usr/local/bin/
 sudo chmod +x /usr/local/bin/check_mount.sh /usr/local/bin/check_health.sh /usr/local/bin/check_health.py /usr/local/bin/backup_cloud.sh /usr/local/bin/app_update.sh /usr/local/bin/app_update.py /usr/local/bin/log_alert.py /usr/local/bin/ddns_update.sh /usr/local/bin/ddns_update.py /usr/local/bin/restore_disabled_timers.py
 ```
 
-## 7. Prepare Samba Layout
+## 8. Prepare Samba Layout
 
 ```bash
 cd /opt/SimpleSaferServer
@@ -95,7 +107,7 @@ sudo systemctl start wsdd2 || true
 
 `smbd` is required for file serving. `nmbd` and `wsdd2` are discovery helpers and may be unavailable on some supported hosts.
 
-## 8. Install The Web Service
+## 9. Install The Web Service
 
 ```bash
 sudo cp simple_safer_server_web.service /etc/systemd/system/simple_safer_server_web.service
@@ -106,7 +118,13 @@ sudo systemctl restart simple_safer_server_web.service
 
 The service runs Gunicorn from `/opt/SimpleSaferServer/.venv/bin/gunicorn` and serves `simple_safer_server.wsgi:app`.
 
-## 9. Generate Background Units
+Check the web service if the Web UI does not open:
+
+```bash
+sudo systemctl --no-pager status simple_safer_server_web.service
+```
+
+## 10. Generate Background Units
 
 ```bash
 cd /opt/SimpleSaferServer
@@ -131,7 +149,7 @@ PY
 
 Recurring timers become active only after setup is complete.
 
-## 10. Open The Web UI
+## 11. Open The Web UI
 
 Start at:
 

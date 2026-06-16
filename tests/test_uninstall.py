@@ -1,4 +1,3 @@
-import json
 import subprocess
 import tempfile
 import textwrap
@@ -37,41 +36,17 @@ class UninstallScriptTests(unittest.TestCase):
             text=True,
         )
 
-    def test_collect_samba_users_reads_current_users_json_shape(self):
-        with tempfile.TemporaryDirectory() as tempdir:
-            users_path = Path(tempdir) / "users.json"
-            users_path.write_text(
-                json.dumps({"alice": {"is_admin": True}, "bob": {"is_admin": False}})
-            )
+    def test_uninstall_does_not_delete_samba_users(self):
+        script = UNINSTALL_SCRIPT.read_text()
 
-            output = self.run_bash(
-                textwrap.dedent(
-                    f"""\
-                    source "{UNINSTALL_SCRIPT}"
-                    USERS_FILE="{users_path}"
-                    collect_samba_users
-                    """
-                )
-            )
+        self.assertNotIn("smbpasswd -x", script)
+        self.assertIn("Samba user accounts were left in place", script)
 
-        self.assertEqual(output.strip().splitlines(), ["alice", "bob"])
+    def test_uninstall_leaves_root_rclone_config(self):
+        script = UNINSTALL_SCRIPT.read_text()
 
-    def test_collect_samba_users_fails_on_invalid_json(self):
-        with tempfile.TemporaryDirectory() as tempdir:
-            users_path = Path(tempdir) / "users.json"
-            users_path.write_text("{ definitely not valid json")
-
-            result = self.run_bash_raw(
-                textwrap.dedent(
-                    f"""\
-                    source "{UNINSTALL_SCRIPT}"
-                    USERS_FILE="{users_path}"
-                    collect_samba_users
-                    """
-                )
-            )
-
-        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn('rm -f "$RCLONE_CONFIG_PATH"', script)
+        self.assertIn("Root rclone configuration was left in place", script)
 
     def test_apt_updates_were_managed_detects_managed_config(self):
         with tempfile.TemporaryDirectory() as tempdir:

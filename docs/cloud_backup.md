@@ -29,6 +29,9 @@ The Cloud Backup page manages cloud backup settings, schedules, and status.
 - **Rclone Configuration**: Paste or edit the stored rclone config. Administrators can inspect this
   value because this page is the editor for cloud-backup credentials and destinations.
 - **Remote Name and Path**: Enter in the format `remotename:/path`.
+- **Existing root rclone config**: SimpleSaferServer manages `/root/.config/rclone/rclone.conf`.
+  If that file already exists, the app keeps a one-time backup at
+  `/root/.config/rclone/rclone.conf.before-simplesaferserver` before replacing it.
 - **Warning**: rclone will synchronize the remote path to match the local backup directory.
 
 ## Fake Mode

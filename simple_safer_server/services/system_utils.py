@@ -49,6 +49,12 @@ class SystemUtils:
 
             # Write rclone config
             config_path = rclone_dir / 'rclone.conf'
+            backup_path = rclone_dir / 'rclone.conf.before-simplesaferserver'
+            # Root's rclone.conf may predate SimpleSaferServer. Keep a one-time
+            # copy before the app starts managing this file.
+            if config_path.exists() and not backup_path.exists():
+                shutil.copy2(config_path, backup_path)
+                backup_path.chmod(0o600)
             atomic_write_text(config_path, config, mode=0o600)
 
             return True
