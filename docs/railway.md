@@ -78,6 +78,18 @@ package to match the app's Python target. Refresh this pin when Railway builds
 break, when the app moves to a new Python version, or during a planned Railway
 deployment package refresh.
 
+## Runtime Command
+
+Railway starts the app with Gunicorn's threaded worker and the package WSGI entrypoint:
+
+```text
+.venv/bin/gunicorn --worker-class gthread --threads ${WEB_THREADS:-4} -w 1 --bind 0.0.0.0:$PORT simple_safer_server.wsgi:app
+```
+
+The app does not use Socket.IO, so the Railway runtime does not need Flask-SocketIO,
+Eventlet, or Gunicorn's deprecated Eventlet worker. Change `WEB_THREADS` when the
+demo needs more or fewer request threads.
+
 ## Notes
 
 - The app now persists the Flask session secret in the writable config
