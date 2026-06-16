@@ -76,6 +76,8 @@ This flow is partition-oriented.
 - The NTFS driver selector controls the filesystem type written to the managed `/etc/fstab` entry. `ntfs-3g` remains the default; `ntfs3` uses the kernel NTFS driver on kernels that support it.
 - Managed `ntfs3` entries use explicit `dmask=000,fmask=000` permissions so existing NTFS folders remain writable through the authenticated Samba share.
 
+NTFS is required here because it keeps recovery simple. After you unmount the drive or shut down the server, you can unplug the drive and connect it to another computer to view or edit your files. NTFS also works with common off-the-shelf recovery tools.
+
 This is different from setup wizard step 2, which is disk-oriented for formatting.
 
 It is also different from the main Dashboard `Unmount Drive` action.
