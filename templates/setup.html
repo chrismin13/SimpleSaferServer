@@ -110,6 +110,15 @@
                     <div id="step2" class="setup-step">
                         <div class="setup-card">
                             <h3>Drive Format <span class="badge badge-neutral">Optional</span></h3>
+                            <div class="help-panel mb-4">
+                                <div class="help-panel-title"><i class="fas fa-circle-info"></i> Why this uses one NTFS drive</div>
+                                <div class="help-panel-body">
+                                    SimpleSaferServer prepares one large NTFS backup partition. NTFS is easy to plug into Windows, macOS, and Linux for emergency recovery, and one backup partition keeps scheduled backups, SMB sharing, and restore steps simple.
+                                </div>
+                                <a href="{{ docs_url('setup.md') }}" target="_blank" rel="noopener noreferrer" class="help-panel-link">
+                                    <i class="fas fa-book-open"></i> Read the setup guide
+                                </a>
+                            </div>
                             <div class="form-group mb-4">
                                 <label class="form-label">Select Drive to Format</label>
                                 <select id="formatDriveSelect" class="form-control">
@@ -148,6 +157,12 @@ This removes all files on the selected drive and prepares it as one backup drive
                     <div id="step3" class="setup-step">
                         <div class="setup-card">
                             <h3>Drive Mount</h3>
+                            <div class="help-panel mb-4">
+                                <div class="help-panel-title"><i class="fas fa-plug"></i> What gets mounted</div>
+                                <div class="help-panel-body">
+                                    Pick the NTFS partition that should be the backup drive. The app saves this choice so boot-time mounts and the scheduled Check Mount task know which drive to bring back online.
+                                </div>
+                            </div>
                             <div class="form-group mb-4">
                                 <label class="form-label">Select Drive to Mount</label>
                                 <select id="mountDriveSelect" class="form-control">
@@ -258,6 +273,15 @@ unmount the share, then restart SMB automatically."
                                     </div>
                                     <!-- Advanced rclone Fields -->
                                     <div id="advancedConfigFields" class="tab-pane" role="tabpanel" aria-labelledby="tab-setup-advanced">
+                                        <div class="help-panel mb-3">
+                                            <div class="help-panel-title"><i class="fas fa-cloud-arrow-up"></i> Import an rclone config</div>
+                                            <div class="help-panel-body">
+                                                Run <code>rclone config</code> on this server or another trusted machine, create the remote, then paste the config text here. Use <code>remote:/folder</code> for the Remote Name and Path field.
+                                            </div>
+                                            <a href="{{ docs_url('cloud_backup.md') }}" target="_blank" rel="noopener noreferrer" class="help-panel-link">
+                                                <i class="fas fa-book-open"></i> Read the cloud backup guide
+                                            </a>
+                                        </div>
                                         <div class="form-group mb-3">
                                             <label class="form-label">Rclone Configuration</label>
                                             <textarea id="rcloneConfig" rows="7" class="form-control" placeholder="Paste your rclone configuration here…"></textarea>

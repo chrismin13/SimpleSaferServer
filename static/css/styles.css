@@ -519,6 +519,60 @@ body.fake-mode-active .toast-stack {
   opacity: 0.6;
 }
 
+/* ── Compact help panels ────────────────────────────────────── */
+.help-panel {
+  background: hsla(220, 16%, 12%, 0.72);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: var(--sp-4);
+}
+
+.help-panel-title {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semi);
+  margin-bottom: var(--sp-2);
+}
+
+.help-panel-body {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+}
+
+.help-panel-list {
+  display: grid;
+  gap: var(--sp-2);
+  margin: var(--sp-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.help-panel-list li {
+  display: grid;
+  grid-template-columns: minmax(7rem, max-content) 1fr;
+  gap: var(--sp-3);
+  align-items: start;
+}
+
+.help-panel-term {
+  color: var(--text-primary);
+  font-weight: var(--weight-semi);
+}
+
+.help-panel-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  margin-top: var(--sp-2);
+  font-size: var(--text-sm);
+}
+
 /* ── Badge ──────────────────────────────────────────────────── */
 .badge {
   display: inline-flex;
@@ -2310,6 +2364,8 @@ pre code {
 
 @media (max-width: 768px) {
   .grid-2, .grid-3 { grid-template-columns: 1fr; }
+
+  .help-panel-list li { grid-template-columns: 1fr; gap: var(--sp-1); }
 }
 
 /* ── System updates ─────────────────────────────────────────── */

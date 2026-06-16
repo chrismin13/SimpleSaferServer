@@ -31,6 +31,18 @@ The Cloud Backup page manages cloud backup settings, schedules, and status.
 - **Remote Name and Path**: Enter in the format `remotename:/path`.
 - **Warning**: rclone will synchronize the remote path to match the local backup directory.
 
+How to create and import an rclone config:
+
+1. Install rclone on this server or another trusted machine.
+2. Run `rclone config`.
+3. Follow rclone's prompts to add the cloud storage remote you want.
+4. Open the generated rclone config file. It is usually at `~/.config/rclone/rclone.conf`.
+5. Copy the remote block for the remote you want SimpleSaferServer to use.
+6. Paste that config text into the Advanced rclone config box.
+7. Enter the destination as `remote:/folder`, for example `myremote:/backups`.
+
+Use a dedicated remote folder. Cloud Backup uses sync behavior, so files in the remote folder can be deleted when they do not exist in the local backup folder.
+
 ## Fake Mode
 
 Fake mode avoids local system changes, but cloud-backup provider calls can still run when real

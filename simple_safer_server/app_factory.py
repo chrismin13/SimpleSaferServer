@@ -286,6 +286,11 @@ def create_app() -> Flask:
     def inject_template_context():
         username = session.get("username")
 
+        def docs_url(doc_name):
+            # Keep public docs links in one place so template help links do not
+            # drift if the GitHub docs path changes later.
+            return f"https://github.com/chrismin13/SimpleSaferServer/blob/main/docs/{doc_name}"
+
         def browser_title(page_name):
             hostname = ""
             try:
@@ -303,6 +308,7 @@ def create_app() -> Flask:
             "runtime_mode": runtime.mode,
             "default_mount_point": runtime.default_mount_point,
             "browser_title": browser_title,
+            "docs_url": docs_url,
             # Expose admin status so templates can conditionally show admin-only nav items.
             "is_admin": user_manager.is_admin(username) if username else False,
         }

@@ -37,6 +37,18 @@ This step is disk-oriented.
 - The format button removes the existing drive layout, creates one large backup partition, and formats that partition as NTFS.
 - Formatting erases all existing data on the selected disk.
 
+Why NTFS:
+
+- NTFS is readable on Windows, macOS, and Linux, which helps if you ever need to plug the backup drive into another computer during recovery.
+- Samba file sharing works well on top of the mounted NTFS backup partition.
+- The app supports `ntfs-3g` by default and can use `ntfs3` when the kernel supports it.
+
+Why one large backup partition:
+
+- SimpleSaferServer is meant to manage one backup destination, not a whole disk layout.
+- One partition keeps the mount path, SMB share, cloud backup source, health checks, and restore steps easy to understand.
+- Multi-partition layouts can be useful for other tools, but they are harder for this app to manage safely.
+
 Why it works this way:
 
 - Formatting is a whole-disk preparation step.
