@@ -10,6 +10,23 @@ The Alerts page displays system alerts and allows configuration of email notific
 - **Validation**: Inline feedback for all fields.
 - **Success/Error Feedback**: Inline messages for save actions.
 
+## SMTP Credential Help
+
+SMTP settings come from the email provider that will send the alert emails. Most providers want the full email address as the username and an app password instead of the normal account password.
+
+Helpful provider docs:
+
+- [Gmail app passwords](https://support.google.com/mail/answer/185833?hl=en)
+- [Gmail SMTP settings](https://support.google.com/mail/answer/7104828?hl=en)
+- [Outlook.com SMTP settings](https://support.microsoft.com/en-us/office/pop-imap-and-smtp-settings-for-outlook-com-d088b986-291d-42b8-9564-9c414e2aa040)
+- [Microsoft account app passwords](https://support.microsoft.com/en-us/accounts-billing/manage/how-to-get-and-use-app-passwords)
+- [Yahoo Mail app password help](https://help.yahoo.com/kb/SLN27791.html)
+- [Yahoo Mail SMTP settings](https://help.yahoo.com/kb/imap-server-settings-yahoo-mail-sln4075.html)
+- [iCloud Mail server settings](https://support.apple.com/en-us/102525)
+- [Apple app-specific passwords](https://support.apple.com/en-us/102654)
+
+For a work, school, or custom-domain email account, use the provider's own mail settings page or ask the mail administrator for the SMTP host, port, username, and app password rules.
+
 ## Past Alerts
 - **Table**: Lists all past alerts with columns for Time, Type, Title, Message, Source, Status.
 - **Actions**:
