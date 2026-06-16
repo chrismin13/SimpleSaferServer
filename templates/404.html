@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}{{ browser_title('Page not found') }}{% endblock %}
+{% block header %}Page not found{% endblock %}
+
+{% block content %}
+<section class="not-found-page" aria-labelledby="not-found-title">
+  <div class="not-found-panel">
+    <div class="not-found-main">
+      <div class="not-found-code" aria-hidden="true">404</div>
+      <div class="not-found-copy">
+        <h2 id="not-found-title">This page is not here</h2>
+        <p>This page does not exist, or the link is out of date.</p>
+      </div>
+    </div>
+
+    <div class="not-found-actions" aria-label="Useful places to go next">
+      <a href="{{ url_for('task_routes.dashboard') }}" class="btn btn-primary">
+        <i class="fas fa-house"></i> Go to Overview
+      </a>
+      <a href="{{ url_for('network_file_sharing') }}" class="btn btn-secondary">
+        <i class="fas fa-share-nodes"></i> File Sharing
+      </a>
+      <a href="{{ url_for('drive_health_routes.drives') }}" class="btn btn-secondary">
+        <i class="fas fa-hard-drive"></i> Drive Health
+      </a>
+      <a href="{{ url_for('cloud_backup_routes.cloud_backup_page') }}" class="btn btn-secondary">
+        <i class="fas fa-cloud-arrow-up"></i> Cloud Backup
+      </a>
+      <a href="{{ url_for('alerts_routes.alerts_page') }}" class="btn btn-secondary">
+        <i class="fas fa-bell"></i> Alerts
+      </a>
+    </div>
+
+    <div class="not-found-path">
+      <span>Requested path</span>
+      {# The path is escaped by Jinja, so odd URLs can be shown without becoming HTML. #}
+      <code>{{ requested_path }}</code>
+    </div>
+  </div>
+</section>
+{% endblock %}

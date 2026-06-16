@@ -745,6 +745,114 @@ body.fake-mode-active .toast-stack {
   white-space: nowrap;
 }
 
+/* ── Not found page ─────────────────────────────────────────── */
+.not-found-page {
+  min-height: min(620px, calc(100vh - 180px));
+  display: flex;
+  align-items: center;
+}
+
+.not-found-panel {
+  width: min(760px, 100%);
+  background: hsla(220, 16%, 12%, 0.78);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: var(--sp-6);
+}
+
+.not-found-main {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--sp-5);
+  align-items: center;
+  margin-bottom: var(--sp-5);
+}
+
+.not-found-code {
+  font-family: var(--font-mono);
+  font-size: clamp(2rem, 7vw, 4.5rem);
+  font-weight: var(--weight-bold);
+  line-height: 1;
+  color: var(--accent);
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--accent-subtle);
+  border: 1px solid hsla(38, 90%, 55%, 0.24);
+  border-radius: var(--radius-md);
+}
+
+.not-found-copy h2 {
+  font-size: var(--text-xl);
+  margin-bottom: var(--sp-2);
+}
+
+.not-found-copy p {
+  color: var(--text-secondary);
+  max-width: 42rem;
+}
+
+.not-found-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--sp-3);
+}
+
+.not-found-actions .btn {
+  min-width: 0;
+  white-space: normal;
+}
+
+.not-found-path {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+  margin-top: var(--sp-5);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.not-found-path span {
+  flex: 0 0 auto;
+}
+
+.not-found-path code {
+  color: var(--text-secondary);
+.not-found-path code {
+  color: var(--text-secondary);
+  overflow-wrap: break-word;
+}
+}
+
+@media (max-width: 640px) {
+  .not-found-page {
+    min-height: auto;
+    align-items: flex-start;
+  }
+
+  .not-found-panel {
+    padding: var(--sp-5);
+  }
+
+  .not-found-main {
+    grid-template-columns: 1fr;
+    gap: var(--sp-4);
+  }
+
+  .not-found-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .not-found-path {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: var(--sp-1);
+  }
+}
+
 /* ── Forms ──────────────────────────────────────────────────── */
 .form-group {
   display: flex;
