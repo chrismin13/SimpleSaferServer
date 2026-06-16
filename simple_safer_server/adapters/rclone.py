@@ -14,12 +14,14 @@ class RcloneAdapter:
         *,
         config_path: str | None = None,
         bandwidth_limit: str = "",
+        filter_from: str | None = None,
     ):
         command = self.build_sync_command(
             source,
             destination,
             config_path=config_path,
             bandwidth_limit=bandwidth_limit,
+            filter_from=filter_from,
         )
         return self._command_runner.popen(
             command,
@@ -36,10 +38,13 @@ class RcloneAdapter:
         *,
         config_path: str | None = None,
         bandwidth_limit: str = "",
+        filter_from: str | None = None,
     ) -> list[str]:
         command = ["rclone", "sync", source, destination, "--create-empty-src-dirs", "-v"]
         if config_path:
             command.extend(["--config", config_path])
         if bandwidth_limit:
             command.extend(["--bwlimit", bandwidth_limit])
+        if filter_from:
+            command.extend(["--filter-from", filter_from])
         return command

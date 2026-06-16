@@ -1,7 +1,13 @@
 #!/bin/bash
 
 CONFIG_FILE="/etc/SimpleSaferServer/config.conf"
+CONFIG_DIR="/etc/SimpleSaferServer"
+RCLONE_INCLUDE_PATTERNS_FILE="$CONFIG_DIR/rclone_include_patterns.txt"
+RCLONE_EXCLUDE_PATTERNS_FILE="$CONFIG_DIR/rclone_exclude_patterns.txt"
 PYTHON_BIN="/opt/SimpleSaferServer/.venv/bin/python"
+FILTER_FILE=""
+FILTER_RULE_COUNT=0
+INCLUDE_RULE_COUNT=0
 
 if [ ! -x "$PYTHON_BIN" ]; then
   echo "Missing SimpleSaferServer Python environment at $PYTHON_BIN" >&2
@@ -17,6 +23,58 @@ get_config_value() {
         in_section && $1 ~ "^[ \t]*"key"[ \t]*$" { gsub(/^[ \t]+|[ \t]+$/, "", $2); print $2; exit }
     ' "$CONFIG_FILE" | tr -d '"'
 }
+
+cleanup_filter_file() {
+  if [ -n "$FILTER_FILE" ] && [ -f "$FILTER_FILE" ]; then
+    rm -f "$FILTER_FILE"
+  fi
+}
+
+append_filter_patterns() {
+  local rule_prefix=$1
+  local pattern_file=$2
+  local pattern
+  local trimmed
+
+  [ -f "$pattern_file" ] || return 0
+
+  while IFS= read -r pattern || [ -n "$pattern" ]; do
+    trimmed=$pattern
+    trimmed="${trimmed#"${trimmed%%[![:space:]]*}"}"
+    trimmed="${trimmed%"${trimmed##*[![:space:]]}"}"
+    if [ -z "$trimmed" ] || [[ "$trimmed" == \#* ]] || [[ "$trimmed" == \;* ]]; then
+      continue
+    fi
+    printf "%s %s\n" "$rule_prefix" "$trimmed" >>"$FILTER_FILE"
+    FILTER_RULE_COUNT=$((FILTER_RULE_COUNT + 1))
+    if [ "$rule_prefix" = "+" ]; then
+      INCLUDE_RULE_COUNT=$((INCLUDE_RULE_COUNT + 1))
+    fi
+  done <"$pattern_file"
+}
+
+add_rclone_filter_args() {
+  FILTER_FILE=$(mktemp)
+  append_filter_patterns "-" "$RCLONE_EXCLUDE_PATTERNS_FILE"
+  append_filter_patterns "+" "$RCLONE_INCLUDE_PATTERNS_FILE"
+
+  if [ "$INCLUDE_RULE_COUNT" -gt 0 ]; then
+    # rclone --filter-from reads rules in order. With include rules present,
+    # this final rule makes the include list act like an allow-list.
+    printf "%s\n" "- **" >>"$FILTER_FILE"
+    FILTER_RULE_COUNT=$((FILTER_RULE_COUNT + 1))
+  fi
+
+  if [ "$FILTER_RULE_COUNT" -gt 0 ]; then
+    extra_args+=(--filter-from "$FILTER_FILE")
+    echo "Using configured rclone file filters."
+  else
+    cleanup_filter_file
+    FILTER_FILE=""
+  fi
+}
+
+trap cleanup_filter_file EXIT
 
 MOUNT_POINT=$(get_config_value backup mount_point)
 FROM_ADDRESS=$(get_config_value backup from_address)
@@ -60,6 +118,8 @@ if [ -n "$BANDWIDTH_LIMIT" ]; then
 else
   extra_args=()
 fi
+
+add_rclone_filter_args
 
 echo "Starting cloud backup to $RCLONE_DIR..."
 echo "Source: $MOUNT_POINT"

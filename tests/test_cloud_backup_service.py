@@ -98,6 +98,7 @@ class CloudBackupServiceTests(unittest.TestCase):
         self.addCleanup(temp_dir.cleanup)
         runtime = types.SimpleNamespace(
             is_fake=is_fake,
+            config_dir=Path(temp_dir.name),
             rclone_config_dir=Path(temp_dir.name),
         )
         config = FakeConfigManager()
@@ -130,6 +131,8 @@ class CloudBackupServiceTests(unittest.TestCase):
         self.assertEqual(payload["mega_email"], "user@example.com")
         self.assertNotIn("mega_pass", payload)
         self.assertEqual(payload["rclone_config"], "[remote]\ntype = test\n")
+        self.assertEqual(payload["rclone_include_patterns"], "")
+        self.assertEqual(payload["rclone_exclude_patterns"], "")
 
     def test_status_and_manual_run_use_cloud_backup_task(self):
         task = FakeTask()
@@ -207,6 +210,21 @@ class CloudBackupServiceTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValidationProblem, "Rclone config and remote name"):
             service.save_config({"cloud_mode": "advanced", "rclone_config": "", "remote_name": ""})
+
+    def test_save_config_persists_rclone_filter_patterns(self):
+        service, _config, _system_utils, _runtime = self.make_service()
+
+        service.save_config(
+            {
+                "cloud_mode": "",
+                "rclone_include_patterns": "Documents/**\n# ignored\n",
+                "rclone_exclude_patterns": "*.tmp\n",
+            }
+        )
+
+        payload = service.get_config()
+        self.assertEqual(payload["rclone_include_patterns"], "Documents/**\n")
+        self.assertEqual(payload["rclone_exclude_patterns"], "*.tmp\n")
 
     def test_mega_config_rewrites_rclone_when_reusing_stored_credentials(self):
         service, config, system_utils, _runtime = self.make_service()

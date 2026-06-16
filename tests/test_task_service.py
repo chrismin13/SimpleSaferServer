@@ -1,5 +1,6 @@
 import json
 import os
+import tempfile
 import threading
 import time
 import unittest
@@ -154,9 +155,14 @@ class TaskServiceTests(unittest.TestCase):
         systemd_adapter=None,
         rclone_dir="",
     ):
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        test_root = Path(temp_dir.name)
         runtime = SimpleNamespace(
             is_fake=is_fake,
-            data_dir=Path("/tmp/simple-safer-server-test-data"),
+            config_dir=test_root / "config",
+            data_dir=test_root / "data",
+            volatile_dir=test_root / "run",
             default_mount_point=mount_point,
             repo_root=Path("."),
             rclone_config_dir=Path("."),
@@ -258,6 +264,30 @@ class TaskServiceTests(unittest.TestCase):
             ("Cloud Backup", "copied"),
             fake_state.logs,
         )
+
+    def test_fake_cloud_backup_passes_rclone_filter_file(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            mount_point = Path(temp_dir) / "source"
+            config_dir = Path(temp_dir) / "config"
+            volatile_dir = Path(temp_dir) / "run"
+            mount_point.mkdir()
+            config_dir.mkdir()
+            (config_dir / "rclone_include_patterns.txt").write_text("Documents/**\n")
+            (config_dir / "rclone_exclude_patterns.txt").write_text("*.tmp\n")
+            service, _fake_state = self.build_service(
+                mount_point=str(mount_point),
+                rclone_dir=str(Path(temp_dir) / "target"),
+            )
+            service.runtime.config_dir = config_dir
+            service.runtime.volatile_dir = volatile_dir
+            service.rclone_adapter = MagicMock()
+            service.rclone_adapter.sync.return_value = FakeProcess(stdout="copied\n")
+
+            service._run_fake_cloud_backup(threading.Event())
+
+            filter_path = service.rclone_adapter.sync.call_args.kwargs["filter_from"]
+            self.assertIsNotNone(filter_path)
+            self.assertFalse(Path(filter_path).exists())
 
     @patch("simple_safer_server.services.task_service.run_scheduled_drive_health_check")
     def test_fake_drive_health_logs_smart_collection(self, mock_health_check):

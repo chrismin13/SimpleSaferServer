@@ -72,6 +72,9 @@ document.addEventListener('DOMContentLoaded', function () {
   const megaFolderWarning = document.getElementById('megaFolderWarning');
   const rcloneConfig = document.getElementById('rcloneConfig');
   const remoteName = document.getElementById('remoteName');
+  const rcloneIncludePatterns = document.getElementById('rcloneIncludePatterns');
+  const rcloneExcludePatterns = document.getElementById('rcloneExcludePatterns');
+  const rcloneFilterFeedback = document.getElementById('rcloneFilterFeedback');
   const backupTime = document.getElementById('backupTime');
   const bandwidthLimit = document.getElementById('bandwidthLimit');
 
@@ -264,6 +267,8 @@ document.addEventListener('DOMContentLoaded', function () {
   function fillConfigForm(cfg) {
     if (!cfg) return;
     rcloneConfig.value = cfg.rclone_config || '';
+    rcloneIncludePatterns.value = cfg.rclone_include_patterns || '';
+    rcloneExcludePatterns.value = cfg.rclone_exclude_patterns || '';
     if (cfg.cloud_mode === 'mega') {
       modeMega.checked = true;
       showModeFields('mega');
@@ -297,6 +302,8 @@ document.addEventListener('DOMContentLoaded', function () {
       data.rclone_config = rcloneConfig.value.trim();
       data.remote_name = remoteName.value.trim();
     }
+    data.rclone_include_patterns = rcloneIncludePatterns.value.trim();
+    data.rclone_exclude_patterns = rcloneExcludePatterns.value.trim();
     return data;
   }
 
@@ -322,10 +329,25 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   }
 
+  function validateRclonePatternText(textarea) {
+    const invalid = textarea.value.split('\n').some(line => {
+      const pattern = line.trim();
+      return pattern && !pattern.startsWith('#') && !pattern.startsWith(';') && ['+', '-', '!'].includes(pattern[0]);
+    });
+    textarea.classList.toggle('is-invalid', invalid);
+    return !invalid;
+  }
+
   configForm.addEventListener('submit', function (e) {
     e.preventDefault();
     const data = getConfigFormData();
     let valid = true;
+    const filtersValid = validateRclonePatternText(rcloneIncludePatterns)
+      && validateRclonePatternText(rcloneExcludePatterns);
+    rcloneFilterFeedback.style.display = filtersValid ? '' : 'block';
+    if (!filtersValid) {
+      valid = false;
+    }
     if (data.cloud_mode === 'mega') {
       if (!data.mega_email.match(/^[^@\s]+@[^@\s]+\.[^@\s]+$/)) {
         megaEmail.classList.add('is-invalid'); valid = false;
@@ -391,6 +413,13 @@ document.addEventListener('DOMContentLoaded', function () {
     remoteName.addEventListener('blur', validateRemoteName);
     remoteName.addEventListener('input', validateRemoteName);
   }
+  [rcloneIncludePatterns, rcloneExcludePatterns].forEach(textarea => {
+    textarea.addEventListener('input', function () {
+      const filtersValid = validateRclonePatternText(rcloneIncludePatterns)
+        && validateRclonePatternText(rcloneExcludePatterns);
+      rcloneFilterFeedback.style.display = filtersValid ? '' : 'block';
+    });
+  });
 
   if (modeMega) {
     modeMega.addEventListener('change', function() {

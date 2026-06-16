@@ -23,6 +23,7 @@ from simple_safer_server.services.drive_health import (
     hdsentinel_snapshot_has_health,
     run_scheduled_drive_health_check,
 )
+from simple_safer_server.services.rclone_filters import write_temp_rclone_filter_file
 
 
 class Status:
@@ -508,22 +509,28 @@ class TaskService:
             f"Starting backup from {source} to {destination}",
         )
         bandwidth_limit = self.config_manager.get_value("backup", "bandwidth_limit", "").strip()
-        proc = self.rclone_adapter.sync(
-            source,
-            destination,
-            config_path=str(rclone_config_path) if rclone_config_path.exists() else None,
-            bandwidth_limit=bandwidth_limit,
-        )
-        stdout_output, stderr_output = self._collect_process_output(
-            proc, cancel_event, "fake-cloud-backup"
-        )
-        output = f"{stdout_output}{stderr_output}"
-        if output.strip():
-            fake_state.append_task_log("Cloud Backup", output.strip())
-        if cancel_event.is_set():
-            raise RuntimeError("Cloud backup was cancelled.")
-        if proc.returncode != 0:
-            raise RuntimeError(output.strip() or "Cloud backup failed.")
+        filter_from = write_temp_rclone_filter_file(self.runtime)
+        try:
+            proc = self.rclone_adapter.sync(
+                source,
+                destination,
+                config_path=str(rclone_config_path) if rclone_config_path.exists() else None,
+                bandwidth_limit=bandwidth_limit,
+                filter_from=filter_from,
+            )
+            stdout_output, stderr_output = self._collect_process_output(
+                proc, cancel_event, "fake-cloud-backup"
+            )
+            output = f"{stdout_output}{stderr_output}"
+            if output.strip():
+                fake_state.append_task_log("Cloud Backup", output.strip())
+            if cancel_event.is_set():
+                raise RuntimeError("Cloud backup was cancelled.")
+            if proc.returncode != 0:
+                raise RuntimeError(output.strip() or "Cloud backup failed.")
+        finally:
+            if filter_from:
+                os.remove(filter_from)
 
     def _start_fake_task(self, task_name: str) -> None:
         fake_state = self._require_fake_state()
