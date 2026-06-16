@@ -1,5 +1,6 @@
 import logging
 import os
+from datetime import timedelta
 from logging.handlers import RotatingFileHandler
 
 from flask import (
@@ -53,6 +54,8 @@ from simple_safer_server.web.problems import (
     UnauthorizedProblem,
 )
 
+REMEMBER_ME_SESSION_DAYS = 14
+
 
 def create_app() -> Flask:
     runtime = get_runtime()
@@ -61,6 +64,10 @@ def create_app() -> Flask:
     # Keep the session secret stable across deploys so a restart does not
     # invalidate every login cookie when the app's config directory persists.
     app.secret_key = get_flask_secret_key(runtime)
+    # "Remember me" uses Flask's normal signed session cookie. No password or
+    # separate login token is stored, and protected pages still re-check admin
+    # status on each request in case roles change after sign-in.
+    app.permanent_session_lifetime = timedelta(days=REMEMBER_ME_SESSION_DAYS)
     user_manager = UserManager(runtime=runtime)
 
     system_utils = SystemUtils(runtime=runtime)
@@ -208,6 +215,7 @@ def create_app() -> Flask:
 
             if user_manager.verify_user(username, password):
                 if user_manager.is_admin(username):
+                    session.permanent = request.form.get("remember_me") == "on"
                     session["username"] = username
                     session.pop("skip_login_disabled", None)
                     if request.accept_mimetypes.best == "application/json":

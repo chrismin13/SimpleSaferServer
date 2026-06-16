@@ -152,6 +152,29 @@
     background: var(--bg-root);
 }
 
+.login-remember-option {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    margin: calc(-1 * var(--sp-1)) 0 var(--sp-5);
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    line-height: 1.4;
+    cursor: pointer;
+    user-select: none;
+}
+
+.login-remember-checkbox {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 auto;
+    accent-color: var(--accent);
+}
+
+.login-remember-option:focus-within {
+    color: var(--text-primary);
+}
+
 .login-form .btn-submit {
     margin-top: var(--sp-2);
     height: 48px;
