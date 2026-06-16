@@ -37,6 +37,8 @@ This step is disk-oriented.
 - The format button removes the existing drive layout, creates one large backup partition, and formats that partition as NTFS.
 - Formatting erases all existing data on the selected disk.
 
+SimpleSaferServer uses NTFS for the backup drive so recovery stays simple. After you unmount the drive or shut down the server, you can unplug the drive and connect it to another computer to view or edit your files. NTFS also works with common off-the-shelf recovery tools.
+
 Why it works this way:
 
 - Formatting is a whole-disk preparation step.
@@ -59,6 +61,8 @@ This step is partition-oriented.
 - The mount button mounts that selected NTFS partition at the chosen mount point.
 - Advanced options allow changing the mount point.
 - A successful mount step always writes the managed `/etc/fstab` entry so the backup drive can be remounted at boot and by scheduled mount checks.
+
+The NTFS requirement is intentional. It keeps the backup drive useful even outside this server: unmount it or shut down, unplug it, then connect it to another computer to read or change files with normal tools.
 
 Persistent backup-drive state changes only when the mount/configure step succeeds:
 

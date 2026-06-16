@@ -117,6 +117,12 @@
                                 </select>
                                 <div id="driveMountStatusBadge" class="mt-2"></div>
                                 <div class="form-hint"><i class="fas fa-triangle-exclamation text-warning me-1"></i>Formatting removes all files on the selected drive and prepares it as one backup drive.</div>
+                                <div class="alert alert-info mt-3" style="font-size: var(--text-sm);">
+                                    <div class="alert-content">
+                                        <i class="fas fa-hard-drive"></i>
+                                        <span class="alert-message">SimpleSaferServer uses NTFS so you can unmount or shut down, unplug the backup drive, and connect it to another computer to view or edit your files. NTFS also works with common off-the-shelf recovery tools.</span>
+                                    </div>
+                                </div>
                             </div>
                             <div id="driveStatusArea" class="d-flex items-center mb-3" style="min-height:1.5rem;font-size:var(--text-sm);"></div>
                             <div class="d-flex gap-3 mb-4">
@@ -154,6 +160,12 @@ This removes all files on the selected drive and prepares it as one backup drive
                                     <option value="">Select a drive…</option>
                                 </select>
                                 <div class="form-hint">Only NTFS partitions are shown</div>
+                                <div class="alert alert-info mt-3" style="font-size: var(--text-sm);">
+                                    <div class="alert-content">
+                                        <i class="fas fa-hard-drive"></i>
+                                        <span class="alert-message">NTFS keeps the backup drive easy to recover. After you unmount it or shut down this server, you can unplug it and connect it to another computer to view or edit your files. NTFS also works with common off-the-shelf recovery tools.</span>
+                                    </div>
+                                </div>
                             </div>
                             <div id="mountStatusArea" class="d-flex items-center mb-3" style="min-height:1.5rem;font-size:var(--text-sm);"></div>
                             <!-- Advanced Options -->

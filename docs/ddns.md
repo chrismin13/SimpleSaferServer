@@ -2,6 +2,8 @@
 
 Dynamic DNS keeps public DNS records pointed at the server's current public IPv4 address. The `DDNS Update` task can run on schedule from systemd or immediately from the Dashboard task controls.
 
+Dynamic DNS is not the same thing as safe remote access. Do not open the SimpleSaferServer web interface directly to the internet. Use it only on your local network, or connect through a private VPN such as Tailscale.
+
 ## Fake Mode Behavior
 
 Fake mode simulates local system services, disks, Samba, and destructive machine actions. It does not sandbox DDNS provider APIs. If DuckDNS or Cloudflare is enabled with valid credentials, saving the DDNS settings or manually forcing a sync can update live DNS records.
