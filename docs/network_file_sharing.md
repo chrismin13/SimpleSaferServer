@@ -36,6 +36,14 @@ The technical service row tracks three file-sharing services:
 - `NetBIOS Discovery (nmbd)`: helps older Windows network browsing find this server
 - `Windows Discovery (wsdd2)`: helps modern Windows network browsing find this server
 
+NetBIOS in plain English:
+
+- SMB is the file-sharing protocol. It is what moves the files.
+- NetBIOS is an older local-network name helper used by some Windows network browsing flows.
+- If NetBIOS discovery is working, a Windows PC may find `family-nas` by name on the local network.
+- If NetBIOS is not working, SMB can still work when you connect directly by name or IP address, such as `\\family-nas\backup` or `\\192.168.1.50\backup`.
+- Modern Windows discovery usually uses `wsdd2`, so NetBIOS is helpful for compatibility but is not the only way to connect.
+
 The overall status is `Operational` when `smbd` is active and both discovery services are either
 active or unavailable (not installed). It is `Partial` when `smbd` is active but at least one
 discovery service is inactive or in an error state. It is `Down` when `smbd`
@@ -43,6 +51,56 @@ is not active, because direct file serving is unavailable.
 
 Changing the server name also restarts Samba discovery/services so the new name is
 advertised without rebooting. Connected file-sharing clients may need to reconnect.
+
+## How To Connect From Different Operating Systems
+
+Use the server name from the Network File Sharing page and the share name from the SMB Shares table.
+These examples assume the server is named `family-nas` and the share is named `backup`.
+
+### Windows
+
+Open File Explorer and type this in the address bar:
+
+```text
+\\family-nas\backup
+```
+
+If name discovery is not working, use the server IP address:
+
+```text
+\\192.168.1.50\backup
+```
+
+### macOS
+
+Open Finder, choose **Go > Connect to Server**, and enter:
+
+```text
+smb://family-nas/backup
+```
+
+### Linux Desktop
+
+Most Linux file managers support SMB addresses like:
+
+```text
+smb://family-nas/backup
+```
+
+### Linux Terminal
+
+Install the CIFS tools package for your distribution, create a mount folder, and mount the share:
+
+```bash
+sudo mkdir -p /mnt/family-backup
+sudo mount -t cifs //family-nas/backup /mnt/family-backup -o username=admin
+```
+
+Unmount it when you are done:
+
+```bash
+sudo umount /mnt/family-backup
+```
 
 If Unmanaged Samba Shares are detected, the page shows a small warning button with the count.
 That button opens a modal that:

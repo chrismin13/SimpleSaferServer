@@ -72,6 +72,22 @@
   </button>
 </section>
 
+<div class="help-panel mb-5">
+  <div class="help-panel-title"><i class="fas fa-circle-info"></i> Connect to a share</div>
+  <div class="help-panel-body">
+    Use the server name above and the share name from the table. Example share paths:
+    <ul class="help-panel-list">
+      <li><span class="help-panel-term">Windows</span><span>Open File Explorer and enter <code>\\family-nas\backup</code>.</span></li>
+      <li><span class="help-panel-term">macOS</span><span>Finder &gt; Go &gt; Connect to Server, then enter <code>smb://family-nas/backup</code>.</span></li>
+      <li><span class="help-panel-term">Linux</span><span>Use your file manager's network view, or mount with <code>mount -t cifs</code>.</span></li>
+      <li><span class="help-panel-term">NetBIOS</span><span>This is the older Windows name helper. It lets some PCs find <code>family-nas</code> on the local network instead of typing an IP address.</span></li>
+    </ul>
+  </div>
+  <a href="{{ docs_url('network_file_sharing.md') }}" target="_blank" rel="noopener noreferrer" class="help-panel-link">
+    <i class="fas fa-book-open"></i> Read the file sharing guide
+  </a>
+</div>
+
 <!-- SMB Shares -->
 <section>
   <div class="d-flex items-center justify-between mb-4">

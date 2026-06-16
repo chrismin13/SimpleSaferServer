@@ -123,6 +123,15 @@
 
         <!-- Advanced rclone Config Fields -->
         <div id="advancedConfigFields" class="tab-pane" role="tabpanel" aria-labelledby="tab-cloud-advanced">
+          <div class="help-panel mb-3">
+            <div class="help-panel-title"><i class="fas fa-cloud-arrow-up"></i> Import an rclone config</div>
+            <div class="help-panel-body">
+              Run <code>rclone config</code>, create the remote you want, then paste the matching config text here. The remote path should look like <code>myremote:/backups</code>. Backups sync the local backup folder to that remote path.
+            </div>
+            <a href="{{ docs_url('cloud_backup.md') }}" target="_blank" rel="noopener noreferrer" class="help-panel-link">
+              <i class="fas fa-book-open"></i> Read the cloud backup guide
+            </a>
+          </div>
           <div class="form-group mb-3">
             <label class="form-label">Paste your rclone configuration</label>
             <textarea class="form-control" id="rcloneConfig" rows="7" placeholder="Paste your rclone config here..."></textarea>

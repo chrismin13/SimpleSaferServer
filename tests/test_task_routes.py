@@ -53,6 +53,9 @@ def test_task_detail_loads_maximum_log_window():
     task.get_logs.assert_called_once_with(TASK_LOG_LINE_LIMIT)
     assert render.call_args[1]["log_lines"] == TASK_LOG_LINE_LIMIT
     assert render.call_args[1]["task_summary"] == {"schedule": {"state": "active"}}
+    assert render.call_args[1]["task_help"]["purpose"].startswith(
+        "Updates the installed SimpleSaferServer checkout"
+    )
 
 
 def test_task_logs_defaults_to_global_log_window():

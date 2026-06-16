@@ -58,6 +58,22 @@
   {% endif %}
 </div>
 
+<div class="help-panel mb-6">
+  <div class="help-panel-title"><i class="fas fa-stethoscope"></i> What the health numbers mean</div>
+  <div class="help-panel-body">
+    <ul class="help-panel-list">
+      <li><span class="help-panel-term">Health</span><span>HDSentinel's simple drive-health score. Below 50% is a warning; below 25% is critical.</span></li>
+      <li><span class="help-panel-term">Performance</span><span>How well the drive is responding. A low value can point to cable, USB bridge, or drive trouble.</span></li>
+      <li><span class="help-panel-term">Temperature</span><span>Shown for visibility. It does not send alerts by itself.</span></li>
+      <li><span class="help-panel-term">Power-On Time</span><span>How long the drive reports it has been powered on.</span></li>
+      <li><span class="help-panel-term">Alerts</span><span>When enabled, scheduled checks alert you when HDSentinel health changes from the previous successful check.</span></li>
+    </ul>
+  </div>
+  <a href="{{ docs_url('drive_health.md') }}" target="_blank" rel="noopener noreferrer" class="help-panel-link">
+    <i class="fas fa-book-open"></i> Read the drive health guide
+  </a>
+</div>
+
 <section class="mb-6">
   <div class="d-flex items-center justify-between mb-4 flex-wrap gap-3">
     <h2 style="font-size: var(--text-lg); margin: 0;">HDSentinel Monitoring</h2>

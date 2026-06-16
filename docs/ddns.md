@@ -2,6 +2,17 @@
 
 Dynamic DNS keeps public DNS records pointed at the server's current public IPv4 address. The `DDNS Update` task can run on schedule from systemd or immediately from the Dashboard task controls.
 
+## Why Use DDNS?
+
+Many home internet connections do not keep the same public IP address forever. The number can change after a router reboot, provider maintenance, or a normal lease refresh.
+
+DDNS gives you a stable name instead:
+
+- without DDNS, you may need to know the current public IP address, such as `203.0.113.10`
+- with DDNS, you can use a name, such as `server.example.com`
+
+That stable name is useful for admin-approved remote access tools, VPN endpoints, or other services you deliberately expose. DDNS does not open ports or make a private service public by itself. It only keeps the DNS name pointed at the current public IP address.
+
 ## Fake Mode Behavior
 
 Fake mode simulates local system services, disks, Samba, and destructive machine actions. It does not sandbox DDNS provider APIs. If DuckDNS or Cloudflare is enabled with valid credentials, saving the DDNS settings or manually forcing a sync can update live DNS records.

@@ -93,6 +93,73 @@ def test_network_file_sharing_renders_three_service_status_labels_and_help_text(
         runtime._fake_state = previous_fake_state
 
 
+def test_in_ui_documentation_help_text_renders_on_management_pages():
+    previous_runtime = runtime._runtime
+    previous_fake_state = runtime._fake_state
+    try:
+        with TemporaryDirectory() as temp_dir:
+            app = _create_fake_app(temp_dir)
+            _finish_fake_setup(app)
+
+            with app.test_client() as client:
+                pages = {
+                    "/cloud_backup": [
+                        "Import an rclone config",
+                        "myremote:/backups",
+                    ],
+                    "/network_file_sharing": [
+                        "Connect to a share",
+                        "NetBIOS",
+                    ],
+                    "/drives": [
+                        "What the health numbers mean",
+                        "HDSentinel health changes",
+                    ],
+                    "/users": [
+                        "How users work",
+                        "matching Samba account",
+                    ],
+                    "/ddns": [
+                        "Why use DDNS?",
+                        "keeps a name like",
+                    ],
+                    "/task/Cloud%20Backup": [
+                        "About this task",
+                        "backup_cloud.service",
+                    ],
+                }
+
+                for path, expected_texts in pages.items():
+                    response = client.get(path)
+                    assert response.status_code == 200
+                    page = response.get_data(as_text=True)
+                    for expected_text in expected_texts:
+                        assert expected_text in page
+    finally:
+        runtime._runtime = previous_runtime
+        runtime._fake_state = previous_fake_state
+
+
+def test_setup_wizard_renders_drive_and_rclone_help_before_setup_is_complete():
+    previous_runtime = runtime._runtime
+    previous_fake_state = runtime._fake_state
+    try:
+        with TemporaryDirectory() as temp_dir:
+            app = _create_fake_app(temp_dir)
+
+            with app.test_client() as client:
+                response = client.get("/setup")
+
+            assert response.status_code == 200
+            page = response.get_data(as_text=True)
+            assert "Why this uses one NTFS drive" in page
+            assert "one large NTFS backup partition" in page
+            assert "Import an rclone config" in page
+    finally:
+        runtime._runtime = previous_runtime
+        runtime._fake_state = previous_fake_state
+
+
 def test_smb_status_api_returns_flat_three_service_object():
     previous_runtime = runtime._runtime
     previous_fake_state = runtime._fake_state

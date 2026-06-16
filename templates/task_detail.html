@@ -85,6 +85,21 @@
   </section>
   {% endif %}
 
+  <section class="help-panel mb-5">
+    <div class="help-panel-title"><i class="fas fa-circle-info"></i> About this task</div>
+    <div class="help-panel-body">
+      <ul class="help-panel-list">
+        <li><span class="help-panel-term">What it does</span><span>{{ task_help.purpose }}</span></li>
+        <li><span class="help-panel-term">Schedule</span><span>{{ task_help.schedule }} Manual Start runs the service right away; Manage Schedule controls automatic timer runs.</span></li>
+        <li><span class="help-panel-term">Service</span><span><code>{{ task.service_name }}</code></span></li>
+        <li><span class="help-panel-term">Timer</span><span><code>{{ task.timer_name }}</code></span></li>
+      </ul>
+    </div>
+    <a href="{{ docs_url('task_detail.md') }}" target="_blank" rel="noopener noreferrer" class="help-panel-link">
+      <i class="fas fa-book-open"></i> Read the task guide
+    </a>
+  </section>
+
   <section class="task-log-panel">
     <div class="task-log-header">
       <h2>Recent Logs</h2>

@@ -25,6 +25,16 @@ The Users page allows administrators to manage user accounts.
 - All actions are performed via modals for a smooth experience.
 - Creating a user or changing a password also updates the Samba account used for SMB access. If Samba cannot accept the password, the web-login password is not saved, so the web UI and SMB access stay on the same credentials.
 
+## What Happens Behind The Scenes
+
+SimpleSaferServer keeps a small app-owned user record for the Web UI. It also creates or updates a matching Samba user so the same person can access SMB file shares.
+
+- Admin users can sign in to the Web UI.
+- Non-admin users are useful for SMB file sharing access, but they cannot manage the server in the Web UI.
+- Password changes are applied to the app user and the Samba user together.
+- If the Samba password update fails, the app does not save the Web UI password change. This avoids a confusing split where one password works in the browser and another password works for file sharing.
+- Deleting a SimpleSaferServer user also removes the matching Samba account managed by the app.
+
 ---
 
 This page provides full user management for the system.

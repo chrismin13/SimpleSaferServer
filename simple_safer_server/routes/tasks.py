@@ -18,6 +18,31 @@ from simple_safer_server.web.problems import NotFoundProblem, OperationProblem, 
 
 tasks = Blueprint("task_routes", __name__)
 
+# Keep these names aligned with TaskService._tasks. This is display-only help
+# for admins reading the task log page.
+TASK_HELP = {
+    "Check Mount": {
+        "purpose": "Makes sure the configured backup drive is mounted before backup work starts.",
+        "schedule": "Generated during setup to run shortly before the daily Cloud Backup time.",
+    },
+    "Drive Health Check": {
+        "purpose": "Checks the configured backup drive with SMART and HDSentinel.",
+        "schedule": "Generated during setup to run after Check Mount and before Cloud Backup.",
+    },
+    "Cloud Backup": {
+        "purpose": "Syncs the local backup folder to the configured MEGA or rclone destination.",
+        "schedule": "Runs daily at the Backup Time saved in Setup or on the Cloud Backup page.",
+    },
+    "DDNS Update": {
+        "purpose": "Updates enabled DuckDNS or Cloudflare DNS records with the current public IPv4 address.",
+        "schedule": "Runs on its DDNS systemd timer, and can also be forced from the DDNS page.",
+    },
+    "App Update": {
+        "purpose": "Updates the installed SimpleSaferServer checkout and reruns the installer refresh path.",
+        "schedule": "Runs on its app-update systemd timer before the daily backup maintenance window.",
+    },
+}
+
 
 def _get_services() -> Any:
     """Return app-level services registered during Flask startup."""
@@ -85,6 +110,13 @@ def task_detail(task_name):
     return render_template(
         "task_detail.html",
         task=task,
+        task_help=TASK_HELP.get(
+            task.name,
+            {
+                "purpose": "Runs the matching SimpleSaferServer systemd service.",
+                "schedule": "Automatic runs are controlled by the matching systemd timer.",
+            },
+        ),
         task_summary=task_service.task_summary(task),
         logs=logs,
         log_lines=log_lines,

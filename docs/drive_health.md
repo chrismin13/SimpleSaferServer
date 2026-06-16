@@ -29,9 +29,14 @@ That split is easy to forget later because both cases may surface during the sam
 
 HDSentinel is the source for the simple health meter shown on the Dashboard after a manual Dashboard refresh or Drive Health page refresh actually runs in the web app process.
 
+- **Health** is HDSentinel's overall estimate of the drive's condition.
 - Health `50%` and above is shown as healthy.
 - Health below `50%` is shown as a warning.
 - Health below `25%` is shown as critical.
+- **Performance** is HDSentinel's estimate of how well the drive is responding. A low value can point to device, cable, adapter, or controller trouble.
+- **Temperature** is the current drive temperature when the drive reports it. SimpleSaferServer shows it for visibility, but temperature does not create alerts by itself.
+- **Power-On Time** is how long the drive reports it has been powered on during its life.
+- **Last Checked** is when this page or the scheduled task last got a usable HDSentinel snapshot.
 - If HDSentinel is disabled, unavailable, or has not run yet, the Dashboard status remains unknown.
 
 Scheduled Drive Health keeps a durable previous HDSentinel snapshot at `/var/lib/SimpleSaferServer/hdsentinel_state.json` in real mode. On each scheduled check it compares the previous successful HDSentinel health percentage with the current successful HDSentinel health percentage. Normal Drive Health page loads do not read that state as live dashboard health; the file exists for scheduled change detection.
