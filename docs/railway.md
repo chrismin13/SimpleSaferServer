@@ -78,6 +78,12 @@ package to match the app's Python target. Refresh this pin when Railway builds
 break, when the app moves to a new Python version, or during a planned Railway
 deployment package refresh.
 
+The Railway start command runs Gunicorn through `uv run --no-sync` instead of
+calling `.venv/bin/gunicorn` directly. Nixpacks may place uv's synced project
+environment outside the repository-local `.venv` path, and a hardcoded `.venv`
+path can fail at runtime even after `uv sync --frozen --no-dev` completed
+successfully.
+
 ## Notes
 
 - The app now persists the Flask session secret in the writable config
