@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 from flask import Flask
@@ -72,6 +72,17 @@ def _services():
         runtime=SimpleNamespace(is_fake=True, default_mount_point="/media/backup"),
         command_runner=MagicMock(),
         task_service=SimpleNamespace(get_check_mount_next_run=lambda: None),
+    )
+
+
+def _prepared_location(path="/srv/storage"):
+    return SimpleNamespace(
+        path=path,
+        mode="existing_folder",
+        storage_id="new-storage-id",
+        mount_source="",
+        mount_target="",
+        mount_fstype="",
     )
 
 
@@ -270,8 +281,8 @@ def test_existing_folder_storage_refreshes_systemd_timers():
     app = _app_with_services(services)
 
     with patch(
-        "simple_safer_server.routes.storage.configure_existing_folder",
-        return_value=SimpleNamespace(path="/srv/storage"),
+        "simple_safer_server.routes.storage.prepare_existing_folder",
+        return_value=_prepared_location(),
     ):
         response = _admin_post(app, "/api/storage/existing-folder", {"path": "/srv/storage"})
 
@@ -424,6 +435,18 @@ def test_unmount_disk_does_not_mutate_storage_config():
 
 def test_existing_folder_reports_timer_refresh_failure():
     services = _services()
+    services.config_manager.get_all_config.return_value = {
+        "backup": {"cloud_enabled": "false", "mount_point": "/old/storage"},
+        "storage": {
+            "mode": "managed_drive",
+            "path": "/old/storage",
+            "storage_id": "old-storage-id",
+            "mount_source": "",
+            "mount_target": "",
+            "mount_fstype": "",
+        },
+        "schedule": {"backup_cloud_time": "03:00"},
+    }
     services.system_utils.install_systemd_services_and_timers.return_value = (
         False,
         "systemd failed",
@@ -431,13 +454,27 @@ def test_existing_folder_reports_timer_refresh_failure():
     app = _app_with_services(services)
 
     with patch(
-        "simple_safer_server.routes.storage.configure_existing_folder",
-        return_value=SimpleNamespace(path="/srv/storage"),
+        "simple_safer_server.routes.storage.prepare_existing_folder",
+        return_value=_prepared_location("/new/storage"),
     ):
-        response = _admin_post(app, "/api/storage/existing-folder", {"path": "/srv/storage"})
+        response = _admin_post(app, "/api/storage/existing-folder", {"path": "/new/storage"})
 
     assert response.status_code == 500
     assert "task timers were not refreshed" in response.get_json()["detail"]
+    assert "Previous storage settings were restored" in response.get_json()["detail"]
+    services.smb_manager.ensure_default_backup_share.assert_has_calls(
+        [
+            call("/new/storage", "admin"),
+            call("/old/storage", "admin"),
+        ]
+    )
+    config_writes = services.config_manager.set_value.call_args_list
+    assert config_writes.index(call("storage", "path", "/new/storage")) < config_writes.index(
+        call("storage", "path", "/old/storage")
+    )
+    assert config_writes.index(
+        call("backup", "mount_point", "/new/storage")
+    ) < config_writes.index(call("backup", "mount_point", "/old/storage"))
 
 
 def test_storage_safety_checks_show_existing_folder_success():

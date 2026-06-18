@@ -115,6 +115,19 @@ def _set_storage_config(
     config_manager.set_value("backup", "mount_point", path)
 
 
+def save_storage_location(config_manager: Any, location: StorageLocation) -> None:
+    """Persist one already-validated storage location into app config."""
+    _set_storage_config(
+        config_manager,
+        path=location.path,
+        mode=location.mode,
+        storage_id=location.storage_id,
+        mount_source=location.mount_source,
+        mount_target=location.mount_target,
+        mount_fstype=location.mount_fstype,
+    )
+
+
 def _normalize_storage_path(path: str | os.PathLike[str] | None) -> Path:
     if path is None:
         raise StorageLocationError("Storage location is required.")
@@ -347,6 +360,17 @@ def configure_existing_folder(
     runtime: Any | None = None,
     command_runner: CommandRunner | None = None,
 ) -> StorageLocation:
+    location = prepare_existing_folder(path, runtime=runtime, command_runner=command_runner)
+    save_storage_location(config_manager, location)
+    return get_storage_location(config_manager, runtime=runtime)
+
+
+def prepare_existing_folder(
+    path: str,
+    runtime: Any | None = None,
+    command_runner: CommandRunner | None = None,
+) -> StorageLocation:
+    """Validate a folder and write its marker without changing app config."""
     runtime = runtime or get_runtime()
     resolved = validate_existing_folder_path(path, runtime=runtime)
     storage_id = _storage_id()
@@ -354,14 +378,14 @@ def configure_existing_folder(
     _write_storage_marker(resolved, storage_id)
     _probe_storage_write(resolved)
     mount_identity = _detect_mount_identity(resolved, command_runner=command_runner)
-    _set_storage_config(
-        config_manager,
+    return StorageLocation(
         path=str(resolved),
         mode=MODE_EXISTING_FOLDER,
         storage_id=storage_id,
-        **mount_identity,
+        mount_source=mount_identity.get("mount_source", ""),
+        mount_target=mount_identity.get("mount_target", ""),
+        mount_fstype=mount_identity.get("mount_fstype", ""),
     )
-    return get_storage_location(config_manager, runtime=runtime)
 
 
 def mark_managed_drive_storage(
