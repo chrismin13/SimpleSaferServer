@@ -78,11 +78,15 @@ package to match the app's Python target. Refresh this pin when Railway builds
 break, when the app moves to a new Python version, or during a planned Railway
 deployment package refresh.
 
-The Railway start command runs Gunicorn through `uv run --no-sync` instead of
-calling `.venv/bin/gunicorn` directly. Nixpacks may place uv's synced project
-environment outside the repository-local `.venv` path, and a hardcoded `.venv`
-path can fail at runtime even after `uv sync --frozen --no-dev` completed
-successfully.
+The Railway deploy start command in `railway.json` and the Nixpacks start command
+in `nixpacks.toml` both run Gunicorn through `uv run --no-sync` instead of
+calling `.venv/bin/gunicorn` directly. Keep both commands aligned when changing
+Railway startup behavior. Railway's config-as-code `deploy.startCommand` is a
+service start-command override, so a stale value there can override the
+Nixpacks `[start]` command shown in `nixpacks.toml`. Nixpacks may place uv's
+synced project environment outside the repository-local `.venv` path, and a
+hardcoded `.venv` path can fail at runtime even after
+`uv sync --frozen --no-dev` completed successfully.
 
 ## Notes
 

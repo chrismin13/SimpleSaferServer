@@ -15,6 +15,10 @@ machine:
 - restart, shutdown, and other destructive machine actions
 - writes to real `/etc` paths
 
+Fake mode does not require host Samba tools such as `testparm`, `smbd`, or `smbcontrol`.
+Managed-share setup validates the generated config through the fake Samba adapter so macOS and
+Railway previews can complete setup without Linux-only services installed.
+
 The default fake-mode data directory is `.dev-data/`. `run_fake.sh` starts the app with
 `SSS_MODE=fake` and enables auto-login by default. Set `SSS_SKIP_LOGIN=false` to use the normal
 login screen. `reset_fake_mode.sh` deletes `.dev-data/` so setup can be run again from a clean
