@@ -12,19 +12,20 @@
   const useDriveBtn = document.getElementById('useDriveBtn');
 
   const errorDetailsTextEl = document.getElementById('backupDriveSetupErrorDetailsText');
-  let currentErrorDetails = '';
 
   const formatFeedback = {
     status: document.getElementById('formatDriveStatus'),
     error: document.getElementById('formatDriveError'),
     errorText: document.getElementById('formatDriveErrorText'),
-    detailsBtn: document.getElementById('formatDriveErrorDetailsBtn')
+    detailsBtn: document.getElementById('formatDriveErrorDetailsBtn'),
+    details: ''
   };
   const partitionFeedback = {
     status: document.getElementById('partitionDriveStatus'),
     error: document.getElementById('partitionDriveError'),
     errorText: document.getElementById('partitionDriveErrorText'),
-    detailsBtn: document.getElementById('partitionDriveErrorDetailsBtn')
+    detailsBtn: document.getElementById('partitionDriveErrorDetailsBtn'),
+    details: ''
   };
 
   function setStatus(feedback, message, type) {
@@ -44,6 +45,7 @@
     if (!feedback.error || !feedback.errorText) return;
     feedback.error.classList.add('d-none');
     feedback.errorText.textContent = '';
+    feedback.details = '';
     if (feedback.detailsBtn) feedback.detailsBtn.classList.add('d-none');
   }
 
@@ -51,8 +53,8 @@
     if (!feedback.error || !feedback.errorText) return;
     feedback.errorText.textContent = message;
     feedback.error.classList.remove('d-none');
-    currentErrorDetails = details || '';
-    if (feedback.detailsBtn) feedback.detailsBtn.classList.toggle('d-none', !currentErrorDetails);
+    feedback.details = details || '';
+    if (feedback.detailsBtn) feedback.detailsBtn.classList.toggle('d-none', !feedback.details);
     setStatus(feedback, '', 'info');
   }
 
@@ -273,11 +275,11 @@ SimpleSaferServer storage will not change until you use the NTFS partition in th
     }
   }
 
-  function wireDetailsButton(button) {
-    if (!button) return;
-    button.addEventListener('click', () => {
+  function wireDetailsButton(feedback) {
+    if (!feedback.detailsBtn) return;
+    feedback.detailsBtn.addEventListener('click', () => {
       if (errorDetailsTextEl) {
-        errorDetailsTextEl.textContent = currentErrorDetails || 'No additional details available.';
+        errorDetailsTextEl.textContent = feedback.details || 'No additional details available.';
       }
       if (window.BunkerModal) window.BunkerModal.show('backupDriveSetupErrorDetailsModal');
     });
@@ -289,8 +291,8 @@ SimpleSaferServer storage will not change until you use the NTFS partition in th
   if (refreshPartitionsBtn) refreshPartitionsBtn.addEventListener('click', refreshPartitions);
   if (unmountPartitionBtn) unmountPartitionBtn.addEventListener('click', unmountPartition);
   if (useDriveBtn) useDriveBtn.addEventListener('click', useDrive);
-  wireDetailsButton(formatFeedback.detailsBtn);
-  wireDetailsButton(partitionFeedback.detailsBtn);
+  wireDetailsButton(formatFeedback);
+  wireDetailsButton(partitionFeedback);
 
   refreshFormatDrives();
   refreshPartitions();

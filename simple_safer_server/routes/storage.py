@@ -273,7 +273,7 @@ def api_storage_status():
         used_storage = f"{disk.used / (1024**3):.1f}"
         total_storage = f"{disk.total / (1024**3):.1f}"
         storage_usage = f"{disk.percent}%"
-    except Exception:
+    except OSError:
         used_storage = total_storage = storage_usage = None
     disk_available = total_storage is not None
     available = bool(status["ok"] and (disk_available if not location.app_manages_mount else True))

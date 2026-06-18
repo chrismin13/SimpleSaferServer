@@ -36,6 +36,7 @@
       </div>
       <div class="storage-current-cell">
         <div class="storage-field-label">Status</div>
+        <!-- These IDs repeat only inside exclusive Jinja branches, so storage.js always sees one status line and one note. -->
         {% if not storage_status.checked %}
           {% if storage_status.ok %}
             <div class="storage-ready-line" id="storageCurrentStatusLine"><i class="fas fa-circle-check"></i> Configured</div>

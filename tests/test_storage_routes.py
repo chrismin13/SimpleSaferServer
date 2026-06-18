@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
 from flask import Flask
 
 from simple_safer_server.routes.storage import _build_storage_safety_checks, storage
@@ -231,6 +232,37 @@ def test_storage_status_api_uses_passive_status():
     passive_status.assert_called_once()
     active_status.assert_not_called()
     assert response.get_json()["data"]["storage_usage"] == "10.0%"
+
+
+def test_storage_status_api_marks_existing_folder_unavailable_when_disk_usage_fails():
+    services = _services()
+    app = _app_with_services(services)
+
+    with patch(
+        "simple_safer_server.routes.storage.psutil.disk_usage",
+        side_effect=OSError,
+    ):
+        response = _admin_get(app, "/api/storage/status")
+
+    assert response.status_code == 200
+    payload = response.get_json()["data"]
+    assert payload["available"] is False
+    assert payload["disk_available"] is False
+    assert payload["error"] == "Storage path is not readable."
+
+
+def test_storage_status_api_does_not_hide_unexpected_disk_usage_errors():
+    services = _services()
+    app = _app_with_services(services)
+
+    with (
+        patch(
+            "simple_safer_server.routes.storage.psutil.disk_usage",
+            side_effect=RuntimeError("unexpected"),
+        ),
+        pytest.raises(RuntimeError, match="unexpected"),
+    ):
+        _admin_get(app, "/api/storage/status")
 
 
 def test_existing_folder_storage_refreshes_systemd_timers():

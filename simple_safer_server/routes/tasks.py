@@ -56,12 +56,19 @@ def dashboard():
         runtime=services.runtime,
     )
     disk = None
+    storage_error = location_status["error"]
     try:
         # Disk usage only needs the path to be readable. The stricter marker
         # check still feeds the status text and cloud-backup safety gate.
         disk = psutil.disk_usage(mount_point)
-    except Exception:
-        current_app.logger.exception("Could not read storage usage for %s", mount_point)
+    except OSError:
+        current_app.logger.warning("Could not read storage usage for %s", mount_point)
+    disk_available = disk is not None
+    storage_available = bool(
+        location_status["ok"] and (True if storage_location.app_manages_mount else disk_available)
+    )
+    if not storage_available and not storage_error and not storage_location.app_manages_mount:
+        storage_error = "Storage path is not readable."
 
     cpu_percent = psutil.cpu_percent()
     ram_percent = psutil.virtual_memory().percent
@@ -81,11 +88,11 @@ def dashboard():
         ram_usage=f"{ram_percent}%",
         mount_info={
             "is_mounted": mounted,
-            "disk_available": disk is not None,
+            "disk_available": disk_available,
             "mount_point": mount_point,
             "app_manages_mount": storage_location.app_manages_mount,
-            "available": location_status["ok"],
-            "error": location_status["error"],
+            "available": storage_available,
+            "error": storage_error,
         },
         tasks=task_summaries,
     )

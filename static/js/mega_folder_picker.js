@@ -42,7 +42,6 @@ window.openMegaFolderPicker = function openMegaFolderPicker(options) {
 
   let currentPath = startPath || '/';
   let parentPath = '/';
-  let activeLoadId = 0;
 
   function showError(msg) {
     if (!errorEl) return;
@@ -84,8 +83,8 @@ window.openMegaFolderPicker = function openMegaFolderPicker(options) {
   }
 
   function loadDirs(path) {
-    const loadId = activeLoadId + 1;
-    activeLoadId = loadId;
+    const loadId = Number(modalEl.dataset.megaPickerActiveLoadId || 0) + 1;
+    modalEl.dataset.megaPickerActiveLoadId = String(loadId);
     currentPath = path || '/';
     parentPath = parentForPath(currentPath) || '/';
     clearError();
@@ -109,7 +108,7 @@ window.openMegaFolderPicker = function openMegaFolderPicker(options) {
       body: JSON.stringify(requestBody)
     })
       .then(({ data }) => {
-        if (loadId !== activeLoadId) return;
+        if (String(loadId) !== modalEl.dataset.megaPickerActiveLoadId) return;
         currentPath = data.path;
         parentPath = data.parent || '/';
         if (currentPathEl) window.renderPathBreadcrumbs(currentPathEl, currentPath, loadDirs);
@@ -139,6 +138,11 @@ window.openMegaFolderPicker = function openMegaFolderPicker(options) {
               item.addEventListener('click', function () {
                 loadDirs(joinPath(currentPath, entry.name));
               });
+              item.addEventListener('keydown', function (event) {
+                if (event.key !== 'Enter' && event.key !== ' ') return;
+                event.preventDefault();
+                loadDirs(joinPath(currentPath, entry.name));
+              });
             } else {
               item.setAttribute('aria-disabled', 'true');
             }
@@ -154,7 +158,7 @@ window.openMegaFolderPicker = function openMegaFolderPicker(options) {
         clearError();
       })
       .catch(e => {
-        if (loadId !== activeLoadId) return;
+        if (String(loadId) !== modalEl.dataset.megaPickerActiveLoadId) return;
         if (dirsListEl) dirsListEl.innerHTML = '';
         showError(e.message || 'Could not load folders.');
       });

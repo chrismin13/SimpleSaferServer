@@ -115,8 +115,15 @@ def _set_storage_config(
     config_manager.set_value("backup", "mount_point", path)
 
 
-def _normalize_storage_path(path: str) -> Path:
-    text = (path or "").strip()
+def _normalize_storage_path(path: str | os.PathLike[str] | None) -> Path:
+    if path is None:
+        raise StorageLocationError("Storage location is required.")
+    if isinstance(path, os.PathLike):
+        path = os.fspath(path)
+    if not isinstance(path, str):
+        raise StorageLocationError("Storage location must be a text path.")
+
+    text = path.strip()
     if not text:
         raise StorageLocationError("Storage location is required.")
     expanded = Path(text).expanduser()

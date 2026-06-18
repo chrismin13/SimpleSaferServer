@@ -510,22 +510,29 @@ class BackupDriveSetupTests(unittest.TestCase):
         disk_stat = MagicMock()
         disk_stat.st_mode = __import__('stat').S_IFBLK | 0o660
 
-        with patch(
-            'simple_safer_server.services.backup_drive_setup.os.path.realpath',
-            return_value='/dev/sdb',
-        ):
-            with patch(
+        with (
+            patch(
+                'simple_safer_server.services.backup_drive_setup.os.path.realpath',
+                return_value='/dev/sdb',
+            ),
+            patch(
+                'simple_safer_server.services.backup_drive_setup.os.path.exists',
+                return_value=True,
+            ),
+            patch('simple_safer_server.services.backup_drive_setup.os.access', return_value=True),
+            patch(
                 'simple_safer_server.services.backup_drive_setup.os.stat', return_value=disk_stat
+            ),
+        ):
+            with self.assertRaisesRegex(
+                backup_drive_setup.BackupDriveSetupError,
+                'Drive has mounted partitions',
             ):
-                with self.assertRaisesRegex(
-                    backup_drive_setup.BackupDriveSetupError,
-                    'Drive has mounted partitions',
-                ):
-                    backup_drive_setup.format_backup_drive(
-                        '/dev/sdb',
-                        runtime=runtime,
-                        command_adapter=command_adapter,
-                    )
+                backup_drive_setup.format_backup_drive(
+                    '/dev/sdb',
+                    runtime=runtime,
+                    command_adapter=command_adapter,
+                )
 
         self.assertEqual(command_adapter.created_partitions, [])
         mock_get_mounted.assert_called_once_with('/dev/sdb', command_adapter=command_adapter)
@@ -538,22 +545,30 @@ class BackupDriveSetupTests(unittest.TestCase):
         block_stat = MagicMock()
         block_stat.st_mode = __import__('stat').S_IFBLK | 0o660
 
-        with patch(
-            'simple_safer_server.services.backup_drive_setup.os.path.realpath',
-            return_value='/dev/sdb',
+        with (
+            patch(
+                'simple_safer_server.services.backup_drive_setup.os.path.realpath',
+                return_value='/dev/sdb',
+            ),
+            patch(
+                'simple_safer_server.services.backup_drive_setup.os.path.exists',
+                return_value=True,
+            ),
+            patch('simple_safer_server.services.backup_drive_setup.os.access', return_value=True),
+            patch(
+                'simple_safer_server.services.backup_drive_setup.os.stat',
+                return_value=block_stat,
+            ),
+            patch(
+                'simple_safer_server.services.backup_drive_setup.os.lstat',
+                return_value=block_stat,
+            ),
         ):
-            with patch(
-                'simple_safer_server.services.backup_drive_setup.os.stat', return_value=block_stat
-            ):
-                with patch(
-                    'simple_safer_server.services.backup_drive_setup.os.lstat',
-                    return_value=block_stat,
-                ):
-                    result = backup_drive_setup.format_backup_drive(
-                        '/dev/sdb',
-                        runtime=runtime,
-                        command_adapter=command_adapter,
-                    )
+            result = backup_drive_setup.format_backup_drive(
+                '/dev/sdb',
+                runtime=runtime,
+                command_adapter=command_adapter,
+            )
 
         self.assertEqual(result['partition'], '/dev/sdb1')
         self.assertEqual(command_adapter.partprobed, ['/dev/sdb'])

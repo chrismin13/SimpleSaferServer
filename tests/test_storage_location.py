@@ -257,6 +257,14 @@ def test_existing_folder_rejects_relative_paths(tmp_path, monkeypatch):
         validate_existing_folder_path("storage", runtime=runtime)
 
 
+@pytest.mark.parametrize("path", [123, True, None])
+def test_existing_folder_rejects_non_text_paths_as_validation_errors(tmp_path, path):
+    runtime = fake_runtime(tmp_path)
+
+    with pytest.raises(StorageLocationError, match="Storage location"):
+        validate_existing_folder_path(path, runtime=runtime)
+
+
 def test_mount_identity_mismatch_fails_validation(tmp_path):
     storage_path = tmp_path / "storage"
     storage_path.mkdir()
