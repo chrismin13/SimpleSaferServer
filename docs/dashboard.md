@@ -16,7 +16,8 @@ Four cards display real-time status:
 - **System Resources**: Displays CPU and RAM usage, and live network traffic (up/down rates).
 
 ## Task Schedule
-- **Table**: Lists all scheduled tasks with columns for Task, Status, Last Run, and Next Run.
+- **Table**: Lists all scheduled tasks with columns for Task, Status, Last Run, Next Run, and
+  Automatic Runs.
 - **Next Run**: Shows the active next run time or a short schedule state label. Temporary disables
   show `Disabled until 18:00`, `Disabled until Tomorrow 18:00`, or a later date such as
   `Disabled until May 16 18:00`. Permanent disables show `Disabled`. Timers disabled outside
@@ -24,6 +25,10 @@ Four cards display real-time status:
   Disabled schedule labels are danger-colored in this field only, so automatic-run suspension stands
   out without making the entire task row look failed. Schedule issues remain warning-colored because
   they mean the timer state needs investigation.
+- **Automatic Runs**: The `Check Mount`, `Drive Health Check`, and `Cloud Backup` rows have a direct
+  on/off switch. Turning the switch off permanently disables that task's systemd `.timer`, so the
+  task no longer starts on its schedule. Turning the switch on enables the timer again. Manual Start
+  from the task page still starts the `.service` immediately.
 - **Task Schedule Control**: Right-click a task row to Start, Stop, Disable Schedule, or Enable
   Schedule when that action applies. The menu stays open across passive schedule refreshes so the
   operator does not lose the selected row actions while reading the menu.

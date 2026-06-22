@@ -97,6 +97,7 @@
           <th>Status</th>
           <th>Last Run</th>
           <th>Next Run</th>
+          <th>Automatic Runs</th>
         </tr>
       </thead>
       <tbody id="tasks-body">
@@ -131,6 +132,20 @@
             {% set schedule_cell_class = '' %}
           {% endif %}
           <td class="text-mono task-time-cell{{ schedule_cell_class }}" style="font-size: var(--text-xs);" data-timestamp="{{ task.schedule.raw_next_run or '' }}" data-schedule-label="{{ task.schedule.label or task.next_run or '' }}" data-future="true">{{ task.schedule.label or task.next_run or '—' }}</td>
+          <td>
+            {% if task.schedule_toggle_supported %}
+              {% set automatic_runs_enabled = task.schedule.state == 'active' %}
+              <label class="task-schedule-toggle-control task-schedule-toggle-control-compact">
+                <span class="toggle-switch toggle-switch-sm">
+                  <input type="checkbox" class="task-schedule-toggle" data-task-name="{{ task.name }}" {% if automatic_runs_enabled %}checked{% endif %} aria-label="Automatic runs for {{ task.name }}">
+                  <span class="toggle-slider"></span>
+                </span>
+                <span class="task-schedule-toggle-state">{{ 'On' if automatic_runs_enabled else 'Off' }}</span>
+              </label>
+            {% else %}
+              <span class="text-muted">—</span>
+            {% endif %}
+          </td>
         </tr>
         {% endfor %}
       </tbody>
@@ -235,6 +250,10 @@ document.addEventListener('DOMContentLoaded', function() {
     return '';
   }
 
+  function automaticRunsEnabled(task) {
+    return Boolean(task && task.schedule && task.schedule.state === 'active');
+  }
+
   function rememberTaskSchedule(tasks) {
     taskScheduleByName.clear();
     (tasks || []).forEach((task) => {
@@ -321,6 +340,40 @@ Remove the drive now if you do not want it mounted again.`;
     tdNextRun.textContent = scheduleLabel || '—';
     row.appendChild(tdNextRun);
 
+    const tdAutomaticRuns = document.createElement('td');
+    if (task.schedule_toggle_supported) {
+      const enabled = automaticRunsEnabled(task);
+      const label = document.createElement('label');
+      label.className = 'task-schedule-toggle-control task-schedule-toggle-control-compact';
+
+      const switchOuter = document.createElement('span');
+      switchOuter.className = 'toggle-switch toggle-switch-sm';
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.className = 'task-schedule-toggle';
+      input.dataset.taskName = task.name;
+      input.checked = enabled;
+      input.setAttribute('aria-label', `Automatic runs for ${task.name}`);
+      const slider = document.createElement('span');
+      slider.className = 'toggle-slider';
+      switchOuter.appendChild(input);
+      switchOuter.appendChild(slider);
+
+      const state = document.createElement('span');
+      state.className = 'task-schedule-toggle-state';
+      state.textContent = enabled ? 'On' : 'Off';
+
+      label.appendChild(switchOuter);
+      label.appendChild(state);
+      tdAutomaticRuns.appendChild(label);
+    } else {
+      const dash = document.createElement('span');
+      dash.className = 'text-muted';
+      dash.textContent = '—';
+      tdAutomaticRuns.appendChild(dash);
+    }
+    row.appendChild(tdAutomaticRuns);
+
     return row;
   }
 
@@ -364,7 +417,10 @@ Remove the drive now if you do not want it mounted again.`;
 
   function bindInteractiveRows() {
     document.querySelectorAll('.clickable-row[data-href]').forEach((row) => {
-      row.addEventListener('click', () => {
+      row.addEventListener('click', (event) => {
+        if (event.target.closest('a, button, input, label, select, textarea')) {
+          return;
+        }
         window.location.href = row.dataset.href;
       });
       row.addEventListener('keydown', (event) => {
@@ -376,6 +432,13 @@ Remove the drive now if you do not want it mounted again.`;
       if (window.ActionContextMenu) {
         window.ActionContextMenu.bind(row, () => dashboardTaskActionItems(row.dataset.taskName));
       }
+    });
+
+    document.querySelectorAll('.task-schedule-toggle').forEach((toggle) => {
+      if (toggle.dataset.scheduleToggleBound === 'true') return;
+      toggle.dataset.scheduleToggleBound = 'true';
+      toggle.addEventListener('click', (event) => event.stopPropagation());
+      toggle.addEventListener('change', () => setTaskScheduleEnabled(toggle));
     });
   }
 
@@ -451,6 +514,29 @@ Remove the drive now if you do not want it mounted again.`;
     showAlert(message || 'Task updated.', 'success');
     updateTaskSchedule();
     setTimeout(updateTaskSchedule, 1500);
+  }
+
+  async function setTaskScheduleEnabled(toggle) {
+    const taskName = toggle.dataset.taskName;
+    const enabled = toggle.checked;
+    const stateLabel = toggle.closest('.task-schedule-toggle-control')?.querySelector('.task-schedule-toggle-state');
+    toggle.disabled = true;
+    try {
+      const { message } = await window.ApiClient.fetchJson(`/task/${encodeURIComponent(taskName)}/schedule-enabled`, {
+        method: 'POST',
+        headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled })
+      });
+      if (stateLabel) stateLabel.textContent = enabled ? 'On' : 'Off';
+      showAlert(message || 'Automatic runs updated.', 'success');
+      updateTaskSchedule();
+    } catch (error) {
+      toggle.checked = !enabled;
+      if (stateLabel) stateLabel.textContent = toggle.checked ? 'On' : 'Off';
+      showAlert(error.message || 'Automatic runs update failed.', 'danger');
+    } finally {
+      toggle.disabled = false;
+    }
   }
 
   function bindDashboardActionForms() {

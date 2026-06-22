@@ -67,6 +67,23 @@
 <section class="mb-6">
   <h2 class="mb-4" style="font-size: var(--text-lg);">Backup Settings</h2>
   <form id="cloud-backup-config-form" autocomplete="off">
+    <div class="status-tile mb-4">
+      <div class="status-tile-header">
+        <span class="status-tile-label"><i class="fas fa-filter"></i> File Filters</span>
+      </div>
+      <div class="form-row mt-3 mb-2">
+        <div class="form-group">
+          <label class="form-label" for="rcloneExcludePatterns">Exclude Patterns</label>
+          <textarea class="form-control text-mono" id="rcloneExcludePatterns" rows="5" placeholder="*.tmp&#10;.cache/**"></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="rcloneIncludePatterns">Include Patterns</label>
+          <textarea class="form-control text-mono" id="rcloneIncludePatterns" rows="5" placeholder="Documents/**&#10;Photos/**/*.jpg"></textarea>
+        </div>
+      </div>
+      <div class="form-hint">One pattern per line. These use rclone filter patterns. Blank lines and lines starting with <code>#</code> or <code>;</code> are ignored.</div>
+      <div class="invalid-feedback" id="rcloneFilterFeedback">Use plain rclone patterns only. Do not start lines with +, -, or !.</div>
+    </div>
     <div class="tabs-container mb-4">
       <div class="tabs-nav" role="tablist" aria-label="Cloud backup mode">
         <button type="button" class="tab-btn active" data-tab="mega" id="tab-cloud-mega" role="tab" aria-selected="true" aria-controls="megaConfigFields">MEGA (Simple)</button>

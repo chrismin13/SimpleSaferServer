@@ -6,6 +6,10 @@ from tempfile import NamedTemporaryFile
 from typing import Any
 
 from simple_safer_server.adapters.command_runner import PIPE, CommandRunner
+from simple_safer_server.services.rclone_filters import (
+    read_rclone_pattern_texts,
+    write_rclone_pattern_texts,
+)
 from simple_safer_server.services.schedule_time import (
     ScheduleTimeError,
     normalize_ui_schedule_time,
@@ -81,6 +85,7 @@ class CloudBackupService:
                 response["rclone_config"] = config_file.read()
         else:
             response["rclone_config"] = ""
+        response.update(read_rclone_pattern_texts(self._runtime))
         return response
 
     def save_config(self, data: dict[str, Any]) -> dict[str, Any]:
@@ -89,6 +94,12 @@ class CloudBackupService:
             self._save_mega_config(data)
         elif mode == "advanced":
             self._save_advanced_config(data)
+        if "rclone_include_patterns" in data or "rclone_exclude_patterns" in data:
+            write_rclone_pattern_texts(
+                self._runtime,
+                include_patterns=data.get("rclone_include_patterns", ""),
+                exclude_patterns=data.get("rclone_exclude_patterns", ""),
+            )
 
         backup_time = data.get("backup_cloud_time")
         bandwidth_limit = data.get("bandwidth_limit")

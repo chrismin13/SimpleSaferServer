@@ -1,5 +1,6 @@
 import json
 import os
+import tempfile
 import threading
 import time
 import unittest
@@ -154,9 +155,14 @@ class TaskServiceTests(unittest.TestCase):
         systemd_adapter=None,
         rclone_dir="",
     ):
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        test_root = Path(temp_dir.name)
         runtime = SimpleNamespace(
             is_fake=is_fake,
-            data_dir=Path("/tmp/simple-safer-server-test-data"),
+            config_dir=test_root / "config",
+            data_dir=test_root / "data",
+            volatile_dir=test_root / "run",
             default_mount_point=mount_point,
             repo_root=Path("."),
             rclone_config_dir=Path("."),
@@ -183,6 +189,20 @@ class TaskServiceTests(unittest.TestCase):
         self.assertEqual(app_update.service_name, "app_update.service")
         self.assertIsNone(service.get_task("Missing Task"))
 
+    def test_schedule_toggle_is_only_available_for_requested_tasks(self):
+        service, _fake_state = self.build_service()
+
+        self.assertEqual(
+            {task.name: task.schedule_toggle_supported for task in service._tasks},
+            {
+                "Check Mount": True,
+                "Drive Health Check": True,
+                "Cloud Backup": True,
+                "DDNS Update": False,
+                "App Update": False,
+            },
+        )
+
     def test_task_summary_returns_error_fields_when_task_property_fails(self):
         service, _fake_state = self.build_service()
         task = service.get_task("Cloud Backup")
@@ -198,6 +218,7 @@ class TaskServiceTests(unittest.TestCase):
                 "last_run": "Error",
                 "status": "Error",
                 "last_run_duration": "Error",
+                "schedule_toggle_supported": True,
                 "schedule": {
                     "state": "issue",
                     "label": "Schedule issue",
@@ -258,6 +279,30 @@ class TaskServiceTests(unittest.TestCase):
             ("Cloud Backup", "copied"),
             fake_state.logs,
         )
+
+    def test_fake_cloud_backup_passes_rclone_filter_file(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            mount_point = Path(temp_dir) / "source"
+            config_dir = Path(temp_dir) / "config"
+            volatile_dir = Path(temp_dir) / "run"
+            mount_point.mkdir()
+            config_dir.mkdir()
+            (config_dir / "rclone_include_patterns.txt").write_text("Documents/**\n")
+            (config_dir / "rclone_exclude_patterns.txt").write_text("*.tmp\n")
+            service, _fake_state = self.build_service(
+                mount_point=str(mount_point),
+                rclone_dir=str(Path(temp_dir) / "target"),
+            )
+            service.runtime.config_dir = config_dir
+            service.runtime.volatile_dir = volatile_dir
+            service.rclone_adapter = MagicMock()
+            service.rclone_adapter.sync.return_value = FakeProcess(stdout="copied\n")
+
+            service._run_fake_cloud_backup(threading.Event())
+
+            filter_path = service.rclone_adapter.sync.call_args.kwargs["filter_from"]
+            self.assertIsNotNone(filter_path)
+            self.assertFalse(Path(filter_path).exists())
 
     @patch("simple_safer_server.services.task_service.run_scheduled_drive_health_check")
     def test_fake_drive_health_logs_smart_collection(self, mock_health_check):
@@ -338,6 +383,26 @@ class TaskServiceTests(unittest.TestCase):
 
         self.assertEqual(systemd_adapter.enabled_timers, ["backup_cloud.timer"])
         self.assertEqual(service.schedule_state(task)["state"], "active")
+
+    def test_set_schedule_enabled_maps_toggle_to_timer_state(self):
+        systemd_adapter = FakeSystemdAdapter()
+        service, _fake_state = self.build_service(is_fake=False, systemd_adapter=systemd_adapter)
+        task = service.get_task("Cloud Backup")
+        assert task is not None
+
+        service.set_schedule_enabled(task, False)
+        service.set_schedule_enabled(task, True)
+
+        self.assertEqual(systemd_adapter.disabled_timers, ["backup_cloud.timer"])
+        self.assertEqual(systemd_adapter.enabled_timers, ["backup_cloud.timer"])
+
+    def test_set_schedule_enabled_rejects_non_toggle_tasks(self):
+        service, _fake_state = self.build_service()
+        task = service.get_task("App Update")
+        assert task is not None
+
+        with self.assertRaisesRegex(ValueError, "not available"):
+            service.set_schedule_enabled(task, False)
 
     def test_schedule_state_reports_managed_external_and_issue_states(self):
         systemd_adapter = FakeSystemdAdapter()

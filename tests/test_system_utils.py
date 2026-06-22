@@ -71,6 +71,7 @@ class SystemUtilsTimerActivationTests(unittest.TestCase):
                 "check_mount",
                 "check_health",
                 "backup_cloud",
+                "setup_self_backup",
                 "ddns_update",
                 "app_update",
             ]:
@@ -105,6 +106,7 @@ class SystemUtilsTimerActivationTests(unittest.TestCase):
                 "check_mount",
                 "check_health",
                 "backup_cloud",
+                "setup_self_backup",
                 "ddns_update",
                 "app_update",
             ]:
@@ -213,6 +215,10 @@ class SystemUtilsTimerActivationTests(unittest.TestCase):
                 "OnCalendar=*-*-* 03:00:00",
                 (runtime.systemd_dir / "backup_cloud.timer").read_text(),
             )
+            self.assertIn(
+                "OnCalendar=*-*-* 02:59:00",
+                (runtime.systemd_dir / "setup_self_backup.timer").read_text(),
+            )
 
     def test_pre_backup_timers_wrap_before_midnight(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -236,6 +242,10 @@ class SystemUtilsTimerActivationTests(unittest.TestCase):
             self.assertIn(
                 "OnCalendar=*-*-* 23:59:00",
                 (runtime.systemd_dir / "check_health.timer").read_text(),
+            )
+            self.assertIn(
+                "OnCalendar=*-*-* 00:00:00",
+                (runtime.systemd_dir / "setup_self_backup.timer").read_text(),
             )
 
     def test_install_systemd_services_normalizes_legacy_single_digit_hour(self):
