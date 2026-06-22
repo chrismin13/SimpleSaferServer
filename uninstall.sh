@@ -36,6 +36,7 @@ SCRIPT_FILES=(
   check_health.sh
   check_health.py
   backup_cloud.sh
+  validate_storage_source.py
   log_alert.py
   import_legacy.py
   ddns_update.sh

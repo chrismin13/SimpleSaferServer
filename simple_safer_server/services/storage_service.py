@@ -6,6 +6,11 @@ from simple_safer_server.services.backup_drive_setup import (
     get_managed_fstab_entry_for_mount_point,
     split_uuid_device_lookup,
 )
+from simple_safer_server.services.storage_location import (
+    MODE_EXISTING_FOLDER,
+    get_storage_location,
+    storage_status,
+)
 from simple_safer_server.web.problems import OperationProblem, ValidationProblem
 
 
@@ -18,11 +23,15 @@ class StorageService:
         fake_state: Any,
         config_manager: Any,
         command_adapter: Any,
+        system_utils: Any,
+        command_runner: Any,
     ) -> None:
         self._runtime = runtime
         self._fake_state = fake_state
         self._config_manager = config_manager
         self._command_adapter = command_adapter
+        self._system_utils = system_utils
+        self._command_runner = command_runner
 
     def restart_system(self) -> str:
         if self._runtime.is_fake:
@@ -43,6 +52,18 @@ class StorageService:
             raise OperationProblem("Failed to shut down system.") from exc
 
     def mount_dashboard_drive(self) -> str:
+        location = get_storage_location(self._config_manager, runtime=self._runtime)
+        if location.mode == MODE_EXISTING_FOLDER:
+            status = storage_status(
+                self._config_manager,
+                self._system_utils,
+                runtime=self._runtime,
+                command_runner=self._command_runner,
+            )
+            if not status["ok"]:
+                raise ValidationProblem(status["error"], slug="storage-validation-error")
+            return "Storage folder is available."
+
         mount_point = self._config_manager.get_value(
             "backup", "mount_point", self._runtime.default_mount_point
         )
@@ -87,7 +108,7 @@ class StorageService:
                 if managed_fstab_entry.get("uuid") != uuid:
                     raise ValidationProblem(
                         "Managed fstab entry does not match the configured backup drive UUID. "
-                        "Re-run backup drive setup from Drive Health before mounting.",
+                        "Re-run managed-drive setup from Storage before mounting.",
                         slug="storage-validation-error",
                     )
                 # Prefer the managed fstab entry only after the UUID matches so
@@ -111,6 +132,6 @@ class StorageService:
             raise OperationProblem("Failed to mount drive.") from exc
         except OSError as exc:
             raise OperationProblem(
-                "Could not prepare the mount point. Check that the configured "
+                "Could not create or access the mount point. Check that the configured "
                 "folder path is valid and writable."
             ) from exc

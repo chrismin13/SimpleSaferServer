@@ -1,7 +1,9 @@
 import importlib
 import sys
+import tempfile
 import types
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from flask import Flask
@@ -162,6 +164,30 @@ class SetupWizardTests(unittest.TestCase):
         self.assertEqual(response.status_code, 401)
         self.assertProblemDetail(response, 'Please log in again.')
         mock_get_available_backup_drives.assert_not_called()
+
+    def test_setup_list_path_returns_folders_and_files(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            temp_path = Path(tempdir)
+            (temp_path / "media").mkdir()
+            (temp_path / "readme.txt").write_text("hello", encoding="utf-8")
+
+            with self.app.test_client() as client:
+                response = client.post("/api/setup/list-path", json={"path": tempdir})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertDataResponse(
+            response,
+            {
+                "path": tempdir,
+                "parent": str(Path(tempdir).parent),
+                "dirs": ["media"],
+                "files": ["readme.txt"],
+                "entries": [
+                    {"name": "media", "type": "folder"},
+                    {"name": "readme.txt", "type": "file"},
+                ],
+            },
+        )
 
     def test_setup_mega_connect_delegates_to_cloud_backup_service(self):
         with self.app.test_client() as client:
@@ -691,6 +717,52 @@ class SetupWizardTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertProblemDetail(response, 'Missing required fields')
         config_manager.set_value.assert_not_called()
+
+    def test_skip_cloud_backup_saves_explicit_disabled_state(self):
+        config_manager = MagicMock()
+        config_manager.is_setup_complete.return_value = False
+
+        with patch.object(self.setup_wizard, 'config_manager', config_manager):
+            with self.app.test_client() as client:
+                response = client.post('/api/setup/cloud-backup/skip')
+
+        self.assertEqual(response.status_code, 200)
+        config_manager.set_value.assert_any_call('backup', 'cloud_enabled', 'false')
+        config_manager.set_value.assert_any_call('backup', 'cloud_mode', '')
+        config_manager.set_value.assert_any_call('backup', 'rclone_dir', '')
+
+    def test_complete_setup_allows_skipped_cloud_backup_without_rclone_dir(self):
+        config_manager = MagicMock()
+        config_manager.is_setup_complete.return_value = False
+        config_manager.get_all_config.return_value = {
+            'system': {'username': 'admin', 'server_name': 'test-server'},
+            'backup': {
+                'mount_point': '/srv/storage',
+                'email_address': 'admin@example.com',
+                'cloud_enabled': 'false',
+            },
+            'storage': {
+                'mode': 'existing_folder',
+                'path': '/srv/storage',
+                'storage_id': 'storage-id',
+            },
+            'schedule': {'backup_cloud_time': '03:00'},
+        }
+
+        with patch.object(self.setup_wizard, 'config_manager', config_manager):
+            with patch.object(
+                self.setup_wizard, 'install_systemd_tasks', return_value=(True, None)
+            ) as install_tasks:
+                with patch.object(
+                    self.setup_wizard, 'setup_smb_share', return_value=(True, None)
+                ) as setup_share:
+                    with self.app.test_client() as client:
+                        response = client.post('/api/setup/complete')
+
+        self.assertEqual(response.status_code, 200)
+        install_tasks.assert_called_once()
+        setup_share.assert_called_once()
+        config_manager.mark_setup_complete.assert_called_once()
 
     def test_format_drive_rejects_non_string_disk(self):
         # JSON clients can send numeric or other non-string values; reject cleanly.

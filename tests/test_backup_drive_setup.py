@@ -26,6 +26,13 @@ class FakeBackupDriveCommandAdapter:
         self.current_mounts_result = SimpleNamespace(returncode=0, stderr='', stdout='')
         self.system_drive_result = SimpleNamespace(returncode=0, stderr='', stdout='/dev/sda\n')
         self.find_device_by_uuid_result = '/dev/sdb1\n'
+        self.whole_disk_type_result = SimpleNamespace(returncode=0, stderr='', stdout='disk\n')
+        self.create_partition_result = SimpleNamespace(returncode=0, stderr='', stdout='')
+        self.partprobe_result = SimpleNamespace(returncode=0, stderr='', stdout='')
+        self.format_ntfs_result = SimpleNamespace(returncode=0, stderr='', stdout='')
+        self.created_partitions = []
+        self.partprobed = []
+        self.formatted_ntfs = []
 
     def lsblk_devices_json(self):
         return self.lsblk_devices_json_result
@@ -56,6 +63,22 @@ class FakeBackupDriveCommandAdapter:
 
     def cleanup_unmount(self, device):
         self.cleanup_unmounted.append(device)
+
+    def whole_disk_type(self, disk):
+        del disk
+        return self.whole_disk_type_result
+
+    def create_partition(self, disk, partition_script):
+        self.created_partitions.append((disk, partition_script))
+        return self.create_partition_result
+
+    def partprobe(self, disk):
+        self.partprobed.append(disk)
+        return self.partprobe_result
+
+    def format_ntfs(self, partition):
+        self.formatted_ntfs.append(partition)
+        return self.format_ntfs_result
 
 
 class BackupDriveSetupTests(unittest.TestCase):
@@ -478,6 +501,87 @@ class BackupDriveSetupTests(unittest.TestCase):
         self.assertEqual(message, 'Successfully unmounted /dev/sdb1.')
         self.assertEqual(command_adapter.unmounted_partitions, ['/dev/sdb1'])
         mock_get_mount.assert_called_once_with('/dev/sdb1', command_adapter=command_adapter)
+
+    @patch('simple_safer_server.services.backup_drive_setup._get_mounted_partitions_for_disk')
+    def test_format_backup_drive_blocks_mounted_partitions(self, mock_get_mounted):
+        runtime = SimpleNamespace(is_fake=False)
+        command_adapter = FakeBackupDriveCommandAdapter()
+        mock_get_mounted.return_value = [{'device': '/dev/sdb1', 'mount_point': '/media/backup'}]
+        disk_stat = MagicMock()
+        disk_stat.st_mode = __import__('stat').S_IFBLK | 0o660
+
+        with (
+            patch(
+                'simple_safer_server.services.backup_drive_setup.os.path.realpath',
+                return_value='/dev/sdb',
+            ),
+            patch(
+                'simple_safer_server.services.backup_drive_setup.os.path.exists',
+                return_value=True,
+            ),
+            patch('simple_safer_server.services.backup_drive_setup.os.access', return_value=True),
+            patch(
+                'simple_safer_server.services.backup_drive_setup.os.stat', return_value=disk_stat
+            ),
+        ):
+            with self.assertRaisesRegex(
+                backup_drive_setup.BackupDriveSetupError,
+                'Drive has mounted partitions',
+            ):
+                backup_drive_setup.format_backup_drive(
+                    '/dev/sdb',
+                    runtime=runtime,
+                    command_adapter=command_adapter,
+                )
+
+        self.assertEqual(command_adapter.created_partitions, [])
+        mock_get_mounted.assert_called_once_with('/dev/sdb', command_adapter=command_adapter)
+
+    @patch('simple_safer_server.services.backup_drive_setup._get_mounted_partitions_for_disk')
+    def test_format_backup_drive_rebuilds_one_ntfs_partition(self, mock_get_mounted):
+        runtime = SimpleNamespace(is_fake=False)
+        command_adapter = FakeBackupDriveCommandAdapter()
+        mock_get_mounted.return_value = []
+        block_stat = MagicMock()
+        block_stat.st_mode = __import__('stat').S_IFBLK | 0o660
+
+        with (
+            patch(
+                'simple_safer_server.services.backup_drive_setup.os.path.realpath',
+                return_value='/dev/sdb',
+            ),
+            patch(
+                'simple_safer_server.services.backup_drive_setup.os.path.exists',
+                return_value=True,
+            ),
+            patch('simple_safer_server.services.backup_drive_setup.os.access', return_value=True),
+            patch(
+                'simple_safer_server.services.backup_drive_setup.os.stat',
+                return_value=block_stat,
+            ),
+            patch(
+                'simple_safer_server.services.backup_drive_setup.os.lstat',
+                return_value=block_stat,
+            ),
+        ):
+            result = backup_drive_setup.format_backup_drive(
+                '/dev/sdb',
+                runtime=runtime,
+                command_adapter=command_adapter,
+            )
+
+        self.assertEqual(result['partition'], '/dev/sdb1')
+        self.assertEqual(command_adapter.partprobed, ['/dev/sdb'])
+        self.assertEqual(command_adapter.formatted_ntfs, ['/dev/sdb1'])
+        self.assertEqual(
+            command_adapter.created_partitions,
+            [
+                (
+                    '/dev/sdb',
+                    (f'type={backup_drive_setup.MICROSOFT_BASIC_DATA_PARTITION_TYPE}\n').encode(),
+                )
+            ],
+        )
 
     @patch('simple_safer_server.services.backup_drive_setup.os.makedirs')
     @patch('simple_safer_server.services.backup_drive_setup._reload_systemd_mount_units')

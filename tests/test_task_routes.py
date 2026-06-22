@@ -25,6 +25,57 @@ def _build_app(task_service):
     return app
 
 
+def _build_dashboard_app():
+    app = Flask(__name__)
+    app.config["TESTING"] = True
+    app.secret_key = "test-secret"
+    config_manager = MagicMock()
+    config_manager.is_setup_complete.return_value = True
+    config_manager.get_all_config.return_value = {
+        "backup": {"cloud_enabled": "false", "mount_point": "/srv/storage"},
+        "storage": {"mode": "existing_folder", "path": "/srv/storage", "storage_id": "id"},
+    }
+    app.extensions["simple_safer_server"] = SimpleNamespace(
+        task_service=SimpleNamespace(task_summaries=list),
+        config_manager=config_manager,
+        system_utils=MagicMock(),
+        runtime=SimpleNamespace(is_fake=True, default_mount_point="/media/backup"),
+    )
+    app.add_url_rule("/login", "login", lambda: "login")
+    app.register_blueprint(tasks)
+    return app
+
+
+def test_dashboard_marks_existing_folder_unavailable_when_disk_usage_fails():
+    app = _build_dashboard_app()
+    user_manager = MagicMock()
+    user_manager.is_admin.return_value = True
+
+    with (
+        patch("simple_safer_server.services.user_manager.UserManager", return_value=user_manager),
+        patch("simple_safer_server.routes.tasks.psutil.disk_usage", side_effect=OSError),
+        patch("simple_safer_server.routes.tasks.psutil.cpu_percent", return_value=12),
+        patch(
+            "simple_safer_server.routes.tasks.psutil.virtual_memory",
+            return_value=SimpleNamespace(percent=34),
+        ),
+        patch(
+            "simple_safer_server.routes.tasks.render_template", return_value="rendered"
+        ) as render,
+        app.test_client() as client,
+    ):
+        with client.session_transaction() as session:
+            session["username"] = "admin"
+
+        response = client.get("/dashboard")
+
+    assert response.status_code == 200
+    mount_info = render.call_args.kwargs["mount_info"]
+    assert mount_info["available"] is False
+    assert mount_info["disk_available"] is False
+    assert mount_info["error"] == "Storage path is not readable."
+
+
 def test_task_detail_loads_maximum_log_window():
     task = MagicMock()
     task.name = "App Update"

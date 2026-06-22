@@ -189,6 +189,25 @@ class SMBManagerTests(unittest.TestCase):
         self.assertTrue((self.runtime.samba_dir / "simple_safer_server_globals.conf").exists())
         self.assertEqual(len(self.adapter.validated_paths), 3)
 
+    def test_default_fake_mode_adapter_does_not_require_samba_binaries(self):
+        share_path = self.root / "share"
+        share_path.mkdir()
+        manager = smb_manager.SMBManager(runtime=self.runtime)
+
+        with patch.object(smb_manager.shutil, "which", return_value=None):
+            manager.ensure_default_backup_share(str(share_path), "admin")
+
+        content = (self.runtime.samba_dir / "simple_safer_server_shares.conf").read_text()
+        self.assertIn("[backup]", content)
+        self.assertIn(f"   path = {share_path}", content)
+        self.assertIn("   valid users = admin", content)
+
+    def test_default_real_mode_adapter_still_uses_samba_command_adapter(self):
+        self.runtime.is_fake = False
+        manager = smb_manager.SMBManager(runtime=self.runtime)
+
+        self.assertIsInstance(manager.command_adapter, smb_manager.SmbCommandAdapter)
+
     def test_list_unmanaged_shares_uses_stripped_effective_config_candidate(self):
         self._write_conf(
             "\n".join(

@@ -23,6 +23,7 @@ from simple_safer_server.services.drive_health import (
     hdsentinel_snapshot_has_health,
     run_scheduled_drive_health_check,
 )
+from simple_safer_server.services.storage_location import validate_storage_ready_for_backup
 
 
 class Status:
@@ -498,6 +499,12 @@ class TaskService:
             raise RuntimeError("No source folder configured.")
         if not os.path.isdir(source):
             raise RuntimeError(f"Source folder does not exist: {source}")
+        validate_storage_ready_for_backup(
+            self.config_manager,
+            self.system_utils,
+            runtime=self.runtime,
+            command_runner=self.command_runner,
+        )
         if not destination:
             raise RuntimeError("No cloud destination configured.")
         if ":" in destination and not rclone_config_path.exists():

@@ -3,12 +3,15 @@ import logging
 import os
 import re
 import shutil
+import stat
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 from simple_safer_server.adapters.backup_drive_commands import BackupDriveCommandAdapter
+from simple_safer_server.adapters.command_runner import SubprocessError
 from simple_safer_server.services.runtime import get_fake_state, get_runtime
 
 LOGGER = logging.getLogger(__name__)
@@ -17,6 +20,9 @@ LEGACY_FSTAB_MARKER = "SimpleSaferServer"
 DEFAULT_NTFS_DRIVER = 'ntfs-3g'
 SUPPORTED_NTFS_DRIVERS = {DEFAULT_NTFS_DRIVER, 'ntfs3'}
 NTFS_FILESYSTEM_TYPES = {'ntfs', 'ntfs3', 'ntfs-3g'}
+PARTITION_POLL_INTERVAL_SECONDS = 0.5
+PARTITION_POLL_TIMEOUT_SECONDS = 5.0
+MICROSOFT_BASIC_DATA_PARTITION_TYPE = 'EBD0A0A2-B9E5-4433-87C0-68B6B72699C7'
 
 
 @dataclass(frozen=True)
@@ -115,6 +121,15 @@ def normalize_ntfs_driver(ntfs_driver):
     if normalized_driver not in SUPPORTED_NTFS_DRIVERS:
         raise BackupDriveSetupError('Unsupported NTFS driver. Choose ntfs-3g or ntfs3.')
     return normalized_driver
+
+
+def get_partition_node(disk):
+    """Return the first partition device node for a Linux disk path."""
+    if not isinstance(disk, str) or not disk:
+        raise ValueError(f'disk must be a non-empty string, got {disk!r}')
+    if disk[-1].isdigit():
+        return f'{disk}p1'
+    return f'{disk}1'
 
 
 def _is_ntfs_filesystem(filesystem_type):
@@ -733,6 +748,156 @@ def unmount_selected_partition(partition_path, runtime=None, command_adapter=Non
         )
 
     return 'Successfully unmounted {}.'.format(mount['device'])
+
+
+def _validate_format_disk_path(disk, command_adapter=None):
+    disk = os.path.realpath(disk)
+    if not disk.startswith('/dev/'):
+        raise BackupDriveSetupError('Invalid disk path: must be a /dev/ device node.')
+
+    try:
+        disk_stat = os.stat(disk)
+    except FileNotFoundError as exc:
+        raise BackupDriveSetupError('Invalid disk path: device does not exist.') from exc
+    except PermissionError as exc:
+        raise BackupDriveSetupError(
+            'Invalid disk path: permission denied while inspecting device node.'
+        ) from exc
+    except OSError as exc:
+        raise BackupDriveSetupError('Invalid disk path: unable to inspect device node.') from exc
+
+    if not stat.S_ISBLK(disk_stat.st_mode):
+        raise BackupDriveSetupError('Invalid disk path: must be a block device node.')
+
+    try:
+        lsblk_result = _command_adapter(command_adapter).whole_disk_type(disk)
+    except (SubprocessError, OSError) as exc:
+        raise BackupDriveSetupError('Unable to verify disk type.') from exc
+
+    if lsblk_result.stdout.strip() != 'disk':
+        raise BackupDriveSetupError('Invalid disk path: must be a whole-disk block device.')
+
+    return disk
+
+
+def _wait_for_partition_node(partition):
+    deadline = time.monotonic() + PARTITION_POLL_TIMEOUT_SECONDS
+    while True:
+        try:
+            is_block_device = stat.S_ISBLK(os.stat(partition).st_mode)
+        except OSError:
+            is_block_device = False
+        if is_block_device:
+            return
+        if time.monotonic() >= deadline:
+            raise BackupDriveSetupError(
+                'Partition node did not appear after partitioning.',
+                details=(
+                    f'{partition} was not created within '
+                    f'{PARTITION_POLL_TIMEOUT_SECONDS:.0f} seconds of partitioning. '
+                    'The kernel may not have processed the new partition table yet. '
+                    'Please try again.'
+                ),
+            )
+        time.sleep(PARTITION_POLL_INTERVAL_SECONDS)
+
+
+def _verify_partition_node(partition):
+    deadline = time.monotonic() + PARTITION_POLL_TIMEOUT_SECONDS
+    while True:
+        try:
+            partition_lstat = os.lstat(partition)
+            is_symlink = stat.S_ISLNK(partition_lstat.st_mode)
+            is_block_device = (not is_symlink) and stat.S_ISBLK(os.stat(partition).st_mode)
+        except OSError:
+            is_block_device = False
+        if is_block_device:
+            return
+        if time.monotonic() >= deadline:
+            raise BackupDriveSetupError(
+                'Invalid partition path: must be a partition block device.',
+                details=(
+                    f'{partition} was not a valid block device within '
+                    f'{PARTITION_POLL_TIMEOUT_SECONDS:.0f} seconds. '
+                    'Please verify the drive path and try again.'
+                ),
+            )
+        time.sleep(PARTITION_POLL_INTERVAL_SECONDS)
+
+
+def format_backup_drive(disk, runtime=None, command_adapter=None):
+    """Erase one whole disk, create one NTFS partition, and leave app config unchanged."""
+    runtime = runtime or get_runtime()
+    command_adapter = _command_adapter(command_adapter)
+    if disk is None:
+        raise BackupDriveSetupError('No disk selected.')
+    if not isinstance(disk, str):
+        raise BackupDriveSetupError('Invalid disk path: must be a string.')
+    if not disk:
+        raise BackupDriveSetupError('No disk selected.')
+    if runtime.is_fake:
+        raise BackupDriveSetupError(
+            'Formatting is disabled in fake mode.',
+            details='Fake mode never formats local disks. Use an existing fake storage path instead.',
+        )
+
+    disk = _validate_format_disk_path(disk, command_adapter=command_adapter)
+    mounted_partitions = _get_mounted_partitions_for_disk(
+        disk,
+        command_adapter=command_adapter,
+    )
+    if mounted_partitions:
+        partition_info = '\n'.join(
+            f"- {partition['device']} at {partition['mount_point']}"
+            for partition in mounted_partitions
+        )
+        raise BackupDriveSetupError(
+            'Drive has mounted partitions.',
+            details=(
+                'The following partitions are currently mounted:\n'
+                f'{partition_info}\n\nUnmount all partitions before formatting.'
+            ),
+        )
+
+    partition = get_partition_node(disk)
+    partition_script = f'type={MICROSOFT_BASIC_DATA_PARTITION_TYPE}\n'
+    result = command_adapter.create_partition(disk, partition_script.encode())
+    if result.returncode != 0:
+        raise BackupDriveSetupError(
+            'Failed to set up drive.',
+            details='Could not erase and set up the selected drive. Make sure it is not in use and try again.',
+        )
+
+    try:
+        result_probe = command_adapter.partprobe(disk)
+        if result_probe.returncode != 0:
+            LOGGER.debug(
+                'partprobe %s exited %d: %s',
+                disk,
+                result_probe.returncode,
+                result_probe.stderr.strip(),
+            )
+    except OSError as exc:
+        LOGGER.debug('partprobe failed for %s; continuing without it: %s', disk, exc)
+
+    # USB and removable media often need a short udev settle window before the
+    # new partition node can be formatted.
+    _wait_for_partition_node(partition)
+    _verify_partition_node(partition)
+
+    result = command_adapter.format_ntfs(partition)
+    if result.returncode != 0:
+        error_msg = result.stderr.strip() if result.stderr else 'Unknown error occurred'
+        raise BackupDriveSetupError(
+            f'Error formatting partition: {error_msg}',
+            details='Please ensure the drive is not in use and try again.',
+        )
+
+    return {
+        'disk': disk,
+        'partition': partition,
+        'message': f'Successfully formatted {partition} as NTFS.',
+    }
 
 
 def _replace_backup_share_path(smb_manager, new_path, fallback_path):

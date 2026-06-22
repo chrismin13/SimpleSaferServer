@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from simple_safer_server.adapters.command_runner import CalledProcessError
-from simple_safer_server.adapters.smb_commands import SmbCommandAdapter
+from simple_safer_server.adapters.smb_commands import FakeSmbCommandAdapter, SmbCommandAdapter
 from simple_safer_server.services.runtime import get_fake_state, get_runtime
 from simple_safer_server.services.samba_layout import (
     SSS_SHARES_FILENAME,
@@ -72,10 +72,15 @@ def _contains_control_characters(value: str) -> bool:
 class SMBManager:
     def __init__(self, runtime=None, command_adapter=None):
         self.runtime = runtime or get_runtime()
-        self.command_adapter = command_adapter or SmbCommandAdapter()
         self.smb_conf_path = str(self.runtime.samba_dir / "smb.conf")
         self.sss_shares_path = self.runtime.samba_dir / SSS_SHARES_FILENAME
         self.fake_state = get_fake_state(self.runtime) if self.runtime.is_fake else None
+        self.command_adapter = command_adapter or self._default_command_adapter()
+
+    def _default_command_adapter(self):
+        if self.runtime.is_fake:
+            return FakeSmbCommandAdapter(self.fake_state)
+        return SmbCommandAdapter()
 
     def _read_smb_conf(self):
         """Read the current smb.conf file."""

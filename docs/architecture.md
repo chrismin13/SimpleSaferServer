@@ -32,9 +32,20 @@ and map app-level exceptions to Problem Details. System behavior belongs outside
 Code that touches systemd, rclone, Samba, filesystems, SMTP, provider APIs, disks, or secrets
 should live behind a service or adapter boundary.
 
-Existing extracted services include task handling, DDNS, Cloud Backup, and alerts. Existing
+Existing extracted services include task handling, DDNS, Cloud Backup, storage location checks, and alerts. Existing
 blueprints cover dashboard/tasks, DDNS, Cloud Backup, System Updates, alerts, SMB, users, storage,
 and drive health.
+
+Storage location checks live in `simple_safer_server.services.storage_location`. That service owns
+the small marker file inside the configured storage folder and the read/write checks that run before
+Cloud Backup. Routes and scripts should use that service instead of open-coding storage safety
+checks, because the failure mode can delete remote files when `rclone sync` sees the wrong local
+folder.
+
+The same module also exposes passive display status for the Dashboard and Storage page. Passive
+status must not read the marker, list the storage folder, or create the write-probe file. Page loads
+should not wake sleeping backup drives. Full validation belongs on explicit storage actions and
+right before Cloud Backup, where the drive is about to be used anyway.
 
 ## Fake Mode
 

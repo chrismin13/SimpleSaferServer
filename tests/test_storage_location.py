@@ -1,0 +1,392 @@
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
+from simple_safer_server.services import storage_location
+from simple_safer_server.services.storage_location import (
+    MODE_EXISTING_FOLDER,
+    StorageLocationError,
+    configure_existing_folder,
+    get_storage_location,
+    mark_managed_drive_storage,
+    marker_path,
+    passive_storage_status,
+    repair_storage_marker,
+    storage_status,
+    validate_existing_folder_path,
+    validate_storage_ready_for_backup,
+)
+
+
+class FakeConfigManager:
+    def __init__(self, mount_point):
+        self.config = {
+            "backup": {"mount_point": str(mount_point), "uuid": "", "cloud_enabled": "false"},
+            "storage": {},
+        }
+
+    def get_all_config(self):
+        return self.config
+
+    def get_value(self, section, key, default=None):
+        return self.config.get(section, {}).get(key, default)
+
+    def set_value(self, section, key, value):
+        self.config.setdefault(section, {})[key] = str(value)
+
+
+class FakeSystemUtils:
+    def is_mounted(self, mount_point):
+        return True
+
+
+class FakeCommandRunner:
+    def __init__(self, stdout="", command_outputs=None):
+        self.stdout = stdout
+        self.command_outputs = command_outputs or {}
+
+    def run(self, command, **kwargs):
+        key = tuple(command)
+        if key in self.command_outputs:
+            return SimpleNamespace(returncode=0, stdout=self.command_outputs[key], stderr="")
+        return SimpleNamespace(returncode=0, stdout=self.stdout, stderr="")
+
+
+def fake_runtime(tmp_path):
+    return SimpleNamespace(
+        config_dir=tmp_path / "etc",
+        data_dir=tmp_path / "var-lib",
+        logs_dir=tmp_path / "logs",
+        volatile_dir=tmp_path / "run",
+        repo_root=tmp_path / "repo",
+        default_mount_point=str(tmp_path / "storage"),
+        is_fake=True,
+    )
+
+
+def test_configure_existing_folder_writes_marker_and_config(tmp_path):
+    storage_path = tmp_path / "storage"
+    storage_path.mkdir()
+    runtime = fake_runtime(tmp_path)
+    config = FakeConfigManager(storage_path)
+    runner = FakeCommandRunner(f"/dev/sdb1 {storage_path} ext4\n")
+
+    location = configure_existing_folder(
+        config, str(storage_path), runtime=runtime, command_runner=runner
+    )
+
+    assert location.mode == MODE_EXISTING_FOLDER
+    assert location.path == str(storage_path.resolve())
+    assert marker_path(storage_path).exists()
+    assert get_storage_location(config, runtime=runtime).storage_id
+
+
+def test_storage_validation_fails_when_marker_is_missing(tmp_path):
+    storage_path = tmp_path / "storage"
+    storage_path.mkdir()
+    runtime = fake_runtime(tmp_path)
+    config = FakeConfigManager(storage_path)
+    configure_existing_folder(config, str(storage_path), runtime=runtime)
+    marker_path(storage_path).unlink()
+
+    with pytest.raises(StorageLocationError, match="repair the marker"):
+        validate_storage_ready_for_backup(config, FakeSystemUtils(), runtime=runtime)
+
+
+def test_passive_storage_status_does_not_read_missing_marker(tmp_path):
+    storage_path = tmp_path / "storage"
+    storage_path.mkdir()
+    runtime = fake_runtime(tmp_path)
+    config = FakeConfigManager(storage_path)
+    configure_existing_folder(config, str(storage_path), runtime=runtime)
+    marker_path(storage_path).unlink()
+
+    status = passive_storage_status(config, FakeSystemUtils(), runtime=runtime)
+
+    assert status["checked"] is False
+    assert status["ok"] is True
+
+
+def test_storage_validation_fails_when_marker_id_does_not_match(tmp_path):
+    storage_path = tmp_path / "storage"
+    storage_path.mkdir()
+    runtime = fake_runtime(tmp_path)
+    config = FakeConfigManager(storage_path)
+    configure_existing_folder(config, str(storage_path), runtime=runtime)
+    marker_path(storage_path).write_text('{"storage_id": "wrong"}')
+
+    with pytest.raises(StorageLocationError, match="Confirm this is the correct storage folder"):
+        validate_storage_ready_for_backup(config, FakeSystemUtils(), runtime=runtime)
+
+
+def test_storage_validation_explains_how_to_fix_missing_storage_id(tmp_path):
+    storage_path = tmp_path / "storage"
+    storage_path.mkdir()
+    runtime = fake_runtime(tmp_path)
+    config = FakeConfigManager(storage_path)
+    configure_existing_folder(config, str(storage_path), runtime=runtime)
+    config.config["storage"]["storage_id"] = ""
+
+    with pytest.raises(StorageLocationError, match="Choose a storage target below"):
+        validate_storage_ready_for_backup(config, FakeSystemUtils(), runtime=runtime)
+
+
+def test_repair_marker_explains_how_to_fix_missing_storage_id(tmp_path):
+    storage_path = tmp_path / "storage"
+    storage_path.mkdir()
+    runtime = fake_runtime(tmp_path)
+    config = FakeConfigManager(storage_path)
+    configure_existing_folder(config, str(storage_path), runtime=runtime)
+    config.config["storage"]["storage_id"] = ""
+
+    with pytest.raises(StorageLocationError, match="Choose a storage target below"):
+        repair_storage_marker(config, runtime=runtime)
+
+
+def test_storage_validation_explains_bad_marker_can_be_repaired(tmp_path):
+    storage_path = tmp_path / "storage"
+    storage_path.mkdir()
+    runtime = fake_runtime(tmp_path)
+    config = FakeConfigManager(storage_path)
+    configure_existing_folder(config, str(storage_path), runtime=runtime)
+    marker_path(storage_path).write_text("{broken json")
+
+    with pytest.raises(StorageLocationError, match="repair the marker"):
+        validate_storage_ready_for_backup(config, FakeSystemUtils(), runtime=runtime)
+
+
+def test_storage_validation_fails_when_write_probe_readback_does_not_match(tmp_path, monkeypatch):
+    storage_path = tmp_path / "storage"
+    storage_path.mkdir()
+    runtime = fake_runtime(tmp_path)
+    config = FakeConfigManager(storage_path)
+    configure_existing_folder(config, str(storage_path), runtime=runtime)
+
+    def write_wrong_value(path, _payload, mode=0o600):
+        path.write_text("different")
+
+    monkeypatch.setattr(
+        "simple_safer_server.services.storage_location.atomic_write_text",
+        write_wrong_value,
+    )
+
+    with pytest.raises(StorageLocationError, match="read back"):
+        validate_storage_ready_for_backup(config, FakeSystemUtils(), runtime=runtime)
+
+
+def test_storage_status_handles_marker_read_errors(tmp_path, monkeypatch):
+    storage_path = tmp_path / "storage"
+    storage_path.mkdir()
+    runtime = fake_runtime(tmp_path)
+    config = FakeConfigManager(storage_path)
+    configure_existing_folder(config, str(storage_path), runtime=runtime)
+    marker = marker_path(storage_path).resolve()
+    original_read_text = Path.read_text
+
+    def fail_marker_read(path, *args, **kwargs):
+        if path.resolve() == marker:
+            raise PermissionError("marker is not readable")
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", fail_marker_read)
+
+    status = storage_status(config, FakeSystemUtils(), runtime=runtime)
+
+    assert status["ok"] is False
+    assert "Could not read storage marker" in status["error"]
+
+
+def test_storage_status_handles_probe_write_errors(tmp_path, monkeypatch):
+    storage_path = tmp_path / "storage"
+    storage_path.mkdir()
+    runtime = fake_runtime(tmp_path)
+    config = FakeConfigManager(storage_path)
+    configure_existing_folder(config, str(storage_path), runtime=runtime)
+
+    def fail_probe_write(path, _payload, mode=0o600):
+        raise PermissionError("probe is not writable")
+
+    monkeypatch.setattr(
+        "simple_safer_server.services.storage_location.atomic_write_text",
+        fail_probe_write,
+    )
+
+    status = storage_status(config, FakeSystemUtils(), runtime=runtime)
+
+    assert status["ok"] is False
+    assert "Storage write probe failed" in status["error"]
+
+
+def test_storage_status_handles_probe_readback_errors(tmp_path, monkeypatch):
+    storage_path = tmp_path / "storage"
+    storage_path.mkdir()
+    runtime = fake_runtime(tmp_path)
+    config = FakeConfigManager(storage_path)
+    configure_existing_folder(config, str(storage_path), runtime=runtime)
+    original_read_text = Path.read_text
+
+    def fail_probe_read(path, *args, **kwargs):
+        if path.name == storage_location.PROBE_FILE_NAME:
+            raise PermissionError("probe is not readable")
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", fail_probe_read)
+
+    status = storage_status(config, FakeSystemUtils(), runtime=runtime)
+
+    assert status["ok"] is False
+    assert "Storage write probe failed" in status["error"]
+
+
+def test_repair_storage_marker_restores_missing_marker(tmp_path):
+    storage_path = tmp_path / "storage"
+    storage_path.mkdir()
+    runtime = fake_runtime(tmp_path)
+    config = FakeConfigManager(storage_path)
+    configure_existing_folder(config, str(storage_path), runtime=runtime)
+    marker_path(storage_path).unlink()
+
+    repair_storage_marker(config, runtime=runtime)
+
+    assert validate_storage_ready_for_backup(config, FakeSystemUtils(), runtime=runtime)
+
+
+def test_existing_folder_rejects_app_owned_paths(tmp_path):
+    runtime = fake_runtime(tmp_path)
+    runtime.config_dir.mkdir(parents=True)
+
+    with pytest.raises(StorageLocationError, match="dedicated storage folder"):
+        validate_existing_folder_path(str(runtime.config_dir), runtime=runtime)
+
+
+def test_existing_folder_rejects_root_path(tmp_path):
+    runtime = fake_runtime(tmp_path)
+
+    with pytest.raises(StorageLocationError, match="dedicated storage folder"):
+        validate_existing_folder_path("/", runtime=runtime)
+
+
+def test_root_path_is_not_used_as_blocked_ancestor():
+    assert storage_location.ROOT_PATH not in storage_location.UNSAFE_STORAGE_PATHS
+
+
+def test_existing_folder_allows_absolute_path_outside_blocked_roots(tmp_path, monkeypatch):
+    storage_path = tmp_path / "storage"
+    storage_path.mkdir()
+    runtime = fake_runtime(tmp_path)
+    runtime.is_fake = False
+    monkeypatch.setattr(storage_location, "UNSAFE_STORAGE_PATHS", {Path("/etc")})
+
+    assert (
+        validate_existing_folder_path(str(storage_path), runtime=runtime) == storage_path.resolve()
+    )
+
+
+def test_existing_folder_rejects_relative_paths(tmp_path, monkeypatch):
+    storage_path = tmp_path / "storage"
+    storage_path.mkdir()
+    runtime = fake_runtime(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(StorageLocationError, match="absolute path"):
+        validate_existing_folder_path("storage", runtime=runtime)
+
+
+@pytest.mark.parametrize("path", [123, True, None])
+def test_existing_folder_rejects_non_text_paths_as_validation_errors(tmp_path, path):
+    runtime = fake_runtime(tmp_path)
+
+    with pytest.raises(StorageLocationError, match="Storage location"):
+        validate_existing_folder_path(path, runtime=runtime)
+
+
+def test_mount_identity_mismatch_fails_validation(tmp_path):
+    storage_path = tmp_path / "storage"
+    storage_path.mkdir()
+    runtime = fake_runtime(tmp_path)
+    config = FakeConfigManager(storage_path)
+    configure_existing_folder(
+        config,
+        str(storage_path),
+        runtime=runtime,
+        command_runner=FakeCommandRunner(f"/dev/sdb1 {storage_path} ext4\n"),
+    )
+
+    with pytest.raises(StorageLocationError, match="change was intentional"):
+        validate_storage_ready_for_backup(
+            config,
+            FakeSystemUtils(),
+            runtime=runtime,
+            command_runner=FakeCommandRunner(f"/dev/sdc1 {storage_path} ext4\n"),
+        )
+
+
+def test_managed_drive_validation_requires_matching_mounted_uuid(tmp_path):
+    storage_path = tmp_path / "storage"
+    storage_path.mkdir()
+    runtime = fake_runtime(tmp_path)
+    config = FakeConfigManager(storage_path)
+    config.set_value("backup", "uuid", "EXPECTED-UUID")
+    mark_managed_drive_storage(config, str(storage_path), runtime=runtime)
+
+    assert validate_storage_ready_for_backup(
+        config,
+        FakeSystemUtils(),
+        runtime=runtime,
+        command_runner=FakeCommandRunner("EXPECTED-UUID\n"),
+    )
+
+
+def test_managed_drive_validation_explains_missing_uuid_fix(tmp_path):
+    storage_path = tmp_path / "storage"
+    storage_path.mkdir()
+    runtime = fake_runtime(tmp_path)
+    config = FakeConfigManager(storage_path)
+    mark_managed_drive_storage(config, str(storage_path), runtime=runtime)
+
+    with pytest.raises(StorageLocationError, match="Choose the managed drive again below"):
+        validate_storage_ready_for_backup(config, FakeSystemUtils(), runtime=runtime)
+
+
+def test_managed_drive_validation_fails_on_mounted_uuid_mismatch(tmp_path):
+    storage_path = tmp_path / "storage"
+    storage_path.mkdir()
+    runtime = fake_runtime(tmp_path)
+    config = FakeConfigManager(storage_path)
+    config.set_value("backup", "uuid", "EXPECTED-UUID")
+    mark_managed_drive_storage(config, str(storage_path), runtime=runtime)
+
+    with pytest.raises(StorageLocationError, match="does not match"):
+        validate_storage_ready_for_backup(
+            config,
+            FakeSystemUtils(),
+            runtime=runtime,
+            command_runner=FakeCommandRunner("OTHER-UUID\n"),
+        )
+
+
+def test_managed_drive_validation_uses_fake_state_uuid_in_fake_runtime(tmp_path, monkeypatch):
+    storage_path = tmp_path / "storage"
+    storage_path.mkdir()
+    runtime = fake_runtime(tmp_path)
+    runtime.state_path = tmp_path / "fake-state.json"
+    config = FakeConfigManager(storage_path)
+    config.set_value("backup", "uuid", "FAKE-UUID-0001")
+    mark_managed_drive_storage(config, str(storage_path), runtime=runtime)
+
+    class StorageFakeState:
+        def load(self):
+            return {"mount_point": str(storage_path), "uuid": "FAKE-UUID-0001"}
+
+    monkeypatch.setattr(
+        "simple_safer_server.services.storage_location.get_fake_state",
+        lambda _runtime: StorageFakeState(),
+    )
+
+    assert validate_storage_ready_for_backup(
+        config,
+        FakeSystemUtils(),
+        runtime=runtime,
+        command_runner=FakeCommandRunner("HOST-UUID\n"),
+    )
