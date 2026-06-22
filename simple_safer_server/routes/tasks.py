@@ -30,6 +30,14 @@ def _bad_disable_schedule_request(message: str):
     abort(400)
 
 
+def _task_not_found_response():
+    if request.accept_mimetypes.best == "application/json":
+        return json_problem(
+            NotFoundProblem("Task not found.", title="Task not found", slug="task-not-found")
+        )
+    abort(404)
+
+
 @tasks.route("/dashboard")
 @admin_required
 def dashboard():
@@ -122,11 +130,7 @@ def api_task_status(task_name):
 def start_task(task_name):
     task = _get_services().task_service.get_task(task_name)
     if not task:
-        if request.accept_mimetypes.best == "application/json":
-            return json_problem(
-                NotFoundProblem("Task not found.", title="Task not found", slug="task-not-found")
-            )
-        abort(404)
+        return _task_not_found_response()
     try:
         task.start()
         if request.accept_mimetypes.best == "application/json":
@@ -148,11 +152,7 @@ def start_task(task_name):
 def stop_task(task_name):
     task = _get_services().task_service.get_task(task_name)
     if not task:
-        if request.accept_mimetypes.best == "application/json":
-            return json_problem(
-                NotFoundProblem("Task not found.", title="Task not found", slug="task-not-found")
-            )
-        abort(404)
+        return _task_not_found_response()
     try:
         task.stop()
         if request.accept_mimetypes.best == "application/json":
@@ -174,11 +174,7 @@ def stop_task(task_name):
 def disable_schedule(task_name):
     task = _get_services().task_service.get_task(task_name)
     if not task:
-        if request.accept_mimetypes.best == "application/json":
-            return json_problem(
-                NotFoundProblem("Task not found.", title="Task not found", slug="task-not-found")
-            )
-        abort(404)
+        return _task_not_found_response()
     data = request.get_json(silent=True) or request.form
     mode = (data.get("mode") or "").strip()
     hours = data.get("hours")
@@ -222,11 +218,7 @@ def disable_schedule(task_name):
 def enable_schedule(task_name):
     task = _get_services().task_service.get_task(task_name)
     if not task:
-        if request.accept_mimetypes.best == "application/json":
-            return json_problem(
-                NotFoundProblem("Task not found.", title="Task not found", slug="task-not-found")
-            )
-        abort(404)
+        return _task_not_found_response()
     try:
         task.enable_schedule()
         if request.accept_mimetypes.best == "application/json":
@@ -243,6 +235,46 @@ def enable_schedule(task_name):
                 )
             )
         abort(500)
+
+
+@tasks.route("/task/<task_name>/schedule-enabled", methods=["POST"])
+@api_admin_required
+def set_schedule_enabled(task_name):
+    task_service = _get_services().task_service
+    task = task_service.get_task(task_name)
+    if not task:
+        return _task_not_found_response()
+    if not task.schedule_toggle_supported:
+        return json_problem(
+            ValidationProblem(
+                "Automatic-run toggle is not available for this task.",
+                slug="task-schedule-toggle-unavailable",
+            )
+        )
+
+    data = request.get_json(silent=True) or request.form
+    enabled = data.get("enabled")
+    if not isinstance(enabled, bool):
+        return json_problem(
+            ValidationProblem(
+                "enabled must be true or false.",
+                slug="task-schedule-toggle-validation-error",
+            )
+        )
+
+    try:
+        task_service.set_schedule_enabled(task, enabled)
+        summary = task_service.task_summary(task)
+        message = f"Automatic runs {'enabled' if enabled else 'disabled'} for {task_name}."
+        return json_data({"task": summary}, message=message)
+    except Exception:
+        current_app.logger.exception("Failed to update automatic runs for %s", task_name)
+        return json_problem(
+            OperationProblem(
+                "Could not update automatic runs. Check systemd status.",
+                slug="task-operation-failed",
+            )
+        )
 
 
 @tasks.route("/api/tasks/schedule")

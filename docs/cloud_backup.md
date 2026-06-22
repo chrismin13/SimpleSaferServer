@@ -14,6 +14,14 @@ The Cloud Backup page manages cloud backup settings, schedules, and status.
 - **Save**: Button to save schedule settings by disabling during the request.
 - **Error/Success Feedback**: Inline messages for save actions.
 
+## File Filters
+- **Exclude Patterns**: Skip files or folders that match these rclone patterns.
+- **Include Patterns**: Back up only files or folders that match these rclone patterns.
+- Enter one plain rclone pattern per line. Blank lines and lines that start with `#` or `;` are ignored.
+- Do not enter rclone filter rule prefixes such as `+`, `-`, or `!`. SimpleSaferServer creates the rclone `--filter-from` file for the backup run.
+- Exclude patterns are written first, then include patterns. If at least one include pattern exists, SimpleSaferServer adds a final `- **` rule so the include list works like an allow-list.
+- These pattern files are stored under the app config directory and are passed to rclone through `--filter-from`, so the full pattern list is not placed in the rclone process arguments.
+
 ## Cloud Backup Settings
 - **Backup Mode**: Choose between:
   - MEGA (Simple)

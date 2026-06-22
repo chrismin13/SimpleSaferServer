@@ -36,6 +36,7 @@ SCRIPT_FILES=(
   check_health.sh
   check_health.py
   backup_cloud.sh
+  setup_self_backup.py
   log_alert.py
   import_legacy.py
   ddns_update.sh
@@ -405,7 +406,7 @@ main() {
   fi
 
   echo "Stopping and disabling systemd units..."
-  for svc in check_mount check_health backup_cloud ddns_update app_update; do
+  for svc in check_mount check_health backup_cloud setup_self_backup ddns_update app_update; do
     remove_systemd_unit "${svc}.timer"
     remove_systemd_unit "${svc}.service"
   done

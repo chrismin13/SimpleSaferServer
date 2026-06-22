@@ -314,6 +314,91 @@ def test_enable_schedule_route_calls_task_and_returns_updated_summary():
     assert response.get_json()["data"]["task"]["schedule"]["state"] == "active"
 
 
+def test_set_schedule_enabled_route_calls_service_and_returns_updated_summary():
+    task = MagicMock()
+    task.schedule_toggle_supported = True
+    task_service = MagicMock()
+    task_service.get_task.return_value = task
+    task_service.task_summary.return_value = {
+        "name": "Cloud Backup",
+        "schedule": {"state": "permanent"},
+    }
+    app = _build_app(task_service)
+    user_manager = MagicMock()
+    user_manager.is_admin.return_value = True
+
+    with (
+        patch("simple_safer_server.services.user_manager.UserManager", return_value=user_manager),
+        app.test_client() as client,
+    ):
+        with client.session_transaction() as session:
+            session["username"] = "admin"
+
+        response = client.post(
+            "/task/Cloud%20Backup/schedule-enabled",
+            json={"enabled": False},
+            headers={"Accept": "application/json"},
+        )
+
+    assert response.status_code == 200
+    task_service.set_schedule_enabled.assert_called_once_with(task, False)
+    assert response.get_json()["data"]["task"]["schedule"]["state"] == "permanent"
+
+
+def test_set_schedule_enabled_route_rejects_tasks_without_toggle():
+    task = MagicMock()
+    task.schedule_toggle_supported = False
+    task_service = MagicMock()
+    task_service.get_task.return_value = task
+    app = _build_app(task_service)
+    user_manager = MagicMock()
+    user_manager.is_admin.return_value = True
+
+    with (
+        patch("simple_safer_server.services.user_manager.UserManager", return_value=user_manager),
+        app.test_client() as client,
+    ):
+        with client.session_transaction() as session:
+            session["username"] = "admin"
+
+        response = client.post(
+            "/task/App%20Update/schedule-enabled",
+            json={"enabled": False},
+            headers={"Accept": "application/json"},
+        )
+
+    assert response.status_code == 400
+    assert response.get_json()["type"].endswith("#task-schedule-toggle-unavailable")
+    task_service.set_schedule_enabled.assert_not_called()
+
+
+def test_set_schedule_enabled_route_rejects_non_boolean_enabled_value():
+    task = MagicMock()
+    task.schedule_toggle_supported = True
+    task_service = MagicMock()
+    task_service.get_task.return_value = task
+    app = _build_app(task_service)
+    user_manager = MagicMock()
+    user_manager.is_admin.return_value = True
+
+    with (
+        patch("simple_safer_server.services.user_manager.UserManager", return_value=user_manager),
+        app.test_client() as client,
+    ):
+        with client.session_transaction() as session:
+            session["username"] = "admin"
+
+        response = client.post(
+            "/task/Cloud%20Backup/schedule-enabled",
+            json={"enabled": "false"},
+            headers={"Accept": "application/json"},
+        )
+
+    assert response.status_code == 400
+    assert response.get_json()["type"].endswith("#task-schedule-toggle-validation-error")
+    task_service.set_schedule_enabled.assert_not_called()
+
+
 def test_disable_schedule_route_returns_not_found_for_unknown_task():
     task_service = MagicMock()
     task_service.get_task.return_value = None

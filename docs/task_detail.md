@@ -12,6 +12,9 @@ The Task Detail page shows information and logs for a specific scheduled task.
 ## Controls
 - **Start**: Button to start the task (confirmation required).
 - **Stop**: Button to stop the task (confirmation required).
+- **Automatic Runs**: On `Check Mount`, `Drive Health Check`, and `Cloud Backup`, this switch turns
+  scheduled runs on or off. Off permanently disables that task's systemd `.timer`; On enables it
+  again. Manual Start still starts the task immediately.
 - **Disable Schedule**: Opens a modal for disabling automatic runs for 1 hour, 6 hours, 24 hours,
   7 days, or permanently. This disables the systemd `.timer` only; manual Start still starts the
   `.service`.

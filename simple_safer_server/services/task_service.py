@@ -23,6 +23,7 @@ from simple_safer_server.services.drive_health import (
     hdsentinel_snapshot_has_health,
     run_scheduled_drive_health_check,
 )
+from simple_safer_server.services.rclone_filters import write_temp_rclone_filter_file
 
 
 class Status:
@@ -36,6 +37,7 @@ class Status:
 
 
 TERMINAL_FAKE_STATUSES = {Status.SUCCESS, Status.FAILURE, Status.ERROR, Status.STOPPED}
+SCHEDULE_TOGGLE_TASK_NAMES = frozenset({"Check Mount", "Drive Health Check", "Cloud Backup"})
 
 # Keep one app-wide task-log window so routes, auto-refresh, and service defaults
 # do not quietly drift apart after app-update output grows or shrinks.
@@ -100,6 +102,10 @@ class Task:
 
     def enable_schedule(self) -> None:
         self._service.enable_schedule(self)
+
+    @property
+    def schedule_toggle_supported(self) -> bool:
+        return self.name in SCHEDULE_TOGGLE_TASK_NAMES
 
     @property
     def next_run(self) -> str:
@@ -171,6 +177,7 @@ class TaskService:
                 "status": task.status,
                 "last_run_duration": task.last_run_duration,
                 "schedule": schedule,
+                "schedule_toggle_supported": task.schedule_toggle_supported,
             }
         except Exception as exc:
             if self.logger:
@@ -181,6 +188,7 @@ class TaskService:
                 "last_run": "Error",
                 "status": "Error",
                 "last_run_duration": "Error",
+                "schedule_toggle_supported": task.schedule_toggle_supported,
                 "schedule": {
                     "state": "issue",
                     "label": "Schedule issue",
@@ -272,6 +280,16 @@ class TaskService:
 
     def enable_schedule(self, task: Task) -> None:
         self.disabled_timer_service.enable(task.timer_name)
+
+    def set_schedule_enabled(self, task: Task, enabled: bool) -> None:
+        if not task.schedule_toggle_supported:
+            raise ValueError(f"Automatic-run toggle is not available for {task.name}.")
+        # The dashboard switch is a plain on/off control, so off maps to a
+        # permanent timer disable. The existing modal still covers timed pauses.
+        if enabled:
+            self.enable_schedule(task)
+        else:
+            self.disable_schedule(task, "permanent")
 
     def schedule_state(self, task: Task) -> dict[str, Any]:
         raw_next_run = self.get_next_run(task)
@@ -508,22 +526,28 @@ class TaskService:
             f"Starting backup from {source} to {destination}",
         )
         bandwidth_limit = self.config_manager.get_value("backup", "bandwidth_limit", "").strip()
-        proc = self.rclone_adapter.sync(
-            source,
-            destination,
-            config_path=str(rclone_config_path) if rclone_config_path.exists() else None,
-            bandwidth_limit=bandwidth_limit,
-        )
-        stdout_output, stderr_output = self._collect_process_output(
-            proc, cancel_event, "fake-cloud-backup"
-        )
-        output = f"{stdout_output}{stderr_output}"
-        if output.strip():
-            fake_state.append_task_log("Cloud Backup", output.strip())
-        if cancel_event.is_set():
-            raise RuntimeError("Cloud backup was cancelled.")
-        if proc.returncode != 0:
-            raise RuntimeError(output.strip() or "Cloud backup failed.")
+        filter_from = write_temp_rclone_filter_file(self.runtime)
+        try:
+            proc = self.rclone_adapter.sync(
+                source,
+                destination,
+                config_path=str(rclone_config_path) if rclone_config_path.exists() else None,
+                bandwidth_limit=bandwidth_limit,
+                filter_from=filter_from,
+            )
+            stdout_output, stderr_output = self._collect_process_output(
+                proc, cancel_event, "fake-cloud-backup"
+            )
+            output = f"{stdout_output}{stderr_output}"
+            if output.strip():
+                fake_state.append_task_log("Cloud Backup", output.strip())
+            if cancel_event.is_set():
+                raise RuntimeError("Cloud backup was cancelled.")
+            if proc.returncode != 0:
+                raise RuntimeError(output.strip() or "Cloud backup failed.")
+        finally:
+            if filter_from:
+                os.remove(filter_from)
 
     def _start_fake_task(self, task_name: str) -> None:
         fake_state = self._require_fake_state()
