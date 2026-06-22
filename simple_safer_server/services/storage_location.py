@@ -207,14 +207,18 @@ def _read_storage_marker(path: str | Path) -> dict[str, Any]:
         marker_text = marker.read_text(encoding="utf-8")
     except FileNotFoundError as exc:
         raise StorageLocationError(
-            f"Storage marker is missing at {marker}. Cloud backup will not run."
+            f"Storage marker is missing at {marker}. "
+            "If this is the correct storage folder, repair the marker."
         ) from exc
     except Exception as exc:
         raise StorageLocationError(f"Could not read storage marker at {marker}: {exc}") from exc
     try:
         return json.loads(marker_text)
     except json.JSONDecodeError as exc:
-        raise StorageLocationError(f"Storage marker at {marker} is not valid JSON.") from exc
+        raise StorageLocationError(
+            f"Storage marker at {marker} is broken. "
+            "If this is the correct storage folder, repair the marker."
+        ) from exc
 
 
 def _probe_storage_write(path: str | Path) -> None:
@@ -317,7 +321,10 @@ def _verify_managed_drive_uuid(
 ) -> None:
     expected_uuid = str(config_manager.get_value("backup", "uuid", "")).strip()
     if not expected_uuid:
-        raise StorageLocationError("Managed storage drive UUID is missing from the app config.")
+        raise StorageLocationError(
+            "Managed drive UUID is missing from the app configuration. "
+            "Choose the managed drive again below."
+        )
     if not system_utils.is_mounted(str(storage_path)):
         raise StorageLocationError(f"The managed storage drive is not mounted at {storage_path}.")
 
@@ -350,7 +357,8 @@ def _verify_mount_identity(
     }
     if current != expected:
         raise StorageLocationError(
-            "The storage folder is no longer on the same mounted filesystem that was configured."
+            "Storage folder is on a different mounted filesystem now. "
+            "Choose the storage target again if this change was intentional."
         )
 
 
@@ -413,7 +421,10 @@ def repair_storage_marker(config_manager: Any, runtime: Any | None = None) -> St
     runtime = runtime or get_runtime()
     location = get_storage_location(config_manager, runtime=runtime)
     if not location.storage_id:
-        raise StorageLocationError("Storage ID is missing from the app configuration.")
+        raise StorageLocationError(
+            "Storage ID is missing from the app configuration. "
+            "Choose a storage target below to create a new one."
+        )
     storage_path = _normalize_storage_path(location.path)
     marker_dir(storage_path).mkdir(mode=0o700, exist_ok=True)
     _write_storage_marker(storage_path, location.storage_id)
@@ -435,10 +446,14 @@ def validate_storage_ready_for_backup(
 
     marker = _read_storage_marker(storage_path)
     if not location.storage_id:
-        raise StorageLocationError("Storage ID is missing from the app configuration.")
+        raise StorageLocationError(
+            "Storage ID is missing from the app configuration. "
+            "Choose a storage target below to create a new one."
+        )
     if marker.get("storage_id") != location.storage_id:
         raise StorageLocationError(
-            "Storage marker does not match the app configuration. Cloud backup will not run."
+            "Storage marker does not match the app configuration. "
+            "Confirm this is the correct storage folder before repairing it."
         )
     _probe_storage_write(storage_path)
 

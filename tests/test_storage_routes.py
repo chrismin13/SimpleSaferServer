@@ -504,7 +504,10 @@ def test_storage_safety_checks_stop_after_marker_failure():
     checks = _build_storage_safety_checks(
         {
             "ok": False,
-            "error": "Storage marker is missing at /srv/storage/.simple-safer-server/storage.json.",
+            "error": (
+                "Storage marker is missing at /srv/storage/.simple-safer-server/storage.json. "
+                "If this is the correct storage folder, repair the marker."
+            ),
         },
         SimpleNamespace(mode="managed_drive"),
     )

@@ -90,7 +90,7 @@ def test_storage_validation_fails_when_marker_is_missing(tmp_path):
     configure_existing_folder(config, str(storage_path), runtime=runtime)
     marker_path(storage_path).unlink()
 
-    with pytest.raises(StorageLocationError, match="Storage marker is missing"):
+    with pytest.raises(StorageLocationError, match="repair the marker"):
         validate_storage_ready_for_backup(config, FakeSystemUtils(), runtime=runtime)
 
 
@@ -116,7 +116,43 @@ def test_storage_validation_fails_when_marker_id_does_not_match(tmp_path):
     configure_existing_folder(config, str(storage_path), runtime=runtime)
     marker_path(storage_path).write_text('{"storage_id": "wrong"}')
 
-    with pytest.raises(StorageLocationError, match="does not match"):
+    with pytest.raises(StorageLocationError, match="Confirm this is the correct storage folder"):
+        validate_storage_ready_for_backup(config, FakeSystemUtils(), runtime=runtime)
+
+
+def test_storage_validation_explains_how_to_fix_missing_storage_id(tmp_path):
+    storage_path = tmp_path / "storage"
+    storage_path.mkdir()
+    runtime = fake_runtime(tmp_path)
+    config = FakeConfigManager(storage_path)
+    configure_existing_folder(config, str(storage_path), runtime=runtime)
+    config.config["storage"]["storage_id"] = ""
+
+    with pytest.raises(StorageLocationError, match="Choose a storage target below"):
+        validate_storage_ready_for_backup(config, FakeSystemUtils(), runtime=runtime)
+
+
+def test_repair_marker_explains_how_to_fix_missing_storage_id(tmp_path):
+    storage_path = tmp_path / "storage"
+    storage_path.mkdir()
+    runtime = fake_runtime(tmp_path)
+    config = FakeConfigManager(storage_path)
+    configure_existing_folder(config, str(storage_path), runtime=runtime)
+    config.config["storage"]["storage_id"] = ""
+
+    with pytest.raises(StorageLocationError, match="Choose a storage target below"):
+        repair_storage_marker(config, runtime=runtime)
+
+
+def test_storage_validation_explains_bad_marker_can_be_repaired(tmp_path):
+    storage_path = tmp_path / "storage"
+    storage_path.mkdir()
+    runtime = fake_runtime(tmp_path)
+    config = FakeConfigManager(storage_path)
+    configure_existing_folder(config, str(storage_path), runtime=runtime)
+    marker_path(storage_path).write_text("{broken json")
+
+    with pytest.raises(StorageLocationError, match="repair the marker"):
         validate_storage_ready_for_backup(config, FakeSystemUtils(), runtime=runtime)
 
 
@@ -277,7 +313,7 @@ def test_mount_identity_mismatch_fails_validation(tmp_path):
         command_runner=FakeCommandRunner(f"/dev/sdb1 {storage_path} ext4\n"),
     )
 
-    with pytest.raises(StorageLocationError, match="same mounted filesystem"):
+    with pytest.raises(StorageLocationError, match="change was intentional"):
         validate_storage_ready_for_backup(
             config,
             FakeSystemUtils(),
@@ -300,6 +336,17 @@ def test_managed_drive_validation_requires_matching_mounted_uuid(tmp_path):
         runtime=runtime,
         command_runner=FakeCommandRunner("EXPECTED-UUID\n"),
     )
+
+
+def test_managed_drive_validation_explains_missing_uuid_fix(tmp_path):
+    storage_path = tmp_path / "storage"
+    storage_path.mkdir()
+    runtime = fake_runtime(tmp_path)
+    config = FakeConfigManager(storage_path)
+    mark_managed_drive_storage(config, str(storage_path), runtime=runtime)
+
+    with pytest.raises(StorageLocationError, match="Choose the managed drive again below"):
+        validate_storage_ready_for_backup(config, FakeSystemUtils(), runtime=runtime)
 
 
 def test_managed_drive_validation_fails_on_mounted_uuid_mismatch(tmp_path):
