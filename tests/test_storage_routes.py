@@ -472,9 +472,9 @@ def test_existing_folder_reports_timer_refresh_failure():
     assert config_writes.index(call("storage", "path", "/new/storage")) < config_writes.index(
         call("storage", "path", "/old/storage")
     )
-    assert config_writes.index(
-        call("backup", "mount_point", "/new/storage")
-    ) < config_writes.index(call("backup", "mount_point", "/old/storage"))
+    assert config_writes.index(call("backup", "mount_point", "/new/storage")) < config_writes.index(
+        call("backup", "mount_point", "/old/storage")
+    )
 
 
 def test_storage_safety_checks_show_existing_folder_success():
