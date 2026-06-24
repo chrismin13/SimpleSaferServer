@@ -8,6 +8,7 @@ from simple_safer_server.services.storage_location import (
     MODE_EXISTING_FOLDER,
     StorageLocationError,
     configure_existing_folder,
+    configure_managed_drive_storage,
     get_storage_location,
     mark_managed_drive_storage,
     marker_path,
@@ -17,6 +18,7 @@ from simple_safer_server.services.storage_location import (
     validate_existing_folder_path,
     validate_storage_ready_for_backup,
 )
+from simple_safer_server.web.problems import OperationProblem
 
 
 class FakeConfigManager:
@@ -39,6 +41,14 @@ class FakeConfigManager:
 class FakeSystemUtils:
     def is_mounted(self, mount_point):
         return True
+
+    def create_systemd_config_file(self, config):
+        del config
+        return True, None
+
+    def install_systemd_services_and_timers(self, config):
+        del config
+        return True, None
 
 
 class FakeCommandRunner:
@@ -390,3 +400,46 @@ def test_managed_drive_validation_uses_fake_state_uuid_in_fake_runtime(tmp_path,
         runtime=runtime,
         command_runner=FakeCommandRunner("HOST-UUID\n"),
     )
+
+
+def test_managed_drive_setup_restores_storage_config_when_timer_refresh_fails(
+    tmp_path, monkeypatch
+):
+    old_path = tmp_path / "old-storage"
+    old_path.mkdir()
+    runtime = fake_runtime(tmp_path)
+    config = FakeConfigManager(old_path)
+    config.set_value("storage", "mode", MODE_EXISTING_FOLDER)
+    config.set_value("storage", "path", str(old_path))
+    config.set_value("storage", "storage_id", "old-storage-id")
+
+    def fake_apply_backup_drive_configuration(**kwargs):
+        kwargs["post_configure"]({"mount_point": str(tmp_path / "new-storage")})
+        return {"mount_point": str(tmp_path / "new-storage")}
+
+    class FailingTimerSystemUtils(FakeSystemUtils):
+        def install_systemd_services_and_timers(self, config):
+            del config
+            return False, "systemd failed"
+
+    monkeypatch.setattr(
+        storage_location,
+        "apply_backup_drive_configuration",
+        fake_apply_backup_drive_configuration,
+    )
+
+    with pytest.raises(OperationProblem, match="task timers were not refreshed"):
+        configure_managed_drive_storage(
+            partition="/dev/sdb1",
+            mount_point=str(tmp_path / "new-storage"),
+            config_manager=config,
+            smb_manager=SimpleNamespace(),
+            system_utils=FailingTimerSystemUtils(),
+            runtime=runtime,
+        )
+
+    restored = get_storage_location(config, runtime=runtime)
+    assert restored.mode == MODE_EXISTING_FOLDER
+    assert restored.path == str(old_path)
+    assert restored.storage_id == "old-storage-id"
+    assert config.get_value("backup", "mount_point") == str(old_path)

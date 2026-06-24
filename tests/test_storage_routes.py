@@ -320,23 +320,18 @@ def test_managed_drive_storage_refreshes_systemd_timers():
     app = _app_with_services(services)
 
     with patch(
-        "simple_safer_server.routes.storage.apply_backup_drive_configuration",
+        "simple_safer_server.routes.storage.configure_managed_drive_storage",
         return_value={"mount_point": "/media/backup"},
-    ):
-        with patch("simple_safer_server.routes.storage.mark_managed_drive_storage"):
-            response = _admin_post(
-                app,
-                "/api/backup_drive/configure",
-                {"partition": "/dev/sdb1", "mount_point": "/media/backup"},
-            )
+    ) as configure_managed_drive_storage:
+        response = _admin_post(
+            app,
+            "/api/backup_drive/configure",
+            {"partition": "/dev/sdb1", "mount_point": "/media/backup"},
+        )
 
     assert response.status_code == 200
-    services.system_utils.create_systemd_config_file.assert_called_once_with(
-        services.config_manager.get_all_config.return_value
-    )
-    services.system_utils.install_systemd_services_and_timers.assert_called_once_with(
-        services.config_manager.get_all_config.return_value
-    )
+    configure_managed_drive_storage.assert_called_once()
+    assert configure_managed_drive_storage.call_args.kwargs["system_utils"] is services.system_utils
 
 
 def test_managed_drive_configure_passes_ntfs_driver():
@@ -344,22 +339,21 @@ def test_managed_drive_configure_passes_ntfs_driver():
     app = _app_with_services(services)
 
     with patch(
-        "simple_safer_server.routes.storage.apply_backup_drive_configuration",
+        "simple_safer_server.routes.storage.configure_managed_drive_storage",
         return_value={"mount_point": "/media/backup"},
-    ) as apply_backup_drive_configuration:
-        with patch("simple_safer_server.routes.storage.mark_managed_drive_storage"):
-            response = _admin_post(
-                app,
-                "/api/backup_drive/configure",
-                {
-                    "partition": "/dev/sdb1",
-                    "mount_point": "/media/backup",
-                    "ntfs_driver": "ntfs3",
-                },
-            )
+    ) as configure_managed_drive_storage:
+        response = _admin_post(
+            app,
+            "/api/backup_drive/configure",
+            {
+                "partition": "/dev/sdb1",
+                "mount_point": "/media/backup",
+                "ntfs_driver": "ntfs3",
+            },
+        )
 
     assert response.status_code == 200
-    assert apply_backup_drive_configuration.call_args.kwargs["ntfs_driver"] == "ntfs3"
+    assert configure_managed_drive_storage.call_args.kwargs["ntfs_driver"] == "ntfs3"
 
 
 def test_format_drive_list_uses_broad_scan():

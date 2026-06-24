@@ -5,7 +5,6 @@ from flask import Blueprint, current_app, render_template
 
 from simple_safer_server.services.backup_drive_setup import (
     BackupDriveSetupError,
-    apply_backup_drive_configuration,
     format_backup_drive,
     get_managed_ntfs_driver,
     list_available_drives,
@@ -20,10 +19,11 @@ from simple_safer_server.services.filesystem_browser import list_local_path
 from simple_safer_server.services.storage_location import (
     MODE_EXISTING_FOLDER,
     StorageLocationError,
+    configure_managed_drive_storage,
     get_storage_location,
-    mark_managed_drive_storage,
     passive_storage_status,
     prepare_existing_folder,
+    refresh_storage_timers,
     repair_storage_marker,
     save_storage_location,
     storage_status,
@@ -151,13 +151,7 @@ def _apt_lock_block_response(action: str):
 
 
 def _refresh_storage_timers(services: Any) -> None:
-    config = services.config_manager.get_all_config()
-    ok, error = services.system_utils.create_systemd_config_file(config)
-    if not ok:
-        raise OperationProblem(f"Storage was saved, but systemd config was not refreshed: {error}")
-    ok, error = services.system_utils.install_systemd_services_and_timers(config)
-    if not ok:
-        raise OperationProblem(f"Storage was saved, but task timers were not refreshed: {error}")
+    refresh_storage_timers(services.config_manager, services.system_utils)
 
 
 def _restore_storage_location_after_failure(
@@ -459,21 +453,15 @@ def api_backup_drive_configure():
     services = _get_services()
     try:
         data = json_request_data()
-        result = apply_backup_drive_configuration(
+        result = configure_managed_drive_storage(
             partition=data.get("partition"),
             mount_point=data.get("mount_point"),
-            auto_mount=True,
             config_manager=services.config_manager,
             smb_manager=services.smb_manager,
+            system_utils=services.system_utils,
             runtime=services.runtime,
             ntfs_driver=data.get("ntfs_driver", "ntfs-3g"),
         )
-        mark_managed_drive_storage(
-            services.config_manager,
-            result.get("mount_point", data.get("mount_point")),
-            runtime=services.runtime,
-        )
-        _refresh_storage_timers(services)
         return json_data({"result": result})
     except BackupDriveSetupError as exc:
         return json_problem(

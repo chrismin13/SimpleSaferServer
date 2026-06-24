@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import secrets
 from dataclasses import dataclass
@@ -6,8 +7,10 @@ from pathlib import Path
 from typing import Any
 
 from simple_safer_server.adapters.command_runner import CommandRunner
+from simple_safer_server.services.backup_drive_setup import apply_backup_drive_configuration
 from simple_safer_server.services.file_persistence import atomic_write_json, atomic_write_text
 from simple_safer_server.services.runtime import get_fake_state, get_runtime
+from simple_safer_server.web.problems import OperationProblem
 
 STORAGE_SECTION = "storage"
 MODE_MANAGED_DRIVE = "managed_drive"
@@ -15,6 +18,7 @@ MODE_EXISTING_FOLDER = "existing_folder"
 STORAGE_MARKER_DIR_NAME = ".simple-safer-server"
 STORAGE_MARKER_FILE_NAME = "storage.json"
 PROBE_FILE_NAME = ".probe.tmp"
+LOGGER = logging.getLogger(__name__)
 
 
 class StorageLocationError(Exception):
@@ -126,6 +130,17 @@ def save_storage_location(config_manager: Any, location: StorageLocation) -> Non
         mount_target=location.mount_target,
         mount_fstype=location.mount_fstype,
     )
+
+
+def refresh_storage_timers(config_manager: Any, system_utils: Any) -> None:
+    """Regenerate systemd config after a storage source change."""
+    config = config_manager.get_all_config()
+    ok, error = system_utils.create_systemd_config_file(config)
+    if not ok:
+        raise OperationProblem(f"Storage was saved, but systemd config was not refreshed: {error}")
+    ok, error = system_utils.install_systemd_services_and_timers(config)
+    if not ok:
+        raise OperationProblem(f"Storage was saved, but task timers were not refreshed: {error}")
 
 
 def _normalize_storage_path(path: str | os.PathLike[str] | None) -> Path:
@@ -415,6 +430,49 @@ def mark_managed_drive_storage(
         storage_id=storage_id,
     )
     return get_storage_location(config_manager, runtime=runtime)
+
+
+def configure_managed_drive_storage(
+    *,
+    partition: str,
+    mount_point: str,
+    config_manager: Any,
+    smb_manager: Any,
+    system_utils: Any,
+    runtime: Any | None = None,
+    command_adapter: Any | None = None,
+    ntfs_driver: str = "ntfs-3g",
+) -> dict[str, Any]:
+    """Switch to a managed drive and finish storage safety setup as one action."""
+    runtime = runtime or get_runtime()
+    previous_location = get_storage_location(config_manager, runtime=runtime)
+
+    def finish_storage_setup(result: dict[str, Any]) -> None:
+        mark_managed_drive_storage(
+            config_manager,
+            result.get("mount_point", mount_point),
+            runtime=runtime,
+        )
+        refresh_storage_timers(config_manager, system_utils)
+
+    try:
+        return apply_backup_drive_configuration(
+            partition=partition,
+            mount_point=mount_point,
+            auto_mount=True,
+            config_manager=config_manager,
+            smb_manager=smb_manager,
+            runtime=runtime,
+            command_adapter=command_adapter,
+            ntfs_driver=ntfs_driver,
+            post_configure=finish_storage_setup,
+        )
+    except Exception:
+        try:
+            save_storage_location(config_manager, previous_location)
+        except Exception:
+            LOGGER.exception("Could not restore previous storage location after drive setup failure")
+        raise
 
 
 def repair_storage_marker(config_manager: Any, runtime: Any | None = None) -> StorageLocation:

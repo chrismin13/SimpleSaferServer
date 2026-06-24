@@ -830,6 +830,62 @@ class BackupDriveSetupTests(unittest.TestCase):
         self.assertEqual(mock_reload_mount_units.call_count, 2)
         self.assertEqual(command_adapter.mounted_ntfs, [])
 
+    @patch('simple_safer_server.services.backup_drive_setup.restore_fstab_backup')
+    @patch('simple_safer_server.services.backup_drive_setup.os.makedirs')
+    @patch('simple_safer_server.services.backup_drive_setup._reload_systemd_mount_units')
+    @patch('simple_safer_server.services.backup_drive_setup.update_managed_fstab')
+    @patch('simple_safer_server.services.backup_drive_setup._get_partition_filesystem_type')
+    @patch('simple_safer_server.services.backup_drive_setup.get_drive_usb_id')
+    @patch('simple_safer_server.services.backup_drive_setup.get_drive_uuid')
+    @patch('simple_safer_server.services.backup_drive_setup._get_mount_for_partition')
+    def test_apply_backup_drive_configuration_rolls_back_when_post_configure_fails(
+        self,
+        mock_get_mount,
+        mock_get_uuid,
+        mock_get_usb_id,
+        mock_get_fstype,
+        mock_update_fstab,
+        mock_reload_mount_units,
+        mock_makedirs,
+        mock_restore_fstab_backup,
+    ):
+        del mock_makedirs
+        runtime = SimpleNamespace(is_fake=False, default_mount_point='/media/backup')
+        command_adapter = FakeBackupDriveCommandAdapter()
+        config_manager = MagicMock()
+        config_manager.get_value.side_effect = ['/old/storage', 'OLD-UUID', '1234:5678']
+        smb_manager = MagicMock()
+        smb_manager.get_managed_share.return_value = None
+
+        mock_get_mount.return_value = None
+        mock_get_uuid.return_value = 'NEW-UUID'
+        mock_get_usb_id.return_value = '8765:4321'
+        mock_get_fstype.return_value = 'ntfs'
+        mock_update_fstab.return_value = '/tmp/fstab.backup'
+
+        def fail_after_drive_setup(result):
+            self.assertEqual(result['mount_point'], '/new/storage')
+            raise RuntimeError('timer refresh failed')
+
+        with self.assertRaisesRegex(RuntimeError, 'timer refresh failed'):
+            backup_drive_setup.apply_backup_drive_configuration(
+                '/dev/sdb1',
+                '/new/storage',
+                True,
+                config_manager,
+                smb_manager,
+                runtime=runtime,
+                command_adapter=command_adapter,
+                post_configure=fail_after_drive_setup,
+            )
+
+        self.assertEqual(command_adapter.cleanup_unmounted, ['/dev/sdb1'])
+        mock_restore_fstab_backup.assert_called_once_with('/tmp/fstab.backup', runtime=runtime)
+        self.assertEqual(mock_reload_mount_units.call_count, 2)
+        config_manager.set_value.assert_any_call('backup', 'mount_point', '/old/storage')
+        config_manager.set_value.assert_any_call('backup', 'uuid', 'OLD-UUID')
+        config_manager.set_value.assert_any_call('backup', 'usb_id', '1234:5678')
+
     @patch('simple_safer_server.services.backup_drive_setup.get_fake_state')
     @patch('simple_safer_server.services.backup_drive_setup.restore_fstab_backup')
     @patch('simple_safer_server.services.backup_drive_setup._reload_systemd_mount_units')

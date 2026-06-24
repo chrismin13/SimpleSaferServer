@@ -934,6 +934,7 @@ def apply_backup_drive_configuration(
     runtime=None,
     command_adapter=None,
     ntfs_driver=DEFAULT_NTFS_DRIVER,
+    post_configure=None,
 ):
     runtime = runtime or get_runtime()
     command_adapter = _command_adapter(command_adapter)
@@ -993,13 +994,19 @@ def apply_backup_drive_configuration(
             fake_state.set_mount(
                 True, mount_point=selected_path_str, drive=partition or '/dev/fakebackup1'
             )
-            return {
+            result = {
                 'message': f'Successfully selected local backup source at {selected_path}',
                 'uuid': uuid,
                 'usb_id': usb_id,
                 'mount_point': selected_path_str,
                 'ntfs_driver': ntfs_driver,
             }
+            if post_configure:
+                # Keep storage marker and timer work inside this rollback
+                # window. If that final app-level step fails, the drive, fstab,
+                # share, and backup config are restored by the except block.
+                post_configure(result)
+            return result
         except Exception:
             if fstab_backup:
                 restore_fstab_backup(fstab_backup, runtime=runtime)
@@ -1069,13 +1076,19 @@ def apply_backup_drive_configuration(
         config_manager.set_value('backup', 'uuid', uuid)
         config_manager.set_value('backup', 'usb_id', usb_id)
 
-        return {
+        result = {
             'message': f'Successfully configured {partition} at {mount_point}',
             'uuid': uuid,
             'usb_id': usb_id,
             'mount_point': mount_point,
             'ntfs_driver': ntfs_driver,
         }
+        if post_configure:
+            # Keep storage marker and timer work inside this rollback window.
+            # If that final app-level step fails, the mounted drive and fstab
+            # changes are undone by the except block below.
+            post_configure(result)
+        return result
     except Exception:
         if mounted:
             command_adapter.cleanup_unmount(partition)

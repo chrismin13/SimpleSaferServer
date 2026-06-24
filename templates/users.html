@@ -179,9 +179,10 @@ function renderUsersTable() {
   tbody.innerHTML = '';
   currentUsers.forEach(user => {
     const row = document.createElement('tr');
-    function parseUTC(dateStr) { if (!dateStr) return null; return new Date(dateStr.endsWith('Z') ? dateStr : dateStr + 'Z'); }
-    const createdDate = user.created_at ? parseUTC(user.created_at).toLocaleDateString() : 'N/A';
-    const lastLoginDate = user.last_login ? parseUTC(user.last_login).toLocaleString() : 'Never';
+    const createdAt = window.parseServerDateTime(user.created_at);
+    const lastLogin = window.parseServerDateTime(user.last_login);
+    const createdDate = createdAt ? createdAt.toLocaleDateString() : 'N/A';
+    const lastLoginDate = lastLogin ? lastLogin.toLocaleString() : 'Never';
     row.innerHTML = `
       <td class="fw-medium">${user.username}</td>
       <td><span class="badge ${user.is_admin ? 'badge-accent' : 'badge-neutral'}">${user.is_admin ? 'Admin' : 'User'}</span></td>
