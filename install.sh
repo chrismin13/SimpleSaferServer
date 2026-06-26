@@ -15,6 +15,7 @@ echo -e "${BLUE}===============================================${NC}\n"
 UNSUPPORTED_OS_OK="${SSS_UNSUPPORTED_OS_OK:-0}"
 PREFLIGHT_ONLY="${SSS_INSTALLER_PREFLIGHT_ONLY:-0}"
 OS_RELEASE_PATH="${SSS_OS_RELEASE_PATH:-}"
+SOURCE_ARCHIVE_URL="${SSS_SOURCE_ARCHIVE_URL:-https://github.com/chrismin13/SimpleSaferServer/archive/refs/heads/main.tar.gz}"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -129,25 +130,6 @@ copy_unless_same_file() {
   cp "$source_path" "$dest_path"
 }
 
-ensure_git_safe_directory() {
-  local repo_path="$1"
-  local existing_paths=""
-
-  if ! command -v git >/dev/null 2>&1; then
-    return 0
-  fi
-
-  existing_paths="$(git config --system --get-all safe.directory 2>/dev/null || true)"
-  if printf '%s\n' "$existing_paths" | grep -Fxq "$repo_path"; then
-    return 0
-  fi
-
-  # The app checkout may be owned by the installing admin while update services
-  # run as root without sudo's SUDO_UID trust hint, so root Git commands need an
-  # explicit safe.directory entry for the managed app folder.
-  git config --system --add safe.directory "$repo_path"
-}
-
 run_installer_preflight() {
   local release_file=""
   local os_id=""
@@ -161,19 +143,19 @@ run_installer_preflight() {
 
   echo -e "${YELLOW}Preflight: Checking install platform...${NC}"
 
-  if ! installer_command_available apt-get; then
-    missing_tools="${missing_tools} apt-get"
-  fi
-  if ! installer_command_available dpkg; then
-    missing_tools="${missing_tools} dpkg"
-  fi
   if ! installer_command_available systemctl; then
     missing_tools="${missing_tools} systemctl"
+  fi
+  if ! installer_command_available curl; then
+    missing_tools="${missing_tools} curl"
+  fi
+  if ! installer_command_available sudo; then
+    missing_tools="${missing_tools} sudo"
   fi
 
   if [ -n "$missing_tools" ]; then
     echo -e "${RED}ERROR:${NC} Missing required host tools:${missing_tools}"
-    echo -e "SimpleSaferServer installs Debian packages and systemd services, so this installer needs apt-get, dpkg, and systemctl."
+    echo -e "SimpleSaferServer downloads release archives, configures systemd services, and runs its services as a dedicated user, so this installer needs curl, systemctl, and sudo."
     exit 1
   fi
   if ! installer_systemd_available; then
@@ -222,20 +204,15 @@ run_installer_preflight() {
       echo -e "${YELLOW}Unsupported OS family detected (${pretty_name:-$os_id}); continuing because --unsupported-os-ok was set.${NC}"
     else
       echo -e "${RED}ERROR:${NC} Unsupported OS family detected: ${pretty_name:-$os_id}"
-      echo -e "SimpleSaferServer expects a Debian/Ubuntu-style APT and systemd host."
-      echo -e "Use --unsupported-os-ok only if this system intentionally provides compatible APT and systemd behavior."
+      echo -e "SimpleSaferServer expects a Debian/Ubuntu-style systemd host."
+      echo -e "Use --unsupported-os-ok only if this system intentionally provides compatible systemd behavior."
       exit 1
     fi
   elif [ "$is_direct_supported_family" -eq 1 ]; then
     echo -e "${GREEN}✔ Detected ${pretty_name:-$os_id $version_id}.${NC}"
-    case "$os_id:$version_id" in
-      debian:10* | ubuntu:20.04*)
-        echo -e "${YELLOW}This is an older OS compatibility platform. The app still uses uv-managed Python, but OS package versions may differ from newer Debian/Ubuntu releases.${NC}"
-        ;;
-    esac
   else
     echo -e "${YELLOW}Detected Debian/Ubuntu-family derivative: ${pretty_name:-$os_id $version_id}.${NC}"
-    echo -e "${YELLOW}Continuing because APT and systemd are available; derivative package differences may still cause apt-get to fail later.${NC}"
+    echo -e "${YELLOW}Continuing because the base installer only needs the app archive, uv, and systemd services.${NC}"
   fi
 
   echo -e "${GREEN}✔ Install platform preflight passed.${NC}\n"
@@ -252,23 +229,34 @@ if [ "$PREFLIGHT_ONLY" = "1" ]; then
   exit 0
 fi
 
-# Determine if we are in a SimpleSaferServer repo
-if [ -f "install.sh" ] && [ -d ".git" ] && grep -q 'SimpleSaferServer' README.md 2>/dev/null; then
+# Determine if we are already running from a SimpleSaferServer source tree.
+if [ -f "install.sh" ] && [ -d "simple_safer_server" ] && [ -f "pyproject.toml" ]; then
   SRC_DIR="$(pwd)"
-  CLEANUP_CLONE=0
+  CLEANUP_SOURCE=0
 else
-  # Ensure git is installed before cloning
-  if ! command -v git >/dev/null 2>&1; then
-    echo -e "${YELLOW}git is not installed. Installing git...${NC}"
-    apt-get update
-    apt-get install -y git
-    echo -e "${GREEN}✔ git installed.${NC}"
-  fi
-  echo -e "${YELLOW}Cloning SimpleSaferServer repository...${NC}"
+  echo -e "${YELLOW}Downloading SimpleSaferServer source archive...${NC}"
   TMPDIR=$(mktemp -d)
-  git clone --depth 1 https://github.com/chrismin13/SimpleSaferServer.git "$TMPDIR/SimpleSaferServer"
-  SRC_DIR="$TMPDIR/SimpleSaferServer"
-  CLEANUP_CLONE=1
+  TMPFILE=$(mktemp)
+  if ! curl -fLsS "$SOURCE_ARCHIVE_URL" -o "$TMPFILE"; then
+    rm -f "$TMPFILE"
+    rm -rf "$TMPDIR"
+    echo -e "${RED}ERROR: Failed to download SimpleSaferServer source archive.${NC}"
+    exit 1
+  fi
+  if ! tar -xzf "$TMPFILE" -C "$TMPDIR"; then
+    rm -f "$TMPFILE"
+    rm -rf "$TMPDIR"
+    echo -e "${RED}ERROR: Failed to extract SimpleSaferServer source archive.${NC}"
+    exit 1
+  fi
+  rm -f "$TMPFILE"
+  SRC_DIR="$(find "$TMPDIR" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+  if [ -z "$SRC_DIR" ] || [ ! -f "$SRC_DIR/install.sh" ] || [ ! -d "$SRC_DIR/simple_safer_server" ]; then
+    rm -rf "$TMPDIR"
+    echo -e "${RED}ERROR: Downloaded archive did not contain a SimpleSaferServer source tree.${NC}"
+    exit 1
+  fi
+  CLEANUP_SOURCE=1
 fi
 
 cd "$SRC_DIR"
@@ -277,15 +265,21 @@ set -e
 
 APP_DIR="/opt/SimpleSaferServer"
 DATA_DIR="/var/lib/SimpleSaferServer"
-SCRIPTS_DIR="$APP_DIR/scripts"
+CONFIG_DIR="/etc/SimpleSaferServer"
+LOG_DIR="/var/log/SimpleSaferServer"
+VOLATILE_DIR="/run/SimpleSaferServer"
 BIN_DIR="/usr/local/bin"
 VENV_DIR="$APP_DIR/.venv"
+APP_USER="sss"
+APP_GROUP="sss"
+SERVICE_USER_MARKER="$DATA_DIR/.sss-user-created"
+SERVICE_GROUP_MARKER="$DATA_DIR/.sss-group-created"
 MIN_UV_VERSION="0.11.13"
 UV_INSTALL_DIR="/usr/local/bin"
 UV_INSTALL_URL="https://astral.sh/uv/install.sh"
-SERVICE_FILE="/etc/systemd/system/simple_safer_server_web.service"
-HDSENTINEL_BIN="/usr/local/bin/hdsentinel"
-HDSENTINEL_ASSET_DIR="$SRC_DIR/third_party/hdsentinel"
+SERVICE_FILE="/etc/systemd/system/simple-safer-server-web.service"
+WORKER_SERVICE_FILE="/etc/systemd/system/simple-safer-server-worker.service"
+SUDOERS_FILE="/etc/sudoers.d/simple-safer-server"
 
 uv_version_number() {
   uv --version | awk '{print $2}'
@@ -369,283 +363,70 @@ ensure_uv() {
   echo -e "${GREEN}✔ uv ${installed_uv_version} installed.${NC}"
 }
 
-detect_hdsentinel_arch() {
-  local arch=""
-  local machine=""
-
-  if command -v dpkg >/dev/null 2>&1; then
-    arch=$(dpkg --print-architecture 2>/dev/null || true)
-  fi
-
-  # Prefer Debian's package architecture when it is available because that
-  # reflects the userspace ABI we need to run, not just the kernel's CPU view.
-  if [ -n "$arch" ]; then
-    printf '%s\n' "$arch"
-    return 0
-  fi
-
-  machine=$(uname -m 2>/dev/null || true)
-  machine=${machine,,}
-
-  case "$machine" in
-    x86_64* | amd64*)
-      printf '%s\n' "amd64"
-      ;;
-    aarch64* | arm64*)
-      printf '%s\n' "arm64"
-      ;;
-    *)
-      printf '%s\n' "$machine"
-      ;;
-  esac
-}
-
-install_hdsentinel() {
-  local arch=""
-  local asset_path=""
-  local package_path=""
-  local tmpdir=""
-  local candidate=""
-
-  arch=$(detect_hdsentinel_arch)
-
-  case "$arch" in
-    amd64)
-      asset_path="$HDSENTINEL_ASSET_DIR/hdsentinel-linux-amd64.zip"
-      ;;
-    arm64)
-      asset_path="$HDSENTINEL_ASSET_DIR/hdsentinel-linux-arm64.zip"
-      ;;
-    *)
-      echo -e "${YELLOW}HDSentinel auto-install skipped: unsupported architecture '${arch:-unknown}'.${NC}"
-      return 0
-      ;;
-  esac
-
-  tmpdir=$(mktemp -d)
-  # The automated installer only trusts vendored HDSentinel archives so the
-  # binary source stays pinned to files shipped with this repo.
-  if [ ! -f "$asset_path" ]; then
-    echo -e "${YELLOW}Bundled HDSentinel package not found for ${arch}. Skipping HDSentinel auto-install.${NC}"
-    rm -rf "$tmpdir"
-    return 0
-  fi
-
-  package_path="$tmpdir/$(basename "$asset_path")"
-  cp "$asset_path" "$package_path"
-  echo -e "${GREEN}✔ Using bundled HDSentinel package: $asset_path${NC}"
-
-  if ! unzip -o "$package_path" -d "$tmpdir" >/dev/null; then
-    echo -e "${YELLOW}HDSentinel extraction failed. Continuing without it.${NC}"
-    rm -rf "$tmpdir"
-    return 0
-  fi
-
-  for extracted in "$tmpdir"/HDSentinel*; do
-    if [ -f "$extracted" ]; then
-      candidate="$extracted"
-      break
-    fi
-  done
-
-  if [ -z "$candidate" ]; then
-    echo -e "${YELLOW}HDSentinel binary not found in downloaded archive. Continuing without it.${NC}"
-    rm -rf "$tmpdir"
-    return 0
-  fi
-
-  install -m 755 "$candidate" "$HDSENTINEL_BIN"
-  rm -rf "$tmpdir"
-  echo -e "${GREEN}✔ HDSentinel installed to $HDSENTINEL_BIN.${NC}\n"
-}
-
-install_optional_wsdd2() {
-  echo -e "${YELLOW}Installing optional wsdd2 discovery support...${NC}"
-  if DEBIAN_FRONTEND=noninteractive apt-get install -y wsdd2; then
-    echo -e "${GREEN}✔ wsdd2 installed for modern Windows Network discovery.${NC}\n"
-  else
-    # wsdd2 is absent on some supported Debian-family releases. Samba file
-    # serving must still install cleanly when only discovery is degraded.
-    echo -e "${YELLOW}wsdd2 is unavailable or could not be installed. Continuing without modern Windows discovery.${NC}\n"
-  fi
-}
-
-configure_samba_discovery_services() {
-  local smbd_state=""
-  local nmbd_state=""
-  local wsdd2_state=""
-  local smbd_enable_failed=0
-  local smbd_start_failed=0
-  local nmbd_enable_failed=0
-  local nmbd_start_failed=0
-  local wsdd2_enable_failed=0
-  local wsdd2_start_failed=0
-
-  echo -e "${YELLOW}Configuring Samba file sharing and discovery services...${NC}"
-
-  # smbd is the required file-serving daemon. Enable/start failures are not
-  # fatal by themselves because a unit can still be active after a manual
-  # start or distro-specific boot policy; the final active state is the gate.
-  if ! systemctl enable smbd; then
-    smbd_enable_failed=1
-  fi
-  # If smbd is already active, we attempt a graceful config reload first
-  # using smbcontrol. This avoids dropping active user connections.
-  # If the reload fails, we fall back to systemctl restart.
-  # If smbd is inactive, we perform a normal systemctl start.
-  if systemctl is-active --quiet smbd; then
-    if ! smbcontrol smbd reload-config >/dev/null 2>&1; then
-      if ! systemctl restart smbd; then
-        smbd_start_failed=1
-      fi
-    fi
-  else
-    if ! systemctl start smbd; then
-      smbd_start_failed=1
-    fi
-  fi
-  if ! systemctl is-active --quiet smbd; then
-    echo -e "${RED}ERROR: smbd is not active after start.${NC}"
-    echo -e "${RED}Samba file serving is required, so installation cannot continue safely.${NC}"
-    echo -e "${RED}Run 'systemctl status smbd' and 'journalctl -u smbd --no-pager' to inspect the failure, then rerun the installer after smbd can start.${NC}"
-    return 1
-  fi
-  if [ "$smbd_enable_failed" -eq 1 ]; then
-    echo -e "${YELLOW}WARNING: smbd is active, but systemctl enable smbd failed. File sharing works now, but it may not survive reboot until boot enablement is fixed.${NC}"
-  fi
-  if [ "$smbd_start_failed" -eq 1 ]; then
-    echo -e "${YELLOW}WARNING: smbd is active, but reload/restart failed. File sharing works now, but review the service state before relying on it.${NC}"
-  fi
-
-  if ! systemctl enable nmbd; then
-    nmbd_enable_failed=1
-  fi
-  if ! systemctl start nmbd; then
-    nmbd_start_failed=1
-  fi
-  if [ "$nmbd_enable_failed" -eq 1 ] || [ "$nmbd_start_failed" -eq 1 ]; then
-    echo -e "${YELLOW}nmbd could not be enabled or started. Continuing with legacy NetBIOS discovery degraded.${NC}"
-  fi
-  if ! systemctl is-active --quiet nmbd; then
-    echo -e "${YELLOW}nmbd is not active. Legacy NetBIOS discovery may be unavailable.${NC}"
-  fi
-
-  # Try the packaged unit directly. Missing wsdd2 units are non-fatal because
-  # wsdd2 is optional and package availability varies by distro release.
-  if ! systemctl enable wsdd2; then
-    wsdd2_enable_failed=1
-  fi
-  if ! systemctl start wsdd2; then
-    wsdd2_start_failed=1
-  fi
-  if [ "$wsdd2_enable_failed" -eq 1 ] || [ "$wsdd2_start_failed" -eq 1 ]; then
-    echo -e "${YELLOW}wsdd2 could not be enabled or started. Continuing with modern Windows discovery degraded.${NC}"
-  fi
-  if ! systemctl is-active --quiet wsdd2; then
-    echo -e "${YELLOW}wsdd2 is not active or unavailable. Modern Windows Network discovery may be unavailable.${NC}"
-  fi
-
-  if systemctl is-active --quiet smbd; then
-    smbd_state="active"
-  else
-    smbd_state="inactive"
-  fi
-  if systemctl is-active --quiet nmbd; then
-    nmbd_state="active"
-  else
-    nmbd_state="inactive"
-  fi
-  if systemctl is-active --quiet wsdd2; then
-    wsdd2_state="active"
-  elif systemctl cat wsdd2 >/dev/null 2>&1; then
-    wsdd2_state="inactive"
-  else
-    wsdd2_state="unavailable"
-  fi
-
-  echo -e "${BLUE}Samba service summary:${NC}"
-  echo -e "  smbd: ${smbd_state}"
-  echo -e "  nmbd: ${nmbd_state}"
-  echo -e "  wsdd2: ${wsdd2_state}"
-  echo -e "${GREEN}✔ Samba service setup complete.${NC}\n"
-}
-
-# 1. Install system dependencies. Python application dependencies are resolved
-#    by uv into /opt/SimpleSaferServer/.venv so distro Python packages do not
-#    decide the app runtime or dependency versions.
-echo -e "${YELLOW}Step 1: Installing system dependencies...${NC}"
-apt-get update
-# Preseed AppArmor prompt for msmtp only to ensure non-interactive install
-echo "msmtp msmtp/apply_apparmor boolean true" | debconf-set-selections
-DEBIAN_FRONTEND=noninteractive apt-get install -y git ca-certificates smartmontools samba msmtp curl unzip rsync fdisk ntfs-3g unattended-upgrades
-
-echo -e "${GREEN}✔ System dependencies installed.${NC}\n"
-install_optional_wsdd2
 ensure_uv
 
-# 2. Install rclone using the official install script
-#    The apt version of rclone is missing support for many cloud services (e.g., MEGA, Google Drive, etc).
-#    The official script always installs the latest version with all backends.
-#    This installer already runs as root, so avoid depending on sudo being present
-#    on minimal Debian servers.
-echo -e "${YELLOW}Step 2: Installing rclone (latest, all cloud services supported)...${NC}"
-TMPFILE=$(mktemp)
-# Cloud backup is part of the supported setup path, so a missing rclone should
-# stop installation instead of producing a partially capable server.
-if curl -fS https://rclone.org/install.sh -o "$TMPFILE"; then
-  if bash "$TMPFILE"; then
-    echo -e "${GREEN}✔ rclone installed.${NC}\n"
-  else
-    RCLONE_INSTALL_EXIT_CODE=$?
-    # The upstream script returns 3 when the newest rclone is already present.
-    # Verify the binary before deciding whether this server is actually unsafe.
-    if command -v rclone >/dev/null 2>&1; then
-      echo -e "${YELLOW}rclone installer exited with code ${RCLONE_INSTALL_EXIT_CODE}, but rclone is available.${NC}"
-      rclone version | head -n 1
-      echo -e "${GREEN}✔ rclone is installed.${NC}\n"
-    else
-      echo -e "${RED}ERROR: Failed to install rclone. Exit code: ${RCLONE_INSTALL_EXIT_CODE}.${NC}"
-      echo -e "${RED}Cloud backup requires rclone, so SimpleSaferServer cannot complete installation safely.${NC}"
-      echo -e "${YELLOW}Remediation:${NC}"
-      echo -e "  1. Check network access to https://rclone.org/install.sh"
-      echo -e "  2. Install rclone manually if needed: https://rclone.org/install/"
-      echo -e "  3. Rerun this installer."
-      rm -f "$TMPFILE"
-      exit 1
-    fi
+ensure_service_user() {
+  if ! getent group "$APP_GROUP" >/dev/null 2>&1; then
+    groupadd --system "$APP_GROUP"
+    touch "$SERVICE_GROUP_MARKER"
   fi
-else
-  RCLONE_DOWNLOAD_EXIT_CODE=$?
-  echo -e "${RED}ERROR: Failed to download rclone installer. Exit code: ${RCLONE_DOWNLOAD_EXIT_CODE}.${NC}"
-  echo -e "${RED}Cloud backup requires rclone, so SimpleSaferServer cannot complete installation safely.${NC}"
-  echo -e "${YELLOW}Remediation:${NC}"
-  echo -e "  1. Check network access to https://rclone.org/install.sh"
-  echo -e "  2. Install rclone manually if needed: https://rclone.org/install/"
-  echo -e "  3. Rerun this installer."
-  rm -f "$TMPFILE"
-  exit 1
-fi
-rm -f "$TMPFILE"
 
-# 3. Install HDSentinel for supported architectures
-echo -e "${YELLOW}Step 3: Installing HDSentinel...${NC}"
-install_hdsentinel
+  if id "$APP_USER" >/dev/null 2>&1; then
+    return 0
+  fi
 
-# 4. Copy/update application files (excluding app-owned subtrees handled below)
-echo -e "${YELLOW}Step 4: Copying application files...${NC}"
-mkdir -p "$APP_DIR"
+  # The web service should not have a login shell. Root-only work goes through
+  # sss-helper instead of giving the web process broad root access.
+  useradd \
+    --system \
+    --gid "$APP_GROUP" \
+    --home-dir "$DATA_DIR" \
+    --no-create-home \
+    --shell /usr/sbin/nologin \
+    "$APP_USER"
+  touch "$SERVICE_USER_MARKER"
+}
+
+install_helper_sudoers() {
+  install -d -m 0750 /etc/sudoers.d
+  printf '%s ALL=(root) NOPASSWD: %s/sss-helper\n' "$APP_USER" "$BIN_DIR" >"$SUDOERS_FILE"
+  chmod 0440 "$SUDOERS_FILE"
+
+  if command -v visudo >/dev/null 2>&1 && ! visudo -cf "$SUDOERS_FILE"; then
+    rm -f "$SUDOERS_FILE"
+    echo -e "${RED}ERROR:${NC} Refusing to install an invalid sudoers rule for sss-helper."
+    exit 1
+  fi
+}
+
+echo -e "${YELLOW}Preparing service user and app-owned directories...${NC}"
 mkdir -p "$DATA_DIR"
-rsync -a --delete --exclude='.venv' --exclude='__pycache__' --exclude='*.pyc' --exclude='*.pyo' --exclude='*.log' --exclude='/static' --exclude='/templates' ./ "$APP_DIR/"
+ensure_service_user
+install -d -o "$APP_USER" -g "$APP_GROUP" -m 0750 "$DATA_DIR"
+install -d -o "$APP_USER" -g "$APP_GROUP" -m 0750 "$CONFIG_DIR"
+install -d -o "$APP_USER" -g "$APP_GROUP" -m 0750 "$LOG_DIR"
+install -d -o "$APP_USER" -g "$APP_GROUP" -m 0750 "$VOLATILE_DIR"
+echo -e "${GREEN}✔ Service user and app-owned directories ready.${NC}\n"
+
+# 1. Copy application files. Keep .venv so a clean-layout reinstall can reuse
+# the Python environment, but replace every other app file from the selected source tree.
+echo -e "${YELLOW}Step 1: Copying application files...${NC}"
+mkdir -p "$APP_DIR"
+find "$APP_DIR" -mindepth 1 -maxdepth 1 ! -name ".venv" -exec rm -rf -- {} +
+tar \
+  --exclude="./.git" \
+  --exclude="./.venv" \
+  --exclude="./scripts" \
+  --exclude="./__pycache__" \
+  --exclude="*/__pycache__" \
+  --exclude="*.pyc" \
+  --exclude="*.pyo" \
+  --exclude="*.log" \
+  -cf - . | (cd "$APP_DIR" && tar -xf -)
 echo -e "${GREEN}✔ Application files copied.${NC}\n"
 
-# 5. Copy static and templates directories
-echo -e "${YELLOW}Step 5: Copying static assets and templates...${NC}"
-rsync -a --delete static "$APP_DIR/"
-rsync -a --delete templates "$APP_DIR/"
-echo -e "${GREEN}✔ Static assets and templates copied.${NC}\n"
-
-# 6. Create the dedicated uv-managed app environment.
-echo -e "${YELLOW}Step 6: Syncing Python runtime and dependencies with uv...${NC}"
+# 2. Create the dedicated uv-managed app environment.
+echo -e "${YELLOW}Step 2: Syncing Python runtime and dependencies with uv...${NC}"
 (
   cd "$APP_DIR"
   uv python install
@@ -653,64 +434,36 @@ echo -e "${YELLOW}Step 6: Syncing Python runtime and dependencies with uv...${NC
 )
 echo -e "${GREEN}✔ Python environment ready at $VENV_DIR.${NC}\n"
 
-# 7. Copy scripts to /opt/SimpleSaferServer/scripts and /usr/local/bin
-echo -e "${YELLOW}Step 7: Installing scripts...${NC}"
-mkdir -p "$SCRIPTS_DIR"
+# 3. Install only the public CLI wrappers.
+echo -e "${YELLOW}Step 3: Installing CLI wrappers...${NC}"
 mkdir -p "$BIN_DIR"
-for script in scripts/*.sh scripts/*.py; do
-  script_name="$(basename "$script")"
-  app_script_path="$SCRIPTS_DIR/$script_name"
-  bin_script_path="$BIN_DIR/$script_name"
-  # Reinstalling from /opt/SimpleSaferServer makes the app script source and
-  # destination the same file. Skip copy and chmod there so the installer does
-  # not dirty the Git checkout that future self-updates need to inspect.
-  if ! same_file "$script" "$app_script_path"; then
-    cp "$script" "$app_script_path"
-  fi
-  copy_unless_same_file "$script" "$bin_script_path"
-  chmod +x "$bin_script_path"
-done
-echo -e "${GREEN}✔ Scripts installed to $SCRIPTS_DIR and $BIN_DIR.${NC}\n"
+cat >"$BIN_DIR/sss" <<'EOF'
+#!/bin/sh
+exec /opt/SimpleSaferServer/.venv/bin/python -m simple_safer_server.cli "$@"
+EOF
+chmod +x "$BIN_DIR/sss"
+cat >"$BIN_DIR/sss-helper" <<'EOF'
+#!/bin/sh
+exec /opt/SimpleSaferServer/.venv/bin/python -m simple_safer_server.privileged_helper "$@"
+EOF
+chmod +x "$BIN_DIR/sss-helper"
+install_helper_sudoers
+echo -e "${GREEN}✔ CLI wrappers installed to $BIN_DIR.${NC}\n"
 
-# Root-run systemd services do not inherit sudo's repository-owner trust context.
-ensure_git_safe_directory "$APP_DIR"
-
-# 8. Prepare the SSS-owned Samba include layout and discovery services.
-echo -e "${YELLOW}Step 8: Preparing Samba file sharing and discovery...${NC}"
-if "$VENV_DIR/bin/python3" -c "
-import sys
-sys.path.insert(0, '$APP_DIR')
-from simple_safer_server.services.runtime import get_runtime
-from simple_safer_server.services.samba_layout import SambaLayoutService
-
-rt = get_runtime()
-SambaLayoutService(runtime=rt).ensure_layout()
-"; then
-  echo -e "${GREEN}✔ Samba include layout prepared.${NC}"
-else
-  echo -e "${RED}ERROR: Failed to prepare the SimpleSaferServer Samba include layout.${NC}"
-  echo -e "${RED}Samba must validate before installation can continue safely.${NC}"
-  exit 1
-fi
-if configure_samba_discovery_services; then
-  echo -e "${GREEN}✔ Required Samba file serving is active.${NC}"
-else
-  echo -e "${RED}ERROR: Failed to start required Samba file serving.${NC}"
-  echo -e "${RED}Fix smbd with 'systemctl status smbd' and 'journalctl -u smbd --no-pager', then rerun the installer.${NC}"
-  exit 1
-fi
-
-# 9. Install/refresh systemd service for Flask app
-echo -e "${YELLOW}Step 9: Setting up systemd service...${NC}"
-cp simple_safer_server_web.service "$SERVICE_FILE"
+# 4. Install/refresh systemd services for the Web UI and worker.
+echo -e "${YELLOW}Step 4: Setting up systemd services...${NC}"
+cp simple-safer-server-web.service "$SERVICE_FILE"
+cp simple-safer-server-worker.service "$WORKER_SERVICE_FILE"
 systemctl daemon-reload
-systemctl enable simple_safer_server_web.service
-systemctl restart simple_safer_server_web.service
-echo -e "${GREEN}✔ Systemd service enabled and started.${NC}\n"
+systemctl enable simple-safer-server-web.service
+systemctl enable simple-safer-server-worker.service
+systemctl restart simple-safer-server-web.service
+systemctl restart simple-safer-server-worker.service
+echo -e "${GREEN}✔ Systemd services enabled and started.${NC}\n"
 
-# 10. Refresh procedurally generated background services
-echo -e "${YELLOW}Step 10: Refreshing procedural background services...${NC}"
-if "$VENV_DIR/bin/python3" -c "
+# 5. Validate worker task configuration
+echo -e "${YELLOW}Step 5: Validating worker task configuration...${NC}"
+if sudo -u "$APP_USER" -n "$VENV_DIR/bin/python3" -c "
 import sys
 sys.path.insert(0, '$APP_DIR')
 from simple_safer_server.services.config_manager import ConfigManager
@@ -719,22 +472,17 @@ from simple_safer_server.services.system_utils import SystemUtils
 
 rt = get_runtime()
 config = ConfigManager(runtime=rt).get_all_config()
-setup_complete_raw = config.get('system', {}).get('setup_complete', 'false')
-setup_complete = setup_complete_raw is True or str(setup_complete_raw).lower() == 'true'
-# install_systemd_services_and_timers catches exceptions and returns (success, error)
+# validate_worker_task_config catches exceptions and returns (success, error)
 # rather than raising, so we must check the tuple explicitly.
-success, error = SystemUtils(runtime=rt).install_systemd_services_and_timers(
-    config,
-    activate_timers=setup_complete,
-)
+success, error = SystemUtils(runtime=rt).validate_worker_task_config(config)
 if not success:
     print(f'Error: {error}', file=sys.stderr)
     sys.exit(1)
 "; then
-  echo -e "${GREEN}✔ Background services generated. Recurring timers are active only after setup is complete.${NC}\n"
+  echo -e "${GREEN}✔ Worker task configuration validated.${NC}\n"
 else
-  echo -e "${RED}ERROR: Failed to generate and register background services.${NC}"
-  echo -e "${RED}DDNS and other scheduled tasks will not run without the systemd units.${NC}"
+  echo -e "${RED}ERROR: Failed to validate worker task configuration.${NC}"
+  echo -e "${RED}Scheduled jobs will not run correctly until this is fixed.${NC}"
   echo -e "${YELLOW}Remediation:${NC}"
   echo -e "  1. Check the error message printed above for details."
   echo -e "  2. Review systemd logs with: journalctl -xe"
@@ -742,24 +490,7 @@ else
   exit 1
 fi
 
-# 11. Open port 5000 in firewall if active
-echo -e "${YELLOW}Step 11: Configuring firewall (if active)...${NC}"
-if command -v ufw >/dev/null 2>&1 && ufw status | grep -q 'Status: active'; then
-  ufw allow 5000/tcp
-  echo -e "${GREEN}✔ Port 5000 opened in ufw.${NC}"
-elif command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state 2>/dev/null | grep -q running; then
-  firewall-cmd --permanent --add-port=5000/tcp
-  firewall-cmd --reload
-  echo -e "${GREEN}✔ Port 5000 opened in firewalld.${NC}"
-elif iptables -L | grep -q 'Chain'; then
-  iptables -C INPUT -p tcp --dport 5000 -j ACCEPT 2>/dev/null || iptables -A INPUT -p tcp --dport 5000 -j ACCEPT
-  echo -e "${GREEN}✔ Port 5000 opened in iptables.${NC}"
-else
-  echo -e "${YELLOW}No active firewall detected or configured. Skipping firewall step.${NC}"
-fi
-echo
-
-# 12. Print all network interface IPs for user access
+# Print all network interface IPs for user access
 echo -e "${BLUE}===============================================${NC}"
 echo -e "${BLUE}  SimpleSaferServer Web UI Access URLs${NC}"
 echo -e "${BLUE}===============================================${NC}"
@@ -780,12 +511,12 @@ else
 fi
 echo
 
-echo -e "${GREEN}✔ Installation/update complete!${NC}"
+echo -e "${GREEN}✔ Installation complete!${NC}"
 echo -e "${YELLOW}If this is your first install, visit the above address in your browser to complete setup via the web UI.${NC}"
 echo -e "${BLUE}===============================================${NC}\n"
 
-# At the end, clean up if we cloned
-if [ "$CLEANUP_CLONE" = "1" ]; then
+# At the end, clean up temporary source files if this was an archive install.
+if [ "$CLEANUP_SOURCE" = "1" ]; then
   echo -e "${YELLOW}Cleaning up temporary files...${NC}"
   rm -rf "$TMPDIR"
 fi

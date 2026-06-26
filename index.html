@@ -5,18 +5,46 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="SimpleSaferServer - Affordable, Reliable, and User-Friendly Backup Solution">
     <title>SimpleSaferServer - One-Line Installer</title>
-    <!-- Bootstrap CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Font Awesome -->
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <!-- Google Fonts: Roboto -->
-    <link href="https://fonts.googleapis.com/css?family=Roboto:400,500,700&display=swap" rel="stylesheet">
+    <link href="static/vendor/fontawesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link rel="icon" type="image/x-icon" href="static/img/favicon.ico">
     <link rel="icon" type="image/png" href="static/img/favicon.png">
     <style>
         body {
             background-color: #f8f9fa;
-            font-family: 'Roboto', sans-serif;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        }
+        .text-center {
+            text-align: center;
+        }
+        .text-muted {
+            color: #6c757d;
+        }
+        .list-unstyled {
+            list-style: none;
+            padding-left: 0;
+        }
+        .flex-grow-1 {
+            flex: 1 1 auto;
+        }
+        .mb-0 {
+            margin-bottom: 0;
+        }
+        .mb-2 {
+            margin-bottom: 0.5rem;
+        }
+        .mb-3 {
+            margin-bottom: 1rem;
+        }
+        .mb-4 {
+            margin-bottom: 1.5rem;
+        }
+        .mt-4 {
+            margin-top: 1.5rem;
+        }
+        .h5 {
+            font-size: 1.25rem;
+            font-weight: 700;
+            line-height: 1.2;
         }
         .container {
             max-width: 600px;
@@ -146,8 +174,8 @@
         </div>
         <div class="note">
             <i class="fa-solid fa-circle-info"></i> <strong>Note:</strong> Run as <code>root</code> or with <code>sudo</code> on a clean Debian or Ubuntu based system.<br>
-            The installer checks for APT, dpkg, systemd, and Debian/Ubuntu OS-family metadata before installing packages. Derivatives continue with a warning when they expose Debian/Ubuntu ancestry.<br>
-            The script installs host tools, syncs the uv-managed Python runtime from <code>uv.lock</code>, prepares SimpleSaferServer-owned Samba include files, optionally installs <code>wsdd2</code> discovery support, sets up the service, and prints your Web UI address.<br>
+            The installer checks for systemd, sudo, and Debian/Ubuntu OS-family metadata before setting up the app services. Derivatives continue with a warning when they expose Debian/Ubuntu ancestry.<br>
+            The script syncs the uv-managed Python runtime from <code>uv.lock</code>, installs the <code>sss</code> terminal command and helper, sets up the Web and worker services, and prints your Web UI address. Optional tools such as Samba, <code>wsdd2</code>, and <code>rclone</code> belong to module setup flows instead of the base install.<br>
             The management Web UI is admin-only, and the first account created during setup becomes the initial administrator.
         </div>
         <hr>
@@ -174,6 +202,7 @@
             <li><i class="fa-solid fa-screwdriver-wrench"></i> <a href="https://github.com/chrismin13/SimpleSaferServer/blob/main/docs/manual_install.md" target="_blank">Manual Installation Guide</a></li>
             <li><i class="fa-solid fa-trash"></i> <a href="https://github.com/chrismin13/SimpleSaferServer/blob/main/docs/uninstall.md" target="_blank">Uninstallation Guide</a></li>
             <li><i class="fa-solid fa-code-branch"></i> <a href="https://github.com/chrismin13/SimpleSaferServer/blob/main/docs/api_responses.md" target="_blank">API Responses</a></li>
+            <li><i class="fa-solid fa-map"></i> <a href="https://github.com/chrismin13/SimpleSaferServer/blob/main/docs/redefinition_roadmap.md" target="_blank">Redefinition Roadmap</a></li>
             <li><i class="fa-solid fa-code"></i> <a href="https://github.com/chrismin13/SimpleSaferServer/blob/main/docs/development.md" target="_blank">Development &amp; Coding Conventions</a></li>
         </ul>
         <hr>
@@ -185,8 +214,8 @@
         </div>
         <p class="note">
             <i class="fa-solid fa-circle-info"></i>
-            This removes SimpleSaferServer files, services, timers, app data, the managed <code>/etc/fstab</code> entry,
-            Samba users synced from SimpleSaferServer accounts, SimpleSaferServer include blocks in <code>/etc/samba/smb.conf</code>,
+            This removes SimpleSaferServer files, web and worker services, app data, the managed <code>/etc/fstab</code> entry,
+            File Sharing-owned Samba and Linux users, SimpleSaferServer include blocks in <code>/etc/samba/smb.conf</code>,
             and the owned Samba files under <code>/etc/samba</code>. Owned Samba files are still removed when
             <code>smb.conf</code> cannot be rewritten safely.
             Active Samba file transfers will be interrupted when <code>smbd</code> is restarted.

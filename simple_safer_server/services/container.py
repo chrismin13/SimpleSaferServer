@@ -2,13 +2,13 @@ from dataclasses import dataclass
 from typing import Any
 
 from simple_safer_server.adapters.command_runner import CommandRunner
-from simple_safer_server.services.alerts_service import AlertsService
-from simple_safer_server.services.app_updates import AppUpdateManager
-from simple_safer_server.services.cloud_backup_service import CloudBackupService
-from simple_safer_server.services.ddns_service import DdnsService
-from simple_safer_server.services.drive_health import DriveHealthSummaryService
+from simple_safer_server.core.privileged_client import PrivilegedActionClient
+from simple_safer_server.modules.alerts.service import AlertsService
+from simple_safer_server.modules.cloud_backup.service import CloudBackupService
+from simple_safer_server.modules.ddns.service import DdnsService
+from simple_safer_server.modules.drive_health.service import DriveHealthSummaryService
+from simple_safer_server.modules.storage.service import StorageService
 from simple_safer_server.services.server_identity import ServerIdentityService
-from simple_safer_server.services.storage_service import StorageService
 from simple_safer_server.services.task_service import TaskService
 
 
@@ -19,10 +19,10 @@ class AppServices:
     runtime: Any
     fake_state: Any
     command_runner: CommandRunner
+    privileged_actions: PrivilegedActionClient
     config_manager: Any
     system_utils: Any
     system_updates_manager: Any
-    app_update_manager: AppUpdateManager
     smb_manager: Any
     user_manager: Any
     task_service: TaskService

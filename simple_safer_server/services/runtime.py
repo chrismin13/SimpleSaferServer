@@ -21,13 +21,13 @@ class Runtime:
     config_dir: Path
     logs_dir: Path
     tasks_log_dir: Path
+    smtp_config_path: Path
     rclone_config_dir: Path
     samba_dir: Path
     systemd_dir: Path
     bin_dir: Path
     backup_drive_dir: Path
     cloud_target_dir: Path
-    msmtp_config_path: Path
     state_path: Path
 
     @property
@@ -46,13 +46,11 @@ class FakeState:
         "Check Mount",
         "Drive Health Check",
         "Cloud Backup",
-        "App Update",
     ]
     TASK_SERVICE_NAMES: ClassVar[dict[str, str]] = {
-        "Check Mount": "check_mount.service",
-        "Drive Health Check": "check_health.service",
-        "Cloud Backup": "backup_cloud.service",
-        "App Update": "app_update.service",
+        "Check Mount": "mount-check",
+        "Drive Health Check": "drive-health",
+        "Cloud Backup": "cloud-backup",
     }
 
     def __init__(self, runtime: Runtime):
@@ -157,17 +155,10 @@ class FakeState:
             self.save(state)
 
     def get_smb_services(self) -> dict[str, str]:
-        services = self.load().get(
+        return self.load().get(
             "smb_services",
             {"smbd": "active", "nmbd": "active", "wsdd2": "active"},
         )
-        # Fake state can survive across branch changes; normalize old two-unit
-        # snapshots so UI tests and manual fake-mode sessions match real status.
-        return {
-            "smbd": services.get("smbd", "active"),
-            "nmbd": services.get("nmbd", "active"),
-            "wsdd2": services.get("wsdd2", "active"),
-        }
 
     def set_task_state(
         self,
@@ -221,7 +212,6 @@ class FakeState:
             backup_hour, backup_minute = 3, 0
 
         offsets = {
-            "App Update": -19,
             "Check Mount": -2,
             "Drive Health Check": -1,
             "Cloud Backup": 0,
@@ -280,8 +270,7 @@ def resolve_volatile_dir(data_dir: Path, *, is_fake: bool) -> Path:
 def _read_persisted_text_secret(secret_path: Path) -> str | None:
     """Read a secret file after forcing the expected restrictive mode."""
     try:
-        # Keep the permissions tight even if an older deploy or manual edit
-        # left this file more open than the app expects.
+        # Keep the persisted secret private before reading it.
         secret_path.chmod(0o600)
         existing_secret = secret_path.read_text().strip()
     except FileNotFoundError:
@@ -359,13 +348,13 @@ def get_runtime() -> Runtime:
             config_dir=data_dir / "config",
             logs_dir=data_dir / "logs",
             tasks_log_dir=data_dir / "logs" / "tasks",
+            smtp_config_path=data_dir / "smtp.conf",
             rclone_config_dir=data_dir / "rclone",
             samba_dir=data_dir / "samba",
             systemd_dir=data_dir / "systemd",
             bin_dir=data_dir / "bin",
             backup_drive_dir=data_dir / "backup-drive",
             cloud_target_dir=data_dir / "cloud-target",
-            msmtp_config_path=data_dir / "msmtprc",
             state_path=data_dir / "state.json",
         )
         # Fake-mode status files live under volatile_dir; create it with the
@@ -382,13 +371,13 @@ def get_runtime() -> Runtime:
             config_dir=Path("/etc/SimpleSaferServer"),
             logs_dir=Path("/var/log/SimpleSaferServer"),
             tasks_log_dir=Path("/var/log/SimpleSaferServer"),
-            rclone_config_dir=Path.home() / ".config" / "rclone",
+            smtp_config_path=Path("/etc/SimpleSaferServer") / "smtp.conf",
+            rclone_config_dir=Path("/etc/SimpleSaferServer") / "rclone",
             samba_dir=Path("/etc/samba"),
             systemd_dir=Path("/etc/systemd/system"),
             bin_dir=Path("/usr/local/bin"),
             backup_drive_dir=Path("/media/backup"),
             cloud_target_dir=Path("/media/backup"),
-            msmtp_config_path=Path("/etc/msmtprc"),
             state_path=Path(tempfile.gettempdir()) / "simple_safer_server_unused_state.json",
         )
 

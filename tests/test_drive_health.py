@@ -6,12 +6,12 @@ from subprocess import TimeoutExpired
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from simple_safer_server.services import drive_health
+from simple_safer_server.modules.drive_health import service as drive_health
 
 
 class DriveHealthTests(unittest.TestCase):
     @patch(
-        "simple_safer_server.services.drive_health.get_smartctl_json_support",
+        "simple_safer_server.modules.drive_health.service.get_smartctl_json_support",
         return_value=(False, drive_health.SMARTCTL_JSON_UPGRADE_MESSAGE),
     )
     def test_get_smart_attributes_keeps_json_unsupported_flow(self, _mock_json_support):
@@ -29,11 +29,11 @@ class DriveHealthTests(unittest.TestCase):
         self.assertEqual(error, drive_health.SMARTCTL_JSON_UPGRADE_MESSAGE)
 
     @patch(
-        "simple_safer_server.services.drive_health.get_smartctl_json_support",
+        "simple_safer_server.modules.drive_health.service.get_smartctl_json_support",
         return_value=(True, None),
     )
     @patch(
-        "simple_safer_server.services.drive_health.drive_health_command_adapter.smartctl_attributes"
+        "simple_safer_server.modules.drive_health.service.drive_health_command_adapter.smartctl_attributes"
     )
     def test_get_smart_attributes_treats_json_error_response_as_failure(
         self, mock_run, _mock_json_support
@@ -67,11 +67,11 @@ class DriveHealthTests(unittest.TestCase):
         self.assertIn("Read Device Identity failed", error)
 
     @patch(
-        "simple_safer_server.services.drive_health.get_smartctl_json_support",
+        "simple_safer_server.modules.drive_health.service.get_smartctl_json_support",
         return_value=(True, None),
     )
     @patch(
-        "simple_safer_server.services.drive_health.drive_health_command_adapter.smartctl_attributes"
+        "simple_safer_server.modules.drive_health.service.drive_health_command_adapter.smartctl_attributes"
     )
     def test_get_smart_attributes_handles_empty_smartctl_messages(
         self, mock_run, _mock_json_support
@@ -95,11 +95,11 @@ class DriveHealthTests(unittest.TestCase):
         self.assertEqual(error, "smartctl could not retrieve SMART attributes")
 
     @patch(
-        "simple_safer_server.services.drive_health.get_smartctl_json_support",
+        "simple_safer_server.modules.drive_health.service.get_smartctl_json_support",
         return_value=(True, None),
     )
     @patch(
-        "simple_safer_server.services.drive_health.drive_health_command_adapter.smartctl_attributes"
+        "simple_safer_server.modules.drive_health.service.drive_health_command_adapter.smartctl_attributes"
     )
     def test_get_smart_attributes_accepts_nonzero_exit_when_attributes_are_present(
         self, mock_run, _mock_json_support
@@ -134,11 +134,11 @@ class DriveHealthTests(unittest.TestCase):
         self.assertIn("smart_1_raw", missing)
 
     @patch(
-        "simple_safer_server.services.drive_health.get_smartctl_json_support",
+        "simple_safer_server.modules.drive_health.service.get_smartctl_json_support",
         return_value=(True, None),
     )
     @patch(
-        "simple_safer_server.services.drive_health.drive_health_command_adapter.smartctl_attributes"
+        "simple_safer_server.modules.drive_health.service.drive_health_command_adapter.smartctl_attributes"
     )
     def test_get_smart_attributes_preserves_parse_failure_when_json_supported(
         self, mock_run, _mock_json_support
@@ -166,8 +166,8 @@ class DriveHealthTests(unittest.TestCase):
         self.assertNotEqual(error, drive_health.SMARTCTL_JSON_UPGRADE_MESSAGE)
 
     @patch(
-        "simple_safer_server.services.drive_health.drive_health_command_adapter.send_email",
-        side_effect=TimeoutExpired(cmd=["msmtp"], timeout=30),
+        "simple_safer_server.modules.alerts.notifications.SmtpAlertMailer.send_alert_email",
+        side_effect=RuntimeError("smtp timeout"),
     )
     def test_log_and_email_alert_treats_email_timeout_as_warning(self, mock_send_email):
         config_manager = SimpleNamespace(
@@ -195,8 +195,12 @@ class DriveHealthTests(unittest.TestCase):
             alert_type="warning",
             source="drive_health",
         )
-        mock_send_email.assert_called_once()
-        self.assertIn("Subject: Drive health - nas-01", mock_send_email.call_args[0][2])
+        mock_send_email.assert_called_once_with(
+            email_address="admin@example.com",
+            from_address="server@example.com",
+            subject="Drive health - nas-01",
+            message="message",
+        )
 
     def test_hdsentinel_state_uses_durable_data_dir_not_repo_root(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -213,7 +217,7 @@ class DriveHealthTests(unittest.TestCase):
             )
 
     @patch(
-        "simple_safer_server.services.drive_health._run_hdsentinel_command",
+        "simple_safer_server.modules.drive_health.service._run_hdsentinel_command",
         side_effect=TimeoutExpired(cmd=["HDSentinel", "-solid"], timeout=45),
     )
     def test_collect_hdsentinel_drive_list_returns_empty_on_timeout(self, mock_run):
@@ -235,8 +239,8 @@ class DriveHealthTests(unittest.TestCase):
             )
             mock_run.assert_called_once_with(binary_path, ["-solid"])
 
-    @patch("simple_safer_server.services.drive_health._log_and_email_alert")
-    @patch("simple_safer_server.services.drive_health.collect_hdsentinel_drive_list")
+    @patch("simple_safer_server.modules.drive_health.service._log_and_email_alert")
+    @patch("simple_safer_server.modules.drive_health.service.collect_hdsentinel_drive_list")
     def test_hdsentinel_monitor_alerts_per_detected_drive(self, mock_drive_list, mock_alert):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -349,7 +353,7 @@ class DriveHealthTests(unittest.TestCase):
             self.assertEqual(saved["serial:SERIAL-B"]["health_pct"], 80)
 
     @patch(
-        "simple_safer_server.services.drive_health.resolve_backup_parent_device",
+        "simple_safer_server.modules.drive_health.service.resolve_backup_parent_device",
         return_value=("/dev/sdb", "/dev/sdb1", None),
     )
     def test_mark_managed_storage_drive_marks_matching_detected_drive(self, _mock_resolve):
@@ -381,10 +385,10 @@ class DriveHealthTests(unittest.TestCase):
         self.assertFalse(marked[0]["is_managed_storage"])
         self.assertTrue(marked[1]["is_managed_storage"])
 
-    @patch("simple_safer_server.services.drive_health._log_and_email_alert")
-    @patch("simple_safer_server.services.drive_health.run_hdsentinel_health_monitor")
-    @patch("simple_safer_server.services.drive_health.get_smart_attributes")
-    @patch("simple_safer_server.services.drive_health.resolve_backup_parent_device")
+    @patch("simple_safer_server.modules.drive_health.service._log_and_email_alert")
+    @patch("simple_safer_server.modules.drive_health.service.run_hdsentinel_health_monitor")
+    @patch("simple_safer_server.modules.drive_health.service.get_smart_attributes")
+    @patch("simple_safer_server.modules.drive_health.service.resolve_backup_parent_device")
     def test_scheduled_check_succeeds_without_alerts_when_smart_is_available(
         self,
         mock_resolve_device,
@@ -426,10 +430,10 @@ class DriveHealthTests(unittest.TestCase):
             config_manager, system_utils, runtime=runtime
         )
 
-    @patch("simple_safer_server.services.drive_health._log_and_email_alert")
-    @patch("simple_safer_server.services.drive_health.run_hdsentinel_health_monitor")
-    @patch("simple_safer_server.services.drive_health.get_smart_attributes")
-    @patch("simple_safer_server.services.drive_health.resolve_backup_parent_device")
+    @patch("simple_safer_server.modules.drive_health.service._log_and_email_alert")
+    @patch("simple_safer_server.modules.drive_health.service.run_hdsentinel_health_monitor")
+    @patch("simple_safer_server.modules.drive_health.service.get_smart_attributes")
+    @patch("simple_safer_server.modules.drive_health.service.resolve_backup_parent_device")
     def test_scheduled_json_unsupported_fallback_requires_hdsentinel_health(
         self,
         mock_resolve_device,

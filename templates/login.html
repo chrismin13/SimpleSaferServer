@@ -4,14 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ browser_title('Sign in') }}</title>
-    <!-- Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <!-- Font Awesome -->
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <!-- Design System -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/design-tokens.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/fontawesome/6.4.0/css/all.min.css') }}">
+    <!-- App theme -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
     <!-- Custom Login Styles -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/login.css') }}">
@@ -65,7 +61,30 @@
 
     <!-- Script for Async Action Button -->
     <script src="{{ url_for('static', filename='js/common.js') }}"></script>
+    <script type="application/json" id="login-copy">{{ login_ui_text | tojson }}</script>
     <script>
+        const loginDefaultCopy = {
+            errors: {
+                loginFailed: 'Login failed'
+            }
+        };
+
+        function readLoginCopy() {
+            const script = document.getElementById('login-copy');
+            if (!script) return loginDefaultCopy;
+            try {
+                return {
+                    ...loginDefaultCopy,
+                    ...JSON.parse(script.textContent || '{}')
+                };
+            } catch (error) {
+                console.error('Could not read login page copy:', error);
+                return loginDefaultCopy;
+            }
+        }
+
+        const loginCopy = readLoginCopy();
+
         document.addEventListener('DOMContentLoaded', () => {
             const form = document.getElementById('loginForm');
             const submitBtn = document.getElementById('loginSubmitBtn');
@@ -73,7 +92,7 @@
 
             function showLoginError(message) {
                 if (!feedbackSlot) {
-                    console.error(message || 'Login failed');
+                    console.error(message || loginCopy.errors.loginFailed);
                     return;
                 }
                 feedbackSlot.textContent = '';
@@ -83,7 +102,7 @@
                 icon.className = 'fas fa-exclamation-triangle';
                 icon.setAttribute('aria-hidden', 'true');
                 const text = document.createElement('span');
-                text.textContent = message || 'Login failed';
+                text.textContent = message || loginCopy.errors.loginFailed;
                 alert.append(icon, text);
                 feedbackSlot.appendChild(alert);
             }
@@ -106,7 +125,7 @@
                             window.location.href = result.data.redirect;
                         } else {
                             window.AsyncButtonState.error(submitBtn);
-                            showLoginError(result.message || result.detail || 'Login failed');
+                            showLoginError(result.message || result.detail || loginCopy.errors.loginFailed);
                             // Clear password field for standard UX
                             const pwField = document.getElementById('password');
                             if (pwField) {
@@ -116,7 +135,7 @@
                         }
                     } catch (err) {
                         window.AsyncButtonState.error(submitBtn);
-                        showLoginError(err.message || err.detail || 'Login failed');
+                        showLoginError(err.message || err.detail || loginCopy.errors.loginFailed);
                     }
                 });
             }

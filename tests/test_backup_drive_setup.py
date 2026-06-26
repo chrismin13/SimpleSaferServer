@@ -4,7 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from simple_safer_server.services import backup_drive_setup
+from simple_safer_server.modules.storage import backup_drive_setup
 
 
 class FakeBackupDriveCommandAdapter:
@@ -110,10 +110,10 @@ class BackupDriveSetupTests(unittest.TestCase):
         )
 
     @patch(
-        'simple_safer_server.services.backup_drive_setup._get_system_drive_path',
+        'simple_safer_server.modules.storage.backup_drive_setup._get_system_drive_path',
         return_value='/dev/sda',
     )
-    @patch('simple_safer_server.services.backup_drive_setup._load_lsblk_devices')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup._load_lsblk_devices')
     def test_list_available_drives_keeps_fuseblk_partition_when_blkid_confirms_ntfs(
         self,
         mock_load_lsblk_devices,
@@ -138,7 +138,7 @@ class BackupDriveSetupTests(unittest.TestCase):
         ]
 
         with patch(
-            'simple_safer_server.services.backup_drive_setup._get_blkid_filesystem_type',
+            'simple_safer_server.modules.storage.backup_drive_setup._get_blkid_filesystem_type',
             return_value='ntfs',
         ) as mock_blkid:
             drives = backup_drive_setup.list_available_drives(
@@ -173,10 +173,10 @@ class BackupDriveSetupTests(unittest.TestCase):
         self.assertEqual(command_adapter.blkid_devices, ['/dev/sdb1'])
 
     @patch(
-        'simple_safer_server.services.backup_drive_setup._get_system_drive_path',
+        'simple_safer_server.modules.storage.backup_drive_setup._get_system_drive_path',
         return_value='/dev/sda',
     )
-    @patch('simple_safer_server.services.backup_drive_setup._load_lsblk_devices')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup._load_lsblk_devices')
     def test_list_available_drives_normalizes_ntfs3_partition_type_for_ntfs_picker(
         self,
         mock_load_lsblk_devices,
@@ -209,10 +209,10 @@ class BackupDriveSetupTests(unittest.TestCase):
         self.assertEqual(drives[0]['partitions'][0]['type'], 'ntfs')
 
     @patch(
-        'simple_safer_server.services.backup_drive_setup._get_system_drive_path',
+        'simple_safer_server.modules.storage.backup_drive_setup._get_system_drive_path',
         return_value='/dev/sda',
     )
-    @patch('simple_safer_server.services.backup_drive_setup._load_lsblk_devices')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup._load_lsblk_devices')
     def test_list_available_drives_marks_usb_transport_as_usb_drive(
         self,
         mock_load_lsblk_devices,
@@ -241,10 +241,10 @@ class BackupDriveSetupTests(unittest.TestCase):
         self.assertEqual(drives[0]['device_type'], 'disk')
 
     @patch(
-        'simple_safer_server.services.backup_drive_setup._get_system_drive_path',
+        'simple_safer_server.modules.storage.backup_drive_setup._get_system_drive_path',
         return_value='/dev/sda',
     )
-    @patch('simple_safer_server.services.backup_drive_setup._load_lsblk_devices')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup._load_lsblk_devices')
     def test_list_available_drives_marks_hotplug_disk_as_removable_when_transport_is_missing(
         self,
         mock_load_lsblk_devices,
@@ -272,10 +272,10 @@ class BackupDriveSetupTests(unittest.TestCase):
         self.assertEqual(drives[0]['type'], 'removable')
 
     @patch(
-        'simple_safer_server.services.backup_drive_setup._get_system_drive_path',
+        'simple_safer_server.modules.storage.backup_drive_setup._get_system_drive_path',
         return_value='/dev/sda',
     )
-    @patch('simple_safer_server.services.backup_drive_setup._load_lsblk_devices')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup._load_lsblk_devices')
     def test_list_available_drives_skips_fuseblk_partition_when_blkid_is_not_ntfs(
         self,
         mock_load_lsblk_devices,
@@ -300,7 +300,7 @@ class BackupDriveSetupTests(unittest.TestCase):
         ]
 
         with patch(
-            'simple_safer_server.services.backup_drive_setup._get_blkid_filesystem_type',
+            'simple_safer_server.modules.storage.backup_drive_setup._get_blkid_filesystem_type',
             return_value='exfat',
         ) as mock_blkid:
             drives = backup_drive_setup.list_available_drives(
@@ -365,10 +365,10 @@ class BackupDriveSetupTests(unittest.TestCase):
         )
 
     @patch(
-        'simple_safer_server.services.backup_drive_setup._get_system_drive_path',
+        'simple_safer_server.modules.storage.backup_drive_setup._get_system_drive_path',
         return_value='/dev/sda',
     )
-    @patch('simple_safer_server.services.backup_drive_setup._load_lsblk_devices')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup._load_lsblk_devices')
     def test_list_available_drives_keeps_blank_disk_for_broad_format_scan(
         self,
         mock_load_lsblk_devices,
@@ -471,7 +471,7 @@ class BackupDriveSetupTests(unittest.TestCase):
                     ntfs_driver='ntfs4',
                 )
 
-    @patch('simple_safer_server.services.backup_drive_setup._get_mounted_partitions_for_disk')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup._get_mounted_partitions_for_disk')
     def test_unmount_disk_partitions_unmounts_all_members(self, mock_get_mounted):
         runtime = SimpleNamespace(is_fake=False)
         command_adapter = FakeBackupDriveCommandAdapter()
@@ -488,7 +488,7 @@ class BackupDriveSetupTests(unittest.TestCase):
         self.assertEqual(command_adapter.unmounted_partitions, ['/dev/sdb1', '/dev/sdb2'])
         mock_get_mounted.assert_called_once_with('/dev/sdb', command_adapter=command_adapter)
 
-    @patch('simple_safer_server.services.backup_drive_setup._get_mount_for_partition')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup._get_mount_for_partition')
     def test_unmount_selected_partition_only_unmounts_exact_partition(self, mock_get_mount):
         runtime = SimpleNamespace(is_fake=False)
         command_adapter = FakeBackupDriveCommandAdapter()
@@ -502,7 +502,7 @@ class BackupDriveSetupTests(unittest.TestCase):
         self.assertEqual(command_adapter.unmounted_partitions, ['/dev/sdb1'])
         mock_get_mount.assert_called_once_with('/dev/sdb1', command_adapter=command_adapter)
 
-    @patch('simple_safer_server.services.backup_drive_setup._get_mounted_partitions_for_disk')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup._get_mounted_partitions_for_disk')
     def test_format_backup_drive_blocks_mounted_partitions(self, mock_get_mounted):
         runtime = SimpleNamespace(is_fake=False)
         command_adapter = FakeBackupDriveCommandAdapter()
@@ -512,16 +512,16 @@ class BackupDriveSetupTests(unittest.TestCase):
 
         with (
             patch(
-                'simple_safer_server.services.backup_drive_setup.os.path.realpath',
+                'simple_safer_server.modules.storage.backup_drive_setup.os.path.realpath',
                 return_value='/dev/sdb',
             ),
             patch(
-                'simple_safer_server.services.backup_drive_setup.os.path.exists',
+                'simple_safer_server.modules.storage.backup_drive_setup.os.path.exists',
                 return_value=True,
             ),
-            patch('simple_safer_server.services.backup_drive_setup.os.access', return_value=True),
+            patch('simple_safer_server.modules.storage.backup_drive_setup.os.access', return_value=True),
             patch(
-                'simple_safer_server.services.backup_drive_setup.os.stat', return_value=disk_stat
+                'simple_safer_server.modules.storage.backup_drive_setup.os.stat', return_value=disk_stat
             ),
         ):
             with self.assertRaisesRegex(
@@ -537,7 +537,7 @@ class BackupDriveSetupTests(unittest.TestCase):
         self.assertEqual(command_adapter.created_partitions, [])
         mock_get_mounted.assert_called_once_with('/dev/sdb', command_adapter=command_adapter)
 
-    @patch('simple_safer_server.services.backup_drive_setup._get_mounted_partitions_for_disk')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup._get_mounted_partitions_for_disk')
     def test_format_backup_drive_rebuilds_one_ntfs_partition(self, mock_get_mounted):
         runtime = SimpleNamespace(is_fake=False)
         command_adapter = FakeBackupDriveCommandAdapter()
@@ -547,20 +547,20 @@ class BackupDriveSetupTests(unittest.TestCase):
 
         with (
             patch(
-                'simple_safer_server.services.backup_drive_setup.os.path.realpath',
+                'simple_safer_server.modules.storage.backup_drive_setup.os.path.realpath',
                 return_value='/dev/sdb',
             ),
             patch(
-                'simple_safer_server.services.backup_drive_setup.os.path.exists',
+                'simple_safer_server.modules.storage.backup_drive_setup.os.path.exists',
                 return_value=True,
             ),
-            patch('simple_safer_server.services.backup_drive_setup.os.access', return_value=True),
+            patch('simple_safer_server.modules.storage.backup_drive_setup.os.access', return_value=True),
             patch(
-                'simple_safer_server.services.backup_drive_setup.os.stat',
+                'simple_safer_server.modules.storage.backup_drive_setup.os.stat',
                 return_value=block_stat,
             ),
             patch(
-                'simple_safer_server.services.backup_drive_setup.os.lstat',
+                'simple_safer_server.modules.storage.backup_drive_setup.os.lstat',
                 return_value=block_stat,
             ),
         ):
@@ -583,13 +583,13 @@ class BackupDriveSetupTests(unittest.TestCase):
             ],
         )
 
-    @patch('simple_safer_server.services.backup_drive_setup.os.makedirs')
-    @patch('simple_safer_server.services.backup_drive_setup._reload_systemd_mount_units')
-    @patch('simple_safer_server.services.backup_drive_setup.update_managed_fstab')
-    @patch('simple_safer_server.services.backup_drive_setup._get_partition_filesystem_type')
-    @patch('simple_safer_server.services.backup_drive_setup.get_drive_usb_id')
-    @patch('simple_safer_server.services.backup_drive_setup.get_drive_uuid')
-    @patch('simple_safer_server.services.backup_drive_setup._get_mount_for_partition')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup.os.makedirs')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup._reload_systemd_mount_units')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup.update_managed_fstab')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup._get_partition_filesystem_type')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup.get_drive_usb_id')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup.get_drive_uuid')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup._get_mount_for_partition')
     def test_apply_backup_drive_configuration_checks_only_selected_partition_mount(
         self,
         mock_get_mount,
@@ -630,13 +630,13 @@ class BackupDriveSetupTests(unittest.TestCase):
         )
         self.assertEqual(command_adapter.mounted_ntfs, [('/dev/sdb1', '/media/backup', 'ntfs-3g')])
 
-    @patch('simple_safer_server.services.backup_drive_setup.os.makedirs')
-    @patch('simple_safer_server.services.backup_drive_setup._reload_systemd_mount_units')
-    @patch('simple_safer_server.services.backup_drive_setup.update_managed_fstab')
-    @patch('simple_safer_server.services.backup_drive_setup._get_partition_filesystem_type')
-    @patch('simple_safer_server.services.backup_drive_setup.get_drive_usb_id')
-    @patch('simple_safer_server.services.backup_drive_setup.get_drive_uuid')
-    @patch('simple_safer_server.services.backup_drive_setup._get_mount_for_partition')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup.os.makedirs')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup._reload_systemd_mount_units')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup.update_managed_fstab')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup._get_partition_filesystem_type')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup.get_drive_usb_id')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup.get_drive_uuid')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup._get_mount_for_partition')
     def test_apply_backup_drive_configuration_uses_selected_ntfs_driver(
         self,
         mock_get_mount,
@@ -683,11 +683,11 @@ class BackupDriveSetupTests(unittest.TestCase):
         )
         self.assertEqual(command_adapter.mounted_ntfs, [('/dev/sdb1', '/media/backup', 'ntfs3')])
 
-    @patch('simple_safer_server.services.backup_drive_setup.os.makedirs')
-    @patch('simple_safer_server.services.backup_drive_setup.update_managed_fstab')
-    @patch('simple_safer_server.services.backup_drive_setup._get_partition_filesystem_type')
-    @patch('simple_safer_server.services.backup_drive_setup.get_drive_uuid')
-    @patch('simple_safer_server.services.backup_drive_setup._get_mount_for_partition')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup.os.makedirs')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup.update_managed_fstab')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup._get_partition_filesystem_type')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup.get_drive_uuid')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup._get_mount_for_partition')
     def test_apply_backup_drive_configuration_rejects_duplicate_uuid_devices(
         self,
         mock_get_mount,
@@ -725,14 +725,14 @@ class BackupDriveSetupTests(unittest.TestCase):
         mock_update_fstab.assert_not_called()
         self.assertEqual(command_adapter.mounted_ntfs, [])
 
-    @patch('simple_safer_server.services.backup_drive_setup.restore_fstab_backup')
-    @patch('simple_safer_server.services.backup_drive_setup.os.makedirs')
-    @patch('simple_safer_server.services.backup_drive_setup._reload_systemd_mount_units')
-    @patch('simple_safer_server.services.backup_drive_setup.update_managed_fstab')
-    @patch('simple_safer_server.services.backup_drive_setup._get_partition_filesystem_type')
-    @patch('simple_safer_server.services.backup_drive_setup.get_drive_usb_id')
-    @patch('simple_safer_server.services.backup_drive_setup.get_drive_uuid')
-    @patch('simple_safer_server.services.backup_drive_setup._get_mount_for_partition')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup.restore_fstab_backup')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup.os.makedirs')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup._reload_systemd_mount_units')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup.update_managed_fstab')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup._get_partition_filesystem_type')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup.get_drive_usb_id')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup.get_drive_uuid')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup._get_mount_for_partition')
     def test_apply_backup_drive_configuration_restores_and_reloads_fstab_after_mount_failure(
         self,
         mock_get_mount,
@@ -774,14 +774,14 @@ class BackupDriveSetupTests(unittest.TestCase):
         mock_restore_fstab_backup.assert_called_once_with('/tmp/fstab.backup', runtime=runtime)
         self.assertEqual(mock_reload_mount_units.call_count, 2)
 
-    @patch('simple_safer_server.services.backup_drive_setup.restore_fstab_backup')
-    @patch('simple_safer_server.services.backup_drive_setup.os.makedirs')
-    @patch('simple_safer_server.services.backup_drive_setup._reload_systemd_mount_units')
-    @patch('simple_safer_server.services.backup_drive_setup.update_managed_fstab')
-    @patch('simple_safer_server.services.backup_drive_setup._get_partition_filesystem_type')
-    @patch('simple_safer_server.services.backup_drive_setup.get_drive_usb_id')
-    @patch('simple_safer_server.services.backup_drive_setup.get_drive_uuid')
-    @patch('simple_safer_server.services.backup_drive_setup._get_mount_for_partition')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup.restore_fstab_backup')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup.os.makedirs')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup._reload_systemd_mount_units')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup.update_managed_fstab')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup._get_partition_filesystem_type')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup.get_drive_usb_id')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup.get_drive_uuid')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup._get_mount_for_partition')
     def test_apply_backup_drive_configuration_restores_fstab_when_daemon_reload_fails(
         self,
         mock_get_mount,
@@ -830,14 +830,14 @@ class BackupDriveSetupTests(unittest.TestCase):
         self.assertEqual(mock_reload_mount_units.call_count, 2)
         self.assertEqual(command_adapter.mounted_ntfs, [])
 
-    @patch('simple_safer_server.services.backup_drive_setup.restore_fstab_backup')
-    @patch('simple_safer_server.services.backup_drive_setup.os.makedirs')
-    @patch('simple_safer_server.services.backup_drive_setup._reload_systemd_mount_units')
-    @patch('simple_safer_server.services.backup_drive_setup.update_managed_fstab')
-    @patch('simple_safer_server.services.backup_drive_setup._get_partition_filesystem_type')
-    @patch('simple_safer_server.services.backup_drive_setup.get_drive_usb_id')
-    @patch('simple_safer_server.services.backup_drive_setup.get_drive_uuid')
-    @patch('simple_safer_server.services.backup_drive_setup._get_mount_for_partition')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup.restore_fstab_backup')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup.os.makedirs')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup._reload_systemd_mount_units')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup.update_managed_fstab')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup._get_partition_filesystem_type')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup.get_drive_usb_id')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup.get_drive_uuid')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup._get_mount_for_partition')
     def test_apply_backup_drive_configuration_rolls_back_when_post_configure_fails(
         self,
         mock_get_mount,
@@ -865,9 +865,9 @@ class BackupDriveSetupTests(unittest.TestCase):
 
         def fail_after_drive_setup(result):
             self.assertEqual(result['mount_point'], '/new/storage')
-            raise RuntimeError('timer refresh failed')
+            raise RuntimeError('post-configure failed')
 
-        with self.assertRaisesRegex(RuntimeError, 'timer refresh failed'):
+        with self.assertRaisesRegex(RuntimeError, 'post-configure failed'):
             backup_drive_setup.apply_backup_drive_configuration(
                 '/dev/sdb1',
                 '/new/storage',
@@ -886,10 +886,10 @@ class BackupDriveSetupTests(unittest.TestCase):
         config_manager.set_value.assert_any_call('backup', 'uuid', 'OLD-UUID')
         config_manager.set_value.assert_any_call('backup', 'usb_id', '1234:5678')
 
-    @patch('simple_safer_server.services.backup_drive_setup.get_fake_state')
-    @patch('simple_safer_server.services.backup_drive_setup.restore_fstab_backup')
-    @patch('simple_safer_server.services.backup_drive_setup._reload_systemd_mount_units')
-    @patch('simple_safer_server.services.backup_drive_setup.update_managed_fstab')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup.get_fake_state')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup.restore_fstab_backup')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup._reload_systemd_mount_units')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup.update_managed_fstab')
     def test_fake_mode_rollback_restores_share_via_update_managed_share(
         self,
         mock_update_fstab,
@@ -947,10 +947,10 @@ class BackupDriveSetupTests(unittest.TestCase):
             },
         )
 
-    @patch('simple_safer_server.services.backup_drive_setup.get_fake_state')
-    @patch('simple_safer_server.services.backup_drive_setup.restore_fstab_backup')
-    @patch('simple_safer_server.services.backup_drive_setup._reload_systemd_mount_units')
-    @patch('simple_safer_server.services.backup_drive_setup.update_managed_fstab')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup.get_fake_state')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup.restore_fstab_backup')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup._reload_systemd_mount_units')
+    @patch('simple_safer_server.modules.storage.backup_drive_setup.update_managed_fstab')
     def test_fake_mode_rollback_uses_share_snapshot_when_share_record_mutates(
         self,
         mock_update_fstab,

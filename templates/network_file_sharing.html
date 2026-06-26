@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "partials/module_help.html" as module_help %}
 
 {% block title %}{{ browser_title('File Sharing') }}{% endblock %}
 {% block header %}Network File Sharing{% endblock %}
@@ -7,6 +8,8 @@
 {% endblock %}
 
 {% block content %}
+{{ module_help.module_help_band(file_sharing_module, icon='fas fa-share-nodes') }}
+
 <!-- Connection summary - compact inline, no card -->
 <div class="d-flex items-center justify-between mb-4 flex-wrap gap-3" id="systemStatusArea">
   <div class="d-flex items-center gap-3 flex-wrap">
@@ -19,9 +22,9 @@
       <span>Technical Details</span>
     </button>
     <button id="restartSMB" class="btn btn-warning btn-sm"
-      data-confirm="Are you sure you want to restart the file sharing services? Connected clients may be interrupted briefly."
-      data-confirm-title="Restart Services"
-      data-confirm-button="Restart"
+      data-confirm="{{ file_sharing_ui_text.actions.restartConfirmMessage }}"
+      data-confirm-title="{{ file_sharing_ui_text.actions.restartConfirmTitle }}"
+      data-confirm-button="{{ file_sharing_ui_text.actions.restartConfirmLabel }}"
       data-confirm-class="btn-warning">
       <i class="fas fa-rotate-right me-1"></i> Restart Services
     </button>
@@ -126,7 +129,7 @@
           <label for="serverNameInput" class="form-label">Server Name</label>
           <input type="text" class="form-control" id="serverNameInput" required>
           <div class="invalid-feedback">Use letters, numbers, and hyphens only. The name cannot start or end with a hyphen.</div>
-          <div class="form-hint">This is the name you'll use to find this server on your network. Scheduled task alert emails include it in the subject.</div>
+          {{ module_help.field_hint(file_sharing_module, 'server_name') }}
         </div>
         <div class="alert alert-warning" style="font-size: var(--text-sm);">
           <div class="alert-content">
@@ -159,7 +162,7 @@
           <label for="shareName" class="form-label">Share Name</label>
           <input type="text" class="form-control" id="shareName" required pattern="[a-zA-Z0-9_-]+">
           <div class="invalid-feedback">Please enter a valid share name (letters, numbers, hyphens, and underscores only)</div>
-          <div class="form-hint">No spaces or special characters allowed</div>
+          {{ module_help.field_hint(file_sharing_module, 'share_name') }}
         </div>
         <div class="form-group mb-4">
           <label for="sharePath" class="form-label">Path</label>
@@ -168,12 +171,12 @@
             <button class="btn btn-secondary" type="button" id="browseSharePathBtn"><i class="fas fa-folder-open"></i></button>
           </div>
           <div class="invalid-feedback">Please enter a valid path</div>
-          <div class="form-hint">Full path to the directory to share</div>
+          {{ module_help.field_hint(file_sharing_module, 'share_path') }}
         </div>
         <div class="form-group mb-4">
           <label for="shareComment" class="form-label">Comment</label>
           <input type="text" class="form-control" id="shareComment">
-          <div class="form-hint">Optional description for the share</div>
+          {{ module_help.field_hint(file_sharing_module, 'share_comment') }}
         </div>
         <div class="form-check mb-4">
           <input type="checkbox" class="form-check-input" id="shareWritable" checked>
@@ -183,14 +186,14 @@
               <i class="fas fa-info-circle"></i>
             </span>
           </label>
-          <div class="form-hint mt-1">When enabled, users can save files to this share</div>
+          {{ module_help.field_hint(file_sharing_module, 'writable') }}
         </div>
         <div class="form-group mb-4">
           <label class="form-label">Users with Access</label>
           <div style="max-height: 160px; overflow-y: auto; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: var(--sp-3);">
             <div id="shareUsersCheckboxes"></div>
           </div>
-          <div class="form-hint">Select users who can access this share. Leave empty to allow all users.</div>
+          {{ module_help.field_hint(file_sharing_module, 'valid_users') }}
         </div>
       </form>
     </div>
@@ -284,20 +287,20 @@
     <div class="modal-body">
       <div class="mb-3">
         <strong>Current Path:</strong>
-        <div class="path-breadcrumbs text-mono" id="pickerCurrentPath"></div>
+        <div class="path-breadcrumbs text-mono folder-picker-current-path" id="pickerCurrentPath"></div>
       </div>
       <div class="mb-3">
-        <button class="btn btn-secondary btn-sm" id="pickerUpBtn">
+        <button class="btn btn-secondary btn-sm folder-picker-up-btn" id="pickerUpBtn">
           <i class="fas fa-level-up-alt"></i> Up
         </button>
       </div>
-      <div id="pickerDirsList" class="folder-list mb-3"></div>
+      <div id="pickerDirsList" class="folder-list mb-3 folder-picker-dirs-list"></div>
     </div>
     <div class="modal-footer">
-      <div id="pickerError" class="modal-footer-message" role="alert" aria-live="polite"></div>
+      <div id="pickerError" class="modal-footer-message folder-picker-error" role="alert" aria-live="polite"></div>
       <div class="modal-footer-actions">
         <button class="btn btn-secondary" data-modal-close>Cancel</button>
-        <button class="btn btn-outline-primary" id="pickerSelectCurrentBtn">Select This Folder</button>
+        <button class="btn btn-outline-primary folder-picker-select-current-btn" id="pickerSelectCurrentBtn">Select This Folder</button>
       </div>
     </div>
   </div>
@@ -325,7 +328,7 @@
           </thead>
           <tbody id="unmanagedSharesList">
             <tr>
-              <td class="text-muted">No unmanaged shares detected.</td>
+              <td class="text-muted">{{ file_sharing_ui_text.unmanagedShares.noneDetected }}</td>
             </tr>
           </tbody>
         </table>
@@ -347,15 +350,115 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="{{ url_for('static', filename='js/mega_folder_picker.js') }}"></script>
+<script type="application/json" id="file-sharing-copy">{{ file_sharing_ui_text | tojson }}</script>
 <script>
+const fileSharingDefaultCopy = {
+  folderPicker: {
+    loading: 'Loading...',
+    emptyMessage: 'No subdirectories.',
+    loadFailed: 'Could not load directories.'
+  },
+  serverIdentity: {
+    notSet: 'Not set',
+    unavailable: 'Unavailable',
+    confirmTitle: 'Change Server Name',
+    confirmMessage: 'Change the server name to "{serverName}"?\n\nFile sharing discovery will restart, and connected clients may be interrupted briefly.',
+    confirmLabel: 'Save',
+    updated: 'Server name updated.',
+    updateFailed: 'Failed to update server name'
+  },
+  unmanagedShares: {
+    verificationFailed: 'Unmanaged share verification failed',
+    verifyFailed: 'Could not verify unmanaged Samba shares.',
+    noneDetected: 'No unmanaged shares detected.',
+    detectedOne: '{count} unmanaged share detected',
+    detectedMany: '{count} unmanaged shares detected'
+  },
+  shares: {
+    loadFailed: 'Failed to load shares',
+    empty: 'No SimpleSaferServer-managed shares configured',
+    edit: 'Edit',
+    delete: 'Delete',
+    yes: 'Yes',
+    no: 'No',
+    dash: '—',
+    allUsers: 'All users',
+    admin: 'Admin',
+    pathMustStartWithSlash: 'Path must start with /',
+    addSuccess: 'Share added successfully',
+    addFailed: 'Failed to add share',
+    updateSuccess: 'Share updated successfully',
+    updateFailed: 'Failed to update share',
+    deleteSuccess: 'Share deleted',
+    deleteFailed: 'Failed to delete share'
+  },
+  users: {
+    loadFailed: 'Could not load users.'
+  },
+  status: {
+    operationalTitle: 'Operational',
+    operationalMessage: 'File sharing and discovery are working',
+    partialTitle: 'Partial',
+    partialMessage: 'File sharing is active, but discovery is incomplete',
+    downTitle: 'Down',
+    downMessage: 'File sharing is not running',
+    errorTitle: 'Error',
+    errorMessage: 'Unable to check status'
+  },
+  actions: {
+    restartConfirmTitle: 'Restart Services',
+    restartConfirmMessage: 'Are you sure you want to restart the file sharing services? Connected clients may be interrupted briefly.',
+    restartConfirmLabel: 'Restart',
+    restartSuccess: 'Services restarted',
+    restartFailed: 'Failed to restart'
+  }
+};
+
+function mergeFileSharingCopy(base, overrides) {
+  if (!overrides || typeof overrides !== 'object') return base;
+  Object.keys(overrides).forEach((key) => {
+    if (
+      overrides[key]
+      && typeof overrides[key] === 'object'
+      && !Array.isArray(overrides[key])
+      && base[key]
+      && typeof base[key] === 'object'
+    ) {
+      mergeFileSharingCopy(base[key], overrides[key]);
+    } else {
+      base[key] = overrides[key];
+    }
+  });
+  return base;
+}
+
+function readFileSharingCopy() {
+  const script = document.getElementById('file-sharing-copy');
+  if (!script) return fileSharingDefaultCopy;
+  try {
+    return mergeFileSharingCopy(
+      JSON.parse(JSON.stringify(fileSharingDefaultCopy)),
+      JSON.parse(script.textContent || '{}')
+    );
+  } catch (error) {
+    console.error('Could not read File Sharing page copy:', error);
+    return fileSharingDefaultCopy;
+  }
+}
+
+const fileSharingCopy = readFileSharingCopy();
 let shares = [];
 let currentDeleteShare = null;
 let allUsers = [];
 let unmanagedShareNames = [];
 let currentServerName = '';
-let folderPickerCurrentPath = '/';
-let folderPickerParentPath = '/';
-let folderPickerLoadId = 0;
+
+function formatCopy(template, values) {
+  return String(template || '').replace(/\{([^}]+)\}/g, (match, key) => (
+    Object.prototype.hasOwnProperty.call(values || {}, key) ? values[key] : match
+  ));
+}
 
 document.addEventListener('DOMContentLoaded', function() {
   loadServerIdentity();
@@ -417,10 +520,6 @@ document.addEventListener('DOMContentLoaded', function() {
     clearModalError('editShareModal');
   });
 
-  document.getElementById('folderPickerModal').addEventListener('modal:hidden', function() {
-    clearFolderPickerError();
-  });
-
   // Folder picker handlers
   setupFolderPicker('browseSharePathBtn', 'sharePath');
   setupFolderPicker('browseEditSharePathBtn', 'editSharePath');
@@ -443,11 +542,11 @@ function loadServerIdentity() {
   window.ApiClient.fetchJson('/api/server_identity')
     .then(({ data }) => {
       currentServerName = data.server_name || '';
-      document.getElementById('serverNameValue').textContent = currentServerName || 'Not set';
+      document.getElementById('serverNameValue').textContent = currentServerName || fileSharingCopy.serverIdentity.notSet;
       document.getElementById('serverNameInput').value = currentServerName;
     })
     .catch(() => {
-      document.getElementById('serverNameValue').textContent = 'Unavailable';
+      document.getElementById('serverNameValue').textContent = fileSharingCopy.serverIdentity.unavailable;
     });
 }
 
@@ -466,11 +565,9 @@ async function saveServerName(event) {
   input.classList.remove('is-invalid');
 
   const confirmed = await window.showConfirmationDialog({
-    title: 'Change Server Name',
-    message: `Change the server name to "${serverName}"?
-
-File sharing discovery will restart, and connected clients may be interrupted briefly.`,
-    confirmLabel: 'Save',
+    title: fileSharingCopy.serverIdentity.confirmTitle,
+    message: formatCopy(fileSharingCopy.serverIdentity.confirmMessage, { serverName }),
+    confirmLabel: fileSharingCopy.serverIdentity.confirmLabel,
     confirmClass: 'btn-warning'
   });
   if (!confirmed) return;
@@ -486,13 +583,13 @@ File sharing discovery will restart, and connected clients may be interrupted br
       currentServerName = data.server_name || serverName;
       document.getElementById('serverNameValue').textContent = currentServerName;
       document.getElementById('serverNameInput').value = currentServerName;
-      BunkerModal.hide('serverNameModal');
-      showAlert(message || 'Server name updated.', data.warning ? 'warning' : 'success');
+      AppModal.hide('serverNameModal');
+      showAlert(message || fileSharingCopy.serverIdentity.updated, data.warning ? 'warning' : 'success');
       setTimeout(loadSMBStatus, 2000);
     })
     .catch((error) => {
       window.AsyncButtonState.error(saveBtn);
-      showModalError('serverNameModal', error.message || 'Failed to update server name');
+      showModalError('serverNameModal', error.message || fileSharingCopy.serverIdentity.updateFailed);
     });
 }
 
@@ -501,88 +598,18 @@ function setupFolderPicker(browseBtnId, pathInputId) {
   if (!browseBtn) return;
   browseBtn.addEventListener('click', function() {
     const pathInput = document.getElementById(pathInputId);
-    folderPickerCurrentPath = pathInput.value || '/';
-    loadFolderPicker(folderPickerCurrentPath);
-    document.getElementById('pickerSelectCurrentBtn').onclick = function() {
-      pathInput.value = document.getElementById('pickerCurrentPath').dataset.path || '/';
-      BunkerModal.hide('folderPickerModal');
-    };
-    BunkerModal.show('folderPickerModal');
-  });
-}
-
-function getPickerParentPath(path) {
-  const normalized = path || '/';
-  if (normalized === '/') return null;
-  const withoutTrailingSlash = normalized.replace(/\/+$/, '') || '/';
-  if (withoutTrailingSlash === '/') return null;
-  const parent = withoutTrailingSlash.split('/').slice(0, -1).join('/');
-  return parent || '/';
-}
-
-function loadFolderPicker(path) {
-  const dirsEl = document.getElementById('pickerDirsList');
-  const pathEl = document.getElementById('pickerCurrentPath');
-  const errorEl = document.getElementById('pickerError');
-  const normalizedPath = path || '/';
-  const loadId = folderPickerLoadId + 1;
-  folderPickerLoadId = loadId;
-  folderPickerCurrentPath = normalizedPath;
-  folderPickerParentPath = getPickerParentPath(normalizedPath) || '/';
-  clearFolderPickerError();
-  window.renderPathBreadcrumbs(pathEl, normalizedPath, loadFolderPicker);
-  document.getElementById('pickerUpBtn').disabled = !getPickerParentPath(normalizedPath);
-  document.getElementById('pickerUpBtn').onclick = () => {
-    if (getPickerParentPath(folderPickerCurrentPath)) loadFolderPicker(folderPickerParentPath);
-  };
-  dirsEl.innerHTML = '<span class="spinner"></span>';
-
-  window.ApiClient.fetchJson(`/api/list_dirs?path=${encodeURIComponent(normalizedPath)}`)
-    .then(({ data }) => {
-      if (loadId !== folderPickerLoadId) return;
-      folderPickerCurrentPath = data.path;
-      folderPickerParentPath = data.parent || '/';
-      window.renderPathBreadcrumbs(pathEl, data.path, loadFolderPicker);
-      dirsEl.innerHTML = '';
-
-      document.getElementById('pickerUpBtn').disabled = !data.parent;
-      document.getElementById('pickerUpBtn').onclick = () => {
-        if (data.parent) loadFolderPicker(data.parent);
-      };
-
-      if (data.dirs && data.dirs.length > 0) {
-        data.dirs.forEach(dir => {
-          const item = document.createElement('div');
-          item.className = 'folder-list-item';
-
-          const icon = document.createElement('i');
-          icon.className = 'fas fa-folder';
-          item.appendChild(icon);
-
-          const label = document.createElement('span');
-          label.textContent = dir;
-          item.appendChild(document.createTextNode(' '));
-          item.appendChild(label);
-          item.addEventListener('click', () => loadFolderPicker(folderPickerCurrentPath.replace(/\/$/, '') + '/' + dir));
-          dirsEl.appendChild(item);
-        });
-      } else {
-        dirsEl.innerHTML = '<div class="folder-list-item text-muted" style="cursor:default;">No subdirectories</div>';
+    if (!pathInput || !window.openMegaFolderPicker) return;
+    window.openMegaFolderPicker({
+      modalId: 'folderPickerModal',
+      listUrl: '/api/list_dirs',
+      startPath: pathInput.value || '/',
+      canCreate: false,
+      copy: fileSharingCopy.folderPicker,
+      onSelect: (folderPath) => {
+        pathInput.value = folderPath;
       }
-    })
-    .catch(e => {
-      if (loadId !== folderPickerLoadId) return;
-      dirsEl.innerHTML = '';
-      errorEl.innerHTML = `<i class="fas fa-circle-exclamation"></i><span>${e.message || 'Could not load directories.'}</span>`;
-      errorEl.classList.add('visible');
     });
-}
-
-function clearFolderPickerError() {
-  const errorEl = document.getElementById('pickerError');
-  if (!errorEl) return;
-  errorEl.textContent = '';
-  errorEl.classList.remove('visible');
+  });
 }
 
 function loadShares() {
@@ -599,7 +626,7 @@ function loadShares() {
       );
       renderSharesTable();
     })
-    .catch(() => showAlert('Failed to load shares', 'danger'));
+    .catch(() => showAlert(fileSharingCopy.shares.loadFailed, 'danger'));
 }
 
 function renderUnmanagedShareState(isVerified, hasUnmanagedShares, count, names, verificationError) {
@@ -611,14 +638,14 @@ function renderUnmanagedShareState(isVerified, hasUnmanagedShares, count, names,
   list.innerHTML = '';
 
   if (!isVerified) {
-    label.textContent = 'Unmanaged share verification failed';
+    label.textContent = fileSharingCopy.unmanagedShares.verificationFailed;
     button.classList.remove('d-none');
     list.innerHTML = '';
 
     const row = document.createElement('tr');
     const cell = document.createElement('td');
     cell.className = 'text-warning';
-    cell.textContent = verificationError || 'Could not verify unmanaged Samba shares.';
+    cell.textContent = verificationError || fileSharingCopy.unmanagedShares.verifyFailed;
     row.appendChild(cell);
     list.appendChild(row);
     return;
@@ -626,11 +653,19 @@ function renderUnmanagedShareState(isVerified, hasUnmanagedShares, count, names,
 
   if (!hasUnmanagedShares || !count) {
     button.classList.add('d-none');
-    list.innerHTML = '<tr><td class="text-muted">No unmanaged shares detected.</td></tr>';
+    const row = document.createElement('tr');
+    const cell = document.createElement('td');
+    cell.className = 'text-muted';
+    cell.textContent = fileSharingCopy.unmanagedShares.noneDetected;
+    row.appendChild(cell);
+    list.appendChild(row);
     return;
   }
 
-  label.textContent = `${count} unmanaged share${count === 1 ? '' : 's'} detected`;
+  label.textContent = formatCopy(
+    count === 1 ? fileSharingCopy.unmanagedShares.detectedOne : fileSharingCopy.unmanagedShares.detectedMany,
+    { count }
+  );
   button.classList.remove('d-none');
 
   // Keep the modal list plain and table-based so it matches the rest of the UI
@@ -651,7 +686,7 @@ function loadUsers() {
       allUsers = data.users;
       populateUserSelects();
     })
-    .catch(e => console.error('Error loading users:', e));
+    .catch(e => console.error(fileSharingCopy.users.loadFailed, e));
 }
 
 function populateUserSelects() {
@@ -660,7 +695,7 @@ function populateUserSelects() {
       <input class="form-check-input" type="checkbox" value="${user.username}" id="${prefix}_${user.username}">
       <label class="form-check-label" for="${prefix}_${user.username}">
         ${user.username}
-        ${user.is_admin ? '<span class="badge badge-accent ms-1">Admin</span>' : ''}
+        ${user.is_admin ? `<span class="badge badge-accent ms-1">${fileSharingCopy.shares.admin}</span>` : ''}
       </label>
     </div>
   `).join('');
@@ -674,12 +709,12 @@ function populateUserSelects() {
 function getShareRowActions(share) {
   return [
     {
-      label: 'Edit',
+      label: fileSharingCopy.shares.edit,
       iconClass: 'fas fa-edit',
       onSelect: function() { editShare(share.name); }
     },
     {
-      label: 'Delete',
+      label: fileSharingCopy.shares.delete,
       iconClass: 'fas fa-trash',
       destructive: true,
       onSelect: function() { confirmDeleteShare(share.name); }
@@ -699,7 +734,7 @@ function renderSharesTable() {
     td.colSpan = 6;
     td.className = 'text-center text-muted';
     td.style.padding = 'var(--sp-6)';
-    td.textContent = 'No SimpleSaferServer-managed shares configured';
+    td.textContent = fileSharingCopy.shares.empty;
     tr.appendChild(td);
     tbody.appendChild(tr);
     return;
@@ -722,13 +757,13 @@ function renderSharesTable() {
     const writableTd = document.createElement('td');
     const writableSpan = document.createElement('span');
     writableSpan.className = 'badge ' + (share.writable ? 'badge-success' : 'badge-neutral');
-    writableSpan.textContent = share.writable ? 'Yes' : 'No';
+    writableSpan.textContent = share.writable ? fileSharingCopy.shares.yes : fileSharingCopy.shares.no;
     writableTd.appendChild(writableSpan);
     tr.appendChild(writableTd);
 
     const commentTd = document.createElement('td');
     commentTd.className = 'text-muted';
-    commentTd.textContent = share.comment || '—';
+    commentTd.textContent = share.comment || fileSharingCopy.shares.dash;
     tr.appendChild(commentTd);
 
     const userTd = document.createElement('td');
@@ -736,7 +771,7 @@ function renderSharesTable() {
     userTd.style.fontSize = 'var(--text-xs)';
     const userList = share.valid_users && share.valid_users.length > 0
       ? share.valid_users.join(', ')
-      : 'All users';
+      : fileSharingCopy.shares.allUsers;
     userTd.textContent = userList;
     tr.appendChild(userTd);
 
@@ -753,7 +788,7 @@ function renderSharesTable() {
     const editIcon = document.createElement('i');
     editIcon.className = 'fas fa-edit me-1';
     editBtn.appendChild(editIcon);
-    editBtn.appendChild(document.createTextNode('Edit'));
+    editBtn.appendChild(document.createTextNode(fileSharingCopy.shares.edit));
 
     const deleteBtn = document.createElement('button');
     deleteBtn.type = 'button';
@@ -762,7 +797,7 @@ function renderSharesTable() {
     const deleteIcon = document.createElement('i');
     deleteIcon.className = 'fas fa-trash me-1';
     deleteBtn.appendChild(deleteIcon);
-    deleteBtn.appendChild(document.createTextNode('Delete'));
+    deleteBtn.appendChild(document.createTextNode(fileSharingCopy.shares.delete));
 
     btnGroup.appendChild(editBtn);
     btnGroup.appendChild(deleteBtn);
@@ -788,7 +823,7 @@ function addShare() {
   const saveBtn = document.getElementById('saveShareBtn');
 
   if (!form.checkValidity()) { form.querySelectorAll('input[required]').forEach(i => { if (!i.checkValidity()) i.classList.add('is-invalid'); }); return; }
-  if (!path.startsWith('/')) { document.getElementById('sharePath').classList.add('is-invalid'); showModalError('addShareModal', 'Path must start with /'); return; }
+  if (!path.startsWith('/')) { document.getElementById('sharePath').classList.add('is-invalid'); showModalError('addShareModal', fileSharingCopy.shares.pathMustStartWithSlash); return; }
 
   const selectedUsers = Array.from(document.querySelectorAll('#shareUsersCheckboxes input[type="checkbox"]:checked')).map(c => c.value);
   window.AsyncButtonState.start(saveBtn);
@@ -796,13 +831,13 @@ function addShare() {
   window.ApiClient.fetchJson('/api/smb/shares', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, path, comment, writable, valid_users: selectedUsers }) })
     .then(({ message }) => {
       window.AsyncButtonState.success(saveBtn);
-      showAlert(message || 'Share added successfully', 'success');
-      BunkerModal.hide('addShareModal');
+      showAlert(message || fileSharingCopy.shares.addSuccess, 'success');
+      AppModal.hide('addShareModal');
       form.reset();
       document.getElementById('shareWritable').checked = true;
       loadShares();
     })
-    .catch((error) => { window.AsyncButtonState.error(saveBtn); showModalError('addShareModal', error.message || 'Failed to add share'); });
+    .catch((error) => { window.AsyncButtonState.error(saveBtn); showModalError('addShareModal', error.message || fileSharingCopy.shares.addFailed); });
 }
 
 function editShare(shareName) {
@@ -816,7 +851,7 @@ function editShare(shareName) {
   document.querySelectorAll('#editShareUsersCheckboxes input[type="checkbox"]').forEach(cb => {
     cb.checked = share.valid_users && share.valid_users.includes(cb.value);
   });
-  BunkerModal.show('editShareModal');
+  AppModal.show('editShareModal');
 }
 
 function updateShare() {
@@ -837,17 +872,17 @@ function updateShare() {
   window.ApiClient.fetchJson(`/api/smb/shares/${encodeURIComponent(originalName)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, path, comment, writable, valid_users: selectedUsers }) })
     .then(({ message }) => {
       window.AsyncButtonState.success(updateBtn);
-      showAlert(message || 'Share updated successfully', 'success');
-      BunkerModal.hide('editShareModal');
+      showAlert(message || fileSharingCopy.shares.updateSuccess, 'success');
+      AppModal.hide('editShareModal');
       loadShares();
     })
-    .catch((error) => { window.AsyncButtonState.error(updateBtn); showModalError('editShareModal', error.message || 'Failed to update share'); });
+    .catch((error) => { window.AsyncButtonState.error(updateBtn); showModalError('editShareModal', error.message || fileSharingCopy.shares.updateFailed); });
 }
 
 function confirmDeleteShare(shareName) {
   currentDeleteShare = shareName;
   document.getElementById('deleteShareName').textContent = shareName;
-  BunkerModal.show('deleteShareModal');
+  AppModal.show('deleteShareModal');
 }
 
 function deleteShare() {
@@ -858,12 +893,12 @@ function deleteShare() {
   window.ApiClient.fetchJson(`/api/smb/shares/${encodeURIComponent(currentDeleteShare)}`, { method: 'DELETE' })
     .then(({ message }) => {
       window.AsyncButtonState.success(deleteBtn);
-      showAlert(message || 'Share deleted', 'success');
-      BunkerModal.hide('deleteShareModal');
+      showAlert(message || fileSharingCopy.shares.deleteSuccess, 'success');
+      AppModal.hide('deleteShareModal');
       currentDeleteShare = null;
       loadShares();
     })
-    .catch((error) => { window.AsyncButtonState.error(deleteBtn); showAlert(error.message || 'Failed to delete share', 'danger'); });
+    .catch((error) => { window.AsyncButtonState.error(deleteBtn); showAlert(error.message || fileSharingCopy.shares.deleteFailed, 'danger'); });
 }
 
 // Three-tier badge for discovery services: active → green, inactive → yellow,
@@ -892,11 +927,11 @@ function loadSMBStatus() {
       // Windows network browsing is complete or degraded.
       // 'unavailable' means the package is not installed — not degradation.
       const discoveryOk = (s) => s === 'active' || s === 'unavailable';
-      if (data.smbd === 'active' && discoveryOk(data.nmbd) && discoveryOk(data.wsdd2)) updateOverallStatus('success', 'Operational', 'File sharing and discovery are working');
-      else if (data.smbd === 'active') updateOverallStatus('warning', 'Partial', 'File sharing is active, but discovery is incomplete');
-      else updateOverallStatus('danger', 'Down', 'File sharing is not running');
+      if (data.smbd === 'active' && discoveryOk(data.nmbd) && discoveryOk(data.wsdd2)) updateOverallStatus('success', fileSharingCopy.status.operationalTitle, fileSharingCopy.status.operationalMessage);
+      else if (data.smbd === 'active') updateOverallStatus('warning', fileSharingCopy.status.partialTitle, fileSharingCopy.status.partialMessage);
+      else updateOverallStatus('danger', fileSharingCopy.status.downTitle, fileSharingCopy.status.downMessage);
     })
-    .catch(() => updateOverallStatus('error', 'Error', 'Unable to check status'));
+    .catch(() => updateOverallStatus('error', fileSharingCopy.status.errorTitle, fileSharingCopy.status.errorMessage));
 }
 
 function updateOverallStatus(status, title, message) {
@@ -914,10 +949,10 @@ function restartSMB() {
   window.ApiClient.fetchJson('/api/smb/restart', { method: 'POST' })
     .then(({ message }) => {
       window.AsyncButtonState.success(btn);
-      showAlert(message || 'Services restarted', 'success');
+      showAlert(message || fileSharingCopy.actions.restartSuccess, 'success');
       setTimeout(loadSMBStatus, 2000);
     })
-    .catch((error) => { window.AsyncButtonState.error(btn); showAlert(error.message || 'Failed to restart', 'danger'); });
+    .catch((error) => { window.AsyncButtonState.error(btn); showAlert(error.message || fileSharingCopy.actions.restartFailed, 'danger'); });
 }
 
 function showModalError(modalId, message) {

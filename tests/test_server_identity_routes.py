@@ -84,10 +84,7 @@ def test_server_identity_api_rejects_missing_name_in_fake_mode(fake_app_client):
     response = client.put("/api/server_identity", json={})
 
     assert response.status_code == 400
-    assert (
-        response.get_json()["detail"]
-        == "Server name may only contain letters, numbers, and hyphens, and cannot start or end with a hyphen."
-    )
+    assert response.get_json()["detail"] == "Server name is required."
 
 
 def test_server_identity_api_rejects_non_object_json_in_fake_mode(fake_app_client):

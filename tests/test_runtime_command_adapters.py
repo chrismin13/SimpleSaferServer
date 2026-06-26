@@ -1,4 +1,3 @@
-import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -48,14 +47,23 @@ class RuntimeCommandAdapterTests(unittest.TestCase):
         adapter.samba_users()
         adapter.set_samba_password("operator", "secret")
         adapter.remove_samba_user("operator")
+        adapter.remove_system_user("operator")
 
         self.assertEqual(
             [call[0] for call in runner.calls],
             [
-                ["useradd", "-m", "-s", "/bin/bash", "operator"],
+                [
+                    "useradd",
+                    "--system",
+                    "--no-create-home",
+                    "--shell",
+                    "/usr/sbin/nologin",
+                    "operator",
+                ],
                 ["pdbedit", "-L"],
                 ["smbpasswd", "-s", "-a", "operator"],
                 ["smbpasswd", "-x", "operator"],
+                ["userdel", "operator"],
             ],
         )
 
@@ -63,40 +71,18 @@ class RuntimeCommandAdapterTests(unittest.TestCase):
         runner = RecordingRunner()
         adapter = SystemUpdatesCommandAdapter(command_runner=runner)
 
-        adapter.remove_files(["/var/lib/dpkg/lock"])
-        adapter.pro_attach("/usr/bin/pro", Path("/tmp/attach-config.yaml"))
-        adapter.pro_enable_livepatch("/usr/bin/pro")
+        adapter.is_lock_held("/usr/bin/fuser", Path("/var/lib/dpkg/lock"))
+        adapter.livepatch_status_json("/usr/bin/canonical-livepatch")
+        adapter.livepatch_status_text("/usr/bin/canonical-livepatch")
 
         self.assertEqual(
             [call[0] for call in runner.calls],
             [
-                ["rm", "-f", "/var/lib/dpkg/lock"],
-                ["/usr/bin/pro", "attach", "--attach-config", "/tmp/attach-config.yaml"],
-                ["/usr/bin/pro", "enable", "livepatch"],
+                ["/usr/bin/fuser", "/var/lib/dpkg/lock"],
+                ["/usr/bin/canonical-livepatch", "status", "--format", "json"],
+                ["/usr/bin/canonical-livepatch", "status"],
             ],
         )
-
-    def test_system_updates_adapter_skips_empty_remove_batch(self):
-        runner = RecordingRunner()
-        adapter = SystemUpdatesCommandAdapter(command_runner=runner)
-
-        result = adapter.remove_files([])
-
-        self.assertIsNone(result)
-        self.assertEqual(runner.calls, [])
-
-    def test_system_updates_adapter_writes_apt_periodic_config_directly(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            destination = Path(temp_dir) / "20auto-upgrades"
-            adapter = SystemUpdatesCommandAdapter(apt_periodic_path=destination)
-            source = Path(temp_dir) / "source"
-            source.write_text('APT::Periodic::Update-Package-Lists "1";\n')
-
-            with source.open("r") as temp_file:
-                adapter.write_apt_periodic_config(temp_file)
-
-            self.assertEqual(destination.read_text(), source.read_text())
-            self.assertEqual(destination.stat().st_mode & 0o777, 0o644)
 
 
 if __name__ == "__main__":

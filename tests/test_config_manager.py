@@ -62,16 +62,17 @@ class ConfigManagerDefaultsTests(unittest.TestCase):
         # services need direct DNS, so the generated config must stay DNS-only.
         self.assertEqual(manager.get_value("ddns", "cloudflare_proxy"), "false")
 
-    def test_apt_update_defaults_do_not_claim_system_ownership(self):
+    def test_storage_defaults_to_existing_folder(self):
         manager = create_config_manager()
 
-        self.assertEqual(manager.get_value("apt_updates", "managed"), "false")
-        self.assertEqual(manager.get_value("apt_updates", "autoclean_interval"), "7")
+        self.assertEqual(manager.get_value("storage", "mode"), "existing_folder")
+        self.assertEqual(manager.get_value("storage", "path"), "/media/backup")
 
     def test_secret_files_are_created_private(self):
         manager = create_config_manager()
 
         self.assertEqual(manager.config_dir.stat().st_mode & 0o777, 0o700)
+        self.assertEqual(manager.config_path.stat().st_mode & 0o777, 0o600)
         self.assertEqual(manager.key_path.stat().st_mode & 0o777, 0o600)
         self.assertEqual(manager.secrets_path.stat().st_mode & 0o777, 0o600)
 

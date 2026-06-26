@@ -8,21 +8,24 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from simple_safer_server.adapters.command_runner import CalledProcessError
 from simple_safer_server.adapters.user_commands import UserCommandAdapter
+from simple_safer_server.core.module_lifecycle import module_is_applied
+from simple_safer_server.core.ownership import (
+    OwnershipManifest,
+    record_runtime_owned_resource,
+    remove_runtime_owned_resource,
+)
+from simple_safer_server.core.privileged_client import PrivilegedActionClientError
 from simple_safer_server.services.file_persistence import atomic_write_json, read_json
 from simple_safer_server.services.runtime import get_runtime
 from simple_safer_server.web.api import json_problem
 from simple_safer_server.web.problems import ForbiddenProblem, UnauthorizedProblem
 
 logger = logging.getLogger(__name__)
+VALID_USERNAME_RE = re.compile(r'^[a-zA-Z0-9_-]+$')
 
 
 def _parse_user_timestamp(value):
-    timestamp = datetime.datetime.fromisoformat(value)
-    if timestamp.tzinfo is None:
-        # Older user records stored UTC values without an offset; keep them
-        # comparable with the aware timestamps written by current code.
-        return timestamp.replace(tzinfo=datetime.UTC)
-    return timestamp
+    return datetime.datetime.fromisoformat(value)
 
 
 class PasswordPolicy:
@@ -36,9 +39,10 @@ class PasswordPolicy:
 
 
 class UserManager:
-    def __init__(self, runtime=None, command_adapter=None):
+    def __init__(self, runtime=None, command_adapter=None, privileged_actions=None):
         self.runtime = runtime or get_runtime()
         self.command_adapter = command_adapter or UserCommandAdapter()
+        self.privileged_actions = privileged_actions
         self.users_file = self.runtime.config_dir / 'users.json'
         self.users = self._load_users()
         self._ensure_secure_permissions()
@@ -81,52 +85,57 @@ class UserManager:
             logger.error(f"Error saving users: {e}")
             raise
 
+    def _file_sharing_applied(self):
+        """Return true only when Samba account sync is part of the accepted plan."""
+        if not hasattr(self.runtime, "data_dir"):
+            return False
+        from simple_safer_server.modules.file_sharing.module import (
+            create_module as create_file_sharing_module,
+        )
+
+        return module_is_applied(create_file_sharing_module(), self.runtime)
+
     def _sync_user_to_samba(self, username, password):
         """Sync a user to the Samba user database"""
+        if not self._file_sharing_applied():
+            logger.info("File Sharing is not applied; skipping Samba sync for %s", username)
+            return True
         if self.runtime.is_fake:
             logger.info(f"Fake mode: skipping Samba sync for {username}")
             return True
-        try:
-            # First, ensure the user exists in the system
-            if not self.command_adapter.system_user_exists(username):
-                # User doesn't exist, create them
-                logger.info(f"Creating system user {username}")
-                self.command_adapter.create_system_user(username)
-
-            # Check if user already exists in Samba
-            existing_users = self.command_adapter.samba_users()
-
-            if username in existing_users:
-                # Update existing user password
-                self.command_adapter.set_samba_password(username, password)
-                logger.info(f"Updated Samba password for user {username}")
-            else:
-                # Create new Samba user
-                self.command_adapter.set_samba_password(username, password)
-                logger.info(f"Created Samba user {username}")
-
-            return True
-        except CalledProcessError as e:
-            logger.error(f"Error syncing user {username} to Samba: {e}")
-            return False
+        if self.privileged_actions is not None:
+            try:
+                self.privileged_actions.run(
+                    "file-sharing.sync-user",
+                    {"username": username, "password": password},
+                )
+                return True
+            except PrivilegedActionClientError as exc:
+                logger.error("Privileged Samba user sync failed for %s: %s", username, exc)
+                return False
+        return sync_user_to_samba_account(username, password, runtime=self.runtime, command_adapter=self.command_adapter)
 
     def _remove_user_from_samba(self, username):
         """Remove a user from the Samba user database"""
+        if not self._file_sharing_applied():
+            logger.info("File Sharing is not applied; skipping Samba removal for %s", username)
+            return True
         if self.runtime.is_fake:
             logger.info(f"Fake mode: skipping Samba removal for {username}")
             return True
-        try:
-            self.command_adapter.remove_samba_user(username)
-            logger.info(f"Removed Samba user {username}")
-            return True
-        except CalledProcessError as e:
-            logger.error(f"Error removing user {username} from Samba: {e}")
-            return False
+        if self.privileged_actions is not None:
+            try:
+                self.privileged_actions.run("file-sharing.remove-user", {"username": username})
+                return True
+            except PrivilegedActionClientError as exc:
+                logger.error("Privileged Samba user removal failed for %s: %s", username, exc)
+                return False
+        return remove_samba_account(username, runtime=self.runtime, command_adapter=self.command_adapter)
 
     def create_user(self, username, password, is_admin=False):
         """Create a new user with explicit admin elevation at call sites."""
         # Validate username
-        if not re.match(r'^[a-zA-Z0-9_-]+$', username):
+        if not VALID_USERNAME_RE.match(username):
             return False, "Username may only contain letters, numbers, underscores, and hyphens"
 
         if username in self.users:
@@ -148,7 +157,7 @@ class UserManager:
             'locked_until': None,
         }
 
-        # Sync to Samba
+        # Sync to Samba only after File Sharing has been explicitly applied.
         if not self._sync_user_to_samba(username, password):
             # Keep JSON and in-memory users aligned with Samba; callers retry
             # failed creates, so a half-created user would turn into "exists".
@@ -239,7 +248,7 @@ class UserManager:
         return True
 
     def reset_existing_admin_user(self, username, password):
-        """Refresh an existing sole user into the migrated admin account."""
+        """Reset the sole admin account used by first-run recovery flows."""
         if username not in self.users:
             return False
 
@@ -303,14 +312,118 @@ class UserManager:
 
         return None
 
-    def user_exists_in_samba(self, username):
-        """Check if user exists in Samba database"""
-        if self.runtime.is_fake:
-            return username in self.users
-        try:
-            return username in self.command_adapter.samba_users()
-        except CalledProcessError:
+def _runtime_owns_file_sharing_resource(runtime, kind, identifier):
+    if not hasattr(runtime, "data_dir"):
+        return False
+    manifest = OwnershipManifest(runtime.data_dir / "ownership.json")
+    return any(
+        record.module_slug == "file-sharing"
+        and record.kind == kind
+        and record.identifier == identifier
+        for record in manifest.list_records()
+    )
+
+
+def _runtime_owns_samba_account(runtime, username):
+    return _runtime_owns_file_sharing_resource(runtime, "samba-account", username)
+
+
+def _runtime_owns_system_user(runtime, username):
+    return _runtime_owns_file_sharing_resource(runtime, "system-user", username)
+
+
+def _record_samba_account_ownership(runtime, username):
+    if not hasattr(runtime, "data_dir"):
+        return
+    record_runtime_owned_resource(
+        runtime,
+        "file-sharing",
+        kind="samba-account",
+        identifier=username,
+        reason="Remove only Samba accounts created or already owned by SSS File Sharing.",
+    )
+
+
+def _record_system_user_ownership(runtime, username):
+    if not hasattr(runtime, "data_dir"):
+        return
+    record_runtime_owned_resource(
+        runtime,
+        "file-sharing",
+        kind="system-user",
+        identifier=username,
+        reason="Remove only Linux users created by SSS for Samba authentication.",
+    )
+
+
+def _remove_file_sharing_ownership(runtime, kind, identifier):
+    if not hasattr(runtime, "data_dir"):
+        return
+    remove_runtime_owned_resource(
+        runtime,
+        "file-sharing",
+        kind=kind,
+        identifier=identifier,
+    )
+
+
+def sync_user_to_samba_account(username, password, *, runtime=None, command_adapter=None):
+    """Create or update the File Sharing-owned Samba account for a trusted SSS user."""
+    runtime = runtime or get_runtime()
+    if runtime.is_fake:
+        logger.info(f"Fake mode: skipping Samba sync for {username}")
+        return {"username": username, "fake": True}
+    adapter = command_adapter or UserCommandAdapter()
+    try:
+        system_user_existed = adapter.system_user_exists(username)
+        existing_users = adapter.samba_users()
+        samba_user_existed = username in existing_users
+        if samba_user_existed and not _runtime_owns_samba_account(runtime, username):
+            logger.error("Refusing to overwrite unmanaged Samba user %s", username)
             return False
+
+        created_system_user = False
+        if not system_user_existed:
+            logger.info(f"Creating system user {username}")
+            adapter.create_system_user(username)
+            created_system_user = True
+            _record_system_user_ownership(runtime, username)
+
+        adapter.set_samba_password(username, password)
+        _record_samba_account_ownership(runtime, username)
+        if samba_user_existed:
+            logger.info(f"Updated Samba password for user {username}")
+        else:
+            logger.info(f"Created Samba user {username}")
+        return {
+            "username": username,
+            "created_system_user": created_system_user,
+            "created_samba_account": not samba_user_existed,
+        }
+    except CalledProcessError as e:
+        logger.error(f"Error syncing user {username} to Samba: {e}")
+        return False
+
+
+def remove_samba_account(username, *, runtime=None, command_adapter=None):
+    """Remove the matching Samba account for a deleted SSS user."""
+    runtime = runtime or get_runtime()
+    if runtime.is_fake:
+        logger.info(f"Fake mode: skipping Samba removal for {username}")
+        return True
+    adapter = command_adapter or UserCommandAdapter()
+    try:
+        remove_system_user = _runtime_owns_system_user(runtime, username)
+        adapter.remove_samba_user(username)
+        _remove_file_sharing_ownership(runtime, "samba-account", username)
+        if remove_system_user:
+            adapter.remove_system_user(username)
+            _remove_file_sharing_ownership(runtime, "system-user", username)
+        logger.info(f"Removed Samba user {username}")
+        return True
+    except CalledProcessError as e:
+        logger.error(f"Error removing user {username} from Samba: {e}")
+        return False
 
 
 def admin_required(f):

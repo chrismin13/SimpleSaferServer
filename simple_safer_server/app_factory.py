@@ -16,36 +16,31 @@ from flask import (
 from simple_safer_server.adapters.command_runner import CommandRunner
 from simple_safer_server.adapters.rclone import RcloneAdapter
 from simple_safer_server.adapters.storage_commands import StorageCommandAdapter
-from simple_safer_server.adapters.systemd import SystemdAdapter
-from simple_safer_server.routes.alerts import alerts as alerts_routes
-from simple_safer_server.routes.cloud_backup import cloud_backup as cloud_backup_routes
-from simple_safer_server.routes.ddns import ddns as ddns_routes
-from simple_safer_server.routes.drive_health import drive_health as drive_health_routes
+from simple_safer_server.core.builtin_modules import create_builtin_module_registry
+from simple_safer_server.core.privileged_client import PrivilegedActionClient
+from simple_safer_server.modules import module_blueprints
+from simple_safer_server.modules.alerts.service import AlertsService
+from simple_safer_server.modules.cloud_backup.service import CloudBackupService
+from simple_safer_server.modules.ddns.service import DdnsService
+from simple_safer_server.modules.drive_health.service import DriveHealthSummaryService
+from simple_safer_server.modules.file_sharing.service import SMBManager
+from simple_safer_server.modules.storage.service import StorageService
+from simple_safer_server.modules.system_updates.service import SystemUpdatesManager
+from simple_safer_server.routes.backup_readiness import backup_readiness as backup_readiness_routes
+from simple_safer_server.routes.modules import modules as module_routes
 from simple_safer_server.routes.server_identity import server_identity as server_identity_routes
 from simple_safer_server.routes.setup_wizard import setup
-from simple_safer_server.routes.smb import smb as smb_routes
-from simple_safer_server.routes.storage import storage as storage_routes
-from simple_safer_server.routes.system_updates import system_updates as system_updates_routes
 from simple_safer_server.routes.tasks import tasks as task_routes
 from simple_safer_server.routes.users import users as users_routes
-from simple_safer_server.services.alert_notifications import AlertNotifier
-from simple_safer_server.services.alerts_service import AlertsService
-from simple_safer_server.services.app_updates import AppUpdateManager
-from simple_safer_server.services.cloud_backup_service import CloudBackupService
 from simple_safer_server.services.config_manager import ConfigManager
 from simple_safer_server.services.container import AppServices
-from simple_safer_server.services.ddns_service import DdnsService
-from simple_safer_server.services.disabled_timers import DisabledTimerService
-from simple_safer_server.services.drive_health import DriveHealthSummaryService
 from simple_safer_server.services.runtime import get_fake_state, get_flask_secret_key, get_runtime
 from simple_safer_server.services.server_identity import ServerIdentityService
-from simple_safer_server.services.smb_manager import SMB_DOCS_URL, SMBManager
-from simple_safer_server.services.storage_service import StorageService
-from simple_safer_server.services.system_updates import SystemUpdatesManager
 from simple_safer_server.services.system_utils import SystemUtils
 from simple_safer_server.services.task_service import TaskService
-from simple_safer_server.services.user_manager import UserManager, admin_required
+from simple_safer_server.services.user_manager import UserManager
 from simple_safer_server.web.api import json_data, json_problem
+from simple_safer_server.web.i18n import gettext
 from simple_safer_server.web.problems import (
     ApiProblem,
     ForbiddenProblem,
@@ -61,10 +56,7 @@ def create_app() -> Flask:
     # Keep the session secret stable across deploys so a restart does not
     # invalidate every login cookie when the app's config directory persists.
     app.secret_key = get_flask_secret_key(runtime)
-    user_manager = UserManager(runtime=runtime)
-
     system_utils = SystemUtils(runtime=runtime)
-    smb_manager = SMBManager(runtime=runtime)
 
     log_dir = str(runtime.logs_dir)
     os.makedirs(log_dir, exist_ok=True)
@@ -103,18 +95,12 @@ def create_app() -> Flask:
 
     config_manager = ConfigManager(runtime=runtime)
     command_runner = CommandRunner()
-    systemd_adapter = SystemdAdapter(command_runner)
+    privileged_actions = PrivilegedActionClient(command_runner=command_runner)
+    user_manager = UserManager(runtime=runtime, privileged_actions=privileged_actions)
+    smb_manager = SMBManager(runtime=runtime, privileged_actions=privileged_actions)
     rclone_adapter = RcloneAdapter(command_runner)
     storage_command_adapter = StorageCommandAdapter(command_runner)
-    alert_notifier = AlertNotifier(config_manager, runtime, logger=app.logger)
-    disabled_timer_service = DisabledTimerService(
-        runtime,
-        systemd_adapter,
-        alert_notifier=alert_notifier,
-        logger=app.logger,
-    )
     system_updates_manager = SystemUpdatesManager(config_manager, runtime=runtime)
-    app_update_manager = AppUpdateManager(runtime=runtime)
     task_service = TaskService(
         runtime=runtime,
         fake_state=fake_state,
@@ -122,9 +108,7 @@ def create_app() -> Flask:
         system_utils=system_utils,
         logger=app.logger,
         command_runner=command_runner,
-        systemd_adapter=systemd_adapter,
         rclone_adapter=rclone_adapter,
-        disabled_timer_service=disabled_timer_service,
     )
     ddns_service = DdnsService(
         runtime=runtime,
@@ -139,11 +123,13 @@ def create_app() -> Flask:
         task_service=task_service,
         logger=app.logger,
         command_runner=command_runner,
+        privileged_actions=privileged_actions,
     )
     alerts_service = AlertsService(
         runtime=runtime,
         config_manager=config_manager,
         system_utils=system_utils,
+        privileged_actions=privileged_actions,
     )
     server_identity_service = ServerIdentityService(
         config_manager=config_manager,
@@ -162,10 +148,10 @@ def create_app() -> Flask:
         runtime=runtime,
         fake_state=fake_state,
         command_runner=command_runner,
+        privileged_actions=privileged_actions,
         config_manager=config_manager,
         system_utils=system_utils,
         system_updates_manager=system_updates_manager,
-        app_update_manager=app_update_manager,
         smb_manager=smb_manager,
         user_manager=user_manager,
         task_service=task_service,
@@ -179,21 +165,21 @@ def create_app() -> Flask:
 
     app.register_blueprint(setup)
     app.register_blueprint(task_routes)
-    app.register_blueprint(ddns_routes)
-    app.register_blueprint(cloud_backup_routes)
-    app.register_blueprint(system_updates_routes)
-    app.register_blueprint(alerts_routes)
+    app.register_blueprint(backup_readiness_routes)
     app.register_blueprint(server_identity_routes)
-    app.register_blueprint(smb_routes)
+    app.register_blueprint(module_routes)
     app.register_blueprint(users_routes)
-    app.register_blueprint(storage_routes)
-    app.register_blueprint(drive_health_routes)
+    for module_blueprint in module_blueprints():
+        app.register_blueprint(module_blueprint)
 
     @app.route("/")
     def index():
         if not config_manager.is_setup_complete():
             return redirect(url_for("setup.setup_page"))
         return redirect(url_for("task_routes.dashboard"))
+
+    def login_ui_text():
+        return {"errors": {"loginFailed": gettext("Login failed")}}
 
     @app.route("/login", methods=["GET", "POST"])
     def login():
@@ -225,20 +211,20 @@ def create_app() -> Flask:
                     return json_problem(
                         ForbiddenProblem(
                             msg,
-                            title="Admin privileges required",
+                            title=gettext("Admin privileges required"),
                             slug="login-admin-required",
                         )
                     )
                 flash(msg, "error")
-                return render_template("login.html")
+                return render_template("login.html", login_ui_text=login_ui_text())
             msg = "Invalid username or password"
             if request.accept_mimetypes.best == "application/json":
                 return json_problem(
-                    UnauthorizedProblem(msg, title="Login failed", slug="login-failed")
+                    UnauthorizedProblem(msg, title=gettext("Login failed"), slug="login-failed")
                 )
             flash(msg, "error")
 
-        return render_template("login.html")
+        return render_template("login.html", login_ui_text=login_ui_text())
 
     def get_auto_login_username():
         configured_username = config_manager.get_value("system", "username", "")
@@ -264,19 +250,6 @@ def create_app() -> Flask:
             session["auto_logged_in"] = True
         return None
 
-    @app.route("/network_file_sharing")
-    @admin_required
-    def network_file_sharing():
-        backup_mount_point = config_manager.get_value(
-            "backup", "mount_point", runtime.default_mount_point
-        )
-        return render_template(
-            "network_file_sharing.html",
-            username=session.get("username"),
-            backup_mount_point=backup_mount_point,
-            smb_docs_url=SMB_DOCS_URL,
-        )
-
     @app.route("/logout")
     def logout():
         session.clear()
@@ -287,6 +260,7 @@ def create_app() -> Flask:
     @app.context_processor
     def inject_template_context():
         username = session.get("username")
+        current_user_is_admin = user_manager.is_admin(username) if username else False
 
         def browser_title(page_name):
             hostname = ""
@@ -300,13 +274,47 @@ def create_app() -> Flask:
             host_label = hostname or "SimpleSaferServer"
             return f"{page_name} - {host_label}"
 
+        sidebar_nav_items = [
+            {
+                "label": "Overview",
+                "endpoint": "task_routes.dashboard",
+                "icon": "fas fa-house fa-fw",
+                "order": 10,
+                "active_endpoints": ("task_routes.dashboard",),
+            },
+            {
+                "label": "Users",
+                "endpoint": "users_routes.users_page",
+                "icon": "fas fa-users fa-fw",
+                "order": 30,
+                "active_endpoints": ("users_routes.users_page",),
+            },
+        ]
+        for module in create_builtin_module_registry().list_modules():
+            for item in module.nav_items:
+                if item.admin_only and not current_user_is_admin:
+                    continue
+                sidebar_nav_items.append(
+                    {
+                        "label": item.label,
+                        "endpoint": item.endpoint,
+                        "icon": item.icon,
+                        "order": item.order,
+                        "active_endpoints": item.active_endpoints or (item.endpoint,),
+                    }
+                )
+        sidebar_nav_items.sort(key=lambda item: item["order"])
+
         return {
             "username": username,
             "runtime_mode": runtime.mode,
             "default_mount_point": runtime.default_mount_point,
             "browser_title": browser_title,
+            "sidebar_nav_items": sidebar_nav_items,
+            "_": gettext,
+            "gettext": gettext,
             # Expose admin status so templates can conditionally show admin-only nav items.
-            "is_admin": user_manager.is_admin(username) if username else False,
+            "is_admin": current_user_is_admin,
         }
 
     @app.errorhandler(ApiProblem)

@@ -6,7 +6,7 @@ import stat
 
 from cryptography.fernet import Fernet
 
-from simple_safer_server.services.alert_store import AlertStore
+from simple_safer_server.modules.alerts.store import AlertStore
 from simple_safer_server.services.file_persistence import (
     atomic_write_json,
     atomic_write_text,
@@ -102,10 +102,11 @@ class ConfigManager:
             'rclone_dir': '',
             'bandwidth_limit': '',
             'cloud_enabled': 'false',
+            'cloud_skipped': 'false',
         }
 
         config['storage'] = {
-            'mode': 'managed_drive',
+            'mode': 'existing_folder',
             'path': self.runtime.default_mount_point,
             'storage_id': '',
             'mount_source': '',
@@ -113,16 +114,9 @@ class ConfigManager:
             'mount_fstype': '',
         }
 
-        config['schedule'] = {'backup_cloud_time': '03:00'}
+        config['schedule'] = {'backup_cloud_time': '03:00', 'configured': 'false'}
 
         config['hdsentinel'] = {'enabled': 'true', 'health_change_alert': 'true'}
-
-        config['apt_updates'] = {
-            'managed': 'false',
-            'update_package_lists': 'false',
-            'unattended_upgrade': 'false',
-            'autoclean_interval': '7',
-        }
 
         config['ddns'] = {
             'duckdns_enabled': 'false',
@@ -138,7 +132,10 @@ class ConfigManager:
     def _write_config_parser(self, config):
         stream = io.StringIO()
         config.write(stream)
-        atomic_write_text(self.config_path, stream.getvalue(), mode=0o644)
+        # config.conf can include provider metadata and obscured rclone secrets,
+        # so keep it private to the service account even though most secrets
+        # live in the encrypted sidecar store.
+        atomic_write_text(self.config_path, stream.getvalue(), mode=0o600)
 
     def _locked_config_update(self, update_config):
         # config.conf is replaced atomically, so all writers must lock a stable
@@ -193,6 +190,14 @@ class ConfigManager:
 
         self._locked_config_update(update)
 
+    def remove_section(self, section):
+        """Remove an app-owned configuration section if it exists."""
+
+        def update(config):
+            config.remove_section(section)
+
+        self._locked_config_update(update)
+
     def store_secret(self, key, value):
         """Store a sensitive value"""
         try:
@@ -206,6 +211,18 @@ class ConfigManager:
                 atomic_write_json(self.secrets_path, secrets, mode=0o600)
         except Exception as e:
             self.logger.error(f"Error storing secret: {e}")
+            raise
+
+    def delete_secret(self, key):
+        """Delete one app-owned secret key if it exists."""
+        try:
+            with locked_path(self.secrets_lock_path, mode=0o600):
+                secrets = read_json(self.secrets_path, {})
+                if key in secrets:
+                    del secrets[key]
+                    atomic_write_json(self.secrets_path, secrets, mode=0o600)
+        except Exception as e:
+            self.logger.error(f"Error deleting secret: {e}")
             raise
 
     def get_secret(self, key, default=None):

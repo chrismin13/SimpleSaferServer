@@ -20,7 +20,7 @@ def main() -> None:
     args = parser.parse_args()
     if args.debug and hasattr(os, "geteuid") and os.geteuid() == 0:
         print(
-            "WARNING: Flask debug mode is dangerous when SimpleSaferServer runs as root; "
+            "WARNING: Flask debug mode is dangerous when this manual process runs as root; "
             "disable debug mode unless this is an isolated development session.",
             file=sys.stderr,
         )

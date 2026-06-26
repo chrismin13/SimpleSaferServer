@@ -1,0 +1,60 @@
+{% macro backup_readiness_panel(readiness, title='Backup protection', data_url=None, refresh_url=None, compact=False) -%}
+{% set panel_classes = 'backup-readiness-panel' ~ (' backup-readiness-panel-compact' if compact else '') %}
+{% set is_complete = readiness and readiness.complete %}
+<section
+  class="{{ panel_classes }}"
+  {% if data_url %}data-backup-readiness-url="{{ data_url }}"{% endif %}
+  {% if refresh_url %}
+  hx-get="{{ refresh_url }}"
+  hx-trigger="backup-readiness-refresh from:body"
+  hx-swap="outerHTML"
+  {% endif %}
+  aria-labelledby="backup-readiness-title"
+>
+  <div class="backup-readiness-header">
+    <div>
+      <h2 id="backup-readiness-title">{{ title }}</h2>
+      <p class="backup-readiness-detail" data-readiness-detail>
+        {% if readiness %}{{ readiness.detail }}{% else %}Loading backup checklist…{% endif %}
+      </p>
+    </div>
+    <div class="backup-readiness-summary">
+      <span
+        class="badge {{ 'badge-success' if is_complete else 'badge-warning' }}"
+        data-readiness-badge
+      >
+        <i class="fas {{ 'fa-circle-check' if is_complete else 'fa-triangle-exclamation' }}"></i>
+        <span data-readiness-count>
+          {% if readiness %}{{ readiness.count_label }}{% else %}Loading{% endif %}
+        </span>
+      </span>
+    </div>
+  </div>
+  <div class="backup-readiness-list" data-readiness-items>
+    {% if readiness %}
+      {% for item in readiness.items %}
+        {{ backup_readiness_item(item) }}
+      {% endfor %}
+    {% endif %}
+  </div>
+</section>
+{%- endmacro %}
+
+{% macro backup_readiness_item(item) -%}
+{% set status_class = 'is-complete' if item.complete else ('is-skipped' if item.status == 'skipped' else 'is-incomplete') %}
+{% set badge_class = 'badge-success' if item.complete else ('badge-warning' if item.status in ['skipped', 'incomplete'] else 'badge-neutral') %}
+{% set icon_class = 'fa-circle-check' if item.complete else ('fa-forward' if item.status == 'skipped' else 'fa-circle-exclamation') %}
+<div class="backup-readiness-item {{ status_class }}" data-readiness-item="{{ item.key }}">
+  <div class="backup-readiness-icon" aria-hidden="true">
+    <i class="fas {{ icon_class }}"></i>
+  </div>
+  <div class="backup-readiness-copy">
+    <div class="backup-readiness-item-title">{{ item.title }}</div>
+    <div class="backup-readiness-item-detail">{{ item.detail }}</div>
+  </div>
+  <div class="backup-readiness-item-actions">
+    <span class="badge {{ badge_class }}">{{ item.status_label }}</span>
+    <a class="btn btn-secondary btn-sm" href="{{ item.action_url }}">{{ item.action_label }}</a>
+  </div>
+</div>
+{%- endmacro %}

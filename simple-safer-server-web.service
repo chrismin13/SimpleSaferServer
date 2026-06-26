@@ -1,0 +1,17 @@
+[Unit]
+Description=SimpleSaferServer Web UI (Gunicorn)
+After=network.target
+
+[Service]
+Type=simple
+User=sss
+Group=sss
+WorkingDirectory=/opt/SimpleSaferServer
+Environment=SSS_VOLATILE_DIR=/run/SimpleSaferServer
+RuntimeDirectory=SimpleSaferServer
+RuntimeDirectoryMode=0750
+ExecStart=/opt/SimpleSaferServer/.venv/bin/gunicorn --worker-class gthread --threads 4 -w 1 --bind 0.0.0.0:5000 simple_safer_server.wsgi:app
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

@@ -8,7 +8,9 @@ from flask import Flask
 from simple_safer_server.services.user_manager import admin_required, api_admin_required
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SYSTEM_UPDATES_SOURCE = REPO_ROOT / 'simple_safer_server' / 'routes' / 'system_updates.py'
+SYSTEM_UPDATES_SOURCE = (
+    REPO_ROOT / 'simple_safer_server' / 'modules' / 'system_updates' / 'routes.py'
+)
 
 
 def build_test_app():

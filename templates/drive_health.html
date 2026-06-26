@@ -1,9 +1,12 @@
 {% extends "base.html" %}
+{% import "partials/module_help.html" as module_help %}
 
 {% block title %}{{ browser_title('Drive Health') }}{% endblock %}
 {% block header %}Drive Health{% endblock %}
 
 {% block content %}
+{{ module_help.module_help_band(drive_health_module, icon='fas fa-hard-drive') }}
+
 <div class="action-bar mb-6">
   <form method="post">
     <input type="hidden" name="form_action" value="run_health_check">
@@ -153,7 +156,7 @@
           <input type="checkbox" class="form-check-input" id="hdsentinelHealthChangeAlert" name="hdsentinel_health_change_alert" {% if hdsentinel_settings.health_change_alert %}checked{% endif %}>
           Send alerts when HDSentinel health changes between scheduled checks
         </label>
-        <div class="text-muted mt-2">Temperature is displayed for visibility but does not trigger alerts.</div>
+        {{ module_help.field_hint(drive_health_module, 'health_change_alert') }}
       </div>
       <div class="d-flex justify-end">
         <button type="submit" class="btn btn-primary btn-sm">Save HDSentinel Settings</button>

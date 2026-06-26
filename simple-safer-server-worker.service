@@ -1,0 +1,17 @@
+[Unit]
+Description=SimpleSaferServer Worker
+After=network.target
+
+[Service]
+Type=simple
+User=sss
+Group=sss
+WorkingDirectory=/opt/SimpleSaferServer
+Environment=SSS_VOLATILE_DIR=/run/SimpleSaferServer
+RuntimeDirectory=SimpleSaferServer
+RuntimeDirectoryMode=0750
+ExecStart=/opt/SimpleSaferServer/.venv/bin/python -m simple_safer_server.worker
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

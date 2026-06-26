@@ -4,6 +4,7 @@ from flask import Blueprint, current_app, render_template, session
 
 from simple_safer_server.services.user_manager import admin_required, api_admin_required
 from simple_safer_server.web.api import json_data, json_problem, json_request_data
+from simple_safer_server.web.i18n import gettext
 from simple_safer_server.web.problems import NotFoundProblem, ValidationProblem
 
 users = Blueprint("users_routes", __name__)
@@ -22,10 +23,46 @@ def _optional_admin_flag(data: dict[str, Any], default: bool | None = False) -> 
     return data["is_admin"]
 
 
+def _users_ui_text() -> dict[str, Any]:
+    """Return browser copy used by the Users page script."""
+    _ = gettext
+    return {
+        "roles": {
+            "admin": _("Admin"),
+            "user": _("User"),
+        },
+        "dates": {
+            "notAvailable": _("N/A"),
+            "never": _("Never"),
+        },
+        "actions": {
+            "edit": _("Edit"),
+            "delete": _("Delete"),
+        },
+        "messages": {
+            "loadFailure": _("Failed to load users."),
+            "selfDelete": _("You cannot delete your own account."),
+            "deleteTitle": _("Delete User"),
+            "deleteConfirm": _('Are you sure you want to delete user "{username}"?'),
+            "deleteSuccess": _('User "{username}" deleted successfully.'),
+            "networkError": _("Network error."),
+            "usernameExists": _("Username already exists."),
+            "addSuccess": _('User "{username}" added successfully.'),
+            "addFailure": _("Failed to add user."),
+            "updateSuccess": _('User "{username}" updated successfully.'),
+            "updateFailure": _("Failed to update user."),
+        },
+    }
+
+
 @users.route("/users")
 @admin_required
 def users_page():
-    return render_template("users.html", username=session.get("username"))
+    return render_template(
+        "users.html",
+        username=session.get("username"),
+        users_ui_text=_users_ui_text(),
+    )
 
 
 @users.route("/api/users", methods=["GET"])
@@ -47,17 +84,26 @@ def api_add_user():
     is_admin = _optional_admin_flag(data, default=False)
     if is_admin is None:
         return json_problem(
-            ValidationProblem("is_admin must be a JSON boolean.", slug="user-validation-error")
+            ValidationProblem(
+                gettext("is_admin must be a JSON boolean."),
+                slug="user-validation-error",
+            )
         )
 
     if not username or not password:
         return json_problem(
-            ValidationProblem("Username and password are required.", slug="user-validation-error")
+            ValidationProblem(
+                gettext("Username and password are required."),
+                slug="user-validation-error",
+            )
         )
 
     success, message = user_manager.create_user(username, password, is_admin=is_admin)
     if success:
-        return json_data({}, message=f"User {username} added successfully.")
+        return json_data(
+            {},
+            message=gettext("User {username} added successfully.").format(username=username),
+        )
     return json_problem(ValidationProblem(message, slug="user-validation-error"))
 
 
@@ -71,12 +117,19 @@ def api_edit_user(username):
     is_admin = _optional_admin_flag(data, default=None)
     if "is_admin" in data and is_admin is None:
         return json_problem(
-            ValidationProblem("is_admin must be a JSON boolean.", slug="user-validation-error")
+            ValidationProblem(
+                gettext("is_admin must be a JSON boolean."),
+                slug="user-validation-error",
+            )
         )
 
     if username not in user_manager.users:
         return json_problem(
-            NotFoundProblem("User not found.", title="User not found", slug="user-not-found")
+            NotFoundProblem(
+                gettext("User not found."),
+                title=gettext("User not found"),
+                slug="user-not-found",
+            )
         )
 
     if (
@@ -87,7 +140,7 @@ def api_edit_user(username):
     ):
         return json_problem(
             ValidationProblem(
-                "You cannot remove your own admin privileges while logged in.",
+                gettext("You cannot remove your own admin privileges while logged in."),
                 slug="user-validation-error",
             )
         )
@@ -101,7 +154,10 @@ def api_edit_user(username):
         success, message = user_manager.update_admin_status(username, is_admin)
         if not success:
             return json_problem(ValidationProblem(message, slug="user-validation-error"))
-    return json_data({}, message=f"User {username} updated successfully.")
+    return json_data(
+        {},
+        message=gettext("User {username} updated successfully.").format(username=username),
+    )
 
 
 @users.route("/api/users/<username>", methods=["DELETE"])
@@ -113,15 +169,23 @@ def api_delete_user(username):
     if username == session.get("username"):
         return json_problem(
             ValidationProblem(
-                "Cannot delete the currently logged-in user.", slug="user-validation-error"
+                gettext("Cannot delete the currently logged-in user."),
+                slug="user-validation-error",
             )
         )
 
     success, message = user_manager.delete_user(username)
     if success:
-        return json_data({}, message=f"User {username} deleted successfully.")
+        return json_data(
+            {},
+            message=gettext("User {username} deleted successfully.").format(username=username),
+        )
     return json_problem(
         ValidationProblem(
-            f"Failed to delete user {username}: {message}", slug="user-validation-error"
+            gettext("Failed to delete user {username}: {message}").format(
+                username=username,
+                message=message,
+            ),
+            slug="user-validation-error",
         )
     )

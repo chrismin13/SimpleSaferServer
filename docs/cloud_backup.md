@@ -6,23 +6,38 @@ Cloud Backup uses `rclone sync`. A sync makes the remote folder match the local 
 
 SimpleSaferServer therefore checks the configured storage location before every cloud backup. If the storage checks fail, the backup does not run.
 
+The page shows its purpose, setup note, and safety warning from the Cloud Backup module contract. Keep those short help strings in `simple_safer_server/modules/cloud_backup/module.py` so the Web UI, setup flow, CLI, and docs can reuse the same source of truth.
+
+## Module Setup
+
+Cloud Backup must be applied before normal management-page write actions can change backup config,
+save schedule settings, create cloud folders, validate stored credentials, or start a manual backup.
+Applying the module records the SSS-owned rclone config path in the ownership manifest. First-run
+setup applies the module as part of the setup flow when the user configures cloud backup there.
+
+## Required Host Tools
+
+Cloud Backup declares `rclone` as a required module tool and `update-ca-certificates` as the host
+CA-bundle tool used by outbound HTTPS connections. The base installer does not install either one.
+Install them before applying Cloud Backup on a real server.
+
 ## Status Card
 - **Cloud Backup Status**: Shows current status, last backup, next scheduled backup, and duration.
 - **View Log**: Link to the backup task log.
-- **Run Backup Now**: Button to start a backup immediately by disabling during the request.
+- **Run Backup Now**: Button to ask the worker to start a backup immediately.
 - **Error Feedback**: Inline error messages for backup issues.
 
 ## Backup Schedule & Bandwidth
 - **Backup Time**: Set the daily backup time in two-digit 24-hour `HH:MM` format.
 - **Bandwidth Limit**: (Optional) Limit backup bandwidth (e.g., 4M for 4 MB/s).
-- **Save**: Button to save schedule settings by disabling during the request.
+- **Save**: Button to save schedule settings for the worker.
 - **Error/Success Feedback**: Inline messages for save actions.
 
 ## Cloud Backup Settings
 - **Backup Mode**: Choose between:
   - MEGA (Simple)
   - Advanced (Paste rclone config)
-- **Disabled**: Cloud Backup can be skipped during setup. When it is disabled, the timer is not enabled and manual backup runs are blocked until Cloud Backup is configured.
+- **Disabled**: Cloud Backup can be skipped during setup. When it is disabled, the worker does not run the daily backup and manual backup runs are blocked until Cloud Backup is configured.
 - **Required setting**: `backup.cloud_enabled` must be `true` or `false`. If that setting is missing or invalid, cloud backup fails loudly and alerts the administrator instead of guessing what to do.
 
 ### MEGA Simple Mode
@@ -34,6 +49,12 @@ SimpleSaferServer therefore checks the configured storage location before every 
 ### Advanced rclone Config
 - **Rclone Configuration**: Paste or edit the stored rclone config. Administrators can inspect this
   value because this page is the editor for cloud-backup credentials and destinations.
+- **Config location**: SimpleSaferServer stores this at
+  `/etc/SimpleSaferServer/rclone/rclone.conf` and passes that path to rclone explicitly. It does
+  not use or edit root's global rclone config.
+- **Config writes**: The Web UI writes this file through the allowlisted `sss-helper` action
+  `cloud-backup.write-rclone-config`, so the rclone config path stays explicit and module-owned.
+  After a successful write, the helper records the file in `<data>/ownership.json`.
 - **Remote Name and Path**: Enter in the format `remotename:/path`.
 - **Warning**: rclone will synchronize the remote path to match the local backup directory.
 
@@ -70,7 +91,3 @@ provider from fake mode.
 
 ## Modal
 - **MEGA Folder Picker**: Modal dialog to select a folder in MEGA.
-
----
-
-This page allows you to configure and monitor cloud backups for your system. 

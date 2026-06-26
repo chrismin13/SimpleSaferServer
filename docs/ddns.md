@@ -1,6 +1,16 @@
 # Dynamic DNS
 
-Dynamic DNS keeps public DNS records pointed at the server's current public IPv4 address. The `DDNS Update` task can run on schedule from systemd or immediately from the Dashboard task controls.
+Dynamic DNS keeps public DNS records pointed at the server's current public IPv4 address. The
+`DDNS Update` task runs on schedule from the SimpleSaferServer worker, immediately from the
+Dashboard task controls, or from the terminal with:
+
+```bash
+sss job run ddns-update
+```
+
+DDNS is the first deep SimpleSaferServer module. Its route, service, setup plan, help text, and job
+contract live under `simple_safer_server/modules/ddns/` so future modules have a small example to
+copy. Its job contract is owned by the worker instead of a generated feature-specific systemd timer.
 
 ## Fake Mode Behavior
 
@@ -10,6 +20,12 @@ Use a disposable test domain, test subdomain, or scoped Cloudflare token when te
 
 See [Fake Mode](fake_mode.md) for the general fake-mode model.
 
+## Required Host Tools
+
+DDNS talks to DuckDNS and Cloudflare over HTTPS with Python's standard library. The DDNS module
+declares `update-ca-certificates` as a required host tool so setup checks can catch hosts without
+system CA bundle support. The base installer does not install `ca-certificates` automatically.
+
 ## Providers
 
 - **DuckDNS** updates the configured DuckDNS domain. When SimpleSaferServer cannot detect a public IPv4 address, DuckDNS can still use its own automatic IP detection.
@@ -17,7 +33,7 @@ See [Fake Mode](fake_mode.md) for the general fake-mode model.
 
 ## Task Status
 
-The updater writes provider details to volatile runtime state before it exits. If any enabled provider reports `Error` or `Configuration Missing`, the task exits with a failure code so systemd and the Dashboard show the `DDNS Update` run as failed while the DDNS page still has the specific provider message. This provider status does not need to survive reboot.
+The updater writes provider details to volatile runtime state before it exits. If any enabled provider reports `Error` or `Configuration Missing`, the task exits with a failure code so the worker and Dashboard show the `DDNS Update` run as failed while the DDNS page still has the specific provider message. This provider status does not need to survive reboot.
 
 ## Alerts
 

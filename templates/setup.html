@@ -4,11 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Setup — SimpleSaferServer</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/design-tokens.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/fontawesome/6.4.0/css/all.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/favicon.png') }}">
@@ -33,6 +30,10 @@
                 <p>Follow these steps to set up your backup system</p>
                 <div class="setup-nav-note"><i class="fas fa-hand-pointer"></i> You can jump between steps at any time.</div>
             </div>
+            {% from "partials/backup_readiness.html" import backup_readiness_panel %}
+            {% import "partials/module_help.html" as module_help %}
+            {% import "partials/module_plan_preview.html" as module_plan %}
+            {{ backup_readiness_panel(backup_readiness, title='3-2-1 backup checklist', data_url='/api/setup/readiness', compact=True) }}
 
             <div class="setup-layout">
                 <!-- Vertical Stepper Rail -->
@@ -115,18 +116,20 @@
                                     SimpleSaferServer creates a network share named <strong>backup</strong>. This is the folder people on your network copy files into from their computers.
                                 </div>
                             </div>
+                            {{ module_plan.setup_plan_details(setup_module_plans.storage.module, setup_module_plans.storage.plan, 'Review Storage setup plan') }}
                             <div class="tabs-container mb-4">
                                 <div class="tabs-nav" role="tablist" aria-label="Storage location type">
-                                    <button type="button" class="tab-btn active" data-storage-mode="managed_drive" id="storageModeManagedBtn">Set up a managed drive</button>
-                                    <button type="button" class="tab-btn" data-storage-mode="existing_folder" id="storageModeExistingBtn">Use an existing folder</button>
+                                    <button type="button" class="tab-btn" data-storage-mode="managed_drive" id="storageModeManagedBtn">Set up a managed drive</button>
+                                    <button type="button" class="tab-btn active" data-storage-mode="existing_folder" id="storageModeExistingBtn">Use an existing folder</button>
                                 </div>
                             </div>
-                            <div id="managedDriveSetupFields">
+                            <div id="managedDriveSetupFields" class="d-none">
                                 <div class="alert alert-info mb-4">
                                     <div>
                                         Best if you have a USB drive or extra internal drive for this server. SimpleSaferServer can erase it, format it, mount it, and keep it connected automatically.
                                     </div>
                                 </div>
+                                {{ module_help.field_hint(setup_module_plans.storage.module, 'managed_drive') }}
                             <div class="form-group mb-4">
                                 <div class="storage-field-action-row">
                                     <label class="form-label" for="formatDriveSelect">Select Drive to Format</label>
@@ -164,7 +167,7 @@ This removes all files on the selected drive and sets it up as one backup drive.
                                 </button>
                             </div>
                             </div>
-                            <div id="existingFolderSetupFields" class="d-none">
+                            <div id="existingFolderSetupFields">
                                 <div class="alert alert-info mb-4">
                                     <div>
                                         Best if your storage is already set up. Use this for ZFS, RAID, mergerfs, SnapRAID, NFS, or a normal folder. SimpleSaferServer will not mount or format anything.
@@ -179,6 +182,7 @@ This removes all files on the selected drive and sets it up as one backup drive.
                                         </button>
                                     </div>
                                     <div class="form-hint">SimpleSaferServer will create <code>.simple-safer-server</code> inside this folder for backup safety checks.</div>
+                                    {{ module_help.field_hint(setup_module_plans.storage.module, 'existing_folder') }}
                                 </div>
                                 <div id="existingFolderError" class="text-danger d-none" style="font-size:var(--text-sm);"></div>
                                 <div class="setup-actions">
@@ -258,13 +262,14 @@ unmount the share, then restart SMB automatically."
                             <div class="feedback-slot feedback-slot-compact mb-4">
                                 <div id="backupConfigError" class="alert alert-danger d-none"></div>
                             </div>
+                            {{ module_plan.setup_plan_details(setup_module_plans.cloud_backup.module, setup_module_plans.cloud_backup.plan, 'Review Cloud Backup setup plan') }}
                             <div class="tabs-container mb-4">
                                 <div class="tabs-nav" role="tablist" aria-label="Cloud backup mode">
                                     <button type="button" class="tab-btn active" data-tab="mega" id="tab-setup-mega" role="tab" aria-selected="true" aria-controls="megaConfigFields">MEGA (Simple)</button>
                                     <button type="button" class="tab-btn" data-tab="advanced" id="tab-setup-advanced" role="tab" aria-selected="false" aria-controls="advancedConfigFields">Advanced (rclone)</button>
                                 </div>
 
-                                <!-- Hidden radio inputs to maintain logic compatibility -->
+                                <!-- Tabs update these hidden radios before the setup form is submitted. -->
                                 <div class="d-none">
                                     <input type="radio" name="backupMode" id="backupModeMega" value="mega" checked>
                                     <input type="radio" name="backupMode" id="backupModeAdvanced" value="advanced">
@@ -281,11 +286,13 @@ unmount the share, then restart SMB automatically."
                                         <div class="form-group mb-3">
                                             <label class="form-label">MEGA Email</label>
                                             <input type="email" id="megaEmail" class="form-control" placeholder="your@email.com">
+                                            {{ module_help.field_hint(setup_module_plans.cloud_backup.module, 'mega_email') }}
                                             <div class="invalid-feedback">Please enter a valid MEGA email.</div>
                                         </div>
                                         <div class="form-group mb-3">
                                             <label class="form-label">MEGA Password</label>
                                             <input type="password" id="megaPassword" class="form-control" placeholder="Password">
+                                            {{ module_help.field_hint(setup_module_plans.cloud_backup.module, 'mega_password') }}
                                             <div class="invalid-feedback">Please enter your MEGA password.</div>
                                         </div>
                                         <div class="mb-3">
@@ -300,6 +307,7 @@ unmount the share, then restart SMB automatically."
                                                     <input type="text" id="megaFolderPath" class="form-control" placeholder="/backups" readonly>
                                                     <button id="megaBrowseBtn" class="btn btn-secondary" type="button"><i class="fas fa-folder-open"></i> Browse</button>
                                                 </div>
+                                                {{ module_help.field_hint(setup_module_plans.cloud_backup.module, 'mega_folder') }}
                                                 <div class="invalid-feedback">Please select a folder.</div>
                                             </div>
                                             <div id="megaFolderWarning" class="alert alert-warning" style="font-size: var(--text-sm);">
@@ -312,11 +320,13 @@ unmount the share, then restart SMB automatically."
                                         <div class="form-group mb-3">
                                             <label class="form-label">Rclone Configuration</label>
                                             <textarea id="rcloneConfig" rows="7" class="form-control" placeholder="Paste your rclone configuration here…"></textarea>
+                                            {{ module_help.field_hint(setup_module_plans.cloud_backup.module, 'rclone_config') }}
                                             <div class="invalid-feedback">Rclone configuration is required.</div>
                                         </div>
                                         <div class="form-group mb-3">
                                             <label class="form-label">Remote Name and Path</label>
                                             <input type="text" id="remoteName" class="form-control" placeholder="e.g., myremote:/backups">
+                                            {{ module_help.field_hint(setup_module_plans.cloud_backup.module, 'remote_name') }}
                                             <div class="invalid-feedback">Remote name and path is required. Use format: remotename:/path</div>
                                         </div>
                                         <div class="alert alert-warning" style="font-size: var(--text-sm);">
@@ -343,25 +353,30 @@ unmount the share, then restart SMB automatically."
                             <div class="feedback-slot feedback-slot-compact mb-4">
                                 <div id="emailError" class="alert alert-danger d-none"></div>
                             </div>
+                            {{ module_plan.setup_plan_details(setup_module_plans.alerts.module, setup_module_plans.alerts.plan, 'Review Alerts setup plan') }}
                             <div class="form-group mb-4">
                                 <label class="form-label">Email Address</label>
                                 <input type="email" id="emailAddress" class="form-control" placeholder="your@email.com">
+                                {{ module_help.field_hint(setup_module_plans.alerts.module, 'email_address') }}
                                 <div class="invalid-feedback">Please enter a valid email address.</div>
                             </div>
                             <div class="form-group mb-4">
                                 <label class="form-label">From Address</label>
                                 <input type="email" id="fromAddress" class="form-control" placeholder="from@email.com">
+                                {{ module_help.field_hint(setup_module_plans.alerts.module, 'from_address') }}
                                 <div class="invalid-feedback">Please enter a valid from address.</div>
                             </div>
                             <div class="form-row mb-4">
                                 <div class="form-group">
                                     <label class="form-label">SMTP Server</label>
                                     <input type="text" id="smtpServer" class="form-control" placeholder="smtp.gmail.com">
+                                    {{ module_help.field_hint(setup_module_plans.alerts.module, 'smtp_server') }}
                                     <div class="invalid-feedback">SMTP server is required.</div>
                                 </div>
                                 <div class="form-group">
                                     <label class="form-label">SMTP Port</label>
                                     <input type="text" id="smtpPort" class="form-control" placeholder="587" inputmode="numeric" pattern="[0-9]*">
+                                    {{ module_help.field_hint(setup_module_plans.alerts.module, 'smtp_port') }}
                                     <div class="invalid-feedback">SMTP port must be a number between 1 and 65535.</div>
                                 </div>
                             </div>
@@ -369,11 +384,13 @@ unmount the share, then restart SMB automatically."
                                 <div class="form-group">
                                     <label class="form-label">Username</label>
                                     <input type="text" id="smtpUsername" class="form-control" placeholder="your@email.com">
+                                    {{ module_help.field_hint(setup_module_plans.alerts.module, 'smtp_username') }}
                                     <div class="invalid-feedback">SMTP username is required.</div>
                                 </div>
                                 <div class="form-group">
                                     <label class="form-label">Password</label>
                                     <input type="password" id="smtpPassword" class="form-control">
+                                    {{ module_help.field_hint(setup_module_plans.alerts.module, 'smtp_password') }}
                                     <div class="invalid-feedback">SMTP password is required.</div>
                                 </div>
                             </div>
@@ -395,11 +412,13 @@ unmount the share, then restart SMB automatically."
                             <div class="form-group mb-4">
                                 <label class="form-label">Backup Time</label>
                                 <input type="time" id="backupTime" class="form-control" value="03:00">
+                                {{ module_help.field_hint(setup_module_plans.cloud_backup.module, 'backup_time') }}
                                 <div class="invalid-feedback">Please select a valid backup time.</div>
                             </div>
                             <div class="form-group mb-4">
                                 <label class="form-label">Bandwidth Limit <span class="text-muted">(optional)</span></label>
                                 <input type="text" id="bandwidthLimit" class="form-control" placeholder="e.g. 4M for 4 MB/s">
+                                {{ module_help.field_hint(setup_module_plans.cloud_backup.module, 'bandwidth_limit') }}
                                 <div class="invalid-feedback">Bandwidth limit must be a valid format (e.g. 4M, 1G, 500k).</div>
                             </div>
                             <div class="setup-actions">
@@ -424,20 +443,20 @@ unmount the share, then restart SMB automatically."
             <div class="modal-body">
                 <div class="mb-3">
                     <strong>Current Path:</strong>
-                    <div class="path-breadcrumbs text-mono" id="megaPickerCurrentPath"></div>
+                    <div class="path-breadcrumbs text-mono folder-picker-current-path" id="megaPickerCurrentPath"></div>
                 </div>
                 <div class="d-flex gap-2 mb-3">
-                    <button class="btn btn-secondary btn-sm" id="megaPickerUpBtn"><i class="fas fa-level-up-alt"></i> Up</button>
-                    <button class="btn btn-success btn-sm" id="megaPickerCreateFolderBtn"><i class="fas fa-plus"></i> New Folder</button>
-                    <input type="text" id="megaPickerNewFolderName" class="form-control d-none" style="max-width: 200px;" placeholder="New folder name">
-                    <button class="btn btn-success btn-sm d-none" id="megaPickerSaveNewFolderBtn">Create</button>
+                    <button class="btn btn-secondary btn-sm folder-picker-up-btn" id="megaPickerUpBtn"><i class="fas fa-level-up-alt"></i> Up</button>
+                    <button class="btn btn-success btn-sm folder-picker-create-folder-btn" id="megaPickerCreateFolderBtn"><i class="fas fa-plus"></i> New Folder</button>
+                    <input type="text" id="megaPickerNewFolderName" class="form-control folder-picker-new-folder-name d-none" style="max-width: 200px;" placeholder="New folder name">
+                    <button class="btn btn-success btn-sm folder-picker-save-new-folder-btn d-none" id="megaPickerSaveNewFolderBtn">Create</button>
                 </div>
-                <div id="megaPickerDirsList" class="folder-list mb-3"></div>
-                <div id="megaPickerError" class="alert alert-danger d-none"></div>
+                <div id="megaPickerDirsList" class="folder-list folder-picker-dirs-list mb-3"></div>
+                <div id="megaPickerError" class="alert alert-danger folder-picker-error d-none"></div>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" data-modal-close>Cancel</button>
-                <button class="btn btn-outline-primary" id="megaPickerSelectCurrentBtn">Select This Folder</button>
+                <button class="btn btn-outline-primary folder-picker-select-current-btn" id="megaPickerSelectCurrentBtn">Select This Folder</button>
             </div>
         </div>
     </div>
@@ -490,11 +509,154 @@ unmount the share, then restart SMB automatically."
     <script src="{{ url_for('static', filename='js/mega_folder_picker.js') }}"></script>
     <script src="{{ url_for('static', filename='js/common.js') }}"></script>
     <script src="{{ url_for('static', filename='js/scripts.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/timepicker.js') }}"></script>
+    <script type="application/json" id="setup-copy">{{ setup_ui_text | tojson }}</script>
     <script>
         let currentStep = 1;
         const totalSteps = 6;
-        let setupStorageMode = 'managed_drive';
+        let setupStorageMode = 'existing_folder';
+        const setupDefaultCopy = {
+            driveTypes: {
+                usb: 'USB Drive',
+                removable: 'Removable Drive',
+                internal: 'Internal Drive'
+            },
+            storage: {
+                selectDrive: 'Select a drive…',
+                unmountedReady: 'Unmounted (ready for formatting)',
+                mounted: 'Mounted',
+                mountedAtTemplate: ' (Mounted at {mountpoint})',
+                unmountedSuffix: '[unmounted]',
+                refreshingDrives: 'Refreshing drives…',
+                driveListRefreshed: 'Drive list refreshed.',
+                loadFormatDrivesFailed: 'Failed to load drives for formatting',
+                refreshDrivesFailed: 'Failed to refresh drives.',
+                refreshingPartitions: 'Refreshing partitions…',
+                partitionListRefreshed: 'Partition list refreshed.',
+                loadMountDrivesFailed: 'Failed to load NTFS drives for mounting',
+                refreshPartitionsFailed: 'Failed to refresh partitions.',
+                selectDriveFirst: 'Please select a drive first.',
+                formattingDrive: 'Formatting drive…',
+                driveFormatted: 'Drive formatted successfully.',
+                formatDriveFailed: 'Failed to format drive.',
+                formatDriveError: 'An error occurred while formatting the drive',
+                unmountingDrive: 'Unmounting drive…',
+                driveUnmountedForFormat: 'Drive unmounted. You can continue formatting.',
+                unmountDriveFailed: 'Failed to unmount drive.',
+                unmountDriveError: 'An error occurred while unmounting the drive',
+                selectDriveToMount: 'Please select a drive to mount',
+                selectDriveShort: 'Please select a drive.',
+                mountingDrive: 'Mounting drive…',
+                driveMounted: 'Drive mounted successfully.',
+                mountDriveFailed: 'Failed to mount drive.',
+                mountDriveError: 'An error occurred while mounting the drive',
+                existingFolderRequired: 'Enter the folder path to use for storage.',
+                existingFolderFailed: 'Could not use this folder.',
+                retryManagedUnmount: 'Retrying with the SMB-safe unmount path…',
+                driveUnmountedForMount: 'Drive unmounted. You can continue mounting the selected partition.'
+            },
+            alerts: {
+                correctFields: 'Please correct the highlighted fields.',
+                allEmailFieldsRequired: 'Please fill in all email fields',
+                setupEmailPrefix: 'Error setting up email: ',
+                setupEmailFallback: 'An error occurred while setting up email'
+            },
+            schedule: {
+                correctFields: 'Please correct the highlighted fields.',
+                selectBackupTime: 'Please select a backup time.',
+                saveSchedulePrefix: 'Error saving schedule: '
+            },
+            cloudBackup: {
+                skipFailed: 'Could not skip cloud backup.',
+                connectMegaFailed: 'Error connecting to MEGA.',
+                saveMegaFailed: 'Error saving MEGA config.',
+                saveRcloneFailed: 'Error saving rclone config.'
+            },
+            folderPicker: {
+                mega: {
+                    loading: 'Loading...',
+                    emptyMessage: 'No subfolders in this directory.',
+                    credentialsRequired: 'MEGA credentials are required before creating a folder.',
+                    loadFailed: 'Could not load folders.',
+                    createFailed: 'Error creating folder.'
+                },
+                local: {
+                    loading: 'Loading...',
+                    emptyMessage: 'No folders or files in this directory.',
+                    loadFailed: 'Could not load folders.'
+                }
+            },
+            completion: {
+                missingPrefix: 'Setup is still missing: ',
+                missingSuffix: '.',
+                missingRequired: 'Setup is still missing a few required details.',
+                failed: 'Could not complete setup.',
+                fieldLabels: {
+                    'backup.email_address': 'backup alert email address',
+                    'backup.mount_point': 'storage location',
+                    'backup.uuid': 'managed drive selection',
+                    'storage.mode': 'storage choice',
+                    'storage.path': 'storage folder',
+                    'storage.storage_id': 'storage marker',
+                    'email.email_from_address': 'email sender address',
+                    'email.smtp_server': 'SMTP server',
+                    'email.smtp_port': 'SMTP port',
+                    'email.smtp_user': 'SMTP username',
+                    'email.smtp_password': 'SMTP password',
+                    'schedule.backup_cloud_time': 'cloud backup schedule',
+                    'schedule.bandwidth_limit': 'bandwidth limit',
+                    'system.server_name': 'server name',
+                    'user.username': 'admin username'
+                }
+            },
+            admin: {
+                correctFields: 'Please correct the highlighted fields.',
+                createUserPrefix: 'Error creating user: ',
+                createUserFallback: 'An error occurred while creating the user',
+                configureSystemPrefix: 'Error configuring system: ',
+                configureSystemFallback: 'An error occurred while configuring the system'
+            }
+        };
+
+        function mergeSetupCopy(base, overrides) {
+            if (!overrides || typeof overrides !== 'object') return base;
+            Object.keys(overrides).forEach((key) => {
+                if (
+                    overrides[key]
+                    && typeof overrides[key] === 'object'
+                    && !Array.isArray(overrides[key])
+                    && base[key]
+                    && typeof base[key] === 'object'
+                ) {
+                    mergeSetupCopy(base[key], overrides[key]);
+                } else {
+                    base[key] = overrides[key];
+                }
+            });
+            return base;
+        }
+
+        function readSetupCopy() {
+            const script = document.getElementById('setup-copy');
+            if (!script) return setupDefaultCopy;
+            try {
+                return mergeSetupCopy(
+                    JSON.parse(JSON.stringify(setupDefaultCopy)),
+                    JSON.parse(script.textContent || '{}')
+                );
+            } catch (error) {
+                console.error('Could not read setup page copy:', error);
+                return setupDefaultCopy;
+            }
+        }
+
+        function setupTemplate(template, values) {
+            return String(template || '').replace(/\{([a-zA-Z0-9_]+)\}/g, (match, key) => {
+                if (!Object.prototype.hasOwnProperty.call(values, key)) return match;
+                return values[key];
+            });
+        }
+
+        const setupCopy = readSetupCopy();
 
         // --- LocalStorage step persistence ---
         function saveStepToStorage(step) {
@@ -559,6 +721,12 @@ unmount the share, then restart SMB automatically."
             saveStepToStorage(currentStep);
         }
 
+        function refreshSetupReadiness() {
+            if (window.refreshBackupReadiness) {
+                window.refreshBackupReadiness();
+            }
+        }
+
         function setStorageMode(mode) {
             setupStorageMode = mode;
             const managedFields = document.getElementById('managedDriveSetupFields');
@@ -592,9 +760,9 @@ unmount the share, then restart SMB automatically."
         let canRetryManagedUnmount = false;
 
         function getDriveTypeLabel(drive) {
-            if (drive.type === 'usb') return 'USB Drive';
-            if (drive.type === 'removable') return 'Removable Drive';
-            return 'Internal Drive';
+            if (drive.type === 'usb') return setupCopy.driveTypes.usb;
+            if (drive.type === 'removable') return setupCopy.driveTypes.removable;
+            return setupCopy.driveTypes.internal;
         }
 
         function setManagedUnmountRetryState(enabled) {
@@ -609,30 +777,30 @@ unmount the share, then restart SMB automatically."
             const badge = document.getElementById('driveMountStatusBadge');
             const selectedOption = select.options[select.selectedIndex];
             if (!select.value) { badge.innerHTML = ''; return; }
-            if (selectedOption && selectedOption.text.includes('[unmounted]')) {
-                badge.innerHTML = '<span class="badge badge-success">Unmounted (ready for formatting)</span>';
+            if (selectedOption && selectedOption.text.includes(setupCopy.storage.unmountedSuffix)) {
+                badge.innerHTML = `<span class="badge badge-success">${setupCopy.storage.unmountedReady}</span>`;
             } else {
-                badge.innerHTML = '<span class="badge badge-warning">Mounted</span>';
+                badge.innerHTML = `<span class="badge badge-warning">${setupCopy.storage.mounted}</span>`;
             }
         }
 
         function populateFormatDriveSelect(drives) {
             const formatSelect = document.getElementById('formatDriveSelect');
             const prevValue = formatSelect.value;
-            formatSelect.innerHTML = '<option value="">Select a drive…</option>';
+            formatSelect.innerHTML = `<option value="">${setupCopy.storage.selectDrive}</option>`;
             let foundPrev = false;
             drives.forEach(drive => {
                 const driveType = getDriveTypeLabel(drive);
                 let isMounted = false;
                 drive.partitions.forEach(partition => { if (partition.mountpoint) isMounted = true; });
                 let label = `${drive.model} (${drive.size}) - ${driveType}`;
-                if (!isMounted) label += ' [unmounted]';
+                if (!isMounted) label += ` ${setupCopy.storage.unmountedSuffix}`;
                 const option = new Option(label, drive.path);
                 if (drive.path === prevValue) { option.selected = true; foundPrev = true; }
                 formatSelect.add(option);
             });
             if (!foundPrev && prevValue) {
-                const option = new Option(`${prevValue} [unmounted]`, prevValue);
+                const option = new Option(`${prevValue} ${setupCopy.storage.unmountedSuffix}`, prevValue);
                 option.selected = true;
                 formatSelect.add(option);
             }
@@ -644,11 +812,13 @@ unmount the share, then restart SMB automatically."
             if (!mountSelect) return;
 
             const prevValue = mountSelect.value;
-            mountSelect.innerHTML = '<option value="">Select a drive…</option>';
+            mountSelect.innerHTML = `<option value="">${setupCopy.storage.selectDrive}</option>`;
             let foundPrev = false;
             drives.forEach(drive => {
                 drive.partitions.forEach(partition => {
-                    const mountStatus = partition.mountpoint ? ` (Mounted at ${partition.mountpoint})` : '';
+                    const mountStatus = partition.mountpoint
+                        ? setupTemplate(setupCopy.storage.mountedAtTemplate, { mountpoint: partition.mountpoint })
+                        : '';
                     const label = partition.label ? ` - ${partition.label}` : '';
                     const driveType = getDriveTypeLabel(drive);
                     const option = new Option(
@@ -670,18 +840,18 @@ unmount the share, then restart SMB automatically."
             const refreshBtn = options.button || null;
             if (options.showStatus) {
                 hideFormatError();
-                setDriveStatus('Refreshing drives…', 'info');
+                setDriveStatus(setupCopy.storage.refreshingDrives, 'info');
             }
             if (refreshBtn) window.AsyncButtonState.start(refreshBtn);
             try {
                 const { data } = await window.ApiClient.fetchJson('/api/setup/format-drives');
                 populateFormatDriveSelect(data.drives || []);
-                if (options.showStatus) setDriveStatus('Drive list refreshed.', 'success');
+                if (options.showStatus) setDriveStatus(setupCopy.storage.driveListRefreshed, 'success');
                 if (refreshBtn) window.AsyncButtonState.success(refreshBtn);
             } catch (error) {
                 console.error('Error:', error);
-                showFormatError('Failed to load drives for formatting');
-                if (options.showStatus) setDriveStatus('Failed to refresh drives.', 'error');
+                showFormatError(setupCopy.storage.loadFormatDrivesFailed);
+                if (options.showStatus) setDriveStatus(setupCopy.storage.refreshDrivesFailed, 'error');
                 if (refreshBtn) window.AsyncButtonState.error(refreshBtn);
             }
         }
@@ -690,19 +860,19 @@ unmount the share, then restart SMB automatically."
             const refreshBtn = options.button || null;
             if (options.showStatus) {
                 hideMountError();
-                setMountStatus('Refreshing partitions…', 'info');
+                setMountStatus(setupCopy.storage.refreshingPartitions, 'info');
             }
             if (refreshBtn) window.AsyncButtonState.start(refreshBtn);
             try {
                 const { data } = await window.ApiClient.fetchJson('/api/setup/mount-drives');
                 populateMountDriveSelect(data.drives || []);
                 setManagedUnmountRetryState(false);
-                if (options.showStatus) setMountStatus('Partition list refreshed.', 'success');
+                if (options.showStatus) setMountStatus(setupCopy.storage.partitionListRefreshed, 'success');
                 if (refreshBtn) window.AsyncButtonState.success(refreshBtn);
             } catch (error) {
                 console.error('Error:', error);
-                showMountError('Failed to load NTFS drives for mounting');
-                if (options.showStatus) setMountStatus('Failed to refresh partitions.', 'error');
+                showMountError(setupCopy.storage.loadMountDrivesFailed);
+                if (options.showStatus) setMountStatus(setupCopy.storage.refreshPartitionsFailed, 'error');
                 if (refreshBtn) window.AsyncButtonState.error(refreshBtn);
             }
         }
@@ -730,34 +900,34 @@ unmount the share, then restart SMB automatically."
         async function formatDrive() {
             const formatBtn = document.getElementById('formatDriveBtn');
             const disk = document.getElementById('formatDriveSelect').value;
-            if (!disk) { showFormatError('Please select a drive first'); setDriveStatus('Please select a drive first.', 'warning'); return; }
+            if (!disk) { showFormatError(setupCopy.storage.selectDriveFirst); setDriveStatus(setupCopy.storage.selectDriveFirst, 'warning'); return; }
             window.AsyncButtonState.start(formatBtn);
-            setDriveStatus('Formatting drive…', 'info');
+            setDriveStatus(setupCopy.storage.formattingDrive, 'info');
             try {
                 await window.ApiClient.fetchJson('/api/setup/format', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ disk }) });
                 window.AsyncButtonState.success(formatBtn);
                 localStorage.setItem('formatSuccess', '1');
                 nextStep();
                 hideFormatError();
-                setDriveStatus('Drive formatted successfully.', 'success');
+                setDriveStatus(setupCopy.storage.driveFormatted, 'success');
                 await loadDrives();
                 const formatSelect = document.getElementById('formatDriveSelect');
                 for (let i = 0; i < formatSelect.options.length; i++) { if (formatSelect.options[i].value === disk) { formatSelect.selectedIndex = i; break; } }
-            } catch (error) { window.AsyncButtonState.error(formatBtn); setDriveStatus('Failed to format drive.', 'error'); showFormatError(error.message || 'An error occurred while formatting the drive', error.details, error.can_unmount); }
+            } catch (error) { window.AsyncButtonState.error(formatBtn); setDriveStatus(setupCopy.storage.formatDriveFailed, 'error'); showFormatError(error.message || setupCopy.storage.formatDriveError, error.details, error.can_unmount); }
         }
 
         async function unmountDrive() {
             const unmountBtn = document.getElementById('unmountDriveBtn');
             const disk = document.getElementById('formatDriveSelect').value;
-            if (!disk) { showFormatError('Please select a drive first'); setDriveStatus('Please select a drive first.', 'warning'); return; }
+            if (!disk) { showFormatError(setupCopy.storage.selectDriveFirst); setDriveStatus(setupCopy.storage.selectDriveFirst, 'warning'); return; }
             window.AsyncButtonState.start(unmountBtn);
-            setDriveStatus('Unmounting drive…', 'info');
+            setDriveStatus(setupCopy.storage.unmountingDrive, 'info');
             try {
                 await window.ApiClient.fetchJson('/api/setup/unmount', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ disk }) });
                 // Keep this message explicit because setup unmount only affects
                 // live mounts. Backup-drive settings are applied later.
-                window.AsyncButtonState.success(unmountBtn); hideFormatError(); setDriveStatus('Drive unmounted. You can continue formatting.', 'success'); await loadDrives(); const formatSelect = document.getElementById('formatDriveSelect'); for (let i = 0; i < formatSelect.options.length; i++) { if (formatSelect.options[i].value === disk) { formatSelect.selectedIndex = i; break; } }
-            } catch (error) { window.AsyncButtonState.error(unmountBtn); setDriveStatus('Failed to unmount drive.', 'error'); showFormatError(error.message || 'An error occurred while unmounting the drive', error.details); }
+                window.AsyncButtonState.success(unmountBtn); hideFormatError(); setDriveStatus(setupCopy.storage.driveUnmountedForFormat, 'success'); await loadDrives(); const formatSelect = document.getElementById('formatDriveSelect'); for (let i = 0; i < formatSelect.options.length; i++) { if (formatSelect.options[i].value === disk) { formatSelect.selectedIndex = i; break; } }
+            } catch (error) { window.AsyncButtonState.error(unmountBtn); setDriveStatus(setupCopy.storage.unmountDriveFailed, 'error'); showFormatError(error.message || setupCopy.storage.unmountDriveError, error.details); }
         }
 
         function showFormatError(error, details = null) {
@@ -784,13 +954,14 @@ unmount the share, then restart SMB automatically."
             const mountBtn = document.getElementById('mountDriveBtn');
             const partition = document.getElementById('mountDriveSelect').value;
             const mountPoint = document.getElementById('mountPoint').value;
-            if (!partition) { showMountError('Please select a drive to mount'); setMountStatus('Please select a drive.', 'warning'); return; }
+            if (!partition) { showMountError(setupCopy.storage.selectDriveToMount); setMountStatus(setupCopy.storage.selectDriveShort, 'warning'); return; }
             window.AsyncButtonState.start(mountBtn);
-            setMountStatus('Mounting drive…', 'info');
+            setMountStatus(setupCopy.storage.mountingDrive, 'info');
             try {
                 await window.ApiClient.fetchJson('/api/setup/mount', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ partition, mount_point: mountPoint }) });
-                window.AsyncButtonState.success(mountBtn); localStorage.setItem('mountSuccess', '1'); nextStep(); hideMountError(); setMountStatus('Drive mounted successfully.', 'success'); await loadDrives();
-            } catch (error) { window.AsyncButtonState.error(mountBtn); setMountStatus('Failed to mount drive.', 'error'); showMountError(error.message || 'An error occurred while mounting the drive', error.details); }
+                window.AsyncButtonState.success(mountBtn); localStorage.setItem('mountSuccess', '1'); nextStep(); hideMountError(); setMountStatus(setupCopy.storage.driveMounted, 'success'); await loadDrives();
+                refreshSetupReadiness();
+            } catch (error) { window.AsyncButtonState.error(mountBtn); setMountStatus(setupCopy.storage.mountDriveFailed, 'error'); showMountError(error.message || setupCopy.storage.mountDriveError, error.details); }
         }
 
         async function saveExistingFolder() {
@@ -804,7 +975,7 @@ unmount the share, then restart SMB automatically."
             }
             if (!path) {
                 if (errorDiv) {
-                    errorDiv.textContent = 'Enter the folder path to use for storage.';
+                    errorDiv.textContent = setupCopy.storage.existingFolderRequired;
                     errorDiv.classList.remove('d-none');
                 }
                 return;
@@ -819,10 +990,11 @@ unmount the share, then restart SMB automatically."
                 window.AsyncButtonState.success(saveBtn);
                 localStorage.setItem('storageSuccess', '1');
                 goToCloudBackupStep();
+                refreshSetupReadiness();
             } catch (error) {
                 window.AsyncButtonState.error(saveBtn);
                 if (errorDiv) {
-                    errorDiv.textContent = error.message || 'Could not use this folder.';
+                    errorDiv.textContent = error.message || setupCopy.storage.existingFolderFailed;
                     errorDiv.classList.remove('d-none');
                 }
             }
@@ -838,6 +1010,7 @@ unmount the share, then restart SMB automatically."
                 startPath: pathInput.value.trim() || '/',
                 canCreate: false,
                 showFiles: true,
+                copy: setupCopy.folderPicker.local,
                 onSelect: (folderPath) => {
                     pathInput.value = folderPath;
                     if (errorDiv) {
@@ -861,21 +1034,21 @@ unmount the share, then restart SMB automatically."
             const retryManagedBtn = document.getElementById('retryManagedUnmountBtn');
             const activeBtn = forceManaged ? retryManagedBtn : unmountMountBtn;
             const partition = document.getElementById('mountDriveSelect').value;
-            if (!partition) { showMountError('Please select a drive'); setMountStatus('Please select a drive.', 'warning'); return; }
+            if (!partition) { showMountError(setupCopy.storage.selectDriveShort); setMountStatus(setupCopy.storage.selectDriveShort, 'warning'); return; }
             window.AsyncButtonState.start(activeBtn);
-            setMountStatus(forceManaged ? 'Retrying with the SMB-safe unmount path…' : 'Unmounting drive…', 'info');
+            setMountStatus(forceManaged ? setupCopy.storage.retryManagedUnmount : setupCopy.storage.unmountingDrive, 'info');
             try {
                 await window.ApiClient.fetchJson('/api/setup/unmount', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ partition, force_managed: forceManaged }) });
                 // This stays temporary on purpose so only a successful mount step
                 // changes the backup-drive settings.
                 window.AsyncButtonState.success(activeBtn);
                 hideMountError();
-                setMountStatus('Drive unmounted. You can continue mounting the selected partition.', 'success');
+                setMountStatus(setupCopy.storage.driveUnmountedForMount, 'success');
                 await loadDrives();
             } catch (error) {
                 window.AsyncButtonState.error(activeBtn);
-                setMountStatus('Failed to unmount drive.', 'error');
-                showMountError(error.message || 'An error occurred while unmounting the drive', error.details, { canRetryManagedUnmount: !!error.can_retry_managed_unmount });
+                setMountStatus(setupCopy.storage.unmountDriveFailed, 'error');
+                showMountError(error.message || setupCopy.storage.unmountDriveError, error.details, { canRetryManagedUnmount: !!error.can_retry_managed_unmount });
             }
         }
 
@@ -896,37 +1069,39 @@ unmount the share, then restart SMB automatically."
         async function setupEmail() {
             hideError('emailError');
             const valid = [validateEmail(), validateFromAddress(), validateSmtpServer(), validateSmtpPort(), validateSmtpUsername(), validateSmtpPassword()];
-            if (valid.includes(false)) { showError('Please correct the highlighted fields.', 'emailError'); return; }
+            if (valid.includes(false)) { showError(setupCopy.alerts.correctFields, 'emailError'); return; }
             const email = document.getElementById('emailAddress').value;
             const fromAddress = document.getElementById('fromAddress').value;
             const smtpServer = document.getElementById('smtpServer').value;
             const smtpPort = document.getElementById('smtpPort').value;
             const smtpUsername = document.getElementById('smtpUsername').value;
             const smtpPassword = document.getElementById('smtpPassword').value;
-            if (!email || !fromAddress || !smtpServer || !smtpPort || !smtpUsername || !smtpPassword) { showError('Please fill in all email fields', 'emailError'); return; }
+            if (!email || !fromAddress || !smtpServer || !smtpPort || !smtpUsername || !smtpPassword) { showError(setupCopy.alerts.allEmailFieldsRequired, 'emailError'); return; }
             try {
                 await window.ApiClient.fetchJson('/api/setup/email', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ emailAddress: email, fromAddress, smtpServer, smtpPort, smtpUsername, smtpPassword }) });
                 nextStep();
-            } catch (error) { showError('Error setting up email: ' + (error.message || 'An error occurred while setting up email'), 'emailError'); }
+                refreshSetupReadiness();
+            } catch (error) { showError(setupCopy.alerts.setupEmailPrefix + (error.message || setupCopy.alerts.setupEmailFallback), 'emailError'); }
         }
 
         // --- Schedule ---
         async function saveSchedule() {
             hideError();
             const valid = [validateBackupTime(), validateBandwidthLimit()];
-            if (valid.includes(false)) { showError('Please correct the highlighted fields.'); return; }
+            if (valid.includes(false)) { showError(setupCopy.schedule.correctFields); return; }
             const time = document.getElementById('backupTime').value;
             const bandwidthLimit = document.getElementById('bandwidthLimit').value;
-            if (!time) { showError('Please select a backup time.'); return; }
+            if (!time) { showError(setupCopy.schedule.selectBackupTime); return; }
             const saveBtn = document.querySelector('button[onclick="saveSchedule()"]');
             window.AsyncButtonState.start(saveBtn);
             try {
                 await window.ApiClient.fetchJson('/api/setup/schedule', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ time, bandwidth_limit: bandwidthLimit }) });
+                refreshSetupReadiness();
                 hideError();
                 const completed = await completeSetup();
                 if (completed) window.AsyncButtonState.success(saveBtn);
                 else window.AsyncButtonState.error(saveBtn);
-            } catch (error) { window.AsyncButtonState.error(saveBtn); showError('Error saving schedule: ' + (error.message || error)); }
+            } catch (error) { window.AsyncButtonState.error(saveBtn); showError(setupCopy.schedule.saveSchedulePrefix + (error.message || error)); }
         }
 
         async function skipCloudBackup() {
@@ -936,11 +1111,12 @@ unmount the share, then restart SMB automatically."
                 await window.ApiClient.fetchJson('/api/setup/cloud-backup/skip', { method: 'POST' });
                 window.AsyncButtonState.success(skipBtn);
                 nextStep();
+                refreshSetupReadiness();
             } catch (error) {
                 window.AsyncButtonState.error(skipBtn);
                 const backupConfigError = document.getElementById('backupConfigError');
                 if (backupConfigError) {
-                    backupConfigError.textContent = error.message || 'Could not skip cloud backup.';
+                    backupConfigError.textContent = error.message || setupCopy.cloudBackup.skipFailed;
                     backupConfigError.classList.remove('d-none');
                 }
             }
@@ -951,23 +1127,7 @@ unmount the share, then restart SMB automatically."
 
         function formatSetupFieldLabel(field) {
             const normalized = String(field || '').replace(/^Missing\s+/, '').trim();
-            const labels = {
-                'backup.email_address': 'backup alert email address',
-                'backup.mount_point': 'storage location',
-                'backup.uuid': 'managed drive selection',
-                'storage.mode': 'storage choice',
-                'storage.path': 'storage folder',
-                'storage.storage_id': 'storage marker',
-                'email.email_from_address': 'email sender address',
-                'email.smtp_server': 'SMTP server',
-                'email.smtp_port': 'SMTP port',
-                'email.smtp_user': 'SMTP username',
-                'email.smtp_password': 'SMTP password',
-                'schedule.backup_cloud_time': 'cloud backup schedule',
-                'schedule.bandwidth_limit': 'bandwidth limit',
-                'system.server_name': 'server name',
-                'user.username': 'admin username'
-            };
+            const labels = setupCopy.completion.fieldLabels;
 
             if (labels[normalized]) return labels[normalized];
 
@@ -979,12 +1139,12 @@ unmount the share, then restart SMB automatically."
             const details = Array.isArray(problem.details) ? problem.details : [];
             if (details.length > 0) {
                 const labels = details.map(formatSetupFieldLabel);
-                return 'Setup is still missing: ' + labels.join(', ') + '.';
+                return setupCopy.completion.missingPrefix + labels.join(', ') + setupCopy.completion.missingSuffix;
             }
             if (problem.detail === 'Missing required fields') {
-                return 'Setup is still missing a few required details.';
+                return setupCopy.completion.missingRequired;
             }
-            return problem.detail || problem.message || 'Could not complete setup.';
+            return problem.detail || problem.message || setupCopy.completion.failed;
         }
 
         async function completeSetup() {
@@ -1003,7 +1163,7 @@ unmount the share, then restart SMB automatically."
         async function createUser() {
             hideError('adminError');
             const valid = [validateUsername(), validateServerName(), validatePassword(), validateConfirmPassword()];
-            if (valid.includes(false)) { showError('Please correct the highlighted fields.', 'adminError'); return; }
+            if (valid.includes(false)) { showError(setupCopy.admin.correctFields, 'adminError'); return; }
             const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
             const serverName = document.getElementById('serverName').value;
@@ -1013,23 +1173,24 @@ unmount the share, then restart SMB automatically."
                 await window.ApiClient.fetchJson('/api/setup/user', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
             } catch (error) {
                 window.AsyncButtonState.error(createUserBtn);
-                showError('Error creating user: ' + (error.message || 'An error occurred while creating the user'), 'adminError');
+                showError(setupCopy.admin.createUserPrefix + (error.message || setupCopy.admin.createUserFallback), 'adminError');
                 return;
             }
             try {
-                await window.ApiClient.fetchJson('/api/setup/system', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, server_name: serverName }) });
+                await window.ApiClient.fetchJson('/api/setup/system', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ server_name: serverName }) });
             } catch (error) {
                 window.AsyncButtonState.error(createUserBtn);
-                showError('Error configuring system: ' + (error.message || 'An error occurred while configuring the system'), 'adminError');
+                showError(setupCopy.admin.configureSystemPrefix + (error.message || setupCopy.admin.configureSystemFallback), 'adminError');
                 return;
             }
             window.AsyncButtonState.success(createUserBtn);
             nextStep();
+            refreshSetupReadiness();
         }
 
         function showPersistentStepSuccess() {
-            if (currentStep === 2 && localStorage.getItem('formatSuccess') === '1') setDriveStatus('Drive formatted successfully.', 'success');
-            if (currentStep === 3 && localStorage.getItem('mountSuccess') === '1') setMountStatus('Drive mounted successfully.', 'success');
+            if (currentStep === 2 && localStorage.getItem('formatSuccess') === '1') setDriveStatus(setupCopy.storage.driveFormatted, 'success');
+            if (currentStep === 3 && localStorage.getItem('mountSuccess') === '1') setMountStatus(setupCopy.storage.driveMounted, 'success');
         }
 
         function showError(message, errorDivId = 'scheduleError') {

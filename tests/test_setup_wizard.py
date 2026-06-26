@@ -8,8 +8,15 @@ from unittest.mock import MagicMock, patch
 
 from flask import Flask
 
-from simple_safer_server.services.cloud_backup_service import MegaFolderList
+from simple_safer_server.core.module_lifecycle import ownership_manifest_for_runtime
+from simple_safer_server.modules.cloud_backup import MegaFolderList
 from simple_safer_server.services.server_identity import ServerIdentityError
+
+
+def _tool_path(name):
+    if name == "update-ca-certificates":
+        return "/usr/sbin/update-ca-certificates"
+    return None
 
 
 class FakeCloudBackupService:
@@ -34,8 +41,8 @@ class FakeServerIdentityService:
     def __init__(self):
         self.calls = []
 
-    def update_server_name(self, server_name, restart_samba=True):
-        self.calls.append((server_name, restart_samba))
+    def save_server_name(self, server_name):
+        self.calls.append(server_name)
         if server_name == "bad name":
             raise ServerIdentityError(
                 "Server name may only contain letters, numbers, and hyphens, and cannot start or end with a hyphen."
@@ -55,6 +62,8 @@ class SetupWizardTests(unittest.TestCase):
         user_manager_module.UserManager = lambda runtime=None: types.SimpleNamespace(
             is_admin=lambda username: False,
         )
+        user_manager_module.admin_required = lambda route_handler: route_handler
+        user_manager_module.api_admin_required = lambda route_handler: route_handler
         smb_manager_module = types.ModuleType("smb_manager")
         smb_manager_module.SMBManager = lambda runtime=None: object()
         runtime_module = types.ModuleType("runtime")
@@ -70,7 +79,7 @@ class SetupWizardTests(unittest.TestCase):
                     "simple_safer_server.services.config_manager": config_manager_module,
                     "simple_safer_server.services.system_utils": system_utils_module,
                     "simple_safer_server.services.user_manager": user_manager_module,
-                    "simple_safer_server.services.smb_manager": smb_manager_module,
+                    "simple_safer_server.modules.file_sharing": smb_manager_module,
                     "simple_safer_server.services.runtime": runtime_module,
                 },
             )
@@ -92,9 +101,13 @@ class SetupWizardTests(unittest.TestCase):
         self.app.secret_key = 'test-secret'
         self.cloud_backup_service = FakeCloudBackupService()
         self.server_identity_service = FakeServerIdentityService()
+        self.runtime_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.runtime_dir.cleanup)
+        self.runtime = types.SimpleNamespace(data_dir=Path(self.runtime_dir.name), is_fake=False)
         self.app.extensions["simple_safer_server"] = types.SimpleNamespace(
             cloud_backup_service=self.cloud_backup_service,
             server_identity_service=self.server_identity_service,
+            runtime=self.runtime,
         )
         self.app.register_error_handler(
             self.setup_wizard.ApiProblem,
@@ -114,6 +127,26 @@ class SetupWizardTests(unittest.TestCase):
         self.assertIn("type", payload)
         return payload
 
+    def test_setup_wizard_does_not_create_services_at_import_time(self):
+        self.assertIsNone(self.setup_wizard.config_manager)
+        self.assertIsNone(self.setup_wizard.user_manager)
+        self.assertIsNone(self.setup_wizard.server_identity_service)
+
+    def test_first_run_setup_api_does_not_construct_user_manager_for_access_check(self):
+        config_manager = MagicMock()
+        config_manager.is_setup_complete.return_value = False
+        user_manager_factory = MagicMock(side_effect=AssertionError("user manager not needed"))
+
+        with (
+            patch.object(self.setup_wizard, "config_manager", config_manager),
+            patch.object(self.setup_wizard, "UserManager", user_manager_factory),
+            self.app.test_client() as client,
+        ):
+            response = client.post("/api/setup/user", json={"username": "admin"})
+
+        self.assertEqual(response.status_code, 400)
+        user_manager_factory.assert_not_called()
+
     def test_list_format_drives_uses_broad_disk_scan(self):
         with (
             patch.object(
@@ -128,7 +161,7 @@ class SetupWizardTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertDataResponse(response, {"drives": [{"path": "/dev/sdb", "partitions": []}]})
         mock_get_available_backup_drives.assert_called_once_with(
-            runtime=self.setup_wizard.runtime,
+            runtime=self.runtime,
             ntfs_only=False,
         )
 
@@ -146,7 +179,7 @@ class SetupWizardTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertDataResponse(response, {"drives": [{"path": "/dev/sdb", "partitions": []}]})
         mock_get_available_backup_drives.assert_called_once_with(
-            runtime=self.setup_wizard.runtime,
+            runtime=self.runtime,
             ntfs_only=True,
         )
 
@@ -257,7 +290,10 @@ class SetupWizardTests(unittest.TestCase):
         )
 
     def test_setup_mega_save_delegates_to_cloud_backup_service(self):
-        with self.app.test_client() as client:
+        with (
+            patch("simple_safer_server.core.module_checks.shutil.which", return_value="/usr/bin/rclone"),
+            self.app.test_client() as client,
+        ):
             response = client.post(
                 "/api/setup/mega/save",
                 json={"email": "user@example.com", "password": "secret", "folder": "/Backups"},
@@ -278,9 +314,17 @@ class SetupWizardTests(unittest.TestCase):
                 )
             ],
         )
+        records = ownership_manifest_for_runtime(self.runtime).list_records()
+        self.assertEqual(
+            [record.identifier for record in records],
+            ['/etc/SimpleSaferServer/rclone/rclone.conf'],
+        )
 
     def test_setup_rclone_delegates_to_cloud_backup_service(self):
-        with self.app.test_client() as client:
+        with (
+            patch("simple_safer_server.core.module_checks.shutil.which", return_value="/usr/bin/rclone"),
+            self.app.test_client() as client,
+        ):
             response = client.post(
                 "/api/setup/rclone",
                 json={"config": "[remote]\ntype = test\n", "remote_name": "remote:/Backups"},
@@ -299,6 +343,11 @@ class SetupWizardTests(unittest.TestCase):
                     },
                 )
             ],
+        )
+        records = ownership_manifest_for_runtime(self.runtime).list_records()
+        self.assertEqual(
+            [record.identifier for record in records],
+            ['/etc/SimpleSaferServer/rclone/rclone.conf'],
         )
 
     def test_setup_api_requires_admin_after_setup_is_complete(self):
@@ -323,80 +372,46 @@ class SetupWizardTests(unittest.TestCase):
         mock_get_available_backup_drives.assert_not_called()
 
     def test_setup_unmount_offers_managed_retry_after_busy_partition_unmount(self):
-        managed_config = MagicMock()
-        managed_config.is_setup_complete.return_value = False
-        managed_config.get_value.side_effect = ['/media/backup', 'UUID-1']
+        helper = MagicMock()
+        helper.run.return_value = types.SimpleNamespace(data={'can_retry_managed_unmount': True})
+        self.app.extensions["simple_safer_server"].privileged_actions = helper
 
-        with patch.object(self.setup_wizard, 'config_manager', managed_config):
-            with patch.object(
-                self.setup_wizard,
-                'unmount_selected_partition',
-                side_effect=self.setup_wizard.BackupDriveSetupError(
-                    'Failed to unmount partition: target is busy'
-                ),
-            ) as mock_unmount_selected:
-                with patch.object(
-                    self.setup_wizard,
-                    'is_selected_partition_managed_backup_drive',
-                    return_value=True,
-                ) as mock_is_managed:
-                    with self.app.test_client() as client:
-                        response = client.post(
-                            '/api/setup/unmount', json={'partition': '/dev/sdb1'}
-                        )
+        with self.app.test_client() as client:
+            response = client.post('/api/setup/unmount', json={'partition': '/dev/sdb1'})
 
         self.assertEqual(response.status_code, 400)
         data = self.assertProblemDetail(response, self.setup_wizard.MANAGED_UNMOUNT_RETRY_ERROR)
         self.assertEqual(data['details'], self.setup_wizard.MANAGED_UNMOUNT_RETRY_DETAILS)
         self.assertEqual(data['can_retry_managed_unmount'], True)
-        mock_unmount_selected.assert_called_once_with(
-            '/dev/sdb1', runtime=self.setup_wizard.runtime
-        )
-        mock_is_managed.assert_called_once_with(
-            '/dev/sdb1',
-            '/media/backup',
-            'UUID-1',
-            self.setup_wizard.system_utils,
-            runtime=self.setup_wizard.runtime,
+        helper.run.assert_called_once_with(
+            'storage.unmount',
+            {'disk': '', 'partition': '/dev/sdb1', 'force_managed': False},
         )
 
     def test_setup_unmount_can_retry_with_managed_backup_path(self):
-        managed_config = MagicMock()
-        managed_config.is_setup_complete.return_value = False
-        managed_config.get_value.side_effect = ['/media/backup', 'UUID-1']
+        helper = MagicMock()
+        helper.run.return_value = types.SimpleNamespace(
+            data={
+                'message': (
+                    'Drive unmounted after the SMB-safe retry temporarily stopped SMB access '
+                    'and related background backup tasks.'
+                )
+            }
+        )
+        self.app.extensions["simple_safer_server"].privileged_actions = helper
 
-        with patch.object(self.setup_wizard, 'config_manager', managed_config):
-            with patch.object(
-                self.setup_wizard,
-                'is_selected_partition_managed_backup_drive',
-                return_value=True,
-            ) as mock_is_managed:
-                with patch.object(
-                    self.setup_wizard,
-                    'unmount_managed_backup_drive',
-                ) as mock_unmount_managed:
-                    with self.app.test_client() as client:
-                        response = client.post(
-                            '/api/setup/unmount',
-                            json={'partition': '/dev/sdb1', 'force_managed': True},
-                        )
+        with self.app.test_client() as client:
+            response = client.post(
+                '/api/setup/unmount',
+                json={'partition': '/dev/sdb1', 'force_managed': True},
+            )
 
         self.assertEqual(response.status_code, 200)
         self.assertDataResponse(response)
         self.assertIn('SMB-safe retry', response.get_json()['message'])
-        mock_is_managed.assert_called_once_with(
-            '/dev/sdb1',
-            '/media/backup',
-            'UUID-1',
-            self.setup_wizard.system_utils,
-            runtime=self.setup_wizard.runtime,
-        )
-        mock_unmount_managed.assert_called_once_with(
-            '/media/backup',
-            'UUID-1',
-            self.setup_wizard.system_utils,
-            runtime=self.setup_wizard.runtime,
-            power_down=False,
+        helper.run.assert_called_once_with(
+            'storage.unmount',
+            {'disk': '', 'partition': '/dev/sdb1', 'force_managed': True},
         )
 
     def test_mount_drive_returns_400_when_body_is_missing(self):
@@ -433,89 +448,39 @@ class SetupWizardTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertProblemDetail(response, 'partition is required')
 
-    # ------------------------------------------------------------------
-    # get_partition_node helper — NVMe/MMC partition naming
-    # ------------------------------------------------------------------
-
-    def test_get_partition_node_standard_sata_disk(self):
-        # /dev/sdb ends with a letter, so the partition is just /dev/sdb1.
-        self.assertEqual(self.setup_wizard.get_partition_node('/dev/sdb'), '/dev/sdb1')
-
-    def test_get_partition_node_raises_value_error_for_none(self):
-        # The helper documents that None is invalid input.
-        with self.assertRaises(ValueError):
-            self.setup_wizard.get_partition_node(None)
-
-    def test_get_partition_node_raises_value_error_for_empty_string(self):
-        # The helper documents that an empty device path is invalid input.
-        with self.assertRaises(ValueError):
-            self.setup_wizard.get_partition_node('')
-
-    def test_get_partition_node_raises_value_error_for_non_string(self):
-        # Non-string truthy values must raise ValueError, not TypeError.
-        with self.assertRaises(ValueError):
-            self.setup_wizard.get_partition_node(123)
-
-    def test_get_partition_node_nvme_disk(self):
-        # NVMe paths end with a digit (/dev/nvme0n1), so a 'p' separator is
-        # needed to produce /dev/nvme0n1p1.
-        self.assertEqual(self.setup_wizard.get_partition_node('/dev/nvme0n1'), '/dev/nvme0n1p1')
-
-    def test_get_partition_node_mmc_disk(self):
-        # MMC/SD-card paths also end with a digit (/dev/mmcblk0).
-        self.assertEqual(self.setup_wizard.get_partition_node('/dev/mmcblk0'), '/dev/mmcblk0p1')
-
-    def test_get_partition_node_loop_device(self):
-        # Loop devices end with a digit too (/dev/loop0).
-        self.assertEqual(self.setup_wizard.get_partition_node('/dev/loop0'), '/dev/loop0p1')
-
-    def test_get_partition_node_sda_disk(self):
-        # Another standard disk to confirm the letter-ending branch.
-        self.assertEqual(self.setup_wizard.get_partition_node('/dev/sda'), '/dev/sda1')
-
-    def test_setup_smb_share_uses_shared_manager_logic(self):
-        smb_manager = MagicMock()
-        user_manager = MagicMock()
-        user_manager.users = {'admin': {}}
-        user_manager.user_exists_in_samba.return_value = True
-
-        with patch.object(self.setup_wizard, 'smb_manager', smb_manager):
-            with patch.object(self.setup_wizard, 'user_manager', user_manager):
-                ok, err = self.setup_wizard.setup_smb_share(
-                    {
-                        'backup': {'mount_point': '/media/backup'},
-                        'system': {'username': 'admin'},
-                    }
-                )
-
-        self.assertTrue(ok)
-        self.assertIsNone(err)
-        user_manager.reload_users.assert_called_once_with()
-        smb_manager.ensure_default_backup_share.assert_called_once_with('/media/backup', 'admin')
-
-    def test_setup_smb_share_surfaces_unmanaged_backup_guidance(self):
-        smb_manager = MagicMock()
-        smb_manager.ensure_default_backup_share.side_effect = ValueError(
-            'Samba share "backup" already exists. Rename or remove it, then retry.'
+    def test_mount_drive_uses_privileged_managed_drive_action(self):
+        helper = MagicMock()
+        helper.run.return_value = types.SimpleNamespace(
+            data={
+                'message': 'Successfully configured /dev/sdb1 at /media/backup',
+                'mount_point': '/media/backup',
+            }
         )
-        user_manager = MagicMock()
-        user_manager.users = {'admin': {}}
-        user_manager.user_exists_in_samba.return_value = True
+        self.app.extensions["simple_safer_server"].privileged_actions = helper
 
-        with patch.object(self.setup_wizard, 'smb_manager', smb_manager):
-            with patch.object(self.setup_wizard, 'user_manager', user_manager):
-                ok, err = self.setup_wizard.setup_smb_share(
-                    {
-                        'backup': {'mount_point': '/media/backup'},
-                        'system': {'username': 'admin'},
-                    }
-                )
+        with self.app.test_client() as client:
+            response = client.post(
+                '/api/setup/mount',
+                json={
+                    'partition': '/dev/sdb1',
+                    'mount_point': '/media/backup',
+                    'ntfs_driver': 'ntfs3',
+                },
+            )
 
-        self.assertFalse(ok)
+        self.assertEqual(response.status_code, 200)
         self.assertEqual(
-            err, 'Samba share "backup" already exists. Rename or remove it, then retry.'
+            response.get_json()['message'],
+            'Successfully configured /dev/sdb1 at /media/backup',
         )
-        user_manager.reload_users.assert_called_once_with()
+        helper.run.assert_called_once_with(
+            'storage.managed-drive',
+            {
+                'partition': '/dev/sdb1',
+                'mount_point': '/media/backup',
+                'ntfs_driver': 'ntfs3',
+            },
+        )
 
     # ------------------------------------------------------------------
     # format_drive — disk path validation, partprobe, and partition poll
@@ -570,36 +535,27 @@ class SetupWizardTests(unittest.TestCase):
     def test_setup_system_info_updates_server_identity(self):
         config_manager = MagicMock()
         config_manager.is_setup_complete.return_value = False
-        config_manager.get_value.return_value = 'admin'
-        user_manager = MagicMock()
-        user_manager.users = {'admin': {'is_admin': True}}
 
         with patch.object(self.setup_wizard, 'config_manager', config_manager):
-            with patch.object(self.setup_wizard, 'user_manager', user_manager):
-                with self.app.test_client() as client:
-                    response = client.post(
-                        '/api/setup/system',
-                        json={'username': 'admin', 'server_name': 'simple-safer'},
-                    )
+            with self.app.test_client() as client:
+                response = client.post(
+                    '/api/setup/system',
+                    json={'server_name': 'simple-safer'},
+                )
 
         self.assertEqual(response.status_code, 200)
-        user_manager.reload_users.assert_called_once_with()
-        self.assertEqual(self.server_identity_service.calls, [('simple-safer', False)])
+        self.assertEqual(self.server_identity_service.calls, ['simple-safer'])
 
     def test_setup_system_info_rejects_invalid_server_name(self):
         config_manager = MagicMock()
         config_manager.is_setup_complete.return_value = False
-        config_manager.get_value.return_value = 'admin'
-        user_manager = MagicMock()
-        user_manager.users = {'admin': {'is_admin': True}}
 
         with patch.object(self.setup_wizard, 'config_manager', config_manager):
-            with patch.object(self.setup_wizard, 'user_manager', user_manager):
-                with self.app.test_client() as client:
-                    response = client.post(
-                        '/api/setup/system',
-                        json={'username': 'admin', 'server_name': 'bad name'},
-                    )
+            with self.app.test_client() as client:
+                response = client.post(
+                    '/api/setup/system',
+                    json={'server_name': 'bad name'},
+                )
 
         self.assertEqual(response.status_code, 400)
         self.assertProblemDetail(
@@ -607,32 +563,37 @@ class SetupWizardTests(unittest.TestCase):
             'Server name may only contain letters, numbers, and hyphens, and cannot start or end with a hyphen.',
         )
 
-    def test_setup_system_info_rejects_username_that_does_not_match_created_admin(self):
-        config_manager = MagicMock()
-        config_manager.is_setup_complete.return_value = False
-        config_manager.get_value.return_value = 'admin'
-        user_manager = MagicMock()
-        user_manager.users = {'admin': {'is_admin': True}}
+    def test_setup_email_rejects_out_of_range_smtp_port(self):
+        helper = MagicMock()
+        self.app.extensions["simple_safer_server"].privileged_actions = helper
 
-        with patch.object(self.setup_wizard, 'config_manager', config_manager):
-            with patch.object(self.setup_wizard, 'user_manager', user_manager):
-                with self.app.test_client() as client:
-                    response = client.post(
-                        '/api/setup/system',
-                        json={'username': 'different', 'server_name': 'simple-safer'},
-                    )
+        with self.app.test_client() as client:
+            response = client.post(
+                '/api/setup/email',
+                json={
+                    'emailAddress': 'admin@example.com',
+                    'fromAddress': 'server@example.com',
+                    'smtpServer': 'smtp.example.com',
+                    'smtpPort': '65536',
+                    'smtpUsername': 'server',
+                    'smtpPassword': 'secret',
+                },
+            )
 
         self.assertEqual(response.status_code, 400)
-        user_manager.reload_users.assert_called_once_with()
-        self.assertProblemDetail(
-            response, 'Username must match the admin account created during setup'
-        )
-        config_manager.set_value.assert_not_called()
+        self.assertProblemDetail(response, 'SMTP port must be between 1 and 65535')
+        helper.run.assert_not_called()
 
-    def test_setup_email_rejects_out_of_range_smtp_port(self):
-        system_utils = MagicMock()
+    def test_setup_email_writes_trimmed_smtp_port(self):
+        helper = MagicMock()
+        self.app.extensions["simple_safer_server"].privileged_actions = helper
+        config_manager = MagicMock()
+        config_manager.is_setup_complete.return_value = False
 
-        with patch.object(self.setup_wizard, 'system_utils', system_utils):
+        with (
+            patch.object(self.setup_wizard, 'config_manager', config_manager),
+            patch("simple_safer_server.core.module_checks.shutil.which", _tool_path),
+        ):
             with self.app.test_client() as client:
                 response = client.post(
                     '/api/setup/email',
@@ -640,41 +601,58 @@ class SetupWizardTests(unittest.TestCase):
                         'emailAddress': 'admin@example.com',
                         'fromAddress': 'server@example.com',
                         'smtpServer': 'smtp.example.com',
-                        'smtpPort': '65536',
+                        'smtpPort': ' 587 ',
                         'smtpUsername': 'server',
                         'smtpPassword': 'secret',
                     },
                 )
 
-        self.assertEqual(response.status_code, 400)
-        self.assertProblemDetail(response, 'SMTP port must be between 1 and 65535')
-        system_utils.write_msmtp_config.assert_not_called()
-
-    def test_setup_email_writes_trimmed_smtp_port(self):
-        system_utils = MagicMock()
-        system_utils.write_msmtp_config.return_value = True
-        config_manager = MagicMock()
-        config_manager.is_setup_complete.return_value = False
-
-        with patch.object(self.setup_wizard, 'system_utils', system_utils):
-            with patch.object(self.setup_wizard, 'config_manager', config_manager):
-                with self.app.test_client() as client:
-                    response = client.post(
-                        '/api/setup/email',
-                        json={
-                            'emailAddress': 'admin@example.com',
-                            'fromAddress': 'server@example.com',
-                            'smtpServer': 'smtp.example.com',
-                            'smtpPort': ' 587 ',
-                            'smtpUsername': 'server',
-                            'smtpPassword': 'secret',
-                        },
-                    )
-
         self.assertEqual(response.status_code, 200)
-        system_utils.write_msmtp_config.assert_called_once_with(
-            'server@example.com', 'smtp.example.com', '587', 'server', 'secret'
+        helper.run.assert_called_once_with(
+            'alerts.write-smtp-config',
+            {
+                'from_address': 'server@example.com',
+                'smtp_server': 'smtp.example.com',
+                'smtp_port': '587',
+                'smtp_username': 'server',
+                'smtp_password': 'secret',
+            },
         )
+        records = ownership_manifest_for_runtime(self.runtime).list_records()
+        self.assertEqual(
+            [record.identifier for record in records],
+            ['<config>/smtp.conf', '<config>/alerts.json'],
+        )
+
+    def test_setup_email_runs_module_preflight_before_helper(self):
+        helper = MagicMock()
+        self.app.extensions["simple_safer_server"].privileged_actions = helper
+
+        with (
+            patch.object(self.setup_wizard, "config_manager") as config_manager,
+            patch.object(
+                self.setup_wizard,
+                "ensure_module_can_apply",
+                side_effect=self.setup_wizard.ModuleLifecycleError("Alerts cannot be applied."),
+            ),
+            self.app.test_client() as client,
+        ):
+            config_manager.is_setup_complete.return_value = False
+            response = client.post(
+                "/api/setup/email",
+                json={
+                    "emailAddress": "admin@example.com",
+                    "fromAddress": "server@example.com",
+                    "smtpServer": "smtp.example.com",
+                    "smtpPort": "587",
+                    "smtpUsername": "server",
+                    "smtpPassword": "secret",
+                },
+            )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertTrue(response.get_json()["type"].endswith("#module-setup-required"))
+        helper.run.assert_not_called()
 
     def test_setup_schedule_rejects_single_digit_hour(self):
         config_manager = MagicMock()
@@ -704,6 +682,7 @@ class SetupWizardTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         config_manager.set_value.assert_any_call('schedule', 'backup_cloud_time', '07:05')
+        config_manager.set_value.assert_any_call('schedule', 'configured', 'true')
         config_manager.set_value.assert_any_call('backup', 'bandwidth_limit', '4M')
 
     def test_setup_schedule_requires_time(self):
@@ -728,6 +707,7 @@ class SetupWizardTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         config_manager.set_value.assert_any_call('backup', 'cloud_enabled', 'false')
+        config_manager.set_value.assert_any_call('backup', 'cloud_skipped', 'true')
         config_manager.set_value.assert_any_call('backup', 'cloud_mode', '')
         config_manager.set_value.assert_any_call('backup', 'rclone_dir', '')
 
@@ -746,23 +726,100 @@ class SetupWizardTests(unittest.TestCase):
                 'path': '/srv/storage',
                 'storage_id': 'storage-id',
             },
-            'schedule': {'backup_cloud_time': '03:00'},
+            'schedule': {'backup_cloud_time': '03:00', 'configured': 'true'},
         }
 
         with patch.object(self.setup_wizard, 'config_manager', config_manager):
-            with patch.object(
-                self.setup_wizard, 'install_systemd_tasks', return_value=(True, None)
-            ) as install_tasks:
-                with patch.object(
-                    self.setup_wizard, 'setup_smb_share', return_value=(True, None)
-                ) as setup_share:
-                    with self.app.test_client() as client:
-                        response = client.post('/api/setup/complete')
+            with self.app.test_client() as client:
+                response = client.post('/api/setup/complete')
 
         self.assertEqual(response.status_code, 200)
-        install_tasks.assert_called_once()
-        setup_share.assert_called_once()
         config_manager.mark_setup_complete.assert_called_once()
+
+    def test_complete_setup_requires_explicit_schedule_choice(self):
+        config_manager = MagicMock()
+        config_manager.is_setup_complete.return_value = False
+        config_manager.get_all_config.return_value = {
+            'system': {'username': 'admin', 'server_name': 'sss'},
+            'backup': {
+                'mount_point': '/media/backup',
+                'email_address': 'admin@example.com',
+                'cloud_enabled': 'false',
+            },
+            'storage': {
+                'mode': 'existing_folder',
+                'path': '/media/backup',
+                'storage_id': 'storage-id',
+            },
+            'schedule': {'backup_cloud_time': '03:00', 'configured': 'false'},
+        }
+
+        with patch.object(self.setup_wizard, 'config_manager', config_manager):
+            with self.app.test_client() as client:
+                response = client.post('/api/setup/complete')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertProblemDetail(response, 'Missing required fields')
+        self.assertEqual(response.get_json()['details'], ['Missing schedule.configured'])
+
+    def test_setup_readiness_returns_shared_checklist(self):
+        smtp_dir = Path(tempfile.mkdtemp())
+        smtp_path = smtp_dir / "smtp.conf"
+        self.addCleanup(lambda: smtp_dir.rmdir())
+        self.addCleanup(lambda: smtp_path.unlink(missing_ok=True))
+        smtp_path.write_text(
+            "\n".join(
+                [
+                    "host smtp.example.com",
+                    "port 587",
+                    "from sss@example.com",
+                    "user admin@example.com",
+                    "password secret",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        config_manager = MagicMock()
+        config_manager.is_setup_complete.return_value = False
+        config_manager.get_all_config.return_value = {
+            'system': {'username': 'admin', 'server_name': 'sss'},
+            'backup': {
+                'mount_point': '/media/backup',
+                'email_address': 'admin@example.com',
+                'from_address': 'sss@example.com',
+                'cloud_enabled': 'true',
+                'cloud_skipped': 'false',
+                'rclone_dir': 'mega:/Backups',
+            },
+            'storage': {
+                'mode': 'existing_folder',
+                'path': '/media/backup',
+                'storage_id': 'storage-id',
+            },
+            'schedule': {'backup_cloud_time': '03:00', 'configured': 'true'},
+        }
+        smb_manager = MagicMock()
+        smb_manager.list_managed_shares.return_value = [
+            {'name': 'backup', 'path': '/media/backup', 'managed': True}
+        ]
+        self.app.extensions["simple_safer_server"].config_manager = config_manager
+        self.app.extensions["simple_safer_server"].smb_manager = smb_manager
+        self.app.extensions["simple_safer_server"].runtime = types.SimpleNamespace(
+            smtp_config_path=smtp_path
+        )
+
+        with self.app.test_client() as client:
+            response = client.get('/api/setup/readiness')
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertIn('data', payload)
+        self.assertEqual(payload['data']['status'], 'complete')
+        self.assertEqual(payload['data']['completed_required_count'], 5)
+        self.assertEqual(
+            [item['key'] for item in payload['data']['items']],
+            ['storage', 'network_access', 'cloud_backup', 'alerts', 'schedule'],
+        )
 
     def test_format_drive_rejects_non_string_disk(self):
         # JSON clients can send numeric or other non-string values; reject cleanly.
@@ -781,352 +838,45 @@ class SetupWizardTests(unittest.TestCase):
         data = response.get_json()
         self.assertIn('string', data['detail'])
 
-    def test_format_drive_rejects_non_dev_path(self):
-        # Paths that resolve outside /dev/ must be rejected without touching the disk.
-        with patch('os.path.realpath', return_value='/tmp/evil'):
-            with self.app.test_client() as client:
-                response = self._post_format(client, '/tmp/evil')
-
-        data = response.get_json()
-        self.assertIn('/dev/', data['detail'])
-
-    def test_format_drive_rejects_nonexistent_device(self):
-        # A path under /dev/ that doesn't exist must be rejected.
-        with patch('os.path.realpath', return_value='/dev/sdb'):
-            with patch('os.stat', side_effect=FileNotFoundError):
-                with self.app.test_client() as client:
-                    response = self._post_format(client, '/dev/sdb')
-
-        data = response.get_json()
-        self.assertIn('does not exist', data['detail'])
-
-    def test_format_drive_rejects_non_block_device(self):
-        # A node that exists but is not a block device (e.g. /dev/null) must be rejected.
-        import stat as stat_module
-
-        non_block_stat = MagicMock()
-        non_block_stat.st_mode = stat_module.S_IFCHR | 0o666  # char device, not block
-
-        with patch('os.path.realpath', return_value='/dev/null'):
-            with patch('os.path.exists', return_value=True):
-                with patch('os.stat', return_value=non_block_stat):
-                    with self.app.test_client() as client:
-                        response = self._post_format(client, '/dev/null')
-
-        data = response.get_json()
-        self.assertIn('block device', data['detail'])
-
-    def test_format_drive_rejects_partition_node(self):
-        # Passing a partition (/dev/sda1) instead of a whole disk must be rejected.
-        import stat as stat_module
-
-        blk_stat = MagicMock()
-        blk_stat.st_mode = stat_module.S_IFBLK | 0o660
-
-        lsblk_result = MagicMock(returncode=0, stdout='part\n', stderr='')
-        with patch('os.path.realpath', return_value='/dev/sda1'):
-            with patch('os.path.exists', return_value=True):
-                with patch('os.stat', return_value=blk_stat):
-                    with patch.object(
-                        self.setup_wizard.setup_command_adapter,
-                        'whole_disk_type',
-                        return_value=lsblk_result,
-                    ):
-                        with self.app.test_client() as client:
-                            response = self._post_format(client, '/dev/sda1')
-
-        data = response.get_json()
-        self.assertIn('whole-disk', data['detail'])
-
-    def test_format_drive_handles_lsblk_not_found(self):
-        # If lsblk isn't installed, return a clear error rather than crashing.
-        import stat as stat_module
-
-        blk_stat = MagicMock()
-        blk_stat.st_mode = stat_module.S_IFBLK | 0o660
-
-        with patch('os.path.realpath', return_value='/dev/sdb'):
-            with patch('os.path.exists', return_value=True):
-                with patch('os.stat', return_value=blk_stat):
-                    with patch.object(
-                        self.setup_wizard.setup_command_adapter,
-                        'whole_disk_type',
-                        side_effect=FileNotFoundError,
-                    ):
-                        with self.app.test_client() as client:
-                            response = self._post_format(client, '/dev/sdb')
-
-        data = response.get_json()
-        self.assertIn('verify disk type', data['detail'])
-
-    def test_format_drive_partprobe_missing_is_non_fatal(self):
-        # OSError from partprobe (not installed, or permission denied) must not abort formatting.
-        import stat as stat_module
-
-        blk_stat = MagicMock()
-        blk_stat.st_mode = stat_module.S_IFBLK | 0o660
-
-        # lsblk succeeds -> disk is valid; sfdisk succeeds -> disk layout rebuilt;
-        # partprobe raises OSError (FileNotFoundError) → caught, logged at debug, not fatal;
-        # os.stat on partition shows a block device → poll succeeds immediately;
-        # mkfs.ntfs succeeds → overall success.
-        lsblk_ok = MagicMock(returncode=0, stdout='disk\n', stderr='')
-        partition_ok = MagicMock(returncode=0, stdout='', stderr='')
-        mkfs_ok = MagicMock(returncode=0, stdout='', stderr='')
-
-        partition_stat = MagicMock()
-        partition_stat.st_mode = stat_module.S_IFBLK | 0o660
-
-        def fake_os_stat(path):
-            # Partition node exists as a block device immediately.
-            return partition_stat
-
-        with patch('os.path.realpath', return_value='/dev/sdb'):
-            with patch('os.path.exists', side_effect=lambda p: p == '/dev/sdb'):
-                with patch('os.stat', side_effect=fake_os_stat):
-                    with patch('os.lstat', side_effect=fake_os_stat):
-                        with patch.object(
-                            self.setup_wizard.setup_command_adapter,
-                            'whole_disk_type',
-                            return_value=lsblk_ok,
-                        ):
-                            with patch.object(
-                                self.setup_wizard.setup_command_adapter,
-                                'create_partition',
-                                return_value=partition_ok,
-                            ):
-                                with patch.object(
-                                    self.setup_wizard.setup_command_adapter,
-                                    'partprobe',
-                                    side_effect=FileNotFoundError,
-                                ):
-                                    with patch.object(
-                                        self.setup_wizard.setup_command_adapter,
-                                        'format_ntfs',
-                                        return_value=mkfs_ok,
-                                    ):
-                                        with patch.object(
-                                            self.setup_wizard,
-                                            '_get_mounted_partitions_for_disk',
-                                            return_value=[],
-                                        ):
-                                            with self.app.test_client() as client:
-                                                response = self._post_format(client, '/dev/sdb')
-
-        self.assertDataResponse(response)
-
-    def test_format_drive_recreates_partition_layout_when_first_partition_exists(self):
-        # Step 2 is a whole-disk erase flow, so an existing /dev/sdb1 must not
-        # cause the wizard to skip recreating the selected disk as one partition.
-        import stat as stat_module
-
-        blk_stat = MagicMock()
-        blk_stat.st_mode = stat_module.S_IFBLK | 0o660
-
-        lsblk_ok = MagicMock(returncode=0, stdout='disk\n', stderr='')
-        partition_ok = MagicMock(returncode=0, stdout='', stderr='')
-        partprobe_ok = MagicMock(returncode=0, stdout='', stderr='')
-        mkfs_ok = MagicMock(returncode=0, stdout='', stderr='')
-
-        with patch('os.path.realpath', return_value='/dev/sdb'):
-            with patch('os.path.exists', return_value=True):
-                with patch('os.stat', return_value=blk_stat):
-                    with patch('os.lstat', return_value=blk_stat):
-                        with patch.object(
-                            self.setup_wizard.setup_command_adapter,
-                            'whole_disk_type',
-                            return_value=lsblk_ok,
-                        ):
-                            with patch.object(
-                                self.setup_wizard.setup_command_adapter,
-                                'create_partition',
-                                return_value=partition_ok,
-                            ) as create_partition:
-                                with patch.object(
-                                    self.setup_wizard.setup_command_adapter,
-                                    'partprobe',
-                                    return_value=partprobe_ok,
-                                ):
-                                    with patch.object(
-                                        self.setup_wizard.setup_command_adapter,
-                                        'format_ntfs',
-                                        return_value=mkfs_ok,
-                                    ):
-                                        with patch.object(
-                                            self.setup_wizard,
-                                            '_get_mounted_partitions_for_disk',
-                                            return_value=[],
-                                        ):
-                                            with self.app.test_client() as client:
-                                                response = self._post_format(client, '/dev/sdb')
-
-        self.assertDataResponse(response)
-        create_partition.assert_called_once_with(
-            '/dev/sdb',
-            (f'type={self.setup_wizard.MICROSOFT_BASIC_DATA_PARTITION_TYPE}\n').encode(),
+    def test_format_drive_uses_privileged_format_action(self):
+        helper = MagicMock()
+        helper.run.return_value = types.SimpleNamespace(
+            data={
+                'disk': '/dev/sdb',
+                'partition': '/dev/sdb1',
+                'message': 'Successfully formatted /dev/sdb1 as NTFS.',
+            }
         )
+        self.app.extensions["simple_safer_server"].privileged_actions = helper
 
-    def test_format_drive_partprobe_permission_error_is_non_fatal(self):
-        # PermissionError (an OSError subclass) from partprobe must also be non-fatal.
-        import stat as stat_module
+        with self.app.test_client() as client:
+            response = self._post_format(client, '/dev/sdb')
 
-        blk_stat = MagicMock()
-        blk_stat.st_mode = stat_module.S_IFBLK | 0o660
+        self.assertEqual(response.status_code, 200)
+        self.assertDataResponse(
+            response,
+            {
+                'result': {
+                    'disk': '/dev/sdb',
+                    'partition': '/dev/sdb1',
+                    'message': 'Successfully formatted /dev/sdb1 as NTFS.',
+                }
+            },
+        )
+        helper.run.assert_called_once_with('storage.format', {'disk': '/dev/sdb'})
 
-        lsblk_ok = MagicMock(returncode=0, stdout='disk\n', stderr='')
-        partition_ok = MagicMock(returncode=0, stdout='', stderr='')
-        mkfs_ok = MagicMock(returncode=0, stdout='', stderr='')
+    def test_format_drive_maps_helper_validation_error(self):
+        from simple_safer_server.core.privileged_client import PrivilegedActionClientError
 
-        partition_stat = MagicMock()
-        partition_stat.st_mode = stat_module.S_IFBLK | 0o660
+        helper = MagicMock()
+        helper.run.side_effect = PrivilegedActionClientError(
+            'Invalid disk path: must be a /dev/ device node.',
+            exit_code=2,
+        )
+        self.app.extensions["simple_safer_server"].privileged_actions = helper
 
-        with patch('os.path.realpath', return_value='/dev/sdb'):
-            with patch('os.path.exists', side_effect=lambda p: p == '/dev/sdb'):
-                with patch('os.stat', return_value=partition_stat):
-                    with patch('os.lstat', return_value=partition_stat):
-                        with patch.object(
-                            self.setup_wizard.setup_command_adapter,
-                            'whole_disk_type',
-                            return_value=lsblk_ok,
-                        ):
-                            with patch.object(
-                                self.setup_wizard.setup_command_adapter,
-                                'create_partition',
-                                return_value=partition_ok,
-                            ):
-                                with patch.object(
-                                    self.setup_wizard.setup_command_adapter,
-                                    'partprobe',
-                                    side_effect=PermissionError("operation not permitted"),
-                                ):
-                                    with patch.object(
-                                        self.setup_wizard.setup_command_adapter,
-                                        'format_ntfs',
-                                        return_value=mkfs_ok,
-                                    ):
-                                        with patch.object(
-                                            self.setup_wizard,
-                                            '_get_mounted_partitions_for_disk',
-                                            return_value=[],
-                                        ):
-                                            with self.app.test_client() as client:
-                                                response = self._post_format(client, '/dev/sdb')
+        with self.app.test_client() as client:
+            response = self._post_format(client, '/tmp/evil')
 
-        self.assertDataResponse(response)
-
-    def test_format_drive_partprobe_nonzero_is_non_fatal(self):
-        # Non-zero exit from partprobe must be logged at debug, not abort formatting.
-        import stat as stat_module
-
-        blk_stat = MagicMock()
-        blk_stat.st_mode = stat_module.S_IFBLK | 0o660
-
-        lsblk_ok = MagicMock(returncode=0, stdout='disk\n', stderr='')
-        partition_ok = MagicMock(returncode=0, stdout='', stderr='')
-        partprobe_fail = MagicMock(returncode=1, stdout='', stderr='ioctl error')
-        mkfs_ok = MagicMock(returncode=0, stdout='', stderr='')
-
-        partition_stat = MagicMock()
-        partition_stat.st_mode = stat_module.S_IFBLK | 0o660
-
-        def fake_os_stat(path):
-            return partition_stat
-
-        with patch('os.path.realpath', return_value='/dev/sdb'):
-            with patch('os.path.exists', side_effect=lambda p: p == '/dev/sdb'):
-                with patch('os.stat', side_effect=fake_os_stat):
-                    with patch('os.lstat', side_effect=fake_os_stat):
-                        with patch.object(
-                            self.setup_wizard.setup_command_adapter,
-                            'whole_disk_type',
-                            return_value=lsblk_ok,
-                        ):
-                            with patch.object(
-                                self.setup_wizard.setup_command_adapter,
-                                'create_partition',
-                                return_value=partition_ok,
-                            ):
-                                with patch.object(
-                                    self.setup_wizard.setup_command_adapter,
-                                    'partprobe',
-                                    return_value=partprobe_fail,
-                                ):
-                                    with patch.object(
-                                        self.setup_wizard.setup_command_adapter,
-                                        'format_ntfs',
-                                        return_value=mkfs_ok,
-                                    ):
-                                        with patch.object(
-                                            self.setup_wizard,
-                                            '_get_mounted_partitions_for_disk',
-                                            return_value=[],
-                                        ):
-                                            with self.app.test_client() as client:
-                                                response = self._post_format(client, '/dev/sdb')
-
-        self.assertDataResponse(response)
-
-    def test_format_drive_poll_timeout_returns_error(self):
-        # If the partition node never appears as a block device within the
-        # timeout window, format_drive must return a clear error.
-        import stat as stat_module
-
-        blk_stat = MagicMock()
-        blk_stat.st_mode = stat_module.S_IFBLK | 0o660
-
-        lsblk_ok = MagicMock(returncode=0, stdout='disk\n', stderr='')
-        partition_ok = MagicMock(returncode=0, stdout='', stderr='')
-
-        disk_stat = MagicMock()
-        disk_stat.st_mode = stat_module.S_IFBLK | 0o660
-
-        def fake_os_stat(path):
-            if path == '/dev/sdb':
-                return disk_stat
-            # Partition node (/dev/sdb1) never appears — always raises OSError.
-            raise OSError('no such file')
-
-        # Return a low timestamp on the first call (deadline = 0 + timeout),
-        # then a timestamp past the deadline on the second call so the poll
-        # loop exits immediately.
-        timeout = self.setup_wizard.PARTITION_POLL_TIMEOUT_SECONDS
-        monotonic_seq = iter([0.0, timeout + 1.0])
-
-        with patch('os.path.realpath', return_value='/dev/sdb'):
-            with patch('os.path.exists', side_effect=lambda p: p == '/dev/sdb'):
-                with patch('os.stat', side_effect=fake_os_stat):
-                    with patch.object(
-                        self.setup_wizard.setup_command_adapter,
-                        'whole_disk_type',
-                        return_value=lsblk_ok,
-                    ):
-                        with patch.object(
-                            self.setup_wizard.setup_command_adapter,
-                            'create_partition',
-                            return_value=partition_ok,
-                        ):
-                            with patch.object(
-                                self.setup_wizard.setup_command_adapter,
-                                'partprobe',
-                                side_effect=FileNotFoundError,
-                            ):
-                                with patch.object(
-                                    self.setup_wizard.setup_command_adapter,
-                                    'format_ntfs',
-                                    side_effect=AssertionError('Unexpected format call'),
-                                ):
-                                    with patch.object(
-                                        self.setup_wizard,
-                                        '_get_mounted_partitions_for_disk',
-                                        return_value=[],
-                                    ):
-                                        with patch.object(
-                                            self.setup_wizard.time,
-                                            'monotonic',
-                                            side_effect=monotonic_seq,
-                                        ):
-                                            with self.app.test_client() as client:
-                                                response = self._post_format(client, '/dev/sdb')
-
-        data = response.get_json()
-        self.assertIn('did not appear', data['detail'])
+        self.assertEqual(response.status_code, 400)
+        self.assertProblemDetail(response, 'Invalid disk path: must be a /dev/ device node.')

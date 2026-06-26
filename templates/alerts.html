@@ -1,9 +1,12 @@
 {% extends "base.html" %}
+{% import "partials/module_help.html" as module_help %}
 
 {% block title %}{{ browser_title('Alerts') }}{% endblock %}
 {% block header %}Alerts{% endblock %}
 
 {% block content %}
+{{ module_help.module_help_band(alerts_module, icon='fas fa-bell') }}
+
 <!-- Actions Row -->
 <div class="alerts-header-actions mb-4">
   {% if runtime_mode == 'fake' %}
@@ -23,22 +26,26 @@
     <div class="form-group mb-4">
       <label class="form-label">Email Address</label>
       <input type="email" id="emailAddress" class="form-control" placeholder="your@email.com">
+      {{ module_help.field_hint(alerts_module, 'email_address') }}
       <div class="invalid-feedback">Please enter a valid email address.</div>
     </div>
     <div class="form-group mb-4">
       <label class="form-label">From Address</label>
       <input type="email" id="fromAddress" class="form-control" placeholder="from@email.com">
+      {{ module_help.field_hint(alerts_module, 'from_address') }}
       <div class="invalid-feedback">Please enter a valid from address.</div>
     </div>
     <div class="form-row mb-4">
       <div class="form-group">
         <label class="form-label">SMTP Server</label>
         <input type="text" id="smtpServer" class="form-control" placeholder="smtp.gmail.com">
+        {{ module_help.field_hint(alerts_module, 'smtp_server') }}
         <div class="invalid-feedback">SMTP server is required.</div>
       </div>
       <div class="form-group">
         <label class="form-label">Port</label>
         <input type="text" id="smtpPort" class="form-control" placeholder="587" inputmode="numeric" pattern="[0-9]*">
+        {{ module_help.field_hint(alerts_module, 'smtp_port') }}
         <div class="invalid-feedback">SMTP port must be a number between 1 and 65535.</div>
       </div>
     </div>
@@ -46,6 +53,7 @@
       <div class="form-group">
         <label class="form-label">Username</label>
         <input type="text" id="smtpUsername" class="form-control" placeholder="your@email.com">
+        {{ module_help.field_hint(alerts_module, 'smtp_username') }}
         <div class="invalid-feedback">SMTP username is required.</div>
       </div>
       <div class="form-group">
@@ -56,6 +64,7 @@
             <i class="fas fa-eye"></i>
           </button>
         </div>
+        {{ module_help.field_hint(alerts_module, 'smtp_password') }}
         <div class="invalid-feedback">SMTP password is required when no password is currently stored.</div>
       </div>
     </div>
@@ -149,8 +158,72 @@
 {% endblock %}
 
 {% block extra_js %}
+<script type="application/json" id="alerts-copy">{{ alerts_ui_text | tojson }}</script>
 <script>
 let currentAlertId = null;
+const alertsDefaultCopy = {
+  settings: {
+    open: 'Email Settings',
+    close: 'Close Settings',
+    saved: 'Email configuration saved successfully.',
+    required: 'Email, from address, SMTP server, port, and username are required.',
+    invalidEmail: 'Please enter a valid email address.',
+    invalidFrom: 'Please enter a valid from address.',
+    portDigits: 'SMTP port must contain only digits.',
+    portRange: 'SMTP port must be between 1 and 65535.',
+    saveFailure: 'An error occurred while saving.',
+    showPassword: 'Show password',
+    hidePassword: 'Hide password'
+  },
+  alerts: {
+    generateFailure: 'Network error while generating test alerts.',
+    loadFailure: 'Could not load alerts due to a network error.',
+    detailFailure: 'Failed to load alert.',
+    markReadFailure: 'Failed to mark alert read.',
+    clearFailure: 'Network error while clearing alerts.',
+    markAllFailure: 'Network error while marking alerts as read.',
+    openDetails: 'Open {title} alert details'
+  },
+  badges: {
+    error: 'Error',
+    warning: 'Warning',
+    info: 'Info',
+    success: 'Success',
+    read: 'Read',
+    new: 'New'
+  }
+};
+
+function mergeAlertCopy(base, overrides) {
+  if (!overrides || typeof overrides !== 'object') return base;
+  Object.keys(overrides).forEach((key) => {
+    if (
+      overrides[key]
+      && typeof overrides[key] === 'object'
+      && !Array.isArray(overrides[key])
+      && base[key]
+      && typeof base[key] === 'object'
+    ) {
+      mergeAlertCopy(base[key], overrides[key]);
+    } else {
+      base[key] = overrides[key];
+    }
+  });
+  return base;
+}
+
+function readAlertsCopy() {
+  const script = document.getElementById('alerts-copy');
+  if (!script) return alertsDefaultCopy;
+  try {
+    return mergeAlertCopy(JSON.parse(JSON.stringify(alertsDefaultCopy)), JSON.parse(script.textContent || '{}'));
+  } catch (error) {
+    console.error('Could not read Alerts page copy:', error);
+    return alertsDefaultCopy;
+  }
+}
+
+const alertsCopy = readAlertsCopy();
 
 document.addEventListener('DOMContentLoaded', function() {
   setupSecretToggles();
@@ -168,8 +241,8 @@ document.addEventListener('DOMContentLoaded', function() {
       pane.setAttribute('inert', '');
     }
     this.innerHTML = isExpanded
-      ? '<i class="fas fa-times me-2"></i> Close Settings'
-      : '<i class="fas fa-cog me-2"></i> Email Settings';
+      ? `<i class="fas fa-times me-2"></i> ${alertsCopy.settings.close}`
+      : `<i class="fas fa-cog me-2"></i> ${alertsCopy.settings.open}`;
     if(isExpanded) {
       this.classList.add('btn-primary');
       this.classList.remove('btn-secondary');
@@ -196,7 +269,7 @@ document.addEventListener('DOMContentLoaded', function() {
         .catch((error) => {
           btn.disabled = false;
           btn.innerHTML = originalHtml;
-          showAlert(error.message || 'Network error while generating test alerts', 'danger');
+          showAlert(error.message || alertsCopy.alerts.generateFailure, 'danger');
         });
     });
   }
@@ -209,8 +282,8 @@ function setupSecretToggles() {
     button.addEventListener('click', () => {
       const visible = input.type === 'text';
       input.type = visible ? 'password' : 'text';
-      button.setAttribute('aria-label', visible ? 'Show password' : 'Hide password');
-      button.title = visible ? 'Show password' : 'Hide password';
+      button.setAttribute('aria-label', visible ? alertsCopy.settings.showPassword : alertsCopy.settings.hidePassword);
+      button.title = visible ? alertsCopy.settings.showPassword : alertsCopy.settings.hidePassword;
       const icon = button.querySelector('i');
       if (icon) icon.className = visible ? 'fas fa-eye' : 'fas fa-eye-slash';
     });
@@ -244,13 +317,13 @@ function saveEmailConfig() {
   const smtpPassword = document.getElementById('smtpPassword').value;
 
   if (!emailAddress || !fromAddress || !smtpServer || !smtpPort || !smtpUsername) {
-    showEmailError('Email, from address, SMTP server, port, and username are required'); return;
+    showEmailError(alertsCopy.settings.required); return;
   }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailAddress)) { showEmailError('Please enter a valid email address'); return; }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fromAddress)) { showEmailError('Please enter a valid from address'); return; }
-  if (!/^\d+$/.test(smtpPort)) { showEmailError('SMTP port must contain only digits'); return; }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailAddress)) { showEmailError(alertsCopy.settings.invalidEmail); return; }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fromAddress)) { showEmailError(alertsCopy.settings.invalidFrom); return; }
+  if (!/^\d+$/.test(smtpPort)) { showEmailError(alertsCopy.settings.portDigits); return; }
   const portNum = parseInt(smtpPort, 10);
-  if (isNaN(portNum) || portNum < 1 || portNum > 65535) { showEmailError('SMTP port must be between 1 and 65535'); return; }
+  if (isNaN(portNum) || portNum < 1 || portNum > 65535) { showEmailError(alertsCopy.settings.portRange); return; }
 
   const saveBtn = document.getElementById('saveEmailBtn');
   window.AsyncButtonState.start(saveBtn);
@@ -262,9 +335,9 @@ function saveEmailConfig() {
   })
     .then(() => {
       window.AsyncButtonState.success(saveBtn);
-      showAlert('Email configuration saved successfully', 'success');
+      showAlert(alertsCopy.settings.saved, 'success');
     })
-    .catch((error) => { window.AsyncButtonState.error(saveBtn); showEmailError(error.message || 'An error occurred while saving'); });
+    .catch((error) => { window.AsyncButtonState.error(saveBtn); showEmailError(error.message || alertsCopy.settings.saveFailure); });
 }
 
 function showEmailError(message) {
@@ -288,16 +361,16 @@ function loadAlerts() {
     .catch((error) => {
       loading.classList.add('d-none');
       noAlerts.classList.remove('d-none');
-      showAlert(error.message || 'Could not load alerts due to a network error.', 'danger');
+      showAlert(error.message || alertsCopy.alerts.loadFailure, 'danger');
     });
 }
 
 function getTypeBadge(type) {
   const badges = {
-    'error': '<span class="badge badge-danger">Error</span>',
-    'warning': '<span class="badge badge-warning">Warning</span>',
-    'info': '<span class="badge badge-info">Info</span>',
-    'success': '<span class="badge badge-success">Success</span>'
+    'error': `<span class="badge badge-danger">${alertsCopy.badges.error}</span>`,
+    'warning': `<span class="badge badge-warning">${alertsCopy.badges.warning}</span>`,
+    'info': `<span class="badge badge-info">${alertsCopy.badges.info}</span>`,
+    'success': `<span class="badge badge-success">${alertsCopy.badges.success}</span>`
   };
   return badges[type] || badges['info'];
 }
@@ -316,7 +389,7 @@ function displayAlerts(alerts) {
     row.className = 'clickable-row';
     row.tabIndex = 0;
     row.setAttribute('role', 'button');
-    row.setAttribute('aria-label', `Open ${alert.title} alert details`);
+    row.setAttribute('aria-label', alertsCopy.alerts.openDetails.replace('{title}', alert.title || ''));
     row.addEventListener('click', function () {
       showAlertDetail(alert.id);
     });
@@ -327,10 +400,10 @@ function displayAlerts(alerts) {
       }
     });
     if (!alert.read) row.style.background = 'var(--accent-subtle)';
-    const time = new Date(alert.timestamp).toLocaleString();
+    const time = window.AppFormat.dateTime(alert.timestamp);
     const statusBadge = alert.read
-      ? '<span class="badge badge-neutral">Read</span>'
-      : '<span class="badge badge-accent">New</span>';
+      ? `<span class="badge badge-neutral">${alertsCopy.badges.read}</span>`
+      : `<span class="badge badge-accent">${alertsCopy.badges.new}</span>`;
 
     // Time cell (text only)
     const tdTime = document.createElement('td');
@@ -380,24 +453,24 @@ function showAlertDetail(alertId) {
       const alert = data.alert;
       currentAlertId = alert.id;
       document.getElementById('alertDetailTitle').textContent = alert.title;
-      document.getElementById('alertDetailTime').textContent = new Date(alert.timestamp).toLocaleString();
+      document.getElementById('alertDetailTime').textContent = window.AppFormat.dateTime(alert.timestamp);
       document.getElementById('alertDetailSource').textContent = alert.source;
       document.getElementById('alertDetailType').innerHTML = getTypeBadge(alert.type);
       document.getElementById('alertDetailStatus').innerHTML = alert.read
-        ? '<span class="badge badge-neutral">Read</span>'
-        : '<span class="badge badge-accent">New</span>';
+        ? `<span class="badge badge-neutral">${alertsCopy.badges.read}</span>`
+        : `<span class="badge badge-accent">${alertsCopy.badges.new}</span>`;
       document.getElementById('alertDetailMessage').textContent = alert.message;
       document.getElementById('markAsReadBtn').style.display = alert.read ? 'none' : '';
-      BunkerModal.show('alertDetailModal');
+      AppModal.show('alertDetailModal');
     })
-    .catch((error) => showAlert(error.message || 'Failed to load alert.', 'danger'));
+    .catch((error) => showAlert(error.message || alertsCopy.alerts.detailFailure, 'danger'));
 }
 
 document.getElementById('markAsReadBtn').addEventListener('click', function() {
   if (currentAlertId) {
     window.ApiClient.fetchJson(`/api/alerts/${currentAlertId}/mark-read`, { method: 'POST' })
-      .then(() => { BunkerModal.hide('alertDetailModal'); loadAlerts(); })
-      .catch((error) => showAlert(error.message || 'Failed to mark alert read.', 'danger'));
+      .then(() => { AppModal.hide('alertDetailModal'); loadAlerts(); })
+      .catch((error) => showAlert(error.message || alertsCopy.alerts.markReadFailure, 'danger'));
   }
 });
 
@@ -412,7 +485,7 @@ document.getElementById('clearAlertsBtn').addEventListener('click', function() {
       btn.disabled = false;
       loadAlerts();
     })
-    .catch((error) => { btn.disabled = false; showAlert(error.message || 'Network error while clearing alerts.', 'danger'); });
+    .catch((error) => { btn.disabled = false; showAlert(error.message || alertsCopy.alerts.clearFailure, 'danger'); });
 });
 
 document.getElementById('markAllReadBtn').addEventListener('click', function() {
@@ -423,7 +496,7 @@ document.getElementById('markAllReadBtn').addEventListener('click', function() {
       btn.disabled = false;
       loadAlerts();
     })
-    .catch((error) => { btn.disabled = false; showAlert(error.message || 'Network error while marking alerts as read.', 'danger'); });
+    .catch((error) => { btn.disabled = false; showAlert(error.message || alertsCopy.alerts.markAllFailure, 'danger'); });
 });
 </script>
 {% endblock %}

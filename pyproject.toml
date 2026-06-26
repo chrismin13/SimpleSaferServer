@@ -11,6 +11,10 @@ dependencies = [
   "psutil>=7",
 ]
 
+[project.scripts]
+sss = "simple_safer_server.cli:main"
+sss-helper = "simple_safer_server.privileged_helper:main"
+
 [dependency-groups]
 dev = [
   "bandit[toml]>=1.9",

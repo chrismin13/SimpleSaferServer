@@ -9,6 +9,10 @@ The page shows the current storage location, the active storage mode, and a pass
 - **Managed drive**: SimpleSaferServer mounts and manages one selected drive partition.
 - **Existing folder**: an administrator provides a folder that already exists on the server.
 
+The top help band is rendered from the Storage module contract in
+`simple_safer_server/modules/storage/module.py`. Keep the purpose text, setup note, field help, and
+drive warnings there so the Web UI, setup flow, CLI, and docs can share the same wording.
+
 The Storage actions card keeps repair actions separate from configuration changes. Safety checks stay visible beside the storage actions on wide screens and move below them on narrower screens.
 
 ## Passive Status And Sleeping Drives
@@ -40,15 +44,30 @@ Use **Run safety check** when you want the full check from the Storage page. Tha
 
 Use this mode when you want SimpleSaferServer to handle the backup disk.
 
+Managed-drive setup uses normal host disk tools such as `lsblk`, `blkid`, `sfdisk`, `mkfs.ntfs`,
+and `ntfs-3g`. The Storage module reports these as optional tools because they are only needed for
+the advanced managed-drive path. Existing-folder storage does not need them.
+
 In this mode the app:
 
 - mounts the selected partition at the configured mount point
 - writes the SimpleSaferServer-owned `/etc/fstab` entry
 - enables the scheduled mount check
-- allows mount and unmount actions from the Dashboard
+- allows mount actions and the allowlisted `storage.managed-unmount` helper action from the Dashboard
 - creates the storage marker file inside the storage folder
 
 This is the simplest mode for the original one-drive setup.
+
+## Ownership Records
+
+Applying the Storage module records only the app-owned `storage` config section. The exact storage
+marker and `/etc/fstab` records are added later by the setup path that actually writes them:
+
+- existing-folder setup records the exact `.simple-safer-server/storage.json` marker path after the marker is written
+- managed-drive setup records the exact marker path and the exact managed `/etc/fstab` entry after the helper writes them
+
+This keeps existing-folder setup from claiming ownership of an `/etc/fstab` entry that SSS did not
+create.
 
 ### Change Managed Drive
 
@@ -56,10 +75,10 @@ Use **Change managed drive** on the Storage page when replacing the managed back
 
 The change page has two sections:
 
-- **Format a drive** lists non-system disks that can be set up for backup storage. Formatting deletes the selected disk's files and partitions, creates one NTFS partition, and leaves the current SimpleSaferServer storage setting unchanged.
+- **Format a drive** lists non-system disks that can be set up for backup storage. The page asks the allowlisted `storage.format` helper action to delete the selected disk's files and partitions, create one NTFS partition, and leave the current SimpleSaferServer storage setting unchanged.
 - **Use an NTFS partition** lists NTFS partitions that can become the managed backup drive. This is the only section that changes SimpleSaferServer storage.
 
-Unmount actions on the change page are temporary setup steps. Unmounting a selected disk or partition does not clear the saved storage path, configured UUID, `/etc/fstab` entry, marker file, or timers.
+Unmount actions on the change page are temporary setup steps. Unmounting a selected disk or partition does not clear the saved storage path, configured UUID, `/etc/fstab` entry, marker file, or worker schedule.
 
 The current storage configuration changes only after **Use This Drive** succeeds. On success, SimpleSaferServer:
 
@@ -68,7 +87,7 @@ The current storage configuration changes only after **Use This Drive** succeeds
 - updates `backup.mount_point`, `backup.uuid`, and `backup.usb_id`
 - updates the default `backup` network share path
 - creates the storage marker file in the selected storage location
-- refreshes the generated systemd services and timers
+- refreshes the task config consumed by the worker
 
 If an administrator leaves the change page after formatting or unmounting but before using a partition, the previous storage configuration remains in place.
 
@@ -99,14 +118,13 @@ In this mode the app does not:
 - format the disk
 - create a RAID or pool
 - add an `/etc/fstab` entry
-- mount the folder after reboot
-- unmount the folder from the Dashboard
+- mount or unmount the folder from the Dashboard
 
 The administrator or the operating system is responsible for making sure the folder is available.
 
 Use **Choose folder** on the Storage page to open the existing-folder change page. The path can be typed by hand, or selected with **Browse**. The picker shows folders and files in the current server path so the administrator can see what is already there, but only folders can be opened or selected.
 
-The page saves the new folder only after **Use This Folder** succeeds. On success, SimpleSaferServer stores the folder path, updates the default `backup` share, creates the storage marker, and refreshes generated task timers.
+The page saves the new folder only after **Use This Folder** succeeds. On success, SimpleSaferServer stores the folder path, updates the default `backup` share, creates the storage marker, and validates the worker schedule.
 
 ## The Storage Marker
 

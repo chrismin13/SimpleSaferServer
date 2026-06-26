@@ -7,6 +7,10 @@ It combines:
 - SMART attribute collection and raw attribute display
 - HDSentinel health, performance, temperature, and device reporting
 
+The page shows its purpose and setup note from the Drive Health module contract in
+`simple_safer_server/modules/drive_health/module.py`. Keep health-tool setup help there so the Web
+UI, setup flow, CLI, and docs can reuse the same wording.
+
 ## Features
 
 - Run a manual health refresh from the page.
@@ -28,7 +32,8 @@ That split is easy to forget later because both cases may surface during the sam
 
 ## HDSentinel Monitoring And Alerts
 
-HDSentinel is the source for the simple health meter shown on the Dashboard after a manual Dashboard refresh or Drive Health page refresh actually runs in the web app process.
+HDSentinel is the source for the simple health meter shown on the Dashboard after an explicit
+helper-backed Dashboard refresh or Drive Health page refresh runs.
 
 - Health `50%` and above is shown as healthy.
 - Health below `50%` is shown as a warning.
@@ -45,7 +50,8 @@ The Dashboard Drive Health tile reads only the latest summary stored in the runn
 
 - On web app startup, the summary is `No check yet`.
 - `GET /api/drive_health/summary` returns the RAM summary only.
-- `POST /api/drive_health/refresh` runs a live SMART/HDSentinel probe, updates RAM, and returns the new summary.
+- `POST /api/drive_health/refresh` asks the allowlisted helper to run a live SMART/HDSentinel probe,
+  updates RAM with the returned summary, and returns the new summary.
 - Timeout and unavailable-drive results stay neutral on the Dashboard unless HDSentinel returns a usable health percentage.
 - The app does not persist Dashboard health summaries. HDSentinel monitor state keeps its own documented storage behavior for scheduled health-change alerts.
 
@@ -78,7 +84,7 @@ The app only manages the `/etc/fstab` line for the backup drive that ends with:
 # SimpleSaferServer managed backup drive
 ```
 
-The app does not treat unrelated `/etc/fstab` lines as its own unless they use that marker or the older legacy marker.
+The app does not treat unrelated `/etc/fstab` lines as its own unless they use that exact marker.
 
 ## Safety Rules
 
@@ -136,5 +142,5 @@ sudo findmnt --verify
 sudo mkdir -p /media/backup
 sudo systemctl daemon-reload
 sudo mount -a
-sudo systemctl restart smbd nmbd simple_safer_server_web.service
+sudo systemctl restart smbd nmbd simple-safer-server-web.service simple-safer-server-worker.service
 ```

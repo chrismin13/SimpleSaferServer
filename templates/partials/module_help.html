@@ -1,0 +1,38 @@
+{% macro ui_text(text) -%}
+{{- _(text) if _ is defined else text -}}
+{%- endmacro %}
+
+{% macro module_help_band(module, warnings=none, icon='fas fa-circle-info') -%}
+<wa-callout class="module-help-band" variant="brand" appearance="filled-outlined" aria-label="{{ module.title }} help">
+  <span slot="icon" class="module-help-icon" aria-hidden="true"><i class="{{ icon }}"></i></span>
+  <div class="module-help-copy">
+    <p class="module-help-purpose">{{ ui_text(module.help.purpose) }}</p>
+    {% if module.help.setup_intro %}
+    <p class="module-help-setup">{{ ui_text(module.help.setup_intro) }}</p>
+    {% endif %}
+  </div>
+  {% set visible_warnings = warnings if warnings is not none else module.help.warnings %}
+  {% if visible_warnings %}
+  <div class="module-help-warnings">
+    {% for warning in visible_warnings %}
+    <div class="module-help-warning">
+      <i class="fas fa-triangle-exclamation" aria-hidden="true"></i>
+      <span>{{ ui_text(warning) }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</wa-callout>
+{%- endmacro %}
+
+{% macro field_hint(module, key, fallback='', hint_id='') -%}
+{% set help = namespace(text=fallback) %}
+{% for entry in module.help.field_help %}
+  {% if entry.key == key %}
+    {% set help.text = entry.text %}
+  {% endif %}
+{% endfor %}
+{% if help.text %}
+<div class="form-hint" data-module-help-key="{{ key }}"{% if hint_id %} id="{{ hint_id }}"{% endif %}>{{ ui_text(help.text) }}</div>
+{% endif %}
+{%- endmacro %}

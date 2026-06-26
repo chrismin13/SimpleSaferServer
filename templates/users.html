@@ -103,9 +103,76 @@
 {% endblock %}
 
 {% block extra_js %}
+<script type="application/json" id="users-copy">{{ users_ui_text | tojson }}</script>
 <script>
 let currentUsers = [];
 let editingUsername = null;
+const currentUsername = {{ username | tojson }};
+const usersDefaultCopy = {
+  roles: {
+    admin: 'Admin',
+    user: 'User'
+  },
+  dates: {
+    notAvailable: 'N/A',
+    never: 'Never'
+  },
+  actions: {
+    edit: 'Edit',
+    delete: 'Delete'
+  },
+  messages: {
+    loadFailure: 'Failed to load users.',
+    selfDelete: 'You cannot delete your own account.',
+    deleteTitle: 'Delete User',
+    deleteConfirm: 'Are you sure you want to delete user "{username}"?',
+    deleteSuccess: 'User "{username}" deleted successfully.',
+    networkError: 'Network error.',
+    usernameExists: 'Username already exists.',
+    addSuccess: 'User "{username}" added successfully.',
+    addFailure: 'Failed to add user.',
+    updateSuccess: 'User "{username}" updated successfully.',
+    updateFailure: 'Failed to update user.'
+  }
+};
+
+function mergeUsersCopy(base, overrides) {
+  if (!overrides || typeof overrides !== 'object') return base;
+  Object.keys(overrides).forEach((key) => {
+    if (
+      overrides[key]
+      && typeof overrides[key] === 'object'
+      && !Array.isArray(overrides[key])
+      && base[key]
+      && typeof base[key] === 'object'
+    ) {
+      mergeUsersCopy(base[key], overrides[key]);
+    } else {
+      base[key] = overrides[key];
+    }
+  });
+  return base;
+}
+
+function readUsersCopy() {
+  const script = document.getElementById('users-copy');
+  if (!script) return usersDefaultCopy;
+  try {
+    return mergeUsersCopy(JSON.parse(JSON.stringify(usersDefaultCopy)), JSON.parse(script.textContent || '{}'));
+  } catch (error) {
+    console.error('Could not read Users page copy:', error);
+    return usersDefaultCopy;
+  }
+}
+
+const usersCopy = readUsersCopy();
+
+function formatUserMessage(template, values = {}) {
+  return Object.keys(values).reduce(
+    (message, key) => message.replace(`{${key}}`, values[key]),
+    template
+  );
+}
 
 function showSuccess(message) {
   showAlert(message, 'success');
@@ -146,7 +213,7 @@ async function loadUsers() {
     const { data } = await window.ApiClient.fetchJson('/api/users');
     currentUsers = data.users;
     renderUsersTable();
-  } catch (error) { showError(error.message || 'Failed to load users'); }
+  } catch (error) { showError(error.message || usersCopy.messages.loadFailure); }
 }
 
 async function addUser(username, password, isAdmin) {
@@ -160,15 +227,15 @@ async function deleteUserAPI(username) {
 function getUserRowActions(user) {
   return [
     {
-      label: 'Edit',
+      label: usersCopy.actions.edit,
       iconClass: 'fas fa-edit',
       onSelect: function() { openEditUserModal(user.username); }
     },
     {
-      label: 'Delete',
+      label: usersCopy.actions.delete,
       iconClass: 'fas fa-trash',
       destructive: true,
-      disabled: user.username === '{{ username }}',
+      disabled: user.username === currentUsername,
       onSelect: function() { requestDeleteUser(user.username); }
     }
   ];
@@ -179,19 +246,21 @@ function renderUsersTable() {
   tbody.innerHTML = '';
   currentUsers.forEach(user => {
     const row = document.createElement('tr');
-    const createdAt = window.parseServerDateTime(user.created_at);
-    const lastLogin = window.parseServerDateTime(user.last_login);
-    const createdDate = createdAt ? createdAt.toLocaleDateString() : 'N/A';
-    const lastLoginDate = lastLogin ? lastLogin.toLocaleString() : 'Never';
+    const createdDate = window.AppFormat
+      ? window.AppFormat.date(user.created_at, { fallback: usersCopy.dates.notAvailable })
+      : (user.created_at || usersCopy.dates.notAvailable);
+    const lastLoginDate = window.AppFormat
+      ? window.AppFormat.dateTime(user.last_login, { fallback: usersCopy.dates.never })
+      : (user.last_login || usersCopy.dates.never);
     row.innerHTML = `
       <td class="fw-medium">${user.username}</td>
-      <td><span class="badge ${user.is_admin ? 'badge-accent' : 'badge-neutral'}">${user.is_admin ? 'Admin' : 'User'}</span></td>
+      <td><span class="badge ${user.is_admin ? 'badge-accent' : 'badge-neutral'}">${user.is_admin ? usersCopy.roles.admin : usersCopy.roles.user}</span></td>
       <td class="text-muted" style="font-size: var(--text-xs);">${createdDate}</td>
       <td class="text-muted" style="font-size: var(--text-xs);">${lastLoginDate}</td>
       <td class="text-end">
         <div class="btn-group btn-group-end">
-          <button type="button" class="btn btn-ghost btn-sm" data-user-action="edit"><i class="fas fa-edit me-1"></i>Edit</button>
-          <button type="button" class="btn btn-ghost btn-sm text-danger" data-user-action="delete" ${user.username === '{{ username }}' ? 'disabled' : ''}><i class="fas fa-trash me-1"></i>Delete</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-user-action="edit"><i class="fas fa-edit me-1"></i>${usersCopy.actions.edit}</button>
+          <button type="button" class="btn btn-ghost btn-sm text-danger" data-user-action="delete" ${user.username === currentUsername ? 'disabled' : ''}><i class="fas fa-trash me-1"></i>${usersCopy.actions.delete}</button>
         </div>
       </td>`;
 
@@ -219,13 +288,13 @@ function openEditUserModal(username) {
   document.getElementById('editPassword').value = '';
   document.getElementById('editIsAdmin').checked = user.is_admin;
   // The API also rejects self-demotion; this keeps the form from inviting a change that cannot be saved.
-  if (user.username === '{{ username }}') {
+  if (user.username === currentUsername) {
     document.getElementById('editIsAdmin').disabled = true;
   } else {
     document.getElementById('editIsAdmin').disabled = false;
   }
   hideModalError('editUserError');
-  BunkerModal.show('editUserModal');
+  AppModal.show('editUserModal');
 }
 
 async function editUserAPI(username, password, isAdmin) {
@@ -233,11 +302,11 @@ async function editUserAPI(username, password, isAdmin) {
 }
 
 async function requestDeleteUser(username, button = null) {
-  if (username === '{{ username }}') { showError('You cannot delete your own account'); return; }
+  if (username === currentUsername) { showError(usersCopy.messages.selfDelete); return; }
   const confirmed = await window.showConfirmationDialog({
-    title: 'Delete User',
-    message: `Are you sure you want to delete user "${username}"?`,
-    confirmLabel: 'Delete',
+    title: usersCopy.messages.deleteTitle,
+    message: formatUserMessage(usersCopy.messages.deleteConfirm, { username }),
+    confirmLabel: usersCopy.actions.delete,
     confirmClass: 'btn-danger'
   });
   if (!confirmed) return;
@@ -245,11 +314,11 @@ async function requestDeleteUser(username, button = null) {
   deleteUserAPI(username).then(({ message }) => {
     window.AsyncButtonState.success(button);
     loadUsers();
-    showSuccess(message || `User "${username}" deleted successfully`);
+    showSuccess(message || formatUserMessage(usersCopy.messages.deleteSuccess, { username }));
   }).catch((error) => {
     window.AsyncButtonState.error(button);
     loadUsers();
-    showError(error.message || 'Network error');
+    showError(error.message || usersCopy.messages.networkError);
   });
 }
 
@@ -265,19 +334,19 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('addUsername').classList.remove('is-invalid');
     if (!validatePassword(password)) { document.getElementById('addPassword').classList.add('is-invalid'); return; }
     document.getElementById('addPassword').classList.remove('is-invalid');
-    if (currentUsers.some(u => u.username === username)) { showModalError('addUserError', 'Username already exists'); return; }
+    if (currentUsers.some(u => u.username === username)) { showModalError('addUserError', usersCopy.messages.usernameExists); return; }
     const submitButton = document.querySelector('#addUserModal .modal-footer .btn-primary');
     window.AsyncButtonState.start(submitButton);
     try {
       const result = await addUser(username, password, isAdmin);
       window.AsyncButtonState.success(submitButton);
-      showSuccess(result.message || `User "${username}" added successfully`);
+      showSuccess(result.message || formatUserMessage(usersCopy.messages.addSuccess, { username }));
       document.getElementById('addUserForm').reset();
-      BunkerModal.hide('addUserModal');
+      AppModal.hide('addUserModal');
       loadUsers();
     } catch (error) {
       window.AsyncButtonState.error(submitButton);
-      showModalError('addUserError', error.message || 'Failed to add user');
+      showModalError('addUserError', error.message || usersCopy.messages.addFailure);
     }
   });
 
@@ -292,12 +361,12 @@ document.addEventListener('DOMContentLoaded', function() {
     try {
       const result = await editUserAPI(editingUsername, password || null, isAdmin);
       window.AsyncButtonState.success(submitButton);
-      showSuccess(result.message || `User "${editingUsername}" updated successfully`);
-      BunkerModal.hide('editUserModal');
+      showSuccess(result.message || formatUserMessage(usersCopy.messages.updateSuccess, { username: editingUsername }));
+      AppModal.hide('editUserModal');
       loadUsers();
     } catch (error) {
       window.AsyncButtonState.error(submitButton);
-      showModalError('editUserError', error.message || 'Failed to update user');
+      showModalError('editUserError', error.message || usersCopy.messages.updateFailure);
     }
   });
 

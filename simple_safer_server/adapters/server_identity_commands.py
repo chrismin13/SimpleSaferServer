@@ -18,17 +18,3 @@ class ServerIdentityCommandAdapter:
             timeout=SERVER_IDENTITY_TIMEOUT_SECONDS,
         )
         return result.stdout.strip()
-
-    def set_hostname(self, hostname: str) -> None:
-        self._command_runner.run(
-            ["hostnamectl", "set-hostname", hostname],
-            check=True,
-            timeout=SERVER_IDENTITY_TIMEOUT_SECONDS,
-        )
-
-    def restart_unit(self, unit_name: str) -> None:
-        self._command_runner.run(
-            ["systemctl", "restart", unit_name],
-            check=True,
-            timeout=SERVER_IDENTITY_TIMEOUT_SECONDS,
-        )

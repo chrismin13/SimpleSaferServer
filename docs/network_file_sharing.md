@@ -1,8 +1,11 @@
 # Network File Sharing
 
 The Network File Sharing page manages Samba shares and Samba service status.
-It also includes the server name. This is the name you'll use to find this
-server on your network. Scheduled task alert emails include it in the subject.
+It also shows the SimpleSaferServer name used in page titles and alert email subjects.
+
+The page shows its purpose, setup note, and restart warning from the File Sharing module contract
+in `simple_safer_server/modules/file_sharing/module.py`. Keep share setup help there so the Web UI,
+setup flow, CLI, and docs can reuse the same wording.
 
 SimpleSaferServer distinguishes between two kinds of Samba shares:
 
@@ -25,8 +28,7 @@ owned shares file and reloads or restarts `smbd` so Samba returns to the last kn
 - **Delete Share**: removes a SimpleSaferServer-managed share
 - **Unmanaged share warning**: appears when SimpleSaferServer detects other non-system Samba shares
   in Samba's Effective Config, or when that Effective Config cannot be verified on page load
-- **Server Name**: changes the OS hostname, SimpleSaferServer's stored server name,
-  and the local hostname entry used by the server itself
+- **Server Name**: stores the SimpleSaferServer display name used by the UI and alerts
 - **Restart Services**: restarts `smbd`, `nmbd`, and `wsdd2`
   Restarting Samba disconnects anyone who is currently connected to a share, so active file copies or other SMB activity will drop.
 
@@ -41,8 +43,8 @@ active or unavailable (not installed). It is `Partial` when `smbd` is active but
 discovery service is inactive or in an error state. It is `Down` when `smbd`
 is not active, because direct file serving is unavailable.
 
-Changing the server name also restarts Samba discovery/services so the new name is
-advertised without rebooting. Connected file-sharing clients may need to reconnect.
+Changing the SimpleSaferServer name does not change the OS hostname, `/etc/hosts`, or Samba
+discovery name. Manage host identity directly on the operating system.
 
 If Unmanaged Samba Shares are detected, the page shows a small warning button with the count.
 That button opens a modal that:
@@ -58,9 +60,10 @@ clean Samba config until verification succeeds.
 
 ## SimpleSaferServer-Managed Share Format
 
-SimpleSaferServer has a dedicated Samba layout helper for install, update, setup,
-and share-management paths. That helper owns these include files when those paths
-prepare the Samba layout:
+SimpleSaferServer has a dedicated Samba layout helper for File Sharing setup and
+share-management paths. In real mode, the Web UI sends SSS-owned share-file changes through the
+allowlisted `file-sharing.write-shares` helper action before Samba is validated and reloaded. That
+helper owns these include files when it prepares the Samba layout:
 
 - `/etc/samba/simple_safer_server_globals.conf`
 - `/etc/samba/simple_safer_server_shares.conf`
@@ -69,6 +72,17 @@ The helper wires those files into `/etc/samba/smb.conf` with small
 SimpleSaferServer marker-wrapped include blocks. It validates the effective Samba
 configuration before publishing the layout and restores the original files if
 validation fails.
+After a successful publish, the helper records the two SimpleSaferServer-owned include files in
+`<data>/ownership.json`. It does not record `/etc/samba/smb.conf` as an owned file because SSS only
+manages the marked include blocks inside that administrator-owned config.
+
+User create, password change, and delete flows manage SimpleSaferServer's own user records first.
+When the File Sharing module has been applied, those flows also use allowlisted helper actions for
+the root-capable Samba account work. `file-sharing.sync-user` creates a Samba account for an SSS
+user only when that account is new or already recorded as File Sharing-owned. It records new Samba
+accounts in the ownership manifest, and it records Linux users only when SSS had to create them.
+`file-sharing.remove-user` removes the Samba account when an SSS user is deleted. When File Sharing
+is not applied, SSS users remain app-only users.
 
 File paths are the ownership boundary:
 
@@ -229,11 +243,16 @@ This is intentional. Ownership by share name alone is not safe enough.
 
 The uninstaller removes the SimpleSaferServer include blocks from `smb.conf` when the main config
 can be safely rewritten. It deletes the SimpleSaferServer-owned Samba include files independently,
-including when `smb.conf` is missing or its SimpleSaferServer marker blocks are malformed.
+including when `smb.conf` is missing or its SimpleSaferServer marker blocks are malformed. This
+cleanup runs only when the ownership manifest records the include files as File Sharing resources.
+Manifest-owned Samba accounts and Linux users created for File Sharing are also removed. Existing
+unmanaged system or Samba accounts with the same username are not claimed by SSS, so uninstall
+leaves them alone.
 
 It does not remove:
 
 - unmanaged share blocks
+- unmanaged Samba or Linux users
 - unrelated Samba configuration
 - shared packages or services such as Samba, `wsdd2`, Python, or rclone
 

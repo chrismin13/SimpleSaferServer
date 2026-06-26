@@ -1,9 +1,12 @@
 {% extends "base.html" %}
+{% import "partials/module_help.html" as module_help %}
 
 {% block title %}{{ browser_title('System Updates') }}{% endblock %}
 {% block header %}System Updates{% endblock %}
 
 {% block content %}
+{{ module_help.module_help_band(system_updates_module, icon='fas fa-download') }}
+
 <section class="system-updates-summary">
   <div class="system-updates-summary-item">
     <span>Operating System</span>
@@ -19,7 +22,7 @@
     <strong id="max-eol">—</strong>
   </div>
   <div class="system-updates-summary-item">
-    <span>Auto Updates</span>
+    <span>Apt Policy</span>
     <strong id="auto-updates-summary">—</strong>
     <span class="badge badge-neutral d-none" id="auto-updates-badge">Loading...</span>
   </div>
@@ -58,48 +61,12 @@
         <i class="fas fa-rotate"></i> Refresh
       </button>
       <button type="button" class="btn btn-success btn-sm" id="app-update-now-btn" disabled
-        data-confirm="Update SimpleSaferServer now? This pulls the latest branch commit, reruns the installer, and restarts the web service."
+        data-confirm="Update SimpleSaferServer now? This starts the configured updater and may restart the web service."
         data-confirm-title="Update application"
         data-confirm-button="Update"
         data-confirm-class="btn-success">
         <i class="fas fa-circle-up"></i> Update Now
       </button>
-      <button type="button" class="btn btn-warning btn-sm d-none" id="app-update-force-btn"
-        data-confirm-button="Clean Up and Update">
-        <i class="fas fa-broom"></i> Clean Up and Update
-      </button>
-      <span id="app-update-switch-main-tooltip">
-        <button type="button" class="btn btn-primary btn-sm d-none" id="app-update-switch-main-btn">
-          <i class="fas fa-code-branch"></i> Switch to main
-        </button>
-      </span>
-    </div>
-  </div>
-  <!-- Branch switching triggers the same App Update task, so keep it visually owned by this card. -->
-  <div class="system-updates-detail-row">
-    <button type="button" class="collapse-trigger system-updates-collapse-trigger" id="app-branch-advanced-trigger" data-collapse-target="appBranchAdvanced">
-      <span class="system-updates-collapse-label">
-        <i class="fas fa-chevron-right collapse-icon"></i>
-        <span><i class="fas fa-code-branch"></i> Advanced</span>
-      </span>
-    </button>
-    <div class="collapse-content" id="appBranchAdvanced">
-      <div class="system-updates-foldout-body">
-        <p class="status-tile-detail" id="app-branch-advanced-hint">
-          Switch branches only for testing or recovery.
-        </p>
-        <form id="app-branch-switch-form" class="system-updates-branch-form" autocomplete="off">
-          <div class="form-group">
-            <label class="form-label" for="app-branch-select">Branch</label>
-            <select class="form-control" id="app-branch-select">
-              <option value="">Open to load branches</option>
-            </select>
-          </div>
-          <button type="submit" class="btn btn-secondary btn-sm" id="app-branch-switch-btn" disabled>
-            <i class="fas fa-code-branch"></i> Switch Branch
-          </button>
-        </form>
-      </div>
     </div>
   </div>
 </section>
@@ -107,7 +74,7 @@
 <section class="system-updates-panel system-updates-command-panel">
   <div class="system-updates-toolbar">
     <div class="system-updates-status-main">
-      <strong id="apt-operation-title">Idle</strong>
+      <strong id="apt-operation-title">Package Manager</strong>
       <span id="apt-phase">—</span>
     </div>
     <span class="badge badge-neutral" id="apt-lock-badge">Checking...</span>
@@ -128,29 +95,7 @@
       </div>
       <span class="text-mono" id="apt-progress-text">0%</span>
     </div>
-    <div class="system-updates-actions">
-      <button type="button" class="btn btn-primary btn-sm" id="apt-update-btn"
-        data-confirm="Run apt update now? This refreshes package lists and may hold the apt lock while it runs."
-        data-confirm-title="Run apt update"
-        data-confirm-button="Update"
-        data-confirm-class="btn-primary">
-        <i class="fas fa-arrows-rotate"></i> Update
-      </button>
-      <button type="button" class="btn btn-success btn-sm" id="apt-upgrade-btn"
-        data-confirm="Run apt upgrade now? Packages may be installed or changed while the apt lock is held."
-        data-confirm-title="Run apt upgrade"
-        data-confirm-button="Upgrade"
-        data-confirm-class="btn-success">
-        <i class="fas fa-circle-up"></i> Upgrade
-      </button>
-      <button type="button" class="btn btn-danger btn-sm" id="apt-stop-btn"
-        data-confirm="Stop the SimpleSaferServer apt operation? This asks apt to terminate and may leave packages needing manual repair."
-        data-confirm-title="Stop apt operation"
-        data-confirm-button="Stop"
-        data-confirm-class="btn-danger" disabled>
-        <i class="fas fa-stop"></i> Stop
-      </button>
-    </div>
+    <p class="form-hint">SSS shows apt state only. Manage operating system updates from the OS.</p>
   </div>
 </section>
 
@@ -164,26 +109,23 @@
 <section class="system-updates-panel system-updates-settings">
   <div class="system-updates-settings-section">
     <div class="system-updates-section-title">
-      <span><i class="fas fa-calendar-check"></i> Automatic Apt Updates</span>
+      <span><i class="fas fa-calendar-check"></i> Automatic Apt Policy</span>
     </div>
-    <form id="auto-updates-form" autocomplete="off" class="system-updates-check-row">
-      <label class="form-check">
-        <input type="checkbox" class="form-check-input" id="auto-update-lists">
-        <span class="form-check-label">Refresh lists</span>
-      </label>
-      <label class="form-check">
-        <input type="checkbox" class="form-check-input" id="auto-unattended-upgrade">
-        <span class="form-check-label">Install upgrades</span>
-      </label>
-      <label class="form-check">
-        <input type="checkbox" class="form-check-input" id="auto-autoclean">
-        <span class="form-check-label">Clean cache</span>
-      </label>
-      <button type="submit" class="btn btn-primary btn-sm" id="auto-updates-save-btn">
-        <i class="fas fa-floppy-disk"></i> Save
-      </button>
-    </form>
-    <p class="form-hint" id="auto-updates-hint">Showing current apt periodic settings.</p>
+    <div class="system-updates-facts">
+      <div>
+        <span>Refresh Lists</span>
+        <strong id="auto-update-lists-status">—</strong>
+      </div>
+      <div>
+        <span>Unattended Upgrades</span>
+        <strong id="auto-upgrades-status">—</strong>
+      </div>
+      <div>
+        <span>Clean Cache</span>
+        <strong id="auto-autoclean-status">—</strong>
+      </div>
+    </div>
+    <p class="form-hint" id="auto-updates-hint">Showing current system apt periodic policy. SSS does not install, enable, or configure automatic OS updates.</p>
   </div>
 </section>
 
@@ -198,46 +140,12 @@
         <i class="fas fa-arrow-up-right-from-square"></i> Livepatch docs
       </a>
     </div>
-    <form id="livepatch-form" autocomplete="off" class="system-updates-livepatch-form">
-      <div class="form-group">
-        <label class="form-label" for="livepatch-token">Livepatch token</label>
-        <input type="password" class="form-control" id="livepatch-token" placeholder="Paste Canonical Livepatch token">
-      </div>
-      <button type="submit" class="btn btn-primary btn-sm" id="livepatch-setup-btn">
-        <i class="fas fa-key"></i> Enable
-      </button>
-    </form>
-  </div>
-</section>
-
-<section class="system-updates-details">
-  <div class="system-updates-detail-row">
-    <button type="button" class="collapse-trigger system-updates-collapse-trigger" data-collapse-target="systemUpdatesAdvanced">
-      <span class="system-updates-collapse-label">
-        <i class="fas fa-chevron-right collapse-icon"></i>
-        <span><i class="fas fa-screwdriver-wrench"></i> Advanced</span>
-      </span>
-    </button>
-    <div class="collapse-content" id="systemUpdatesAdvanced">
-      <div class="system-updates-foldout-body">
-        <p class="status-tile-detail">
-          Remove stale apt lock files only when no apt, dpkg, or unattended-upgrades process is active.
-        </p>
-        <div class="d-flex justify-end">
-          <button type="button" class="btn btn-outline-danger btn-sm" id="remove-locks-btn"
-            data-confirm="Remove stale apt lock files? Do this only after confirming no package operation is running."
-            data-confirm-title="Remove apt locks"
-            data-confirm-button="Remove Locks"
-            data-confirm-class="btn-danger">
-            <i class="fas fa-unlock"></i> Remove Stale Locks
-          </button>
-        </div>
-      </div>
-    </div>
+    <p class="form-hint">SSS shows Livepatch status only. Enable or change Livepatch from the operating system.</p>
   </div>
 </section>
 {% endblock %}
 
 {% block extra_js %}
+<script type="application/json" id="system-updates-copy">{{ system_updates_ui_text | tojson }}</script>
 <script src="{{ url_for('static', filename='js/system_updates.js') }}"></script>
 {% endblock %}

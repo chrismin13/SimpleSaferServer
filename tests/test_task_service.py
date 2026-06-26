@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import tempfile
 import threading
 import time
@@ -9,9 +10,13 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from simple_safer_server.services.storage_location import marker_path
+from simple_safer_server.core.job_state import JobStateStore
+from simple_safer_server.core.module_lifecycle import (
+    module_apply_resources,
+    ownership_manifest_for_runtime,
+)
+from simple_safer_server.modules.storage.location import marker_path
 from simple_safer_server.services.task_service import (
-    TASK_LOG_LINE_LIMIT,
     Status,
     TaskService,
     format_compact_schedule_datetime,
@@ -30,7 +35,9 @@ class FakeConfigManager:
                 "mount_point": self.mount_point,
                 "rclone_dir": self.rclone_dir,
                 "bandwidth_limit": "",
+                "cloud_enabled": "true",
             },
+            "schedule": {"backup_cloud_time": "03:00"},
             "storage": {
                 "mode": "existing_folder",
                 "path": self.mount_point,
@@ -82,60 +89,6 @@ class FakeState:
         self.mounted = mounted
 
 
-class FakeSystemdAdapter:
-    def __init__(self):
-        self.started = []
-        self.stopped = []
-        self.disabled_timers = []
-        self.enabled_timers = []
-        self.journal_output = "journal output"
-        self.properties = {
-            ("backup_cloud.timer", "NextElapseUSecRealtime"): (
-                "NextElapseUSecRealtime=Mon 2026-04-27 03:00:00 UTC"
-            ),
-            ("backup_cloud.service", "ExecMainStartTimestamp"): (
-                "ExecMainStartTimestamp=Sun 2026-04-26 03:00:00 UTC"
-            ),
-            ("backup_cloud.service", "LoadState"): "LoadState=loaded",
-            ("backup_cloud.service", "Result"): "Result=success",
-            ("backup_cloud.timer", "UnitFileState"): "UnitFileState=enabled",
-            ("backup_cloud.timer", "LoadState"): "LoadState=loaded",
-            ("backup_cloud.timer", "ActiveState"): "ActiveState=active",
-        }
-        self.multi_properties = {
-            "backup_cloud.service": (
-                "ExecMainStartTimestampMonotonic=1000000\nExecMainExitTimestampMonotonic=4000000\n"
-            )
-        }
-        self.active = "inactive"
-        self.journal_calls = []
-
-    def journal(self, unit_name, lines):
-        self.journal_calls.append((unit_name, lines))
-        return self.journal_output
-
-    def start_unit(self, unit_name):
-        self.started.append(unit_name)
-
-    def stop_unit(self, unit_name):
-        self.stopped.append(unit_name)
-
-    def disable_timer_now(self, unit_name):
-        self.disabled_timers.append(unit_name)
-
-    def enable_timer_now(self, unit_name):
-        self.enabled_timers.append(unit_name)
-
-    def show_property(self, unit_name, property_name):
-        return self.properties[(unit_name, property_name)]
-
-    def show_properties(self, unit_name, *property_names):
-        return self.multi_properties[unit_name]
-
-    def is_active(self, unit_name):
-        return self.active
-
-
 class FakeProcess:
     def __init__(self, returncode=0, stdout="", stderr=""):
         from io import StringIO
@@ -169,12 +122,14 @@ class TaskServiceTests(unittest.TestCase):
         mount_point="/tmp/simple-safer-server-test",
         *,
         is_fake=True,
-        systemd_adapter=None,
         rclone_dir="",
+        applied_modules=("cloud-backup", "drive-health", "ddns", "storage"),
     ):
+        data_dir = Path(tempfile.mkdtemp(prefix="sss-task-service-test-"))
+        self.addCleanup(lambda: shutil.rmtree(data_dir, ignore_errors=True))
         runtime = SimpleNamespace(
             is_fake=is_fake,
-            data_dir=Path("/tmp/simple-safer-server-test-data"),
+            data_dir=data_dir,
             default_mount_point=mount_point,
             repo_root=Path("."),
             rclone_config_dir=Path("."),
@@ -186,8 +141,11 @@ class TaskServiceTests(unittest.TestCase):
             system_utils=MagicMock(),
             fake_state=fake_state,
             logger=MagicMock(),
-            systemd_adapter=systemd_adapter,
         )
+        manifest = ownership_manifest_for_runtime(runtime)
+        for module_slug in applied_modules:
+            module = service.module_registry.module_for_slug(module_slug)
+            manifest.record_module_resources(module.slug, module_apply_resources(module))
         return service, fake_state
 
     def test_get_task_returns_known_task_and_none_for_unknown_task(self):
@@ -195,23 +153,20 @@ class TaskServiceTests(unittest.TestCase):
         task = service.get_task("Cloud Backup")
 
         assert task is not None
-        self.assertEqual(task.service_name, "backup_cloud.service")
-        app_update = service.get_task("App Update")
-        assert app_update is not None
-        self.assertEqual(app_update.service_name, "app_update.service")
+        self.assertEqual(task.worker_job_name, "cloud-backup")
         self.assertIsNone(service.get_task("Missing Task"))
 
     def test_task_summary_returns_error_fields_when_task_property_fails(self):
         service, _fake_state = self.build_service()
-        task = service.get_task("Cloud Backup")
+        task = service.get_task("Drive Health Check")
         assert task is not None
 
-        service.get_next_run = MagicMock(side_effect=RuntimeError("boom"))
+        service.schedule_state = MagicMock(side_effect=RuntimeError("boom"))
 
         self.assertEqual(
             service.task_summary(task),
             {
-                "name": "Cloud Backup",
+                "name": "Drive Health Check",
                 "next_run": "Error",
                 "last_run": "Error",
                 "status": "Error",
@@ -221,8 +176,6 @@ class TaskServiceTests(unittest.TestCase):
                     "label": "Schedule issue",
                     "source": "system",
                     "raw": "boom",
-                    "can_disable": True,
-                    "can_enable": True,
                 },
             },
         )
@@ -240,6 +193,14 @@ class TaskServiceTests(unittest.TestCase):
                 task.start()
         finally:
             thread.join()
+
+    def test_task_start_rejects_unapplied_module(self):
+        service, _fake_state = self.build_service(applied_modules=())
+        task = service.get_task("Cloud Backup")
+        assert task is not None
+
+        with self.assertRaisesRegex(RuntimeError, "Cloud Backup must be applied"):
+            task.start()
 
     def test_fake_stop_leaves_initial_idle_state_unchanged(self):
         service, fake_state = self.build_service()
@@ -282,6 +243,10 @@ class TaskServiceTests(unittest.TestCase):
         service._run_fake_cloud_backup(threading.Event())
 
         service.rclone_adapter.sync.assert_called_once()
+        self.assertEqual(
+            service.rclone_adapter.sync.call_args.kwargs["config_path"],
+            "rclone.conf",
+        )
         self.assertIn(
             ("Cloud Backup", "copied"),
             fake_state.logs,
@@ -299,130 +264,118 @@ class TaskServiceTests(unittest.TestCase):
 
         self.assertIn(("Drive Health", "SMART details collected."), fake_state.logs)
 
-    def test_fake_ddns_update_runs_provider_script_for_parity(self):
+    @patch("simple_safer_server.services.task_service.run_ddns_update", return_value=0)
+    def test_fake_ddns_update_runs_provider_module_for_parity(self, mock_update):
         service, fake_state = self.build_service()
-        service.command_runner = MagicMock()
-        service.command_runner.popen.return_value = FakeProcess(stdout="updated\n")
 
         service._run_fake_ddns_update("DDNS Update", threading.Event())
 
-        service.command_runner.popen.assert_called_once()
+        mock_update.assert_called_once_with()
         self.assertIn(
-            ("DDNS Update", "updated"),
+            ("DDNS Update", "DDNS update exited with code 0."),
             fake_state.logs,
         )
 
-    def test_real_task_status_and_timestamps_use_systemd_adapter(self):
-        systemd_adapter = FakeSystemdAdapter()
-        service, _fake_state = self.build_service(is_fake=False, systemd_adapter=systemd_adapter)
-        task = service.get_task("Cloud Backup")
-        assert task is not None
-
-        self.assertEqual(
-            task.next_run,
-            "Mon 2026-04-27 03:00:00 UTC",
-        )
-        self.assertEqual(task.last_run, "Sun 2026-04-26 03:00:00 UTC")
-        self.assertEqual(task.last_run_duration, "3s")
-        self.assertEqual(task.status, Status.SUCCESS)
-
-    def test_real_task_start_stop_and_logs_use_systemd_adapter(self):
-        systemd_adapter = FakeSystemdAdapter()
-        service, _fake_state = self.build_service(is_fake=False, systemd_adapter=systemd_adapter)
-        task = service.get_task("Cloud Backup")
-        assert task is not None
-
-        task.start()
-        task.stop()
-
-        self.assertEqual(task.get_logs(), "journal output")
-        self.assertEqual(
-            systemd_adapter.journal_calls,
-            [("backup_cloud.service", TASK_LOG_LINE_LIMIT)],
-        )
-        self.assertEqual(systemd_adapter.started, ["backup_cloud.service"])
-        self.assertEqual(systemd_adapter.stopped, ["backup_cloud.service"])
-
-    def test_disable_schedule_disables_timer_not_service_and_manual_start_still_works(self):
-        systemd_adapter = FakeSystemdAdapter()
-        service, _fake_state = self.build_service(is_fake=False, systemd_adapter=systemd_adapter)
-        task = service.get_task("Cloud Backup")
-        assert task is not None
-
-        service.disable_schedule(task, "permanent")
-        task.start()
-
-        self.assertEqual(systemd_adapter.disabled_timers, ["backup_cloud.timer"])
-        self.assertEqual(systemd_adapter.started, ["backup_cloud.service"])
-
-    def test_enable_schedule_enables_timer_and_clears_schedule_state(self):
-        systemd_adapter = FakeSystemdAdapter()
-        service, _fake_state = self.build_service(is_fake=False, systemd_adapter=systemd_adapter)
-        task = service.get_task("Cloud Backup")
-        assert task is not None
-
-        service.disable_schedule(task, "permanent")
-        service.enable_schedule(task)
-
-        self.assertEqual(systemd_adapter.enabled_timers, ["backup_cloud.timer"])
-        self.assertEqual(service.schedule_state(task)["state"], "active")
-
-    def test_schedule_state_reports_managed_external_and_issue_states(self):
-        systemd_adapter = FakeSystemdAdapter()
-        service, _fake_state = self.build_service(is_fake=False, systemd_adapter=systemd_adapter)
-        task = service.get_task("Cloud Backup")
-        assert task is not None
-
-        service.disable_schedule(task, "permanent")
-        self.assertEqual(service.schedule_state(task)["label"], "Disabled")
-
-        service.enable_schedule(task)
-        systemd_adapter.properties[("backup_cloud.timer", "UnitFileState")] = (
-            "UnitFileState=disabled"
-        )
-        self.assertEqual(service.schedule_state(task)["label"], "Disabled externally")
-
-        systemd_adapter.properties[("backup_cloud.timer", "UnitFileState")] = "UnitFileState=bad"
-        self.assertEqual(service.schedule_state(task)["label"], "Schedule issue")
-
-    def test_temporary_schedule_state_uses_compact_disable_label(self):
-        systemd_adapter = FakeSystemdAdapter()
-        service, _fake_state = self.build_service(is_fake=False, systemd_adapter=systemd_adapter)
-        task = service.get_task("Cloud Backup")
-        assert task is not None
-
-        service.disable_schedule(task, "temporary", hours=6)
-
-        self.assertTrue(service.schedule_state(task)["label"].startswith("Disabled until "))
-
-    def test_malformed_temporary_schedule_state_still_allows_reenable(self):
-        systemd_adapter = FakeSystemdAdapter()
-        service, _fake_state = self.build_service(is_fake=False, systemd_adapter=systemd_adapter)
-        task = service.get_task("Cloud Backup")
-        assert task is not None
-        service.disabled_timer_service.path.parent.mkdir(parents=True, exist_ok=True)
-        service.disabled_timer_service.path.write_text(
-            json.dumps(
-                {
-                    "backup_cloud.timer": {
-                        "task_name": "Cloud Backup",
-                        "timer_name": "backup_cloud.timer",
-                        "mode": "temporary",
-                        "created_at": "2026-05-13T12:00:00+00:00",
-                        "expires_at": "2026-05-13T18:00:00",
-                        "restore_attempts": 0,
-                        "restore_failed": False,
-                    }
-                }
+    def test_real_drive_health_task_reads_worker_job_state(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service, _fake_state = self.build_service(
+                is_fake=False,
             )
+            service.job_state_store = JobStateStore(SimpleNamespace(data_dir=Path(temp_dir)))
+            service.job_state_store.path.write_text(
+                json.dumps(
+                    {
+                        "jobs": {
+                            "drive-health": {
+                                "status": Status.SUCCESS,
+                                "message": "Job completed successfully.",
+                                "last_run": "2026-01-01T12:00:00+00:00",
+                                "last_duration_seconds": 3,
+                                "last_exit_code": 0,
+                                "next_run_at": "2026-01-02T02:58:00+00:00",
+                            }
+                        }
+                    }
+                )
+            )
+            task = service.get_task("Drive Health Check")
+            assert task is not None
+
+            self.assertEqual(task.next_run, "2026-01-02T02:58:00+00:00")
+            self.assertEqual(task.last_run, "2026-01-01T12:00:00+00:00")
+            self.assertEqual(task.last_run_duration, "3s")
+            self.assertEqual(task.status, Status.SUCCESS)
+            self.assertIn("Job: Drive Health", task.get_logs())
+
+    def test_real_worker_task_start_uses_worker_and_stop_is_not_supported(self):
+        service, _fake_state = self.build_service(
+            is_fake=False,
         )
+        service.command_runner = MagicMock()
+        task = service.get_task("Drive Health Check")
+        assert task is not None
+
+        task.start()
+
+        command = service.command_runner.popen.call_args.args[0]
+        self.assertEqual(command[-2:], ["--run-job", "drive-health"])
+        with self.assertRaisesRegex(RuntimeError, "worker"):
+            task.stop()
+
+    def test_real_ddns_task_reads_worker_job_state(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service, _fake_state = self.build_service(
+                is_fake=False,
+            )
+            service.job_state_store = JobStateStore(SimpleNamespace(data_dir=Path(temp_dir)))
+            service.job_state_store.path.write_text(
+                json.dumps(
+                    {
+                        "jobs": {
+                            "ddns-update": {
+                                "status": Status.SUCCESS,
+                                "message": "Job completed successfully.",
+                                "last_run": "2026-01-01T12:00:00+00:00",
+                                "last_duration_seconds": 4,
+                                "last_exit_code": 0,
+                                "next_run_at": "2026-01-01T12:05:00+00:00",
+                            }
+                        }
+                    }
+                )
+            )
+            task = service.get_task("DDNS Update")
+            assert task is not None
+
+            self.assertEqual(task.status, Status.SUCCESS)
+            self.assertEqual(task.last_run, "2026-01-01T12:00:00+00:00")
+            self.assertEqual(task.last_run_duration, "4s")
+            self.assertEqual(task.next_run, "2026-01-01T12:05:00+00:00")
+            self.assertEqual(service.schedule_state(task)["source"], "worker")
+            self.assertIn("Job: DDNS Update", task.get_logs())
+
+    def test_real_ddns_task_start_runs_worker_job(self):
+        service, _fake_state = self.build_service(is_fake=False)
+        service.command_runner = MagicMock()
+        task = service.get_task("DDNS Update")
+        assert task is not None
+
+        task.start()
+
+        command = service.command_runner.popen.call_args.args[0]
+        self.assertEqual(command[-2:], ["--run-job", "ddns-update"])
+
+    def test_worker_schedules_do_not_use_disabled_timer_controls(self):
+        service, _fake_state = self.build_service(is_fake=False)
+        task = service.get_task("Drive Health Check")
+        assert task is not None
 
         state = service.schedule_state(task)
+        self.assertEqual(state["source"], "worker")
+        self.assertNotIn("can_disable", state)
+        self.assertNotIn("can_enable", state)
 
-        self.assertEqual(state["label"], "Disabled")
-        self.assertTrue(state["can_enable"])
-
-    def test_utc_disabled_timer_label_uses_local_clock(self):
+    def test_utc_schedule_label_uses_local_clock(self):
         if not hasattr(time, "tzset"):
             self.skipTest("tzset is required for local timezone label checks")
         original_tz = os.environ.get("TZ")

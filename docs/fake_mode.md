@@ -8,8 +8,8 @@ Debian machine environment.
 Fake mode avoids local system changes that would be disruptive or unavailable on a development
 machine:
 
-- systemd service and timer state
-- scheduled task Disable Schedule and Enable Schedule state
+- systemd service state
+- worker job status and logs
 - local disks and backup-drive mount state
 - Samba service state and managed Samba configuration
 - restart, shutdown, and other destructive machine actions
@@ -42,9 +42,8 @@ use the runtime volatile directory.
 Managed-drive storage checks use the simulated mount point and UUID saved in fake state. They do
 not compare against the development machine's real mounted filesystem UUID.
 
-Disable Schedule writes the same `disabled_timers.json` state in fake mode, but it does not invoke
-systemd. Enable Schedule removes the fake disabled-schedule record so dashboard labels return to the
-simulated next run.
+Scheduled jobs run through the SimpleSaferServer worker model in fake mode too. The dashboard shows
+the same worker-owned schedule labels as a real install.
 
 Railway demos run fake mode with `SSS_DATA_DIR=/data`, so `/data` must be a persistent Railway
 volume if setup state should survive redeploys.

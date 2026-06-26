@@ -12,51 +12,31 @@ NC='\033[0m' # No Color
 APP_DIR="/opt/SimpleSaferServer"
 CONFIG_DIR="/etc/SimpleSaferServer"
 CONFIG_FILE="$CONFIG_DIR/config.conf"
-USERS_FILE="$CONFIG_DIR/users.json"
 DATA_DIR="/var/lib/SimpleSaferServer"
+OWNERSHIP_MANIFEST="${OWNERSHIP_MANIFEST:-$DATA_DIR/ownership.json}"
 VOLATILE_DIR="/run/SimpleSaferServer"
 LOG_DIR="/var/log/SimpleSaferServer"
 SYSTEMD_DIR="/etc/systemd/system"
+APP_USER="sss"
+APP_GROUP="sss"
+SERVICE_USER_MARKER="$DATA_DIR/.sss-user-created"
+SERVICE_GROUP_MARKER="$DATA_DIR/.sss-group-created"
+SUDOERS_FILE="/etc/sudoers.d/simple-safer-server"
 # Keep Samba-owned paths under one root so tests and recovery runs can redirect
 # the whole Samba layout without accidentally reaching the live /etc/samba tree.
 SAMBA_DIR="${SAMBA_DIR:-/etc/samba}"
 SMB_CONF="${SMB_CONF:-$SAMBA_DIR/smb.conf}"
 SSS_SAMBA_GLOBALS_FILE="${SSS_SAMBA_GLOBALS_FILE:-$SAMBA_DIR/simple_safer_server_globals.conf}"
 SSS_SAMBA_SHARES_FILE="${SSS_SAMBA_SHARES_FILE:-$SAMBA_DIR/simple_safer_server_shares.conf}"
-SSS_SAMBA_BACKUP_DIR="${SSS_SAMBA_BACKUP_DIR:-$SAMBA_DIR/backups}"
-APT_AUTO_UPGRADES_CONF="/etc/apt/apt.conf.d/20auto-upgrades"
 FSTAB_MARKER="SimpleSaferServer managed backup drive"
-LEGACY_FSTAB_MARKER="SimpleSaferServer"
 SSS_GLOBALS_INCLUDE_BEGIN="# BEGIN SimpleSaferServer global include"
 SSS_GLOBALS_INCLUDE_END="# END SimpleSaferServer global include"
 SSS_SHARES_INCLUDE_BEGIN="# BEGIN SimpleSaferServer shares include"
 SSS_SHARES_INCLUDE_END="# END SimpleSaferServer shares include"
 SCRIPT_FILES=(
-  check_mount.sh
-  check_health.sh
-  check_health.py
-  backup_cloud.sh
-  validate_storage_source.py
-  log_alert.py
-  import_legacy.py
-  ddns_update.sh
-  ddns_update.py
-  app_update.sh
-  app_update.py
-  restore_disabled_timers.py
+  sss
+  sss-helper
 )
-
-# The installer writes rclone config where the root-owned scheduled tasks can
-# read it later, so the uninstaller needs to look there instead of under /etc.
-ROOT_HOME=""
-if command -v getent >/dev/null 2>&1; then
-  ROOT_HOME="$(getent passwd root 2>/dev/null | cut -d: -f6 || true)"
-fi
-if [ -z "$ROOT_HOME" ]; then
-  ROOT_HOME="/root"
-fi
-RCLONE_CONFIG_DIR="$ROOT_HOME/.config/rclone"
-RCLONE_CONFIG_PATH="$RCLONE_CONFIG_DIR/rclone.conf"
 
 make_atomic_temp_file() {
   local target_path="$1"
@@ -76,18 +56,21 @@ require_python3() {
   fi
 }
 
-collect_samba_users() {
-  if [ ! -f "$USERS_FILE" ]; then
+collect_manifest_resource_identifiers() {
+  local module_slug="$1"
+  local kind="$2"
+
+  if [ ! -f "$OWNERSHIP_MANIFEST" ]; then
     return 0
   fi
 
-  require_python3 "read $USERS_FILE" || return 1
+  require_python3 "read $OWNERSHIP_MANIFEST" || return 1
 
-  python3 - "$USERS_FILE" <<'PY'
+  python3 - "$OWNERSHIP_MANIFEST" "$module_slug" "$kind" <<'PY'
 import json
 import sys
 
-path = sys.argv[1]
+path, module_slug, kind = sys.argv[1:]
 
 try:
     with open(path, "r", encoding="utf-8") as handle:
@@ -95,81 +78,21 @@ try:
 except Exception:
     raise SystemExit(1)
 
-if isinstance(data, dict):
-    for username in data.keys():
-        if isinstance(username, str) and username.strip():
-            print(username)
-elif isinstance(data, list):
-    for item in data:
-        if isinstance(item, dict):
-            username = item.get("username")
-            if isinstance(username, str) and username.strip():
-                print(username)
+for item in data.get("resources", []):
+    if item.get("module_slug") != module_slug or item.get("kind") != kind:
+        continue
+    identifier = item.get("identifier")
+    if isinstance(identifier, str) and identifier.strip():
+        print(identifier.strip())
 PY
 }
 
-apt_updates_were_managed() {
-  if [ ! -f "$CONFIG_FILE" ]; then
-    return 1
-  fi
-
-  require_python3 "read $CONFIG_FILE" || return 1
-
-  python3 - "$CONFIG_FILE" <<'PY'
-import configparser
-import sys
-
-config = configparser.ConfigParser()
-config.read(sys.argv[1])
-if config.getboolean("apt_updates", "managed", fallback=False):
-    raise SystemExit(0)
-raise SystemExit(1)
-PY
+collect_owned_samba_accounts() {
+  collect_manifest_resource_identifiers "file-sharing" "samba-account"
 }
 
-livepatch_was_managed() {
-  if [ ! -f "$CONFIG_FILE" ]; then
-    return 1
-  fi
-
-  require_python3 "read $CONFIG_FILE" || return 1
-
-  python3 - "$CONFIG_FILE" <<'PY'
-import configparser
-import sys
-
-config = configparser.ConfigParser()
-config.read(sys.argv[1])
-if config.getboolean("system_updates", "livepatch_managed", fallback=False):
-    raise SystemExit(0)
-raise SystemExit(1)
-PY
-}
-
-managed_hostname_summary() {
-  if [ ! -f "$CONFIG_FILE" ]; then
-    return 0
-  fi
-
-  require_python3 "read hostname metadata from $CONFIG_FILE" || return 1
-
-  python3 - "$CONFIG_FILE" <<'PY'
-import configparser
-import socket
-import sys
-
-config = configparser.ConfigParser()
-config.read(sys.argv[1])
-if not config.getboolean("system", "hostname_managed", fallback=False):
-    raise SystemExit(0)
-
-original = config.get("system", "original_hostname", fallback="").strip()
-applied = config.get("system", "applied_hostname", fallback="").strip()
-current = socket.gethostname().strip()
-print("original={}".format(original))
-print("applied={}".format(applied))
-print("current={}".format(current))
-PY
+collect_owned_system_users() {
+  collect_manifest_resource_identifiers "file-sharing" "system-user"
 }
 
 backup_file_if_present() {
@@ -196,6 +119,68 @@ remove_systemd_unit() {
   rm -f "$SYSTEMD_DIR/$unit"
 }
 
+remove_installer_service_user() {
+  local remove_user=0
+  local remove_group=0
+
+  if [ -f "$SERVICE_USER_MARKER" ]; then
+    remove_user=1
+  fi
+  if [ -f "$SERVICE_GROUP_MARKER" ]; then
+    remove_group=1
+  fi
+
+  if [ "$remove_user" -eq 1 ]; then
+    userdel "$APP_USER" 2>/dev/null || true
+  fi
+  if [ "$remove_group" -eq 1 ]; then
+    groupdel "$APP_GROUP" 2>/dev/null || true
+  fi
+}
+
+remove_manifest_owned_accounts() {
+  local samba_accounts_output=""
+  local system_users_output=""
+  local -a SAMBA_ACCOUNTS=()
+  local -a SYSTEM_USERS=()
+
+  if ! samba_accounts_output="$(collect_owned_samba_accounts)"; then
+    echo "ERROR: Failed to read File Sharing Samba account ownership from $OWNERSHIP_MANIFEST."
+    return 1
+  fi
+  if ! system_users_output="$(collect_owned_system_users)"; then
+    echo "ERROR: Failed to read File Sharing system user ownership from $OWNERSHIP_MANIFEST."
+    return 1
+  fi
+
+  if [ -n "$samba_accounts_output" ]; then
+    mapfile -t SAMBA_ACCOUNTS <<<"$samba_accounts_output"
+  fi
+  if [ -n "$system_users_output" ]; then
+    mapfile -t SYSTEM_USERS <<<"$system_users_output"
+  fi
+
+  if [ "${#SAMBA_ACCOUNTS[@]}" -gt 0 ]; then
+    echo "Removing File Sharing-owned Samba accounts..."
+    for username in "${SAMBA_ACCOUNTS[@]}"; do
+      echo "Removing Samba account: $username"
+      smbpasswd -x "$username" 2>/dev/null || true
+    done
+  else
+    echo "No File Sharing-owned Samba accounts found in $OWNERSHIP_MANIFEST."
+  fi
+
+  if [ "${#SYSTEM_USERS[@]}" -gt 0 ]; then
+    echo "Removing File Sharing-owned Linux users..."
+    for username in "${SYSTEM_USERS[@]}"; do
+      echo "Removing Linux user: $username"
+      userdel "$username" 2>/dev/null || true
+    done
+  else
+    echo "No File Sharing-owned Linux users found in $OWNERSHIP_MANIFEST."
+  fi
+}
+
 remove_managed_fstab_entries() {
   local original="${1:-/etc/fstab}"
   local updated=""
@@ -210,10 +195,10 @@ remove_managed_fstab_entries() {
   backup_file_if_present "$original" "uninstall_backup"
   require_python3 "remove managed fstab entries" || return 1
 
-  if ! python3 - "$original" "$updated" "$FSTAB_MARKER" "$LEGACY_FSTAB_MARKER" <<'PY'; then
+  if ! python3 - "$original" "$updated" "$FSTAB_MARKER" <<'PY'; then
 import sys
 
-original, updated, marker, legacy = sys.argv[1:]
+original, updated, marker = sys.argv[1:]
 with open(original, "r", encoding="utf-8") as handle:
     lines = handle.readlines()
 
@@ -225,7 +210,7 @@ with open(updated, "w", encoding="utf-8") as handle:
             continue
 
         comment = line.split("#", 1)[1].strip()
-        if comment in {marker, legacy}:
+        if comment == marker:
             continue
         handle.write(line)
 PY
@@ -255,18 +240,67 @@ PY
 }
 
 remove_owned_samba_include_files() {
-  # These files are app-owned by path, so they are safe to remove even when
-  # smb.conf is absent or too malformed for an automated rewrite.
-  rm -f "$SSS_SAMBA_GLOBALS_FILE" "$SSS_SAMBA_SHARES_FILE"
-  # Legacy installs created a backup directory for smb.conf snapshots.
-  # Remove it only if empty; preserve old backups the admin might want.
-  rmdir "$SSS_SAMBA_BACKUP_DIR" 2>/dev/null || true
+  remove_manifest_owned_file "$SSS_SAMBA_GLOBALS_FILE"
+  remove_manifest_owned_file "$SSS_SAMBA_SHARES_FILE"
+}
+
+ownership_manifest_has_resource() {
+  local module_slug="$1"
+  local kind="$2"
+  local identifier="$3"
+
+  if [ ! -f "$OWNERSHIP_MANIFEST" ]; then
+    return 1
+  fi
+
+  require_python3 "read $OWNERSHIP_MANIFEST" || return 1
+
+  python3 - "$OWNERSHIP_MANIFEST" "$module_slug" "$kind" "$identifier" <<'PY'
+import json
+import sys
+
+path, module_slug, kind, identifier = sys.argv[1:]
+try:
+    with open(path, "r", encoding="utf-8") as handle:
+        payload = json.load(handle)
+except Exception:
+    raise SystemExit(1)
+
+for item in payload.get("resources", []):
+    if (
+        item.get("module_slug") == module_slug
+        and item.get("kind") == kind
+        and item.get("identifier") == identifier
+    ):
+        raise SystemExit(0)
+raise SystemExit(1)
+PY
+}
+
+remove_manifest_owned_file() {
+  local path="$1"
+
+  if ownership_manifest_has_resource "file-sharing" "config-file" "$path"; then
+    rm -f "$path"
+  elif [ -e "$path" ]; then
+    echo "WARNING: Leaving $path because it is not recorded as owned by File Sharing in $OWNERSHIP_MANIFEST."
+  fi
+}
+
+samba_include_cleanup_allowed() {
+  ownership_manifest_has_resource "file-sharing" "config-file" "$SSS_SAMBA_GLOBALS_FILE" \
+    || ownership_manifest_has_resource "file-sharing" "config-file" "$SSS_SAMBA_SHARES_FILE"
 }
 
 cleanup_managed_smb_shares() {
   local cleaned=""
 
   echo "Removing SimpleSaferServer-owned Samba include files..."
+
+  if ! samba_include_cleanup_allowed; then
+    echo "No File Sharing ownership records found in $OWNERSHIP_MANIFEST. Leaving Samba config untouched."
+    return 0
+  fi
 
   if [ ! -f "$SMB_CONF" ]; then
     remove_owned_samba_include_files
@@ -363,19 +397,6 @@ PY
   fi
 }
 
-remove_git_safe_directory() {
-  local repo_path="${1:-$APP_DIR}"
-
-  if ! command -v git >/dev/null 2>&1; then
-    return 0
-  fi
-
-  # The installer adds this so root-run systemd services can inspect the
-  # admin-owned app checkout. Remove every matching value because repeated
-  # reinstalls before this cleanup may have written duplicates.
-  git config --system --unset-all safe.directory "$repo_path" 2>/dev/null || true
-}
-
 main() {
   echo -e "${BLUE}===============================================${NC}"
   echo -e "${BLUE}   SimpleSaferServer Uninstaller${NC}"
@@ -389,65 +410,23 @@ main() {
   echo "Starting SimpleSaferServer uninstallation..."
   echo -e "${YELLOW}Active Samba file transfers will be interrupted.${NC}"
 
-  # Read this before CONFIG_DIR is removed so the final report can tell the
-  # admin about OS-level apt settings that intentionally survive uninstall.
-  local apt_updates_managed="false"
-  if apt_updates_were_managed; then
-    apt_updates_managed="true"
-  fi
-  local livepatch_managed="false"
-  if livepatch_was_managed; then
-    livepatch_managed="true"
-  fi
-  local hostname_summary=""
-  if ! hostname_summary="$(managed_hostname_summary)"; then
-    echo "ERROR: Failed to read SimpleSaferServer hostname metadata from $CONFIG_FILE."
-    exit 1
-  fi
-
   echo "Stopping and disabling systemd units..."
-  for svc in check_mount check_health backup_cloud ddns_update app_update; do
-    remove_systemd_unit "${svc}.timer"
-    remove_systemd_unit "${svc}.service"
-  done
-  remove_systemd_unit "simple_safer_server_restore_schedules.timer"
-  remove_systemd_unit "simple_safer_server_restore_schedules.service"
-  remove_systemd_unit "simple_safer_server_web.service"
+  remove_systemd_unit "simple-safer-server-worker.service"
+  remove_systemd_unit "simple-safer-server-web.service"
+  rm -f "$SUDOERS_FILE"
 
   remove_managed_fstab_entries
   cleanup_managed_smb_shares || exit 1
 
-  echo "Removing installed helper scripts..."
+  echo "Removing installed CLI wrappers..."
   for script in "${SCRIPT_FILES[@]}"; do
-    rm -f "$APP_DIR/scripts/$script"
     rm -f "/usr/local/bin/$script"
-    echo "Removed helper script if present: $script"
+    echo "Removed CLI wrapper if present: $script"
   done
 
-  echo "Removing installed HDSentinel binary..."
-  rm -f /usr/local/bin/hdsentinel
+  remove_manifest_owned_accounts || exit 1
 
-  # Gather Samba usernames before deleting the config directory because the
-  # app stores the source of truth in users.json rather than in a manifest.
-  local samba_users_output=""
-  local -a SAMBA_USERS=()
-  if ! samba_users_output="$(collect_samba_users)"; then
-    echo "ERROR: Failed to read SimpleSaferServer users from $USERS_FILE."
-    exit 1
-  fi
-  if [ -n "$samba_users_output" ]; then
-    mapfile -t SAMBA_USERS <<<"$samba_users_output"
-  fi
-
-  if [ "${#SAMBA_USERS[@]}" -gt 0 ]; then
-    echo "Removing SimpleSaferServer users from Samba..."
-    for username in "${SAMBA_USERS[@]}"; do
-      echo "Removing Samba user: $username"
-      smbpasswd -x "$username" 2>/dev/null || true
-    done
-  else
-    echo "No SimpleSaferServer Samba users found in $USERS_FILE."
-  fi
+  remove_installer_service_user
 
   echo "Removing application files and data..."
   rm -rf "$APP_DIR"
@@ -456,57 +435,15 @@ main() {
   rm -rf "$VOLATILE_DIR"
   rm -rf "$LOG_DIR"
 
-  echo "Removing SimpleSaferServer Git trust entry if present..."
-  remove_git_safe_directory "$APP_DIR"
-
-  echo "Removing SimpleSaferServer rclone configuration if present..."
-  rm -f "$RCLONE_CONFIG_PATH"
-  rmdir "$RCLONE_CONFIG_DIR" 2>/dev/null || true
-
-  echo "Removing legacy SimpleSaferServer user and group if present..."
-  userdel -r SimpleSaferServer 2>/dev/null || true
-  groupdel SimpleSaferServer 2>/dev/null || true
-
   echo "Reloading systemd..."
   systemctl daemon-reload 2>/dev/null || true
 
   echo -e "${GREEN}Uninstallation complete!${NC}"
-  echo "SimpleSaferServer application files, services, timers, data, and managed mount entries have been removed."
+  echo "SimpleSaferServer application files, services, data, and managed mount entries have been removed."
   echo "Shared system packages and services such as Samba, wsdd2, Python, and rclone were left installed."
-  echo "Samba user accounts created from SimpleSaferServer users were removed."
+  echo "Manifest-owned File Sharing Samba and Linux users were removed."
   echo "SimpleSaferServer-owned Samba include files and include blocks were removed."
   echo "Unmanaged Samba share blocks in $SMB_CONF were left untouched."
-  if [ "$apt_updates_managed" = "true" ]; then
-    echo "SimpleSaferServer had managed apt periodic settings in $APT_AUTO_UPGRADES_CONF."
-    echo "That file was left in place. Review it manually if you want to disable automatic apt updates."
-  fi
-  if [ "$livepatch_managed" = "true" ]; then
-    echo "SimpleSaferServer enabled Ubuntu Livepatch through Ubuntu Pro integration."
-    echo "Ubuntu Pro and Livepatch state were left in place."
-    echo "Review or disable them manually if you do not want them after uninstall."
-  fi
-  if [ -n "$hostname_summary" ]; then
-    local original_hostname=""
-    local applied_hostname=""
-    local current_hostname=""
-    while IFS='=' read -r key value; do
-      case "$key" in
-        original) original_hostname="$value" ;;
-        applied) applied_hostname="$value" ;;
-        current) current_hostname="$value" ;;
-      esac
-    done <<<"$hostname_summary"
-
-    echo "SimpleSaferServer changed this server's hostname during setup or management."
-    if [ -n "$original_hostname" ] && [ -n "$applied_hostname" ]; then
-      echo "Original hostname: $original_hostname"
-      echo "Last SimpleSaferServer-applied hostname: $applied_hostname"
-    fi
-    if [ -n "$current_hostname" ] && [ "$current_hostname" != "$applied_hostname" ]; then
-      echo "Current hostname: $current_hostname"
-    fi
-    echo "The hostname and /etc/hosts were left in place. Change them manually if you want a different server name after uninstall."
-  fi
 }
 
 # Execute main if the script is run directly or piped into bash (e.g. via curl).

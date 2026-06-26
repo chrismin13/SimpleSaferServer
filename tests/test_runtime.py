@@ -24,9 +24,10 @@ class RuntimeHelpersTests(unittest.TestCase):
                         runtime._runtime = prev_runtime
                         runtime._fake_state = prev_fake
 
-        self.assertEqual(resolved_runtime.data_dir, Path(temp_dir) / ".dev-data")
-        self.assertEqual(resolved_runtime.volatile_dir, Path(temp_dir) / ".dev-data" / "run")
-        self.assertEqual(resolved_runtime.config_dir, Path(temp_dir) / ".dev-data" / "config")
+        temp_path = Path(temp_dir).resolve()
+        self.assertEqual(resolved_runtime.data_dir, temp_path / ".dev-data")
+        self.assertEqual(resolved_runtime.volatile_dir, temp_path / ".dev-data" / "run")
+        self.assertEqual(resolved_runtime.config_dir, temp_path / ".dev-data" / "config")
 
     def test_resolve_fake_data_dir_prefers_railway_volume_over_default_data_path(self):
         repo_root = Path("/srv/simple-safer-server")
@@ -43,7 +44,7 @@ class RuntimeHelpersTests(unittest.TestCase):
         ):
             self.assertEqual(
                 runtime.resolve_fake_data_dir(repo_root),
-                Path("/var/lib/railway/volumes/app-data"),
+                Path("/var/lib/railway/volumes/app-data").resolve(),
             )
 
     def test_resolve_fake_data_dir_keeps_explicit_custom_path(self):
@@ -88,9 +89,17 @@ class RuntimeHelpersTests(unittest.TestCase):
                         runtime._runtime = prev_runtime
                         runtime._fake_state = prev_fake
 
-        self.assertEqual(resolved_runtime.repo_root, Path(temp_dir))
+        self.assertEqual(resolved_runtime.repo_root, Path(temp_dir).resolve())
         self.assertEqual(resolved_runtime.data_dir, Path("/var/lib/SimpleSaferServer"))
         self.assertEqual(resolved_runtime.volatile_dir, Path("/run/SimpleSaferServer"))
+        self.assertEqual(
+            resolved_runtime.rclone_config_dir,
+            Path("/etc/SimpleSaferServer/rclone"),
+        )
+        self.assertEqual(
+            resolved_runtime.smtp_config_path,
+            Path("/etc/SimpleSaferServer/smtp.conf"),
+        )
 
     def test_resolve_volatile_dir_accepts_explicit_override(self):
         with tempfile.TemporaryDirectory() as temp_dir:

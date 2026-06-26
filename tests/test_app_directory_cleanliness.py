@@ -3,10 +3,9 @@ import subprocess
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
 
-from simple_safer_server.services import drive_health
-from simple_safer_server.services.system_updates import SystemUpdatesManager
+from simple_safer_server.modules.drive_health import service as drive_health
+from simple_safer_server.modules.system_updates.service import SystemUpdatesManager
 
 
 class FakeConfigManager:
@@ -15,21 +14,6 @@ class FakeConfigManager:
 
     def set_value(self, _section, _key, _value):
         return None
-
-
-class FakeSystemUpdatesCommandAdapter:
-    def __init__(self):
-        self.apt_periodic_content = ""
-
-    def write_apt_periodic_config(self, temp_file):
-        self.apt_periodic_content = temp_file.read()
-
-    def pro_attach(self, pro_binary, attach_config_path):
-        self.attach_config_path = attach_config_path
-        return SimpleNamespace(returncode=0, stdout="", stderr="", args=[pro_binary])
-
-    def pro_enable_livepatch(self, _pro_binary):
-        return SimpleNamespace(returncode=0, stdout="", stderr="")
 
 
 def _git(repo: Path, *args: str):
@@ -65,36 +49,15 @@ def test_normal_app_state_writes_do_not_dirty_installed_git_checkout():
             config_dir=root / "etc",
             default_mount_point=str(root / "backup"),
         )
-        command_adapter = FakeSystemUpdatesCommandAdapter()
-        manager = SystemUpdatesManager(
-            FakeConfigManager(),
-            runtime=runtime,
-            command_adapter=command_adapter,
-        )
+        SystemUpdatesManager(FakeConfigManager(), runtime=runtime)
 
         drive_health.save_hdsentinel_state({"available": True}, runtime=runtime)
-        manager._write_apt_periodic_config(
-            {
-                "update_package_lists": True,
-                "unattended_upgrade": False,
-                "autoclean_interval": 7,
-            }
-        )
-        with patch.object(manager, "get_distribution_info", return_value={"id": "ubuntu"}):
-            with patch.object(manager, "get_livepatch_status", return_value={"enabled": True}):
-                with patch(
-                    "simple_safer_server.services.system_updates.shutil.which",
-                    return_value="/usr/bin/pro",
-                ):
-                    manager.setup_livepatch("secret-token")
 
         status = _git(app_dir, "status", "--porcelain").stdout
 
         assert status == ""
         assert (data_dir / "hdsentinel_state.json").exists()
-        assert command_adapter.apt_periodic_content
-        assert command_adapter.attach_config_path.parent == volatile_dir
-        assert not command_adapter.attach_config_path.exists()
+        assert (volatile_dir / "system_updates_state.json").exists()
 
 
 def test_gitignore_keeps_install_artifacts_ignored_without_hiding_known_state_files():
@@ -137,3 +100,24 @@ def test_gitignore_keeps_install_artifacts_ignored_without_hiding_known_state_fi
 
     assert ignored.returncode == 0
     assert not_ignored.returncode == 1
+
+
+def test_vendored_htmx_asset_is_pinned_locally():
+    repo_root = Path(__file__).resolve().parents[1]
+    htmx_path = repo_root / "static" / "vendor" / "htmx" / "2.0.10" / "htmx.min.js"
+    license_path = repo_root / "static" / "vendor" / "htmx" / "2.0.10" / "LICENSE"
+
+    assert htmx_path.exists()
+    assert license_path.exists()
+    assert 'version:"2.0.10"' in htmx_path.read_text(encoding="utf-8")
+
+
+def test_vendored_webawesome_callout_asset_is_pinned_locally():
+    repo_root = Path(__file__).resolve().parents[1]
+    webawesome_root = repo_root / "static" / "vendor" / "webawesome" / "3.9.0"
+    callout_path = webawesome_root / "components" / "callout" / "callout.js"
+    license_path = webawesome_root / "LICENSE.md"
+
+    assert callout_path.exists()
+    assert license_path.exists()
+    assert "WaCallout" in callout_path.read_text(encoding="utf-8")

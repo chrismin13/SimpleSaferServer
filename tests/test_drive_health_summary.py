@@ -1,14 +1,21 @@
 import os
-import subprocess
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from flask import Flask
 
-from simple_safer_server.services import drive_health as drive_health_service
+from simple_safer_server.core.module_lifecycle import apply_module
+from simple_safer_server.modules.drive_health import service as drive_health_service
+from simple_safer_server.modules.drive_health.module import (
+    create_module as create_drive_health_module,
+)
+from simple_safer_server.modules.drive_health.service import DriveHealthSummaryService
 from simple_safer_server.services import runtime
-from simple_safer_server.services.drive_health import DriveHealthSummaryService
+
+
+def _apply_drive_health_module(services):
+    apply_module(create_drive_health_module(), services.runtime)
 
 
 def _create_fake_app():
@@ -36,6 +43,7 @@ def _create_fake_app():
         services = app.extensions["simple_safer_server"]
         services.config_manager.set_value("system", "setup_complete", "true")
         services.config_manager.set_value("system", "username", "admin")
+        _apply_drive_health_module(services)
         ok, message = services.user_manager.create_user("admin", "password", is_admin=True)
         assert ok, message
 
@@ -65,7 +73,7 @@ def test_drive_health_summary_get_does_not_probe_drive():
     app, cleanup = _create_fake_app()
     try:
         with patch(
-            "simple_safer_server.routes.drive_health.get_smart_attributes",
+            "simple_safer_server.modules.drive_health.service.get_smart_attributes",
             side_effect=AssertionError("GET summary must not probe SMART"),
         ):
             with app.test_client() as client:
@@ -77,37 +85,87 @@ def test_drive_health_summary_get_does_not_probe_drive():
         cleanup()
 
 
-def test_drive_health_page_renders_warning_when_smartctl_support_check_fails():
-    from simple_safer_server.routes import drive_health as route_module
+def test_drive_health_page_get_does_not_probe_smartctl_support():
+    from simple_safer_server.modules.drive_health import routes as route_module
 
-    services = SimpleNamespace(
-        runtime=SimpleNamespace(is_fake=False, default_mount_point="/media/backup"),
-        config_manager=SimpleNamespace(get_value=lambda _section, _key, default="": default),
-        system_utils=SimpleNamespace(),
-    )
-    app = Flask(__name__)
+    with TemporaryDirectory() as temp_dir:
+        runtime_for_test = SimpleNamespace(
+            is_fake=False,
+            default_mount_point="/media/backup",
+            data_dir=temp_dir,
+        )
+        services = SimpleNamespace(
+            runtime=runtime_for_test,
+            config_manager=SimpleNamespace(get_value=lambda _section, _key, default="": default),
+            system_utils=SimpleNamespace(),
+        )
+        _apply_drive_health_module(services)
+        app = Flask(__name__)
 
-    with app.test_request_context("/drives"):
-        with patch("simple_safer_server.routes.drive_health._get_services", return_value=services):
+        with app.test_request_context("/drives"):
             with patch(
-                "simple_safer_server.routes.drive_health.get_hdsentinel_settings",
-                return_value={"enabled": False, "health_change_alert": False},
+                "simple_safer_server.modules.drive_health.routes._get_services",
+                return_value=services,
             ):
                 with patch(
-                    "simple_safer_server.routes.drive_health.get_smartctl_json_support",
-                    side_effect=subprocess.TimeoutExpired(["smartctl", "-h"], 60),
+                    "simple_safer_server.modules.drive_health.routes.get_hdsentinel_settings",
+                    return_value={"enabled": False, "health_change_alert": False},
                 ):
                     with patch(
-                        "simple_safer_server.routes.drive_health.render_template",
-                        return_value="rendered",
-                    ) as mock_render:
-                        response = route_module.drives.__wrapped__()
+                        "simple_safer_server.modules.drive_health.service.get_smartctl_json_support",
+                        side_effect=AssertionError("GET page must not run smartctl"),
+                    ):
+                        with patch(
+                            "simple_safer_server.modules.drive_health.routes.render_template",
+                            return_value="rendered",
+                        ) as mock_render:
+                            response = route_module.drives.__wrapped__()
 
     assert response == "rendered"
     _args, kwargs = mock_render.call_args
-    warning = kwargs["smart_support_warning"]
-    assert "Could not check smartctl JSON support:" in warning
-    assert "timed out" in warning
+    assert kwargs["drive_health_module"].slug == "drive-health"
+    assert kwargs["smart_support_warning"] is None
+
+
+def test_drive_health_page_renders_module_owned_help():
+    app, cleanup = _create_fake_app()
+    try:
+        with app.test_client() as client:
+            response = client.get("/drives")
+
+        assert response.status_code == 200
+        body = response.get_data(as_text=True)
+        assert "<wa-callout" in body
+        assert "module-help-band" in body
+        assert "Drive Health helps spot storage problems before backups are lost" in body
+        assert "Detect available health tools instead of installing every backend" in body
+        assert 'data-module-help-key="health_change_alert"' in body
+        assert "Send an alert when a drive health result becomes worse" in body
+    finally:
+        cleanup()
+
+
+def test_drive_health_post_requires_module_apply():
+    from simple_safer_server.modules.drive_health import routes as route_module
+
+    with TemporaryDirectory() as temp_dir:
+        services = SimpleNamespace(
+            runtime=SimpleNamespace(is_fake=True, data_dir=temp_dir),
+            config_manager=SimpleNamespace(get_value=lambda _section, _key, default="": default),
+            system_utils=SimpleNamespace(),
+        )
+        app = Flask(__name__)
+
+        with app.test_request_context("/drives", method="POST"):
+            with patch(
+                "simple_safer_server.modules.drive_health.routes._get_services",
+                return_value=services,
+            ):
+                response = route_module.drives.__wrapped__()
+
+    body, status = response
+    assert status == 409
+    assert body.get_json()["type"].endswith("#module-setup-required")
 
 
 def test_drive_health_manual_check_shows_smart_details_without_failure_score():
@@ -115,7 +173,7 @@ def test_drive_health_manual_check_shows_smart_details_without_failure_score():
     smart = {"smart_194_raw": 32.0}
     try:
         with patch(
-            "simple_safer_server.routes.drive_health.get_smart_attributes",
+            "simple_safer_server.modules.drive_health.service.get_smart_attributes",
             return_value=(smart, [], None),
         ):
             with app.test_client() as client:
@@ -135,7 +193,7 @@ def test_drive_health_settings_save_does_not_probe_hdsentinel():
     app, cleanup = _create_fake_app()
     try:
         with patch(
-            "simple_safer_server.routes.drive_health.collect_hdsentinel_snapshot",
+            "simple_safer_server.modules.drive_health.service.collect_hdsentinel_snapshot",
             side_effect=AssertionError("settings save must not probe HDSentinel"),
         ):
             with app.test_client() as client:
@@ -164,7 +222,7 @@ def test_drive_health_manual_check_ignores_stale_hdsentinel_state_when_disabled(
                 runtime=services.runtime,
             )
         with patch(
-            "simple_safer_server.routes.drive_health.get_smart_attributes",
+            "simple_safer_server.modules.drive_health.service.get_smart_attributes",
             return_value=({"smart_194_raw": 32.0}, [], None),
         ):
             with app.test_client() as client:
@@ -180,15 +238,80 @@ def test_drive_health_manual_check_ignores_stale_hdsentinel_state_when_disabled(
         cleanup()
 
 
+def test_drive_health_page_real_mode_uses_privileged_page_check():
+    from simple_safer_server.modules.drive_health import routes as route_module
+
+    with TemporaryDirectory() as temp_dir:
+        services = SimpleNamespace(
+            runtime=SimpleNamespace(
+                is_fake=False,
+                default_mount_point="/media/backup",
+                data_dir=temp_dir,
+            ),
+            config_manager=SimpleNamespace(get_value=lambda _section, _key, default="": default),
+            system_utils=SimpleNamespace(),
+            drive_health_summary_service=SimpleNamespace(publish=MagicMock()),
+            privileged_actions=SimpleNamespace(
+                run=MagicMock(
+                    return_value=SimpleNamespace(
+                        data={
+                            "smart": {"smart_194_raw": 32.0},
+                            "missing_attrs": [],
+                            "error": None,
+                            "hdsentinel_snapshot": None,
+                            "hdsentinel_drives": [],
+                            "smart_support_warning": None,
+                            "summary": {
+                                "status": "unknown",
+                                "source": "live",
+                                "checked_at": "2026-06-25T12:00:00",
+                                "temperature": 32.0,
+                                "hdsentinel_health": None,
+                                "hdsentinel_performance": None,
+                                "detail": "SMART details were collected.",
+                                "error": None,
+                            },
+                        }
+                    )
+                )
+            ),
+        )
+        _apply_drive_health_module(services)
+        app = Flask(__name__)
+
+        with app.test_request_context(
+            "/drives", method="POST", data={"form_action": "run_health_check"}
+        ):
+            with patch(
+                "simple_safer_server.modules.drive_health.routes._get_services",
+                return_value=services,
+            ):
+                with patch(
+                    "simple_safer_server.modules.drive_health.routes.get_hdsentinel_settings",
+                    return_value={"enabled": False, "health_change_alert": False},
+                ):
+                    with patch(
+                        "simple_safer_server.modules.drive_health.routes.render_template",
+                        return_value="rendered",
+                    ) as mock_render:
+                        response = route_module.drives.__wrapped__()
+
+    assert response == "rendered"
+    services.privileged_actions.run.assert_called_once_with("drive-health.page-check", {})
+    services.drive_health_summary_service.publish.assert_called_once()
+    _args, kwargs = mock_render.call_args
+    assert kwargs["smart"] == {"smart_194_raw": 32.0}
+
+
 def test_drive_health_refresh_probes_and_updates_ram_summary():
     app, cleanup = _create_fake_app()
     try:
         with patch(
-            "simple_safer_server.services.drive_health.get_smart_attributes",
+            "simple_safer_server.modules.drive_health.service.get_smart_attributes",
             return_value=({"smart_194_raw": 32.0}, [], None),
         ) as mock_smart:
             with patch(
-                "simple_safer_server.services.drive_health.collect_hdsentinel_snapshot",
+                "simple_safer_server.modules.drive_health.service.collect_hdsentinel_snapshot",
                 return_value={
                     "available": True,
                     "health_pct": 99,
@@ -209,15 +332,56 @@ def test_drive_health_refresh_probes_and_updates_ram_summary():
         cleanup()
 
 
+def test_drive_health_refresh_real_mode_uses_privileged_summary_action():
+    from simple_safer_server.modules.drive_health import routes as route_module
+
+    summary = {
+        "status": "good",
+        "source": "live",
+        "checked_at": "2026-06-25T12:00:00",
+        "temperature": 31,
+        "hdsentinel_health": 99,
+        "hdsentinel_performance": 98,
+        "detail": "HDSentinel health: 99%.",
+        "error": None,
+    }
+    with TemporaryDirectory() as temp_dir:
+        services = SimpleNamespace(
+            runtime=SimpleNamespace(is_fake=False, data_dir=temp_dir),
+            config_manager=SimpleNamespace(),
+            system_utils=SimpleNamespace(),
+            drive_health_summary_service=SimpleNamespace(publish=MagicMock(return_value=summary)),
+            privileged_actions=SimpleNamespace(
+                run=MagicMock(return_value=SimpleNamespace(data={"summary": summary}))
+            ),
+        )
+        _apply_drive_health_module(services)
+        app = Flask(__name__)
+
+        with app.test_request_context("/api/drive_health/refresh", method="POST"):
+            with patch(
+                "simple_safer_server.modules.drive_health.routes._get_services",
+                return_value=services,
+            ):
+                response = route_module.api_drive_health_refresh.__wrapped__()
+
+    assert response.status_code == 200
+    assert response.get_json()["data"] == summary
+    services.privileged_actions.run.assert_called_once_with(
+        "drive-health.refresh-summary",
+        {},
+    )
+
+
 def test_drive_health_refresh_ignores_hdsentinel_without_health_percentage():
     app, cleanup = _create_fake_app()
     try:
         with patch(
-            "simple_safer_server.services.drive_health.get_smart_attributes",
+            "simple_safer_server.modules.drive_health.service.get_smart_attributes",
             return_value=({"smart_194_raw": 32.0}, [], None),
         ):
             with patch(
-                "simple_safer_server.services.drive_health.collect_hdsentinel_snapshot",
+                "simple_safer_server.modules.drive_health.service.collect_hdsentinel_snapshot",
                 return_value={
                     "available": True,
                     "health_pct": None,
@@ -241,11 +405,11 @@ def test_drive_health_timeout_summary_stays_neutral():
     app, cleanup = _create_fake_app()
     try:
         with patch(
-            "simple_safer_server.services.drive_health.get_smart_attributes",
+            "simple_safer_server.modules.drive_health.service.get_smart_attributes",
             return_value=(None, None, "The drive health check timed out."),
         ):
             with patch(
-                "simple_safer_server.services.drive_health.collect_hdsentinel_snapshot",
+                "simple_safer_server.modules.drive_health.service.collect_hdsentinel_snapshot",
                 return_value={"available": False, "error": "timeout"},
             ):
                 with app.test_client() as client:
@@ -263,11 +427,11 @@ def test_drive_health_refresh_uses_hdsentinel_warning_threshold():
     app, cleanup = _create_fake_app()
     try:
         with patch(
-            "simple_safer_server.services.drive_health.get_smart_attributes",
+            "simple_safer_server.modules.drive_health.service.get_smart_attributes",
             return_value=({"smart_194_raw": 32.0}, [], None),
         ):
             with patch(
-                "simple_safer_server.services.drive_health.collect_hdsentinel_snapshot",
+                "simple_safer_server.modules.drive_health.service.collect_hdsentinel_snapshot",
                 return_value={
                     "available": True,
                     "health_pct": 42,

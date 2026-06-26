@@ -4,8 +4,10 @@ import unittest
 from pathlib import Path
 from subprocess import CalledProcessError
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
-from simple_safer_server.services.cloud_backup_service import (
+from simple_safer_server.core.ownership import OwnershipManifest
+from simple_safer_server.modules.cloud_backup import (
     RCLONE_ADMIN_TIMEOUT_SECONDS,
     CloudBackupService,
 )
@@ -29,22 +31,10 @@ class FakeConfigManager:
 class FakeSystemUtils:
     def __init__(self):
         self.rclone_config = None
-        self.setup_rclone_result = True
-        self.created_systemd_config = False
-        self.installed_timers = False
-        self.systemd_config = None
+        self.validated_worker_task_config = False
 
-    def setup_rclone(self, config):
-        self.rclone_config = config
-        return self.setup_rclone_result
-
-    def create_systemd_config_file(self, config):
-        self.created_systemd_config = True
-        self.systemd_config = config
-        return True, None
-
-    def install_systemd_services_and_timers(self, config):
-        self.installed_timers = True
+    def validate_worker_task_config(self, config):
+        self.validated_worker_task_config = True
         return True, None
 
 
@@ -92,12 +82,25 @@ class FakeCommandRunner:
         return result
 
 
+class FakePrivilegedActions:
+    def __init__(self):
+        self.calls = []
+        self.error = None
+
+    def run(self, action, payload):
+        self.calls.append((action, payload))
+        if self.error is not None:
+            raise self.error
+        return types.SimpleNamespace(action=action, data={"path": "/managed/rclone.conf"})
+
+
 class CloudBackupServiceTests(unittest.TestCase):
-    def make_service(self, is_fake=True, task=None, command_runner=None):
+    def make_service(self, is_fake=True, task=None, command_runner=None, privileged_actions=None):
         temp_dir = TemporaryDirectory()
         self.addCleanup(temp_dir.cleanup)
         runtime = types.SimpleNamespace(
             is_fake=is_fake,
+            data_dir=Path(temp_dir.name),
             rclone_config_dir=Path(temp_dir.name),
         )
         config = FakeConfigManager()
@@ -110,6 +113,7 @@ class CloudBackupServiceTests(unittest.TestCase):
             task_service,
             logging.getLogger("test"),
             command_runner=command_runner,
+            privileged_actions=privileged_actions,
         )
         return service, config, system_utils, runtime
 
@@ -174,16 +178,15 @@ class CloudBackupServiceTests(unittest.TestCase):
 
         self.assertEqual(config.config["backup"]["cloud_enabled"], "false")
 
-    def test_real_save_config_refreshes_timers_when_cloud_backup_is_disabled(self):
+    def test_real_save_config_persists_cloud_backup_disabled(self):
         service, config, system_utils, _runtime = self.make_service(is_fake=False)
 
         service.save_config({"cloud_enabled": "false"})
 
         self.assertEqual(config.config["backup"]["cloud_enabled"], "false")
-        self.assertTrue(system_utils.created_systemd_config)
-        self.assertTrue(system_utils.installed_timers)
+        self.assertFalse(system_utils.validated_worker_task_config)
 
-    def test_fake_schedule_save_does_not_reinstall_timers(self):
+    def test_fake_schedule_save_does_not_reinstall_system_units(self):
         service, config, system_utils, _runtime = self.make_service(is_fake=True)
 
         result = service.save_schedule({"backup_cloud_time": "04:00", "bandwidth_limit": "4M"})
@@ -191,8 +194,7 @@ class CloudBackupServiceTests(unittest.TestCase):
         self.assertEqual(result, {})
         self.assertEqual(config.config["schedule"]["backup_cloud_time"], "04:00")
         self.assertEqual(config.config["backup"]["bandwidth_limit"], "4M")
-        self.assertFalse(system_utils.created_systemd_config)
-        self.assertFalse(system_utils.installed_timers)
+        self.assertFalse(system_utils.validated_worker_task_config)
 
     def test_schedule_save_rejects_unsafe_bandwidth_limit(self):
         service, config, _system_utils, _runtime = self.make_service(is_fake=True)
@@ -205,16 +207,15 @@ class CloudBackupServiceTests(unittest.TestCase):
         self.assertNotIn("bandwidth_limit", config.config["backup"])
 
     def test_fake_schedule_save_rejects_non_strict_time(self):
-        service, config, system_utils, _runtime = self.make_service(is_fake=True)
+        service, config, _system_utils, _runtime = self.make_service(is_fake=True)
 
         with self.assertRaisesRegex(ValidationProblem, "HH:MM"):
             service.save_schedule({"backup_cloud_time": "4:00", "bandwidth_limit": "4M"})
 
         self.assertNotIn("backup_cloud_time", config.config["schedule"])
         self.assertNotIn("bandwidth_limit", config.config["backup"])
-        self.assertFalse(system_utils.created_systemd_config)
 
-    def test_real_config_save_routes_schedule_values_through_timer_update(self):
+    def test_real_config_save_routes_schedule_values_through_config_update(self):
         service, config, system_utils, _runtime = self.make_service(is_fake=False)
 
         result = service.save_config(
@@ -226,23 +227,17 @@ class CloudBackupServiceTests(unittest.TestCase):
         )
 
         self.assertEqual(result, {})
-        self.assertTrue(system_utils.created_systemd_config)
-        self.assertTrue(system_utils.installed_timers)
-        systemd_config = system_utils.systemd_config
-        if systemd_config is None:
-            self.fail("Expected systemd config to be generated.")
-        self.assertEqual(systemd_config["schedule"]["backup_cloud_time"], "05:15")
+        self.assertFalse(system_utils.validated_worker_task_config)
         self.assertEqual(config.config["schedule"]["backup_cloud_time"], "05:15")
         self.assertEqual(config.config["backup"]["bandwidth_limit"], "8M")
 
     def test_schedule_save_allows_bandwidth_only_update(self):
-        service, config, system_utils, _runtime = self.make_service(is_fake=False)
+        service, config, _system_utils, _runtime = self.make_service(is_fake=False)
         config.config["schedule"] = {"backup_cloud_time": "03:00"}
 
         result = service.save_schedule({"bandwidth_limit": "8M"})
 
         self.assertEqual(result, {})
-        self.assertTrue(system_utils.created_systemd_config)
         self.assertEqual(config.config["schedule"]["backup_cloud_time"], "03:00")
         self.assertEqual(config.config["backup"]["bandwidth_limit"], "8M")
 
@@ -253,7 +248,7 @@ class CloudBackupServiceTests(unittest.TestCase):
             service.save_config({"cloud_mode": "advanced", "rclone_config": "", "remote_name": ""})
 
     def test_mega_config_rewrites_rclone_when_reusing_stored_credentials(self):
-        service, config, system_utils, _runtime = self.make_service()
+        service, config, _system_utils, runtime = self.make_service()
         config.config["backup"] = {
             "mega_email": "user@example.com",
             "mega_pass": "stored-obscured",
@@ -268,18 +263,52 @@ class CloudBackupServiceTests(unittest.TestCase):
         )
 
         self.assertEqual(result, {})
-        rclone_config = system_utils.rclone_config
-        if rclone_config is None:
-            self.fail("Expected rclone config to be written")
+        rclone_config = (runtime.rclone_config_dir / "rclone.conf").read_text(encoding="utf-8")
         self.assertIn("stored-obscured", rclone_config)
+        records = OwnershipManifest(runtime.data_dir / "ownership.json").list_records()
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0].module_slug, "cloud-backup")
+        self.assertEqual(records[0].identifier, str(runtime.rclone_config_dir / "rclone.conf"))
+
+    def test_real_advanced_config_writes_rclone_through_privileged_action(self):
+        privileged_actions = FakePrivilegedActions()
+        service, config, system_utils, _runtime = self.make_service(
+            is_fake=False,
+            privileged_actions=privileged_actions,
+        )
+
+        service.save_config(
+            {
+                "cloud_mode": "advanced",
+                "rclone_config": "[remote]\ntype = test\n",
+                "remote_name": "remote:/backups",
+            }
+        )
+
+        self.assertEqual(
+            privileged_actions.calls,
+            [
+                (
+                    "cloud-backup.write-rclone-config",
+                    {"rclone_config": "[remote]\ntype = test\n"},
+                )
+            ],
+        )
+        self.assertIsNone(system_utils.rclone_config)
+        self.assertEqual(config.config["backup"]["rclone_dir"], "remote:/backups")
 
     def test_mega_config_does_not_store_new_credentials_when_rclone_write_fails(self):
         command_runner = FakeCommandRunner()
         command_runner.queue_result(stdout="obscured-password\n")
-        service, config, system_utils, _runtime = self.make_service(command_runner=command_runner)
-        system_utils.setup_rclone_result = False
+        service, config, _system_utils, _runtime = self.make_service(command_runner=command_runner)
 
-        with self.assertRaisesRegex(OperationProblem, "Failed to write rclone config"):
+        with (
+            patch(
+                "simple_safer_server.modules.cloud_backup.service.atomic_write_text",
+                side_effect=OSError("disk full"),
+            ),
+            self.assertRaisesRegex(OperationProblem, "Failed to write rclone config"),
+        ):
             service.save_config(
                 {
                     "cloud_mode": "mega",
@@ -290,6 +319,50 @@ class CloudBackupServiceTests(unittest.TestCase):
             )
         self.assertNotIn("mega_email", config.config["backup"])
         self.assertNotIn("mega_pass", config.config["backup"])
+
+    def test_real_rclone_helper_failure_does_not_store_advanced_config(self):
+        from simple_safer_server.core.privileged_client import PrivilegedActionClientError
+
+        privileged_actions = FakePrivilegedActions()
+        privileged_actions.error = PrivilegedActionClientError("helper failed", exit_code=2)
+        service, config, _system_utils, _runtime = self.make_service(
+            is_fake=False,
+            privileged_actions=privileged_actions,
+        )
+
+        with self.assertRaisesRegex(OperationProblem, "Failed to write rclone config"):
+            service.save_config(
+                {
+                    "cloud_mode": "advanced",
+                    "rclone_config": "[remote]\ntype = test\n",
+                    "remote_name": "remote:/backups",
+                }
+            )
+
+        self.assertNotIn("rclone_dir", config.config["backup"])
+
+    def test_real_rclone_helper_failure_does_not_store_cloud_enabled_flag(self):
+        from simple_safer_server.core.privileged_client import PrivilegedActionClientError
+
+        privileged_actions = FakePrivilegedActions()
+        privileged_actions.error = PrivilegedActionClientError("helper failed", exit_code=2)
+        service, config, _system_utils, _runtime = self.make_service(
+            is_fake=False,
+            privileged_actions=privileged_actions,
+        )
+
+        with self.assertRaisesRegex(OperationProblem, "Failed to write rclone config"):
+            service.save_config(
+                {
+                    "cloud_enabled": "true",
+                    "cloud_mode": "advanced",
+                    "rclone_config": "[remote]\ntype = test\n",
+                    "remote_name": "remote:/backups",
+                }
+            )
+
+        self.assertNotIn("cloud_enabled", config.config["backup"])
+        self.assertNotIn("rclone_dir", config.config["backup"])
 
     def test_list_mega_folders_uses_command_runner(self):
         command_runner = FakeCommandRunner()
@@ -319,7 +392,7 @@ class CloudBackupServiceTests(unittest.TestCase):
         command_runner = FakeCommandRunner()
         command_runner.queue_result(stdout="obscured-password\n")
         command_runner.queue_result(stdout="[]")
-        service, config, system_utils, _runtime = self.make_service(command_runner=command_runner)
+        service, config, _system_utils, runtime = self.make_service(command_runner=command_runner)
 
         result = service.validate_mega({"email": "user@example.com", "password": "secret"})
 
@@ -330,10 +403,8 @@ class CloudBackupServiceTests(unittest.TestCase):
         self.assertEqual(command_runner.calls[1][0][0:3], ["rclone", "lsjson", "mega:/"])
         self.assertEqual(command_runner.calls[1][1]["timeout"], RCLONE_ADMIN_TIMEOUT_SECONDS)
         self.assertEqual(config.config["backup"]["mega_pass"], "obscured-password")
-        rclone_config = system_utils.rclone_config
-        self.assertIsNotNone(rclone_config)
-        if rclone_config is not None:
-            self.assertIn("obscured-password", rclone_config)
+        rclone_config = (runtime.rclone_config_dir / "rclone.conf").read_text(encoding="utf-8")
+        self.assertIn("obscured-password", rclone_config)
 
 
 if __name__ == "__main__":

@@ -4,7 +4,7 @@
    ============================================================ */
 
 /* ── Modal System ───────────────────────────────────────────── */
-window.BunkerModal = {
+window.AppModal = {
   show(modalId) {
     const overlay = document.getElementById(modalId);
     if (!overlay) return;
@@ -36,11 +36,11 @@ window.BunkerModal = {
     document.body.style.overflow = '';
   },
 
-  // Get or create an instance-like object for compatibility
+  // Some page scripts prefer a tiny object they can pass around.
   getInstance(modalId) {
     return {
-      show: () => BunkerModal.show(modalId),
-      hide: () => BunkerModal.hide(modalId)
+      show: () => AppModal.show(modalId),
+      hide: () => AppModal.hide(modalId)
     };
   }
 };
@@ -51,13 +51,13 @@ document.addEventListener('click', (e) => {
   const closeBtn = e.target.closest('.modal-close, [data-modal-close]');
   if (closeBtn) {
     const overlay = closeBtn.closest('.modal-overlay');
-    if (overlay) BunkerModal.hide(overlay.id);
+    if (overlay) AppModal.hide(overlay.id);
     return;
   }
 
   // Overlay click (outside modal container)
   if (e.target.classList.contains('modal-overlay') && e.target.classList.contains('visible')) {
-    BunkerModal.hide(e.target.id);
+    AppModal.hide(e.target.id);
   }
 });
 
@@ -65,7 +65,7 @@ document.addEventListener('click', (e) => {
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     const openModal = document.querySelector('.modal-overlay.visible');
-    if (openModal) BunkerModal.hide(openModal.id);
+    if (openModal) AppModal.hide(openModal.id);
   }
 });
 
@@ -74,7 +74,7 @@ document.addEventListener('click', (e) => {
   const trigger = e.target.closest('[data-modal-target]');
   if (trigger) {
     const targetId = trigger.getAttribute('data-modal-target');
-    BunkerModal.show(targetId);
+    AppModal.show(targetId);
   }
 });
 
@@ -143,6 +143,120 @@ window.ApiClient = {
       message: payload && payload.message ? payload.message : ''
     };
   }
+};
+
+/* ── Backup readiness checklist ─────────────────────────────── */
+window.AppBackupReadiness = {
+  escapeHtml(value) {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  },
+
+  statusMeta(item) {
+    if (item && item.complete) {
+      return {
+        itemClass: 'is-complete',
+        badgeClass: 'badge-success',
+        iconClass: 'fa-circle-check',
+        label: item.status_label || 'Complete'
+      };
+    }
+    if (item && item.status === 'skipped') {
+      return {
+        itemClass: 'is-skipped',
+        badgeClass: 'badge-warning',
+        iconClass: 'fa-forward',
+        label: item.status_label || 'Skipped'
+      };
+    }
+    return {
+      itemClass: 'is-incomplete',
+      badgeClass: 'badge-warning',
+      iconClass: 'fa-circle-exclamation',
+      label: (item && item.status_label) || 'Incomplete'
+    };
+  },
+
+  renderItem(item) {
+    const meta = this.statusMeta(item);
+    return `
+      <div class="backup-readiness-item ${meta.itemClass}" data-readiness-item="${this.escapeHtml(item.key)}">
+        <div class="backup-readiness-icon" aria-hidden="true">
+          <i class="fas ${meta.iconClass}"></i>
+        </div>
+        <div class="backup-readiness-copy">
+          <div class="backup-readiness-item-title">${this.escapeHtml(item.title)}</div>
+          <div class="backup-readiness-item-detail">${this.escapeHtml(item.detail)}</div>
+        </div>
+        <div class="backup-readiness-item-actions">
+          <span class="badge ${meta.badgeClass}">${meta.label}</span>
+          <a class="btn btn-secondary btn-sm" href="${this.escapeHtml(item.action_url)}">${this.escapeHtml(item.action_label)}</a>
+        </div>
+      </div>
+    `;
+  },
+
+  render(container, readiness) {
+    if (!container || !readiness) return;
+    const badge = container.querySelector('[data-readiness-badge]');
+    const count = container.querySelector('[data-readiness-count]');
+    const detail = container.querySelector('[data-readiness-detail]');
+    const items = container.querySelector('[data-readiness-items]');
+    const complete = Boolean(readiness.complete);
+    const countLabel = readiness.count_label ||
+      `${readiness.completed_required_count} of ${readiness.required_count} complete`;
+
+    if (badge) {
+      badge.className = `badge ${complete ? 'badge-success' : 'badge-warning'}`;
+      badge.innerHTML = `<i class="fas ${complete ? 'fa-circle-check' : 'fa-triangle-exclamation'}"></i> <span data-readiness-count>${this.escapeHtml(countLabel)}</span>`;
+    }
+    if (count) {
+      count.textContent = countLabel;
+    }
+    if (detail) {
+      detail.textContent = readiness.detail || '';
+    }
+    if (items) {
+      items.innerHTML = (readiness.items || []).map((item) => this.renderItem(item)).join('');
+    }
+  },
+
+  async refresh(container) {
+    const target = container || document.querySelector('[data-backup-readiness-url]');
+    if (!target) return;
+    const url = target.getAttribute('data-backup-readiness-url');
+    if (!url) return;
+    const { data } = await window.ApiClient.fetchJson(url, {
+      headers: { 'Accept': 'application/json' }
+    });
+    this.render(target, data);
+  },
+
+  refreshAll() {
+    if (window.htmx && document.querySelector('[hx-get][hx-trigger*="backup-readiness-refresh"]')) {
+      window.htmx.trigger(document.body, 'backup-readiness-refresh');
+    }
+    return Promise.all(
+      Array.from(document.querySelectorAll('[data-backup-readiness-url]')).map((container) =>
+        this.refresh(container).catch((error) => console.error(error))
+      )
+    );
+  }
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (document.querySelector('[data-backup-readiness-url]')) {
+    window.AppBackupReadiness.refreshAll();
+  }
+});
+
+window.refreshBackupReadiness = function refreshBackupReadiness() {
+  if (!window.AppBackupReadiness) return Promise.resolve();
+  return window.AppBackupReadiness.refreshAll();
 };
 
 
@@ -219,12 +333,12 @@ window.showConfirmationDialog = function showConfirmationDialog(options) {
 
     const handleConfirm = () => {
       finish(true);
-      BunkerModal.hide('confirmationModal');
+      AppModal.hide('confirmationModal');
     };
 
     const handleCancel = () => {
       finish(false);
-      BunkerModal.hide('confirmationModal');
+      AppModal.hide('confirmationModal');
     };
 
     const handleHidden = () => {
@@ -235,7 +349,7 @@ window.showConfirmationDialog = function showConfirmationDialog(options) {
     cancelBtn.addEventListener('click', handleCancel);
     modalEl.addEventListener('modal:hidden', handleHidden);
 
-    BunkerModal.show('confirmationModal');
+    AppModal.show('confirmationModal');
   });
 };
 
@@ -598,6 +712,99 @@ window.parseServerDateTime = function parseServerDateTime(value) {
     Number(second)
   );
 };
+
+window.AppFormat = (() => {
+  const locale = document.documentElement.lang || undefined;
+
+  function number(value, options = {}) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return options.fallback || '—';
+    try {
+      return new Intl.NumberFormat(locale, options.format || {}).format(parsed);
+    } catch (error) {
+      return String(parsed);
+    }
+  }
+
+  function percent(value, options = {}) {
+    return number(value, {
+      fallback: options.fallback || '0%',
+      format: {
+        maximumFractionDigits: 0,
+        style: 'percent'
+      }
+    });
+  }
+
+  function dateTime(value, options = {}) {
+    const parsed = window.parseServerDateTime(value);
+    if (!parsed) return value || options.fallback || '—';
+    try {
+      return new Intl.DateTimeFormat(locale, {
+        dateStyle: options.dateStyle || 'medium',
+        timeStyle: options.timeStyle || 'short'
+      }).format(parsed);
+    } catch (error) {
+      return parsed.toLocaleString();
+    }
+  }
+
+  function date(value, options = {}) {
+    const parsed = window.parseServerDateTime(value);
+    if (!parsed) return value || options.fallback || '—';
+    try {
+      return new Intl.DateTimeFormat(locale, {
+        dateStyle: options.dateStyle || 'medium'
+      }).format(parsed);
+    } catch (error) {
+      return parsed.toLocaleDateString();
+    }
+  }
+
+  function relativeTimestamp(value, options = {}) {
+    const parsed = window.parseServerDateTime(value);
+    if (!parsed) return value || options.fallback || '—';
+
+    const diffSeconds = Math.round((parsed.getTime() - Date.now()) / 1000);
+    const absSeconds = Math.abs(diffSeconds);
+    const divisions = [
+      { unit: 'year', seconds: 31536000 },
+      { unit: 'month', seconds: 2592000 },
+      { unit: 'week', seconds: 604800 },
+      { unit: 'day', seconds: 86400 },
+      { unit: 'hour', seconds: 3600 },
+      { unit: 'minute', seconds: 60 },
+      { unit: 'second', seconds: 1 }
+    ];
+    const division = divisions.find((item) => absSeconds >= item.seconds) || divisions[divisions.length - 1];
+    const valueForUnit = Math.round(diffSeconds / division.seconds);
+
+    try {
+      if (diffSeconds > 0 && options.futurePrefix === false) {
+        return new Intl.NumberFormat(locale, {
+          maximumFractionDigits: 0,
+          style: 'unit',
+          unit: division.unit,
+          unitDisplay: options.compact ? 'narrow' : 'long'
+        }).format(Math.abs(valueForUnit));
+      }
+      return new Intl.RelativeTimeFormat(locale, {
+        numeric: options.numeric || 'auto',
+        style: options.compact ? 'short' : 'long'
+      }).format(valueForUnit, division.unit);
+    } catch (error) {
+      return window.formatRelativeTimestamp(value, options);
+    }
+  }
+
+  return {
+    date,
+    dateTime,
+    number,
+    percent,
+    relativeTimestamp
+  };
+})();
 
 window.formatRelativeTimestamp = function formatRelativeTimestamp(value, options = {}) {
   const { fallback = '—', futurePrefix = true, compact = false } = options;

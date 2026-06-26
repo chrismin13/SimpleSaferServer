@@ -4,6 +4,9 @@
 {% block header %}Overview{% endblock %}
 
 {% block content %}
+{% from "partials/backup_readiness.html" import backup_readiness_panel %}
+{{ backup_readiness_panel(backup_readiness, refresh_url="/fragments/backup-readiness") }}
+
 <!-- Status tiles -->
 <div class="status-grid mb-8">
   <!-- Storage -->
@@ -121,11 +124,7 @@
             {% endif %}
           </td>
           <td class="text-mono task-time-cell" style="font-size: var(--text-xs);" data-timestamp="{{ task.last_run or '' }}">{{ task.last_run or '—' }}</td>
-          {# Keep this state list aligned with TaskService.schedule_state() labels. #}
-          {% set disabled_schedule_states = ['temporary', 'permanent', 'restore_failed', 'external_disabled'] %}
-          {% if task.schedule.state in disabled_schedule_states %}
-            {% set schedule_cell_class = ' task-schedule-danger' %}
-          {% elif task.schedule.state == 'issue' %}
+          {% if task.schedule.state == 'issue' %}
             {% set schedule_cell_class = ' task-schedule-warning' %}
           {% else %}
             {% set schedule_cell_class = '' %}
@@ -186,26 +185,130 @@
   </div>
 </section>
 
-{% set task_schedule_disable_context = 'Automatic runs stop for this task. Manual Start still works from the task page and context menu.' %}
-{% include 'partials/task_schedule_disable_modal.html' %}
 {% endblock %}
 
 {% block extra_js %}
-<script src="{{ url_for('static', filename='js/task_schedule_control.js') }}"></script>
+<script type="application/json" id="dashboard-copy">{{ dashboard_ui_text | tojson }}</script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+  const dashboardDefaultCopy = {
+    status: {
+      checking: 'Checking…',
+      dash: '—',
+      unknown: 'Unknown',
+      success: 'Success',
+      failure: 'Failure',
+      running: 'Running',
+      missing: 'Missing',
+      notRunYet: 'Not Run Yet',
+      stopped: 'Stopped',
+      error: 'Error',
+      unavailable: 'Unavailable'
+    },
+    actions: {
+      start: 'Start',
+      stop: 'Stop',
+      taskActionFailed: 'Task action failed.',
+      taskUpdated: 'Task updated.',
+      actionCompleted: 'Action completed successfully.',
+      actionFailed: 'Action failed.',
+      driveHealthRefreshed: 'Drive health refreshed.',
+      driveHealthRefreshFailed: 'Drive health refresh failed.'
+    },
+    storage: {
+      settings: 'Storage Settings',
+      mounted: 'Mounted',
+      available: 'Available',
+      notMounted: 'Not Mounted',
+      unavailable: 'Unavailable',
+      noStorageInfo: 'No storage info available',
+      storageUnavailable: 'Storage is not available',
+      usedTemplate: '{used} / {total} GB used',
+      mount: 'Mount Storage',
+      mountConfirm: 'Are you sure you want to mount the storage drive?',
+      mountConfirmTitle: 'Mount Storage',
+      mountConfirmButton: 'Mount',
+      unmount: 'Unmount Storage',
+      unmountConfirmTitle: 'Unmount Storage',
+      unmountConfirmButton: 'Unmount',
+      unmountSoonTemplate: "This unmounts the configured backup drive temporarily.\n\nIf it stays connected, SimpleSaferServer will remount it\nautomatically during the next 'Check Mount' run (in about {countdown}).\n\nRemove the drive now if you do not want it mounted again.",
+      unmountScheduled: "This unmounts the configured backup drive temporarily.\n\nIf it stays connected, SimpleSaferServer will remount it\nautomatically during the next scheduled 'Check Mount' run.\n\nRemove the drive now if you do not want it mounted again."
+    },
+    health: {
+      noCheckYet: 'No check yet',
+      notChecked: 'Not Checked',
+      refreshToCheck: 'Refresh to check',
+      healthy: 'Healthy',
+      warning: 'Warning',
+      critical: 'Critical',
+      needsAttention: 'Needs Attention',
+      checked: 'Checked',
+      unknown: 'Unknown',
+      noData: 'No Data',
+      unavailable: 'Unavailable',
+      dataUnavailable: 'Health data unavailable',
+      healthTemplate: 'Health {value}%',
+      tempTemplate: 'Temp {value}°C'
+    },
+    backup: {
+      ok: 'OK',
+      failed: 'Failed',
+      running: 'Running',
+      never: 'Never',
+      nextTemplate: 'Next: {time}',
+      notScheduled: 'Not scheduled',
+      unavailable: 'Unavailable'
+    },
+    sharing: {
+      operational: 'Operational',
+      running: 'Running',
+      servicesOperational: 'File sharing services operational',
+      partial: 'Partial',
+      degraded: 'Degraded',
+      down: 'Down',
+      notRunning: 'Not Running',
+      unavailable: 'Unavailable'
+    }
+  };
+
+  function mergeDashboardCopy(base, overrides) {
+    if (!overrides || typeof overrides !== 'object') return base;
+    Object.keys(overrides).forEach((key) => {
+      if (
+        overrides[key]
+        && typeof overrides[key] === 'object'
+        && !Array.isArray(overrides[key])
+        && base[key]
+        && typeof base[key] === 'object'
+      ) {
+        mergeDashboardCopy(base[key], overrides[key]);
+      } else {
+        base[key] = overrides[key];
+      }
+    });
+    return base;
+  }
+
+  function readDashboardCopy() {
+    const script = document.getElementById('dashboard-copy');
+    if (!script) return dashboardDefaultCopy;
+    try {
+      return mergeDashboardCopy(
+        JSON.parse(JSON.stringify(dashboardDefaultCopy)),
+        JSON.parse(script.textContent || '{}')
+      );
+    } catch (error) {
+      console.error('Could not read dashboard page copy:', error);
+      return dashboardDefaultCopy;
+    }
+  }
+
+  const dashboardCopy = readDashboardCopy();
   const tasksBody = document.getElementById('tasks-body');
   const driveActionSlot = document.getElementById('drive-action-slot');
   const healthRefreshButton = document.getElementById('health-refresh-button');
   const taskScheduleByName = new Map();
   let activeContextTaskName = null;
-  const disableScheduleControl = window.TaskScheduleControl
-    ? window.TaskScheduleControl.createDisableScheduleController({
-      // Dashboard actions come from whichever row opened the context menu most recently.
-      taskName: () => activeContextTaskName,
-      onScheduleChanged: () => updateTaskSchedule()
-    })
-    : null;
 
   rememberTaskSchedule({{ tasks | tojson }});
 
@@ -218,21 +321,38 @@ document.addEventListener('DOMContentLoaded', function() {
       .replace(/'/g, '&#39;');
   }
 
+  function formatTemplate(template, values) {
+    return String(template || '').replace(/\{([a-zA-Z0-9_]+)\}/g, (match, key) => {
+      if (!Object.prototype.hasOwnProperty.call(values, key)) return match;
+      return values[key];
+    });
+  }
+
+  function formatNumber(value, options = {}) {
+    return window.AppFormat.number(value, {
+      fallback: options.fallback || dashboardCopy.status.dash,
+      format: options.format || { maximumFractionDigits: 1 }
+    });
+  }
+
+  function formatPercentValue(value) {
+    return `${window.AppFormat.number(value, {
+      fallback: '0',
+      format: { maximumFractionDigits: 0 }
+    })}%`;
+  }
+
   function renderTaskStatusBadge(status) {
-    if (status === 'Success') return '<span class="badge badge-success"><i class="fas fa-circle-check"></i> Success</span>';
-    if (status === 'Failure') return '<span class="badge badge-danger"><i class="fas fa-circle-xmark"></i> Failure</span>';
-    if (status === 'Running') return '<span class="badge badge-info"><i class="fas fa-spinner fa-spin"></i> Running</span>';
-    if (status === 'Missing') return '<span class="badge badge-warning"><i class="fas fa-circle-exclamation"></i> Missing</span>';
-    if (status === 'Not Run Yet') return '<span class="badge badge-neutral"><i class="fas fa-clock"></i> Not Run Yet</span>';
-    if (status === 'Stopped') return '<span class="badge badge-neutral"><i class="fas fa-circle-stop"></i> Stopped</span>';
-    return `<span class="badge badge-warning">${escapeHtml(status || 'Unknown')}</span>`;
+    if (status === 'Success') return `<span class="badge badge-success"><i class="fas fa-circle-check"></i> ${dashboardCopy.status.success}</span>`;
+    if (status === 'Failure') return `<span class="badge badge-danger"><i class="fas fa-circle-xmark"></i> ${dashboardCopy.status.failure}</span>`;
+    if (status === 'Running') return `<span class="badge badge-info"><i class="fas fa-spinner fa-spin"></i> ${dashboardCopy.status.running}</span>`;
+    if (status === 'Missing') return `<span class="badge badge-warning"><i class="fas fa-circle-exclamation"></i> ${dashboardCopy.status.missing}</span>`;
+    if (status === 'Not Run Yet') return `<span class="badge badge-neutral"><i class="fas fa-clock"></i> ${dashboardCopy.status.notRunYet}</span>`;
+    if (status === 'Stopped') return `<span class="badge badge-neutral"><i class="fas fa-circle-stop"></i> ${dashboardCopy.status.stopped}</span>`;
+    return `<span class="badge badge-warning">${escapeHtml(status || dashboardCopy.status.unknown)}</span>`;
   }
 
   function scheduleStateClass(state) {
-    // These are schedule states, not task run statuses; row-level styling would imply task failure.
-    if (['temporary', 'permanent', 'restore_failed', 'external_disabled'].includes(state)) {
-      return 'task-schedule-danger';
-    }
     if (state === 'issue') {
       return 'task-schedule-warning';
     }
@@ -256,7 +376,7 @@ document.addEventListener('DOMContentLoaded', function() {
       return '';
     }
 
-    return window.formatRelativeTimestamp(nextRun, {
+    return window.AppFormat.relativeTimestamp(nextRun, {
       fallback: '',
       futurePrefix: false
     });
@@ -267,20 +387,10 @@ document.addEventListener('DOMContentLoaded', function() {
     // The configured backup drive stays app-managed here, so unmount only buys
     // enough time for a safe removal or swap before Check Mount notices it again.
     if (countdown) {
-      return `This unmounts the configured backup drive temporarily.
-
-If it stays connected, SimpleSaferServer will remount it
-automatically during the next 'Check Mount' run (in about ${countdown}).
-
-Remove the drive now if you do not want it mounted again.`;
+      return formatTemplate(dashboardCopy.storage.unmountSoonTemplate, { countdown });
     }
 
-    return `This unmounts the configured backup drive temporarily.
-
-If it stays connected, SimpleSaferServer will remount it
-automatically during the next scheduled 'Check Mount' run.
-
-Remove the drive now if you do not want it mounted again.`;
+    return dashboardCopy.storage.unmountScheduled;
   }
 
   function renderTaskRow(task) {
@@ -311,7 +421,7 @@ Remove the drive now if you do not want it mounted again.`;
     tdLastRun.className = 'text-mono task-time-cell';
     tdLastRun.style.fontSize = 'var(--text-xs)';
     tdLastRun.dataset.timestamp = lastRun;
-    tdLastRun.textContent = lastRun || '—';
+    tdLastRun.textContent = lastRun || dashboardCopy.status.dash;
     row.appendChild(tdLastRun);
 
     const tdNextRun = document.createElement('td');
@@ -322,7 +432,7 @@ Remove the drive now if you do not want it mounted again.`;
     tdNextRun.dataset.timestamp = nextRun;
     tdNextRun.dataset.scheduleLabel = scheduleLabel;
     tdNextRun.dataset.future = 'true';
-    tdNextRun.textContent = scheduleLabel || '—';
+    tdNextRun.textContent = scheduleLabel || dashboardCopy.status.dash;
     row.appendChild(tdNextRun);
 
     return row;
@@ -331,37 +441,22 @@ Remove the drive now if you do not want it mounted again.`;
   function runContextTaskAction(taskName, action) {
     if (!taskName) return;
     activeContextTaskName = taskName;
-    if (action === 'disable-schedule') {
-      if (disableScheduleControl) disableScheduleControl.open();
-      return;
-    }
     runTaskAction(taskName, action).catch((error) => {
-      showAlert(error.message || 'Task action failed.', 'danger');
+      showAlert(error.message || dashboardCopy.actions.taskActionFailed, 'danger');
     });
   }
 
   function dashboardTaskActionItems(taskName) {
-    // Keep this list aligned with the Dashboard shortcuts documented for Task Schedule Control.
     return [
       {
-        label: 'Start',
+        label: dashboardCopy.actions.start,
         iconClass: 'fas fa-play',
         onSelect: () => runContextTaskAction(taskName, 'start')
       },
       {
-        label: 'Stop',
+        label: dashboardCopy.actions.stop,
         iconClass: 'fas fa-stop',
         onSelect: () => runContextTaskAction(taskName, 'stop')
-      },
-      {
-        label: 'Disable Schedule',
-        iconClass: 'fas fa-calendar-xmark',
-        onSelect: () => runContextTaskAction(taskName, 'disable-schedule')
-      },
-      {
-        label: 'Enable Schedule',
-        iconClass: 'fas fa-calendar-check',
-        onSelect: () => runContextTaskAction(taskName, 'enable-schedule')
       }
     ];
   }
@@ -393,8 +488,8 @@ Remove the drive now if you do not want it mounted again.`;
         cell.title = timestamp || scheduleLabel;
         return;
       }
-      cell.textContent = window.formatRelativeTimestamp(timestamp, {
-        fallback: '—',
+      cell.textContent = window.AppFormat.relativeTimestamp(timestamp, {
+        fallback: dashboardCopy.status.dash,
         futurePrefix: !isFuture ? true : false
       });
       if (timestamp) {
@@ -422,7 +517,7 @@ Remove the drive now if you do not want it mounted again.`;
 
     if (data && data.app_manages_mount === false) {
       driveActionSlot.innerHTML = `<a href="{{ url_for('storage_routes.storage_page') }}" class="btn btn-secondary btn-sm">
-          <i class="fas fa-folder-tree me-1"></i> Storage Settings
+          <i class="fas fa-folder-tree me-1"></i> ${dashboardCopy.storage.settings}
         </a>`;
       return;
     }
@@ -430,16 +525,16 @@ Remove the drive now if you do not want it mounted again.`;
     driveActionSlot.innerHTML = data && data.mounted
       ? `<form method="post" action="{{ url_for('storage_routes.unmount') }}" class="d-inline dashboard-action-form" data-success-action="refresh-drive-ui" data-dashboard-unmount="true">
           <button type="submit" class="btn btn-warning btn-sm">
-            <i class="fas fa-eject me-1"></i> Unmount Storage
+            <i class="fas fa-eject me-1"></i> ${dashboardCopy.storage.unmount}
           </button>
         </form>`
       : `<form method="post" action="{{ url_for('storage_routes.dashboard_mount_drive') }}" class="d-inline dashboard-action-form" data-success-action="refresh-drive-ui">
           <button type="submit" class="btn btn-secondary btn-sm"
-            data-confirm="Are you sure you want to mount the storage drive?"
-            data-confirm-title="Mount Storage"
-            data-confirm-button="Mount"
+            data-confirm="${escapeHtml(dashboardCopy.storage.mountConfirm)}"
+            data-confirm-title="${escapeHtml(dashboardCopy.storage.mountConfirmTitle)}"
+            data-confirm-button="${escapeHtml(dashboardCopy.storage.mountConfirmButton)}"
             data-confirm-class="btn-primary">
-            <i class="fas fa-plug me-1"></i> Mount Storage
+            <i class="fas fa-plug me-1"></i> ${dashboardCopy.storage.mount}
           </button>
         </form>`;
 
@@ -459,7 +554,7 @@ Remove the drive now if you do not want it mounted again.`;
       method: 'POST',
       headers: { 'Accept': 'application/json' }
     });
-    showAlert(message || 'Task updated.', 'success');
+    showAlert(message || dashboardCopy.actions.taskUpdated, 'success');
     updateTaskSchedule();
     setTimeout(updateTaskSchedule, 1500);
   }
@@ -478,9 +573,9 @@ Remove the drive now if you do not want it mounted again.`;
 
         if (isDashboardUnmount) {
           const confirmed = await window.showConfirmationDialog({
-            title: 'Unmount Storage',
+            title: dashboardCopy.storage.unmountConfirmTitle,
             message: getDashboardUnmountConfirmationMessage(),
-            confirmLabel: 'Unmount',
+            confirmLabel: dashboardCopy.storage.unmountConfirmButton,
             confirmClass: 'btn-warning'
           });
           if (!confirmed) {
@@ -501,7 +596,7 @@ Remove the drive now if you do not want it mounted again.`;
           if (submitButton) {
             window.AsyncButtonState.success(submitButton);
           }
-          showAlert(message || 'Action completed successfully.', 'success');
+          showAlert(message || dashboardCopy.actions.actionCompleted, 'success');
           if (form.dataset.successAction === 'refresh-drive-ui') {
             window.setTimeout(refreshDriveUi, 150);
           }
@@ -509,7 +604,7 @@ Remove the drive now if you do not want it mounted again.`;
           if (submitButton) {
             window.AsyncButtonState.error(submitButton);
           }
-          showAlert(error.message || 'Action failed.', 'danger');
+          showAlert(error.message || dashboardCopy.actions.actionFailed, 'danger');
         }
       });
     });
@@ -529,43 +624,52 @@ Remove the drive now if you do not want it mounted again.`;
 
         if (data.available) {
           badge.className = 'badge badge-success';
-          badge.textContent = data.app_manages_mount ? 'Mounted' : 'Available';
+          badge.textContent = data.app_manages_mount
+            ? dashboardCopy.storage.mounted
+            : dashboardCopy.storage.available;
           if (data.disk_available) {
             const usedPct = parseFloat(data.storage_usage || '0') || 0;
             meter.classList.remove('d-none');
-            val.textContent = data.used_storage + ' GB';
-            pct.textContent = usedPct + '%';
+            val.textContent = `${formatNumber(data.used_storage)} GB`;
+            pct.textContent = formatPercentValue(usedPct);
             bar.style.width = usedPct + '%';
             bar.className = 'progress-bar-fill' + (usedPct > 90 ? ' danger' : usedPct > 70 ? ' warning' : ' success');
-            detail.textContent = data.used_storage + ' / ' + data.total_storage + ' GB used';
+            detail.textContent = formatTemplate(dashboardCopy.storage.usedTemplate, {
+              used: formatNumber(data.used_storage),
+              total: formatNumber(data.total_storage)
+            });
           } else {
             meter.classList.add('d-none');
-            val.textContent = 'Mounted';
-            pct.textContent = '—';
-            detail.textContent = 'No storage info available';
+            val.textContent = dashboardCopy.storage.mounted;
+            pct.textContent = dashboardCopy.status.dash;
+            detail.textContent = dashboardCopy.storage.noStorageInfo;
           }
         } else {
           badge.className = 'badge badge-warning';
-          badge.textContent = data.app_manages_mount ? 'Not Mounted' : 'Unavailable';
-          val.textContent = data.app_manages_mount ? 'Not Mounted' : 'Unavailable';
-          pct.textContent = '—';
+          badge.textContent = data.app_manages_mount
+            ? dashboardCopy.storage.notMounted
+            : dashboardCopy.storage.unavailable;
+          val.textContent = data.app_manages_mount
+            ? dashboardCopy.storage.notMounted
+            : dashboardCopy.storage.unavailable;
+          pct.textContent = dashboardCopy.status.dash;
           meter.classList.add('d-none');
           bar.style.width = '0%';
-          detail.textContent = data.error || data.mount_point || 'Storage is not available';
+          detail.textContent = data.error || data.mount_point || dashboardCopy.storage.storageUnavailable;
         }
       })
       .catch(() => {
         document.getElementById('mount-status-badge').className = 'badge badge-danger';
-        document.getElementById('mount-status-badge').textContent = 'Error';
+        document.getElementById('mount-status-badge').textContent = dashboardCopy.status.error;
       });
   }
 
   // --- Drive health status ---
   function formatHealthCheckedAt(value) {
     if (!value) {
-      return 'No check yet';
+      return dashboardCopy.health.noCheckYet;
     }
-    return window.formatRelativeTimestamp(value, { fallback: value, compact: true });
+    return window.AppFormat.relativeTimestamp(value, { fallback: value, compact: true });
   }
 
   function renderHealthSummary(data) {
@@ -573,12 +677,26 @@ Remove the drive now if you do not want it mounted again.`;
     const val = document.getElementById('health-status');
     const detail = document.getElementById('health-detail');
     const checkedAt = document.getElementById('health-checked-at');
-    const hdsentinelHealth = data.hdsentinel_health != null ? 'Health ' + data.hdsentinel_health + '%' : '';
-    const temperature = data.temperature != null ? 'Temp ' + data.temperature + '°C' : '';
+    const hdsentinelHealth = data.hdsentinel_health != null
+      ? formatTemplate(dashboardCopy.health.healthTemplate, {
+        value: window.AppFormat.number(data.hdsentinel_health, {
+          fallback: String(data.hdsentinel_health),
+          format: { maximumFractionDigits: 0 }
+        })
+      })
+      : '';
+    const temperature = data.temperature != null
+      ? formatTemplate(dashboardCopy.health.tempTemplate, {
+        value: window.AppFormat.number(data.temperature, {
+          fallback: String(data.temperature),
+          format: { maximumFractionDigits: 0 }
+        })
+      })
+      : '';
     const metrics = [hdsentinelHealth, temperature].filter(Boolean);
 
     checkedAt.textContent = formatHealthCheckedAt(data.checked_at);
-    checkedAt.title = data.checked_at || 'No check yet';
+    checkedAt.title = data.checked_at || dashboardCopy.health.noCheckYet;
 
     const renderDetailText = (message) => {
       detail.textContent = '';
@@ -613,42 +731,42 @@ Remove the drive now if you do not want it mounted again.`;
 
     if (!data.checked_at) {
       badge.className = 'badge badge-neutral';
-      badge.textContent = 'Not Checked';
-      val.textContent = 'No check yet';
-      renderDetailText('Refresh to check');
+      badge.textContent = dashboardCopy.health.notChecked;
+      val.textContent = dashboardCopy.health.noCheckYet;
+      renderDetailText(dashboardCopy.health.refreshToCheck);
       return;
     }
 
     if (data.status === 'good') {
       badge.className = 'badge badge-success';
-      badge.textContent = 'Healthy';
-      val.textContent = 'Healthy';
+      badge.textContent = dashboardCopy.health.healthy;
+      val.textContent = dashboardCopy.health.healthy;
       // Keep volatile summary metrics on one row so the overview tile does not
       // grow vertically when health and temperature are both present.
-      renderMetricRow(metrics, data.detail || 'Checked');
+      renderMetricRow(metrics, data.detail || dashboardCopy.health.checked);
       return;
     }
 
     if (data.status === 'warning') {
       badge.className = 'badge badge-warning';
-      badge.textContent = 'Warning';
-      val.textContent = 'Needs Attention';
-      renderMetricRow(metrics, data.detail || 'Warning');
+      badge.textContent = dashboardCopy.health.warning;
+      val.textContent = dashboardCopy.health.needsAttention;
+      renderMetricRow(metrics, data.detail || dashboardCopy.health.warning);
       return;
     }
 
     if (data.status === 'critical') {
       badge.className = 'badge badge-danger';
-      badge.textContent = 'Critical';
-      val.textContent = 'Needs Attention';
-      renderMetricRow(metrics, data.detail || 'Critical');
+      badge.textContent = dashboardCopy.health.critical;
+      val.textContent = dashboardCopy.health.needsAttention;
+      renderMetricRow(metrics, data.detail || dashboardCopy.health.critical);
       return;
     }
 
     badge.className = 'badge badge-neutral';
-    badge.textContent = 'Unknown';
-    val.textContent = 'No Data';
-    renderDetailText(data.detail || 'Health data is not available');
+    badge.textContent = dashboardCopy.health.unknown;
+    val.textContent = dashboardCopy.health.noData;
+    renderDetailText(data.detail || dashboardCopy.health.dataUnavailable);
   }
 
   function updateHealth() {
@@ -656,11 +774,11 @@ Remove the drive now if you do not want it mounted again.`;
       .then(({ data }) => renderHealthSummary(data))
       .catch(() => {
         document.getElementById('health-status-badge').className = 'badge badge-neutral';
-        document.getElementById('health-status-badge').textContent = 'Unavailable';
-        document.getElementById('health-status').textContent = '—';
-        document.getElementById('health-detail').textContent = 'Health data unavailable';
-        document.getElementById('health-checked-at').textContent = 'No check yet';
-        document.getElementById('health-checked-at').title = 'No check yet';
+        document.getElementById('health-status-badge').textContent = dashboardCopy.health.unavailable;
+        document.getElementById('health-status').textContent = dashboardCopy.status.dash;
+        document.getElementById('health-detail').textContent = dashboardCopy.health.dataUnavailable;
+        document.getElementById('health-checked-at').textContent = dashboardCopy.health.noCheckYet;
+        document.getElementById('health-checked-at').title = dashboardCopy.health.noCheckYet;
       });
   }
 
@@ -677,12 +795,12 @@ Remove the drive now if you do not want it mounted again.`;
       if (healthRefreshButton) {
         window.AsyncButtonState.success(healthRefreshButton);
       }
-      showAlert('Drive health refreshed.', 'success');
+      showAlert(dashboardCopy.actions.driveHealthRefreshed, 'success');
     } catch (error) {
       if (healthRefreshButton) {
         window.AsyncButtonState.error(healthRefreshButton);
       }
-      showAlert(error.message || 'Drive health refresh failed.', 'danger');
+      showAlert(error.message || dashboardCopy.actions.driveHealthRefreshFailed, 'danger');
     }
   }
 
@@ -697,26 +815,32 @@ Remove the drive now if you do not want it mounted again.`;
         const s = data;
         if (s.status === 'Success') {
           badge.className = 'badge badge-success';
-          badge.textContent = 'OK';
+          badge.textContent = dashboardCopy.backup.ok;
         } else if (s.status === 'Failure') {
           badge.className = 'badge badge-danger';
-          badge.textContent = 'Failed';
+          badge.textContent = dashboardCopy.backup.failed;
         } else if (s.status === 'Running') {
           badge.className = 'badge badge-info';
-          badge.textContent = 'Running';
+          badge.textContent = dashboardCopy.backup.running;
         } else {
           badge.className = 'badge badge-neutral';
-          badge.textContent = s.status;
+          badge.textContent = s.status || dashboardCopy.status.unknown;
         }
 
-        val.textContent = window.formatRelativeTimestamp(s.last_run, { fallback: 'Never' });
-        val.title = s.last_run || 'Never';
-        detail.textContent = s.next_run ? 'Next: ' + window.formatRelativeTimestamp(s.next_run, { futurePrefix: false }) : 'Not scheduled';
-        detail.title = s.next_run || 'Not scheduled';
+        val.textContent = window.AppFormat.relativeTimestamp(s.last_run, {
+          fallback: dashboardCopy.backup.never
+        });
+        val.title = s.last_run || dashboardCopy.backup.never;
+        detail.textContent = s.next_run
+          ? formatTemplate(dashboardCopy.backup.nextTemplate, {
+            time: window.AppFormat.relativeTimestamp(s.next_run, { futurePrefix: false })
+          })
+          : dashboardCopy.backup.notScheduled;
+        detail.title = s.next_run || dashboardCopy.backup.notScheduled;
       })
       .catch(() => {
         document.getElementById('backup-status-badge').className = 'badge badge-neutral';
-        document.getElementById('backup-status-badge').textContent = 'Unavailable';
+        document.getElementById('backup-status-badge').textContent = dashboardCopy.backup.unavailable;
       });
   }
 
@@ -732,26 +856,26 @@ Remove the drive now if you do not want it mounted again.`;
 
         if (data.smbd === 'active' && discoveryOk(data.nmbd) && discoveryOk(data.wsdd2)) {
           badge.className = 'badge badge-success';
-          badge.textContent = 'Operational';
-          val.textContent = 'Running';
-          detail.textContent = 'File sharing services operational';
+          badge.textContent = dashboardCopy.sharing.operational;
+          val.textContent = dashboardCopy.sharing.running;
+          detail.textContent = dashboardCopy.sharing.servicesOperational;
         } else if (data.smbd === 'active') {
           badge.className = 'badge badge-warning';
-          badge.textContent = 'Partial';
-          val.textContent = 'Degraded';
+          badge.textContent = dashboardCopy.sharing.partial;
+          val.textContent = dashboardCopy.sharing.degraded;
           // Keep the compact detail explicit so the dashboard matches the
           // File Sharing page without adding another explanatory panel.
           detail.textContent = `smbd: ${data.smbd}, nmbd: ${data.nmbd}, wsdd2: ${data.wsdd2}`;
         } else {
           badge.className = 'badge badge-danger';
-          badge.textContent = 'Down';
-          val.textContent = 'Not Running';
+          badge.textContent = dashboardCopy.sharing.down;
+          val.textContent = dashboardCopy.sharing.notRunning;
           detail.textContent = `smbd: ${data.smbd}, nmbd: ${data.nmbd}, wsdd2: ${data.wsdd2}`;
         }
       })
       .catch(() => {
         document.getElementById('sharing-status-badge').className = 'badge badge-neutral';
-        document.getElementById('sharing-status-badge').textContent = 'Unavailable';
+        document.getElementById('sharing-status-badge').textContent = dashboardCopy.sharing.unavailable;
       });
   }
 
@@ -766,14 +890,14 @@ Remove the drive now if you do not want it mounted again.`;
 
         if (data.cpu_usage != null) {
           const cpu = Math.round(data.cpu_usage);
-          cpuPct.textContent = cpu + '%';
+          cpuPct.textContent = formatPercentValue(cpu);
           cpuBar.style.width = cpu + '%';
           cpuBar.className = 'progress-bar-fill' + (cpu > 90 ? ' danger' : cpu > 70 ? ' warning' : ' success');
         }
 
         if (data.ram_usage != null) {
           const ram = Math.round(data.ram_usage);
-          ramPct.textContent = ram + '%';
+          ramPct.textContent = formatPercentValue(ram);
           ramBar.style.width = ram + '%';
           ramBar.className = 'progress-bar-fill' + (ram > 90 ? ' danger' : ram > 70 ? ' warning' : ' success');
         }

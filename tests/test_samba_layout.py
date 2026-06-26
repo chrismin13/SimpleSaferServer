@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-from simple_safer_server.services.samba_layout import (
+from simple_safer_server.modules.file_sharing.samba_layout import (
     SSS_GLOBALS_INCLUDE_BEGIN,
     SSS_SHARES_INCLUDE_BEGIN,
     SSS_SHARES_INCLUDE_END,

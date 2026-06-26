@@ -1,36 +1,11 @@
 import json
-import sys
 import types
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-# The script imports the full app runtime for main(); these unit tests only need
-# the Cloudflare helpers and should not require optional app dependencies.
-original_config_manager = sys.modules.get("config_manager")
-original_runtime = sys.modules.get("runtime")
-
-try:
-    fake_config_manager = types.ModuleType("config_manager")
-    fake_config_manager.ConfigManager = object
-    sys.modules["config_manager"] = fake_config_manager
-
-    fake_runtime = types.ModuleType("runtime")
-    fake_runtime.get_runtime = lambda: None
-    sys.modules["runtime"] = fake_runtime
-
-    from scripts import ddns_update
-finally:
-    if original_config_manager is None:
-        sys.modules.pop("config_manager", None)
-    else:
-        sys.modules["config_manager"] = original_config_manager
-
-    if original_runtime is None:
-        sys.modules.pop("runtime", None)
-    else:
-        sys.modules["runtime"] = original_runtime
+from simple_safer_server.modules.ddns import updater as ddns_update
 
 
 class FakeResponse:
@@ -86,11 +61,23 @@ class CloudflareDdnsTests(unittest.TestCase):
                 runtime.volatile_dir.mkdir(parents=True, exist_ok=True)
                 (runtime.volatile_dir / "ddns_status.json").write_text(json.dumps(initial_status))
             with (
-                patch("scripts.ddns_update.get_runtime", return_value=runtime),
-                patch("scripts.ddns_update.ConfigManager", FakeConfigManager),
-                patch("scripts.ddns_update.get_public_ip", return_value=public_ip),
-                patch("scripts.ddns_update.update_duckdns", return_value=duckdns_result),
-                patch("scripts.ddns_update.update_cloudflare", return_value=cloudflare_result),
+                patch(
+                    "simple_safer_server.modules.ddns.updater.get_runtime",
+                    return_value=runtime,
+                ),
+                patch("simple_safer_server.modules.ddns.updater.ConfigManager", FakeConfigManager),
+                patch(
+                    "simple_safer_server.modules.ddns.updater.get_public_ip",
+                    return_value=public_ip,
+                ),
+                patch(
+                    "simple_safer_server.modules.ddns.updater.update_duckdns",
+                    return_value=duckdns_result,
+                ),
+                patch(
+                    "simple_safer_server.modules.ddns.updater.update_cloudflare",
+                    return_value=cloudflare_result,
+                ),
             ):
                 exit_code = ddns_update.main()
 
@@ -114,7 +101,8 @@ class CloudflareDdnsTests(unittest.TestCase):
         }
 
         with patch(
-            "scripts.ddns_update.urllib.request.urlopen", return_value=FakeResponse(payload)
+            "simple_safer_server.modules.ddns.updater.urllib.request.urlopen",
+            return_value=FakeResponse(payload),
         ):
             self.assertEqual(
                 ddns_update.get_cloudflare_record("zone-123", "token", "server.example.com"),
@@ -124,10 +112,10 @@ class CloudflareDdnsTests(unittest.TestCase):
     def test_update_cloudflare_skips_when_ip_and_proxy_state_match(self):
         with (
             patch(
-                "scripts.ddns_update.get_cloudflare_record",
+                "simple_safer_server.modules.ddns.updater.get_cloudflare_record",
                 return_value=("record-123", "203.0.113.10", True),
             ),
-            patch("scripts.ddns_update.urllib.request.urlopen") as mock_urlopen,
+            patch("simple_safer_server.modules.ddns.updater.urllib.request.urlopen") as mock_urlopen,
         ):
             success, message = ddns_update.update_cloudflare(
                 "zone-123",
@@ -153,10 +141,13 @@ class CloudflareDdnsTests(unittest.TestCase):
 
         with (
             patch(
-                "scripts.ddns_update.get_cloudflare_record",
+                "simple_safer_server.modules.ddns.updater.get_cloudflare_record",
                 return_value=("record-123", "203.0.113.10", False),
             ),
-            patch("scripts.ddns_update.urllib.request.urlopen", side_effect=fake_urlopen),
+            patch(
+                "simple_safer_server.modules.ddns.updater.urllib.request.urlopen",
+                side_effect=fake_urlopen,
+            ),
         ):
             success, message = ddns_update.update_cloudflare(
                 "zone-123",

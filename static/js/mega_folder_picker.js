@@ -7,38 +7,42 @@ window.openMegaFolderPicker = function openMegaFolderPicker(options) {
     getCredentials = () => null, // function that returns { email, password }
     onSelect,       // function(folderPath) called when folder is selected
     modalId,        // ID of the modal overlay (e.g., 'megaFolderPickerModal')
-    // Support legacy modalSelector option
-    modalSelector,
     listUrl = '/api/cloud_backup/mega/list_folders',
     createUrl = '/api/cloud_backup/mega/create_folder',
     startPath = '/',
     canCreate = true,
     showFiles = false,
     emptyMessage = showFiles ? 'No folders or files in this directory.' : 'No subfolders in this directory.',
-    credentialsRequiredMessage = 'MEGA credentials are required before creating a folder.'
+    credentialsRequiredMessage = 'MEGA credentials are required before creating a folder.',
+    copy = {}
   } = options;
+  const copyOverrides = copy && typeof copy === 'object' ? copy : {};
+  const pickerCopy = {
+    loading: copyOverrides.loading || 'Loading...',
+    emptyMessage: copyOverrides.emptyMessage || emptyMessage,
+    credentialsRequired: copyOverrides.credentialsRequired || credentialsRequiredMessage,
+    loadFailed: copyOverrides.loadFailed || 'Could not load folders.',
+    createFailed: copyOverrides.createFailed || 'Error creating folder.'
+  };
 
-  // Resolve modal element from modalId or modalSelector
-  const resolvedId = modalId || (modalSelector ? modalSelector.replace('#', '') : null);
+  const resolvedId = modalId;
   if (!resolvedId) return;
 
   const modalEl = document.getElementById(resolvedId);
   if (!modalEl) return;
 
-  function pickerElement(selector, legacyId) {
-    const scoped = modalEl.querySelector(selector);
-    if (scoped) return scoped;
-    return resolvedId === 'megaFolderPickerModal' ? document.getElementById(legacyId) : null;
+  function pickerElement(selector) {
+    return modalEl.querySelector(selector);
   }
 
-  const currentPathEl = pickerElement('.folder-picker-current-path, .mega-picker-current-path', 'megaPickerCurrentPath');
-  const dirsListEl = pickerElement('.folder-picker-dirs-list, .mega-picker-dirs-list', 'megaPickerDirsList');
-  const upBtn = pickerElement('.folder-picker-up-btn, .mega-picker-up-btn', 'megaPickerUpBtn');
-  const createFolderBtn = pickerElement('.folder-picker-create-folder-btn, .mega-picker-create-folder-btn', 'megaPickerCreateFolderBtn');
-  const newFolderNameEl = pickerElement('.folder-picker-new-folder-name, .mega-picker-new-folder-name', 'megaPickerNewFolderName');
-  const saveNewFolderBtn = pickerElement('.folder-picker-save-new-folder-btn, .mega-picker-save-new-folder-btn', 'megaPickerSaveNewFolderBtn');
-  const errorEl = pickerElement('.folder-picker-error, .mega-picker-error', 'megaPickerError');
-  const selectCurrentBtn = pickerElement('.folder-picker-select-current-btn, .mega-picker-select-current-btn', 'megaPickerSelectCurrentBtn');
+  const currentPathEl = pickerElement('.folder-picker-current-path');
+  const dirsListEl = pickerElement('.folder-picker-dirs-list');
+  const upBtn = pickerElement('.folder-picker-up-btn');
+  const createFolderBtn = pickerElement('.folder-picker-create-folder-btn');
+  const newFolderNameEl = pickerElement('.folder-picker-new-folder-name');
+  const saveNewFolderBtn = pickerElement('.folder-picker-save-new-folder-btn');
+  const errorEl = pickerElement('.folder-picker-error');
+  const selectCurrentBtn = pickerElement('.folder-picker-select-current-btn');
 
   let currentPath = startPath || '/';
   let parentPath = '/';
@@ -62,6 +66,15 @@ window.openMegaFolderPicker = function openMegaFolderPicker(options) {
     errorEl.classList.remove('visible');
   }
 
+  function escapeHtml(value) {
+    return String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   function joinPath(basePath, name) {
     return (basePath || '/').replace(/\/$/, '') + '/' + name;
   }
@@ -79,6 +92,9 @@ window.openMegaFolderPicker = function openMegaFolderPicker(options) {
     if (Array.isArray(data.entries)) {
       return showFiles ? data.entries : data.entries.filter(entry => entry.type === 'folder');
     }
+    if (Array.isArray(data.dirs)) {
+      return data.dirs.map(dir => ({ name: dir, type: 'folder' }));
+    }
     return (data.folders || []).map(folder => ({ name: folder, type: 'folder' }));
   }
 
@@ -94,7 +110,7 @@ window.openMegaFolderPicker = function openMegaFolderPicker(options) {
       dirsListEl.innerHTML = `
         <div class="folder-list-loading" aria-live="polite">
           <span class="spinner" aria-hidden="true"></span>
-          <span class="text-muted">Loading...</span>
+          <span class="text-muted">${escapeHtml(pickerCopy.loading)}</span>
         </div>
       `;
     }
@@ -152,7 +168,7 @@ window.openMegaFolderPicker = function openMegaFolderPicker(options) {
           const emptyMsg = document.createElement('div');
           emptyMsg.className = 'folder-list-item text-muted';
           emptyMsg.style.cursor = 'default';
-          emptyMsg.textContent = emptyMessage;
+          emptyMsg.textContent = pickerCopy.emptyMessage;
           dirsListEl.appendChild(emptyMsg);
         }
         clearError();
@@ -160,7 +176,7 @@ window.openMegaFolderPicker = function openMegaFolderPicker(options) {
       .catch(e => {
         if (String(loadId) !== modalEl.dataset.megaPickerActiveLoadId) return;
         if (dirsListEl) dirsListEl.innerHTML = '';
-        showError(e.message || 'Could not load folders.');
+        showError(e.message || pickerCopy.loadFailed);
       });
   }
 
@@ -169,7 +185,7 @@ window.openMegaFolderPicker = function openMegaFolderPicker(options) {
   };
   if (selectCurrentBtn) selectCurrentBtn.onclick = () => {
     if (onSelect) onSelect(currentPath);
-    BunkerModal.hide(resolvedId);
+    AppModal.hide(resolvedId);
   };
   if (createFolderBtn) createFolderBtn.onclick = () => {
     if (!canCreate) return;
@@ -191,7 +207,7 @@ window.openMegaFolderPicker = function openMegaFolderPicker(options) {
     const creds = getCredentials();
     if (!creds || !creds.email || !creds.password) {
       window.AsyncButtonState.error(saveNewFolderBtn);
-      showError(credentialsRequiredMessage);
+      showError(pickerCopy.credentialsRequired);
       return;
     }
     window.ApiClient.fetchJson(createUrl, {
@@ -208,15 +224,15 @@ window.openMegaFolderPicker = function openMegaFolderPicker(options) {
       })
       .catch(e => {
         window.AsyncButtonState.error(saveNewFolderBtn);
-        showError(e.message || 'Error creating folder.');
+        showError(e.message || pickerCopy.createFailed);
       });
   };
 
-  // Start at root
+  // Clear stale modal errors when the picker closes.
   if (!modalEl.dataset.megaPickerErrorBound) {
     modalEl.addEventListener('modal:hidden', clearError);
     modalEl.dataset.megaPickerErrorBound = 'true';
   }
   loadDirs(startPath || '/');
-  BunkerModal.show(resolvedId);
+  AppModal.show(resolvedId);
 };

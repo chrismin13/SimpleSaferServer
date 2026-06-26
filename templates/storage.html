@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "partials/module_help.html" as module_help %}
 
 {% block title %}{{ browser_title('Storage') }}{% endblock %}
 {% block header %}{% endblock %}
@@ -8,6 +9,8 @@
 
 {% block content %}
 <div class="storage-page storage-overview-page" data-storage-current-mode="{{ storage_location.mode }}">
+  {{ module_help.module_help_band(storage_module, icon='fas fa-folder-tree') }}
+
   <div class="storage-page-heading">
     <h1>Storage</h1>
     <p>Manage where SimpleSaferServer stores backup files.</p>
@@ -164,5 +167,6 @@
 {% endblock %}
 
 {% block extra_js %}
+<script type="application/json" id="storage-copy">{{ storage_ui_text | tojson }}</script>
 <script src="{{ url_for('static', filename='js/storage.js') }}"></script>
 {% endblock %}

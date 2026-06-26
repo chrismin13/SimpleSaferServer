@@ -27,6 +27,97 @@
     detailsBtn: document.getElementById('partitionDriveErrorDetailsBtn'),
     details: ''
   };
+  const defaultCopy = {
+    drives: {
+      unknownDrive: 'Unknown Drive',
+      mountedAt: 'mounted at {mountpoint}',
+      partitionCount: '{count} partition(s)',
+      blankDisk: 'blank',
+      selectDisk: 'Select a disk...',
+      noCandidateDisks: 'No candidate disks found',
+      selectPartition: 'Select an NTFS partition...',
+      noNtfsPartitions: 'No NTFS partitions found'
+    },
+    status: {
+      refreshingDrives: 'Refreshing drives...',
+      driveListRefreshed: 'Drive list refreshed.',
+      refreshingPartitions: 'Refreshing partitions...',
+      partitionListRefreshed: 'Partition list refreshed.',
+      unmountingDisk: 'Unmounting selected disk...',
+      driveUnmounted: 'Drive unmounted.',
+      formattingDisk: 'Formatting selected disk...',
+      driveFormatted: 'Drive formatted as NTFS.',
+      unmountingPartition: 'Unmounting selected partition...',
+      partitionUnmounted: 'Partition unmounted.',
+      applyingDrive: 'Applying managed drive...',
+      managedDriveSaved: 'Managed drive saved.'
+    },
+    errors: {
+      refreshDrivesFailed: 'Failed to refresh drives.',
+      refreshPartitionsFailed: 'Failed to refresh partitions.',
+      selectDiskToUnmount: 'Select a disk to unmount first.',
+      selectDiskToFormat: 'Select a disk to format first.',
+      unmountDiskFailed: 'Failed to unmount the selected disk.',
+      formatDiskFailed: 'Failed to format the selected disk.',
+      selectPartitionToUnmount: 'Select an NTFS partition to unmount first.',
+      unmountPartitionFailed: 'Failed to unmount the selected partition.',
+      selectPartition: 'Select an NTFS partition first.',
+      mountPointRequired: 'Mount point is required.',
+      useDriveFailed: 'Failed to use the selected drive.',
+      noDetails: 'No additional details available.'
+    },
+    confirm: {
+      unmountDriveTitle: 'Unmount Drive',
+      unmountDriveMessage: 'This temporarily unmounts mounted partitions on the selected disk. It does not change SimpleSaferServer storage configuration.',
+      unmountConfirm: 'Unmount',
+      formatDriveTitle: 'Format Drive',
+      formatDriveMessage: 'Formatting {disk} deletes all files and partitions on that disk.\n\nSimpleSaferServer storage will not change until you use the NTFS partition in the next section.',
+      formatDriveConfirm: 'Format Drive',
+      unmountPartitionTitle: 'Unmount Partition',
+      unmountPartitionMessage: 'This temporarily unmounts the selected partition so it can be used as the managed drive.',
+      useDriveTitle: 'Use This Drive',
+      useDriveMessage: 'Use {partition} as SimpleSaferServer storage at {mount_point}?',
+      useDriveConfirm: 'Use This Drive'
+    }
+  };
+
+  function mergeCopy(base, overrides) {
+    if (!overrides || typeof overrides !== 'object') return base;
+    Object.keys(overrides).forEach((key) => {
+      if (
+        overrides[key]
+        && typeof overrides[key] === 'object'
+        && !Array.isArray(overrides[key])
+        && base[key]
+        && typeof base[key] === 'object'
+      ) {
+        mergeCopy(base[key], overrides[key]);
+      } else {
+        base[key] = overrides[key];
+      }
+    });
+    return base;
+  }
+
+  function readCopy() {
+    const script = document.getElementById('storage-change-drive-copy');
+    if (!script) return defaultCopy;
+    try {
+      return mergeCopy(JSON.parse(JSON.stringify(defaultCopy)), JSON.parse(script.textContent || '{}'));
+    } catch (error) {
+      console.error('Could not read Storage change-drive page copy:', error);
+      return defaultCopy;
+    }
+  }
+
+  const copy = readCopy();
+
+  function copyTemplate(template, values) {
+    return Object.keys(values || {}).reduce(
+      (message, key) => message.replaceAll(`{${key}}`, values[key]),
+      template || ''
+    );
+  }
 
   function setStatus(feedback, message, type) {
     if (!feedback.status) return;
@@ -59,12 +150,15 @@
   }
 
   function driveLabel(drive) {
-    const bits = [drive.path, drive.model || 'Unknown Drive', drive.size || '', drive.type || ''];
+    const bits = [drive.path, drive.model || copy.drives.unknownDrive, drive.size || '', drive.type || ''];
     return bits.filter(Boolean).join(' · ');
   }
 
   function partitionLabel(partition) {
-    const bits = [partition.path, partition.size || '', partition.label || '', partition.mountpoint ? `mounted at ${partition.mountpoint}` : ''];
+    const mountedAt = partition.mountpoint
+      ? copyTemplate(copy.drives.mountedAt, { mountpoint: partition.mountpoint })
+      : '';
+    const bits = [partition.path, partition.size || '', partition.label || '', mountedAt];
     return bits.filter(Boolean).join(' · ');
   }
 
@@ -78,18 +172,21 @@
   }
 
   function populateFormatDrives(drives) {
-    resetSelect(formatDriveSelect, drives.length ? 'Select a disk...' : 'No candidate disks found');
+    resetSelect(formatDriveSelect, drives.length ? copy.drives.selectDisk : copy.drives.noCandidateDisks);
     drives.forEach((drive) => {
       const option = document.createElement('option');
       option.value = drive.path;
       const partitionCount = (drive.partitions || []).length;
-      option.textContent = `${driveLabel(drive)}${partitionCount ? ` · ${partitionCount} partition(s)` : ' · blank'}`;
+      const partitionLabelText = partitionCount
+        ? copyTemplate(copy.drives.partitionCount, { count: partitionCount })
+        : copy.drives.blankDisk;
+      option.textContent = `${driveLabel(drive)} · ${partitionLabelText}`;
       formatDriveSelect.appendChild(option);
     });
   }
 
   function populatePartitions(drives) {
-    resetSelect(backupDriveSelect, drives.length ? 'Select an NTFS partition...' : 'No NTFS partitions found');
+    resetSelect(backupDriveSelect, drives.length ? copy.drives.selectPartition : copy.drives.noNtfsPartitions);
     drives.forEach((drive) => {
       const group = document.createElement('optgroup');
       group.label = driveLabel(drive);
@@ -105,30 +202,30 @@
 
   async function refreshFormatDrives() {
     hideError(formatFeedback);
-    setStatus(formatFeedback, 'Refreshing drives...', 'info');
+    setStatus(formatFeedback, copy.status.refreshingDrives, 'info');
     window.AsyncButtonState.start(refreshFormatDrivesBtn);
     try {
       const { data } = await window.ApiClient.fetchJson('/api/backup_drive/format-drives');
       populateFormatDrives(data.drives || []);
-      setStatus(formatFeedback, 'Drive list refreshed.', 'success');
+      setStatus(formatFeedback, copy.status.driveListRefreshed, 'success');
       window.AsyncButtonState.success(refreshFormatDrivesBtn);
     } catch (error) {
-      showError(formatFeedback, error.message || 'Failed to refresh drives.', error.details);
+      showError(formatFeedback, error.message || copy.errors.refreshDrivesFailed, error.details);
       window.AsyncButtonState.error(refreshFormatDrivesBtn);
     }
   }
 
   async function refreshPartitions() {
     hideError(partitionFeedback);
-    setStatus(partitionFeedback, 'Refreshing partitions...', 'info');
+    setStatus(partitionFeedback, copy.status.refreshingPartitions, 'info');
     window.AsyncButtonState.start(refreshPartitionsBtn);
     try {
       const { data } = await window.ApiClient.fetchJson('/api/backup_drive/drives');
       populatePartitions(data.drives || []);
-      setStatus(partitionFeedback, 'Partition list refreshed.', 'success');
+      setStatus(partitionFeedback, copy.status.partitionListRefreshed, 'success');
       window.AsyncButtonState.success(refreshPartitionsBtn);
     } catch (error) {
-      showError(partitionFeedback, error.message || 'Failed to refresh partitions.', error.details);
+      showError(partitionFeedback, error.message || copy.errors.refreshPartitionsFailed, error.details);
       window.AsyncButtonState.error(refreshPartitionsBtn);
     }
   }
@@ -136,18 +233,18 @@
   async function unmountFormatDrive() {
     hideError(formatFeedback);
     if (!formatDriveSelect || !formatDriveSelect.value) {
-      showError(formatFeedback, 'Select a disk to unmount first.');
+      showError(formatFeedback, copy.errors.selectDiskToUnmount);
       return;
     }
     const confirmed = await window.showConfirmationDialog({
-      title: 'Unmount Drive',
-      message: 'This temporarily unmounts mounted partitions on the selected disk. It does not change SimpleSaferServer storage configuration.',
-      confirmLabel: 'Unmount',
+      title: copy.confirm.unmountDriveTitle,
+      message: copy.confirm.unmountDriveMessage,
+      confirmLabel: copy.confirm.unmountConfirm,
       confirmClass: 'btn-warning'
     });
     if (!confirmed) return;
 
-    setStatus(formatFeedback, 'Unmounting selected disk...', 'info');
+    setStatus(formatFeedback, copy.status.unmountingDisk, 'info');
     window.AsyncButtonState.start(unmountFormatDriveBtn);
     try {
       const { message } = await window.ApiClient.fetchJson('/api/backup_drive/unmount', {
@@ -155,11 +252,11 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ disk: formatDriveSelect.value })
       });
-      setStatus(formatFeedback, message || 'Drive unmounted.', 'success');
+      setStatus(formatFeedback, message || copy.status.driveUnmounted, 'success');
       window.AsyncButtonState.success(unmountFormatDriveBtn);
       await refreshFormatDrives();
     } catch (error) {
-      showError(formatFeedback, error.message || 'Failed to unmount the selected disk.', error.details);
+      showError(formatFeedback, error.message || copy.errors.unmountDiskFailed, error.details);
       window.AsyncButtonState.error(unmountFormatDriveBtn);
     }
   }
@@ -167,20 +264,18 @@
   async function formatDrive() {
     hideError(formatFeedback);
     if (!formatDriveSelect || !formatDriveSelect.value) {
-      showError(formatFeedback, 'Select a disk to format first.');
+      showError(formatFeedback, copy.errors.selectDiskToFormat);
       return;
     }
     const confirmed = await window.showConfirmationDialog({
-      title: 'Format Drive',
-      message: `Formatting ${formatDriveSelect.value} deletes all files and partitions on that disk.
-
-SimpleSaferServer storage will not change until you use the NTFS partition in the next section.`,
-      confirmLabel: 'Format Drive',
+      title: copy.confirm.formatDriveTitle,
+      message: copyTemplate(copy.confirm.formatDriveMessage, { disk: formatDriveSelect.value }),
+      confirmLabel: copy.confirm.formatDriveConfirm,
       confirmClass: 'btn-danger'
     });
     if (!confirmed) return;
 
-    setStatus(formatFeedback, 'Formatting selected disk...', 'warning');
+    setStatus(formatFeedback, copy.status.formattingDisk, 'warning');
     window.AsyncButtonState.start(formatDriveBtn);
     try {
       const { message } = await window.ApiClient.fetchJson('/api/backup_drive/format', {
@@ -188,13 +283,13 @@ SimpleSaferServer storage will not change until you use the NTFS partition in th
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ disk: formatDriveSelect.value })
       });
-      setStatus(formatFeedback, message || 'Drive formatted as NTFS.', 'success');
-      if (window.showAlert) window.showAlert(message || 'Drive formatted as NTFS.', 'success');
+      setStatus(formatFeedback, message || copy.status.driveFormatted, 'success');
+      if (window.showAlert) window.showAlert(message || copy.status.driveFormatted, 'success');
       window.AsyncButtonState.success(formatDriveBtn);
       await refreshFormatDrives();
       await refreshPartitions();
     } catch (error) {
-      showError(formatFeedback, error.message || 'Failed to format the selected disk.', error.details);
+      showError(formatFeedback, error.message || copy.errors.formatDiskFailed, error.details);
       window.AsyncButtonState.error(formatDriveBtn);
     }
   }
@@ -202,18 +297,18 @@ SimpleSaferServer storage will not change until you use the NTFS partition in th
   async function unmountPartition() {
     hideError(partitionFeedback);
     if (!backupDriveSelect || !backupDriveSelect.value) {
-      showError(partitionFeedback, 'Select an NTFS partition to unmount first.');
+      showError(partitionFeedback, copy.errors.selectPartitionToUnmount);
       return;
     }
     const confirmed = await window.showConfirmationDialog({
-      title: 'Unmount Partition',
-      message: 'This temporarily unmounts the selected partition so it can be used as the managed drive.',
-      confirmLabel: 'Unmount',
+      title: copy.confirm.unmountPartitionTitle,
+      message: copy.confirm.unmountPartitionMessage,
+      confirmLabel: copy.confirm.unmountConfirm,
       confirmClass: 'btn-warning'
     });
     if (!confirmed) return;
 
-    setStatus(partitionFeedback, 'Unmounting selected partition...', 'info');
+    setStatus(partitionFeedback, copy.status.unmountingPartition, 'info');
     window.AsyncButtonState.start(unmountPartitionBtn);
     try {
       const { message } = await window.ApiClient.fetchJson('/api/backup_drive/unmount', {
@@ -221,11 +316,11 @@ SimpleSaferServer storage will not change until you use the NTFS partition in th
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ partition: backupDriveSelect.value })
       });
-      setStatus(partitionFeedback, message || 'Partition unmounted.', 'success');
+      setStatus(partitionFeedback, message || copy.status.partitionUnmounted, 'success');
       window.AsyncButtonState.success(unmountPartitionBtn);
       await refreshPartitions();
     } catch (error) {
-      showError(partitionFeedback, error.message || 'Failed to unmount the selected partition.', error.details);
+      showError(partitionFeedback, error.message || copy.errors.unmountPartitionFailed, error.details);
       window.AsyncButtonState.error(unmountPartitionBtn);
     }
   }
@@ -233,24 +328,27 @@ SimpleSaferServer storage will not change until you use the NTFS partition in th
   async function useDrive() {
     hideError(partitionFeedback);
     if (!backupDriveSelect || !backupDriveSelect.value) {
-      showError(partitionFeedback, 'Select an NTFS partition first.');
+      showError(partitionFeedback, copy.errors.selectPartition);
       return;
     }
     const mountPoint = mountPointInput ? mountPointInput.value.trim() : '';
     if (!mountPoint) {
-      showError(partitionFeedback, 'Mount point is required.');
+      showError(partitionFeedback, copy.errors.mountPointRequired);
       return;
     }
 
     const confirmed = await window.showConfirmationDialog({
-      title: 'Use This Drive',
-      message: `Use ${backupDriveSelect.value} as SimpleSaferServer storage at ${mountPoint}?`,
-      confirmLabel: 'Use This Drive',
+      title: copy.confirm.useDriveTitle,
+      message: copyTemplate(copy.confirm.useDriveMessage, {
+        partition: backupDriveSelect.value,
+        mount_point: mountPoint
+      }),
+      confirmLabel: copy.confirm.useDriveConfirm,
       confirmClass: 'btn-primary'
     });
     if (!confirmed) return;
 
-    setStatus(partitionFeedback, 'Applying managed drive...', 'info');
+    setStatus(partitionFeedback, copy.status.applyingDrive, 'info');
     window.AsyncButtonState.start(useDriveBtn);
     try {
       const { data } = await window.ApiClient.fetchJson('/api/backup_drive/configure', {
@@ -263,14 +361,14 @@ SimpleSaferServer storage will not change until you use the NTFS partition in th
         })
       });
       const result = data.result || {};
-      setStatus(partitionFeedback, result.message || 'Managed drive saved.', 'success');
-      if (window.showAlert) window.showAlert(result.message || 'Managed drive saved.', 'success');
+      setStatus(partitionFeedback, result.message || copy.status.managedDriveSaved, 'success');
+      if (window.showAlert) window.showAlert(result.message || copy.status.managedDriveSaved, 'success');
       window.AsyncButtonState.success(useDriveBtn);
       window.setTimeout(() => {
         window.location.assign('/storage');
       }, 900);
     } catch (error) {
-      showError(partitionFeedback, error.message || 'Failed to use the selected drive.', error.details);
+      showError(partitionFeedback, error.message || copy.errors.useDriveFailed, error.details);
       window.AsyncButtonState.error(useDriveBtn);
     }
   }
@@ -279,9 +377,9 @@ SimpleSaferServer storage will not change until you use the NTFS partition in th
     if (!feedback.detailsBtn) return;
     feedback.detailsBtn.addEventListener('click', () => {
       if (errorDetailsTextEl) {
-        errorDetailsTextEl.textContent = feedback.details || 'No additional details available.';
+        errorDetailsTextEl.textContent = feedback.details || copy.errors.noDetails;
       }
-      if (window.BunkerModal) window.BunkerModal.show('backupDriveSetupErrorDetailsModal');
+      if (window.AppModal) window.AppModal.show('backupDriveSetupErrorDetailsModal');
     });
   }
 

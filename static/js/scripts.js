@@ -4,6 +4,103 @@
    ============================================================ */
 
 document.addEventListener("DOMContentLoaded", function () {
+  const scriptsDefaultCopy = {
+    cloudBackup: {
+      connectMegaFailed: 'Error connecting to MEGA.',
+      saveMegaFailed: 'Error saving MEGA config.',
+      saveRcloneFailed: 'Error saving rclone config.'
+    },
+    folderPicker: {
+      mega: {
+        loading: 'Loading...',
+        emptyMessage: 'No subfolders in this directory.',
+        credentialsRequired: 'MEGA credentials are required before creating a folder.',
+        loadFailed: 'Could not load folders.',
+        createFailed: 'Error creating folder.'
+      }
+    },
+    taskDetail: {
+      status: {
+        success: 'Success',
+        failure: 'Failure',
+        running: 'Running',
+        missing: 'Missing',
+        notRunYet: 'Not Run Yet',
+        stopped: 'Stopped',
+        unknown: 'Unknown'
+      },
+      refresh: {
+        reconnecting: 'Reconnecting to log...',
+        retrying: 'Log refresh paused; retrying...'
+      },
+      schedule: {
+        unknown: 'Unknown'
+      }
+    }
+  };
+
+  function mergeScriptsCopy(base, overrides) {
+    if (!overrides || typeof overrides !== 'object') return base;
+    Object.keys(overrides).forEach((key) => {
+      if (
+        overrides[key]
+        && typeof overrides[key] === 'object'
+        && !Array.isArray(overrides[key])
+        && base[key]
+        && typeof base[key] === 'object'
+      ) {
+        mergeScriptsCopy(base[key], overrides[key]);
+      } else {
+        base[key] = overrides[key];
+      }
+    });
+    return base;
+  }
+
+  function readScriptsCopy() {
+    const copy = JSON.parse(JSON.stringify(scriptsDefaultCopy));
+    ['setup-copy', 'task-detail-copy'].forEach((scriptId) => {
+      const script = document.getElementById(scriptId);
+      if (!script) return;
+      try {
+        mergeScriptsCopy(copy, JSON.parse(script.textContent || '{}'));
+      } catch (error) {
+        console.error('Could not read shared page copy:', error);
+      }
+    });
+    return copy;
+  }
+
+  function getTaskStatusLabel(status) {
+    const labels = scriptsCopy.taskDetail.status;
+    if (status === 'Success') return labels.success;
+    if (status === 'Failure') return labels.failure;
+    if (status === 'Running') return labels.running;
+    if (status === 'Missing') return labels.missing;
+    if (status === 'Not Run Yet') return labels.notRunYet;
+    if (status === 'Stopped') return labels.stopped;
+    return status || labels.unknown;
+  }
+
+  function taskStatusBadgeHtml(status, badgeClass, iconClass) {
+    return [
+      `<span class="badge ${badgeClass}">`,
+      `<i class="fas ${iconClass}"></i> `,
+      escapeHtml(getTaskStatusLabel(status)),
+      '</span>'
+    ].join('');
+  }
+
+  function escapeHtml(value) {
+    return String(value || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+    }
+
+  const scriptsCopy = readScriptsCopy();
 
   // --- Auto-refresh logs on the task detail page ---
   const autoRefreshCheckbox = document.getElementById("auto-refresh");
@@ -12,10 +109,6 @@ document.addEventListener("DOMContentLoaded", function () {
     const refreshState = document.getElementById("task-log-refresh-state");
     const statusBadge = document.getElementById("task-status-badge");
     const scheduleBadge = document.getElementById("task-schedule-badge");
-    const manageScheduleBtn = document.getElementById("manage-schedule-btn");
-    let currentScheduleCanEnable = manageScheduleBtn
-      ? manageScheduleBtn.dataset.scheduleCanEnable === "true"
-      : false;
     const taskName = autoRefreshCheckbox.getAttribute("data-task-name");
     const logLines = autoRefreshCheckbox.getAttribute("data-log-lines") || "500";
     let intervalId;
@@ -24,15 +117,6 @@ document.addEventListener("DOMContentLoaded", function () {
 
     function scrollToBottom() {
       if (logContainer) logContainer.scrollTop = logContainer.scrollHeight;
-    }
-
-    function escapeHtml(value) {
-      return String(value || "")
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#39;");
     }
 
     function ansiCodesToClass(codes) {
@@ -77,21 +161,18 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     function renderTaskStatusBadge(status) {
-      if (status === "Success") return '<span class="badge badge-success"><i class="fas fa-circle-check"></i> Success</span>';
-      if (status === "Failure") return '<span class="badge badge-danger"><i class="fas fa-circle-xmark"></i> Failure</span>';
-      if (status === "Running") return '<span class="badge badge-info"><i class="fas fa-spinner fa-spin"></i> Running</span>';
-      if (status === "Missing") return '<span class="badge badge-warning"><i class="fas fa-circle-exclamation"></i> Missing</span>';
-      if (status === "Not Run Yet") return '<span class="badge badge-neutral"><i class="fas fa-clock"></i> Not Run Yet</span>';
-      if (status === "Stopped") return '<span class="badge badge-neutral"><i class="fas fa-stop"></i> Stopped</span>';
-      return `<span class="badge badge-warning"><i class="fas fa-question-circle"></i> ${escapeHtml(status || "Unknown")}</span>`;
+      if (status === "Success") return taskStatusBadgeHtml(status, "badge-success", "fa-circle-check");
+      if (status === "Failure") return taskStatusBadgeHtml(status, "badge-danger", "fa-circle-xmark");
+      if (status === "Running") return taskStatusBadgeHtml(status, "badge-info", "fa-spinner fa-spin");
+      if (status === "Missing") return taskStatusBadgeHtml(status, "badge-warning", "fa-circle-exclamation");
+      if (status === "Not Run Yet") return taskStatusBadgeHtml(status, "badge-neutral", "fa-clock");
+      if (status === "Stopped") return taskStatusBadgeHtml(status, "badge-neutral", "fa-stop");
+      return taskStatusBadgeHtml(status, "badge-warning", "fa-question-circle");
     }
 
     function scheduleBadgeMeta(schedule) {
       const state = schedule && schedule.state;
       // Schedule severity is separate from the task run status badge shown beside it.
-      if (["temporary", "permanent", "restore_failed", "external_disabled"].includes(state)) {
-        return { className: "badge-schedule-danger", iconClass: "fa-calendar-xmark" };
-      }
       if (state === "issue") {
         return { className: "badge-schedule-warning", iconClass: "fa-triangle-exclamation" };
       }
@@ -119,30 +200,7 @@ document.addEventListener("DOMContentLoaded", function () {
       if (scheduleBadge) {
         const badgeMeta = scheduleBadgeMeta(schedule);
         scheduleBadge.className = `badge ${badgeMeta.className}`;
-        scheduleBadge.innerHTML = `<i class="fas ${badgeMeta.iconClass}"></i> ${escapeHtml(schedule.label || "Unknown")}`;
-      }
-      currentScheduleCanEnable = Boolean(schedule.can_enable);
-      if (manageScheduleBtn) {
-        manageScheduleBtn.dataset.scheduleCanEnable = currentScheduleCanEnable ? "true" : "false";
-      }
-    }
-
-    async function enableSchedule() {
-      window.AsyncButtonState.start(manageScheduleBtn);
-      try {
-        const response = await window.ApiClient.fetchJson(
-          `/task/${encodeURIComponent(taskName)}/enable-schedule`,
-          {
-            method: "POST",
-            headers: { "Accept": "application/json" }
-          }
-        );
-        window.AsyncButtonState.success(manageScheduleBtn);
-        updateScheduleControls(response.data && response.data.task && response.data.task.schedule);
-        showAlert(response.message || "Schedule enabled.", "success");
-      } catch (error) {
-        window.AsyncButtonState.error(manageScheduleBtn);
-        showAlert(error.message || "Schedule enable failed.", "danger");
+        scheduleBadge.innerHTML = `<i class="fas ${badgeMeta.iconClass}"></i> ${escapeHtml(schedule.label || scriptsCopy.taskDetail.schedule.unknown)}`;
       }
     }
 
@@ -172,8 +230,8 @@ document.addEventListener("DOMContentLoaded", function () {
           failedFetchCount += 1;
           if (refreshState) {
             refreshState.textContent = failedFetchCount > 1
-              ? "Reconnecting to log..."
-              : "Log refresh paused; retrying...";
+              ? scriptsCopy.taskDetail.refresh.reconnecting
+              : scriptsCopy.taskDetail.refresh.retrying;
           }
           console.error(err);
         });
@@ -207,36 +265,6 @@ document.addEventListener("DOMContentLoaded", function () {
     scrollToBottom();
     start();
 
-    const disableScheduleControl = window.TaskScheduleControl
-      ? window.TaskScheduleControl.createDisableScheduleController({
-        taskName,
-        onScheduleChanged: updateScheduleControls
-      })
-      : null;
-
-    if (manageScheduleBtn) {
-      manageScheduleBtn.addEventListener("click", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        const items = [
-          {
-            label: "Disable Schedule...",
-            iconClass: "fas fa-calendar-xmark me-2",
-            destructive: true,
-            onSelect: () => {
-              if (disableScheduleControl) disableScheduleControl.open();
-            }
-          },
-          {
-            label: "Enable Schedule",
-            iconClass: "fas fa-calendar-check me-2",
-            disabled: !currentScheduleCanEnable,
-            onSelect: () => enableSchedule()
-          }
-        ];
-        window.ActionContextMenu.show(items, event.clientX, event.clientY);
-      });
-    }
   }
 
   // --- Setup Wizard: Backup Config Step Logic ---
@@ -346,7 +374,7 @@ document.addEventListener("DOMContentLoaded", function () {
         window.AsyncButtonState.error(megaConnectBtn);
         const backupConfigError = document.getElementById('backupConfigError');
         if (backupConfigError) {
-          backupConfigError.textContent = err.message || 'Error connecting to MEGA.';
+          backupConfigError.textContent = err.message || scriptsCopy.cloudBackup.connectMegaFailed;
           backupConfigError.classList.remove('d-none');
         }
       });
@@ -369,7 +397,8 @@ document.addEventListener("DOMContentLoaded", function () {
         },
         modalId: 'megaFolderPickerModal',
         listUrl: '/api/setup/mega/list_folders',
-        createUrl: '/api/setup/mega/create_folder'
+        createUrl: '/api/setup/mega/create_folder',
+        copy: scriptsCopy.folderPicker.mega
       });
     });
   }
@@ -423,12 +452,13 @@ document.addEventListener("DOMContentLoaded", function () {
       })
       .then(() => {
         window.AsyncButtonState.success(saveBtn);
+        if (typeof window.refreshBackupReadiness === 'function') window.refreshBackupReadiness();
         if (typeof nextStep === 'function') nextStep();
       })
       .catch(err => {
         window.AsyncButtonState.error(saveBtn);
         if (backupConfigError) {
-          backupConfigError.textContent = err.message || 'Error saving MEGA config.';
+          backupConfigError.textContent = err.message || scriptsCopy.cloudBackup.saveMegaFailed;
           backupConfigError.classList.remove('d-none');
         }
       });
@@ -458,12 +488,13 @@ document.addEventListener("DOMContentLoaded", function () {
     })
     .then(() => {
       window.AsyncButtonState.success(saveBtn);
+      if (typeof window.refreshBackupReadiness === 'function') window.refreshBackupReadiness();
       if (typeof nextStep === 'function') nextStep();
     })
     .catch(err => {
       window.AsyncButtonState.error(saveBtn);
       if (backupConfigError) {
-        backupConfigError.textContent = err.message || 'Error saving rclone config.';
+        backupConfigError.textContent = err.message || scriptsCopy.cloudBackup.saveRcloneFailed;
         backupConfigError.classList.remove('d-none');
       }
     });

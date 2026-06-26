@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "partials/module_help.html" as module_help %}
 
 {% block title %}{{ browser_title('Change Managed Drive') }}{% endblock %}
 {% block header %}{% endblock %}
@@ -98,7 +99,7 @@
         <div class="form-group">
           <label class="form-label" for="backupDriveMountPoint">Mount Point</label>
           <input type="text" class="form-control text-mono" id="backupDriveMountPoint" value="{{ drive_config.mount_point }}" placeholder="/media/backup">
-          <div class="form-hint">Where the partition will be mounted.</div>
+          {{ module_help.field_hint(storage_module, 'mount_point') }}
         </div>
         <div class="form-group">
           <label class="form-label" for="backupDriveNtfsDriver">NTFS Driver</label>
@@ -106,7 +107,7 @@
             <option value="ntfs-3g">ntfs-3g</option>
             <option value="ntfs3">ntfs3</option>
           </select>
-          <div class="form-hint">Recommended: ntfs-3g</div>
+          {{ module_help.field_hint(storage_module, 'ntfs_driver') }}
         </div>
       </div>
     </details>
@@ -122,7 +123,7 @@
     <div class="drive-setup-status text-muted" id="partitionDriveStatus"></div>
     <div class="storage-inline-warning storage-apply-warning">
       <i class="fas fa-triangle-exclamation"></i>
-      <span>Storage, fstab, marker, and timers update only after Use This Drive succeeds.</span>
+      <span>Storage, fstab, marker, and worker task config update only after Use This Drive succeeds.</span>
     </div>
 
     <div id="partitionDriveError" class="alert alert-danger d-none storage-feedback-below-actions">
@@ -153,5 +154,6 @@
 {% endblock %}
 
 {% block extra_js %}
+<script type="application/json" id="storage-change-drive-copy">{{ storage_change_drive_ui_text | tojson }}</script>
 <script src="{{ url_for('static', filename='js/storage_change_drive.js') }}"></script>
 {% endblock %}

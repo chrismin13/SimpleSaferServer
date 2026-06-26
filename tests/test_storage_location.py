@@ -3,8 +3,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from simple_safer_server.services import storage_location
-from simple_safer_server.services.storage_location import (
+from simple_safer_server.modules.storage import location as storage_location
+from simple_safer_server.modules.storage.location import (
     MODE_EXISTING_FOLDER,
     StorageLocationError,
     configure_existing_folder,
@@ -42,11 +42,7 @@ class FakeSystemUtils:
     def is_mounted(self, mount_point):
         return True
 
-    def create_systemd_config_file(self, config):
-        del config
-        return True, None
-
-    def install_systemd_services_and_timers(self, config):
+    def validate_worker_task_config(self, config):
         del config
         return True, None
 
@@ -90,6 +86,28 @@ def test_configure_existing_folder_writes_marker_and_config(tmp_path):
     assert location.path == str(storage_path.resolve())
     assert marker_path(storage_path).exists()
     assert get_storage_location(config, runtime=runtime).storage_id
+
+
+def test_storage_location_defaults_to_existing_folder_without_uuid(tmp_path):
+    storage_path = tmp_path / "storage"
+    storage_path.mkdir()
+    runtime = fake_runtime(tmp_path)
+    config = FakeConfigManager(storage_path)
+
+    location = get_storage_location(config, runtime=runtime)
+
+    assert location.mode == MODE_EXISTING_FOLDER
+    assert location.path == str(storage_path)
+
+
+def test_storage_location_falls_back_to_existing_folder_for_unknown_mode(tmp_path):
+    storage_path = tmp_path / "storage"
+    storage_path.mkdir()
+    runtime = fake_runtime(tmp_path)
+    config = FakeConfigManager(storage_path)
+    config.set_value("storage", "mode", "surprise")
+
+    assert get_storage_location(config, runtime=runtime).mode == MODE_EXISTING_FOLDER
 
 
 def test_storage_validation_fails_when_marker_is_missing(tmp_path):
@@ -177,7 +195,7 @@ def test_storage_validation_fails_when_write_probe_readback_does_not_match(tmp_p
         path.write_text("different")
 
     monkeypatch.setattr(
-        "simple_safer_server.services.storage_location.atomic_write_text",
+        "simple_safer_server.modules.storage.location.atomic_write_text",
         write_wrong_value,
     )
 
@@ -218,7 +236,7 @@ def test_storage_status_handles_probe_write_errors(tmp_path, monkeypatch):
         raise PermissionError("probe is not writable")
 
     monkeypatch.setattr(
-        "simple_safer_server.services.storage_location.atomic_write_text",
+        "simple_safer_server.modules.storage.location.atomic_write_text",
         fail_probe_write,
     )
 
@@ -390,7 +408,7 @@ def test_managed_drive_validation_uses_fake_state_uuid_in_fake_runtime(tmp_path,
             return {"mount_point": str(storage_path), "uuid": "FAKE-UUID-0001"}
 
     monkeypatch.setattr(
-        "simple_safer_server.services.storage_location.get_fake_state",
+        "simple_safer_server.modules.storage.location.get_fake_state",
         lambda _runtime: StorageFakeState(),
     )
 
@@ -402,7 +420,7 @@ def test_managed_drive_validation_uses_fake_state_uuid_in_fake_runtime(tmp_path,
     )
 
 
-def test_managed_drive_setup_restores_storage_config_when_timer_refresh_fails(
+def test_managed_drive_setup_restores_storage_config_when_post_configure_fails(
     tmp_path, monkeypatch
 ):
     old_path = tmp_path / "old-storage"
@@ -417,10 +435,10 @@ def test_managed_drive_setup_restores_storage_config_when_timer_refresh_fails(
         kwargs["post_configure"]({"mount_point": str(tmp_path / "new-storage")})
         return {"mount_point": str(tmp_path / "new-storage")}
 
-    class FailingTimerSystemUtils(FakeSystemUtils):
-        def install_systemd_services_and_timers(self, config):
+    class FailingTaskConfigSystemUtils(FakeSystemUtils):
+        def validate_worker_task_config(self, config):
             del config
-            return False, "systemd failed"
+            return False, "worker validation failed"
 
     monkeypatch.setattr(
         storage_location,
@@ -428,13 +446,13 @@ def test_managed_drive_setup_restores_storage_config_when_timer_refresh_fails(
         fake_apply_backup_drive_configuration,
     )
 
-    with pytest.raises(OperationProblem, match="task timers were not refreshed"):
+    with pytest.raises(OperationProblem, match="worker schedule config was not valid"):
         configure_managed_drive_storage(
             partition="/dev/sdb1",
             mount_point=str(tmp_path / "new-storage"),
             config_manager=config,
             smb_manager=SimpleNamespace(),
-            system_utils=FailingTimerSystemUtils(),
+            system_utils=FailingTaskConfigSystemUtils(),
             runtime=runtime,
         )
 

@@ -5,7 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from simple_safer_server.services.storage_service import StorageService
+from simple_safer_server.modules.storage.service import StorageService
 from simple_safer_server.web.problems import OperationProblem, ValidationProblem
 
 
@@ -121,14 +121,6 @@ class StorageServiceTests(unittest.TestCase):
         )
         return service, fake_state, adapter, system_utils, command_runner
 
-    def test_restart_and_shutdown_delegate_to_command_adapter(self):
-        service, _fake_state, adapter, _system_utils, _command_runner = self.build_service()
-
-        self.assertEqual(service.restart_system(), "System is restarting...")
-        self.assertEqual(service.shutdown_system(), "System is shutting down...")
-        self.assertTrue(adapter.rebooted)
-        self.assertTrue(adapter.powered_off)
-
     def test_fake_mount_sets_fake_state_without_system_commands(self):
         with tempfile.TemporaryDirectory() as mount_point:
             service, fake_state, adapter, _system_utils, _command_runner = self.build_service(
@@ -148,7 +140,7 @@ class StorageServiceTests(unittest.TestCase):
             )
 
             with patch(
-                "simple_safer_server.services.storage_service.storage_status",
+                "simple_safer_server.modules.storage.service.storage_status",
                 return_value={"ok": True, "error": ""},
             ) as active_status:
                 self.assertEqual(service.mount_dashboard_drive(), "Storage folder is available.")
@@ -173,9 +165,6 @@ class StorageServiceTests(unittest.TestCase):
         self.assertEqual(
             adapter.started,
             [
-                "check_mount.service",
-                "check_health.service",
-                "backup_cloud.service",
                 "smbd",
                 "nmbd",
             ],
@@ -188,7 +177,7 @@ class StorageServiceTests(unittest.TestCase):
             )
 
             with patch(
-                "simple_safer_server.services.storage_service.get_managed_fstab_entry_for_mount_point",
+                "simple_safer_server.modules.storage.service.get_managed_fstab_entry_for_mount_point",
                 return_value={"uuid": "drive-uuid"},
             ):
                 self.assertEqual(
@@ -205,7 +194,7 @@ class StorageServiceTests(unittest.TestCase):
             )
 
             with patch(
-                "simple_safer_server.services.storage_service.get_managed_fstab_entry_for_mount_point",
+                "simple_safer_server.modules.storage.service.get_managed_fstab_entry_for_mount_point",
                 return_value={"uuid": "stale-uuid"},
             ):
                 with self.assertRaisesRegex(ValidationProblem, "fstab entry does not match"):

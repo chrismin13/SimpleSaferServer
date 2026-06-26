@@ -1,9 +1,12 @@
 {% extends "base.html" %}
+{% import "partials/module_help.html" as module_help %}
 
 {% block title %}{{ browser_title('Cloud Backup') }}{% endblock %}
 {% block header %}Cloud Backup{% endblock %}
 
 {% block content %}
+{{ module_help.module_help_band(cloud_backup_module, icon='fas fa-cloud-arrow-up') }}
+
 <!-- Status & Schedule row -->
 <div class="grid-2 mb-8">
   <!-- Backup Status -->
@@ -48,11 +51,13 @@
         <div class="form-group">
           <label class="form-label">Backup Time</label>
           <input type="time" class="form-control" id="backupTime">
+          {{ module_help.field_hint(cloud_backup_module, 'backup_time') }}
           <div class="invalid-feedback">Please select a valid backup time.</div>
         </div>
         <div class="form-group">
           <label class="form-label">Bandwidth Limit <span class="text-muted">(optional)</span></label>
           <input type="text" class="form-control" id="bandwidthLimit" placeholder="e.g. 4M for 4 MB/s">
+          {{ module_help.field_hint(cloud_backup_module, 'bandwidth_limit') }}
           <div class="invalid-feedback">Please enter a valid bandwidth limit.</div>
         </div>
       </div>
@@ -73,7 +78,7 @@
         <button type="button" class="tab-btn" data-tab="advanced" id="tab-cloud-advanced" role="tab" aria-selected="false" aria-controls="advancedConfigFields">Advanced (rclone config)</button>
       </div>
 
-      <!-- Hidden radio inputs to maintain logic compatibility -->
+      <!-- Tabs update these hidden radios before the cloud backup form is submitted. -->
       <div class="d-none">
         <input type="radio" name="cloudMode" id="cloudModeMega" value="mega" checked>
         <input type="radio" name="cloudMode" id="cloudModeAdvanced" value="advanced">
@@ -90,11 +95,13 @@
           <div class="form-group mb-3">
             <label class="form-label">MEGA Email</label>
             <input type="email" class="form-control" id="megaEmail" placeholder="your@email.com" readonly disabled>
+            {{ module_help.field_hint(cloud_backup_module, 'mega_email') }}
             <div class="invalid-feedback">Please enter a valid MEGA email.</div>
           </div>
           <div class="form-group mb-3">
             <label class="form-label">MEGA Password</label>
             <input type="password" class="form-control" id="megaPassword" placeholder="Password">
+            {{ module_help.field_hint(cloud_backup_module, 'mega_password') }}
             <div class="invalid-feedback">Please enter your MEGA password.</div>
           </div>
           <div class="d-flex justify-end gap-2 mb-3">
@@ -110,6 +117,7 @@
               <input type="text" class="form-control form-control-picker" id="megaFolderPath" placeholder="/backups" readonly>
               <button type="button" class="btn btn-secondary" id="megaBrowseBtn"><i class="fas fa-folder-open"></i> Browse</button>
             </div>
+            {{ module_help.field_hint(cloud_backup_module, 'mega_folder') }}
             <div class="invalid-feedback">Please select a folder.</div>
           </div>
           <div class="feedback-slot feedback-slot-medium">
@@ -126,11 +134,13 @@
           <div class="form-group mb-3">
             <label class="form-label">Paste your rclone configuration</label>
             <textarea class="form-control" id="rcloneConfig" rows="7" placeholder="Paste your rclone config here..."></textarea>
+            {{ module_help.field_hint(cloud_backup_module, 'rclone_config') }}
             <div class="invalid-feedback">Rclone configuration is required.</div>
           </div>
           <div class="form-group mb-3">
             <label class="form-label">Remote Name and Path</label>
             <input type="text" class="form-control" id="remoteName" placeholder="e.g. myremote:/backups">
+            {{ module_help.field_hint(cloud_backup_module, 'remote_name') }}
             <div class="invalid-feedback">Remote name and path is required. Use format: remotename:/path</div>
           </div>
           <div class="alert alert-warning" style="font-size: var(--text-sm);">
@@ -158,25 +168,25 @@
     <div class="modal-body">
       <div class="mb-3">
         <strong>Current Path:</strong>
-        <div class="path-breadcrumbs text-mono" id="megaPickerCurrentPath"></div>
+        <div class="path-breadcrumbs text-mono folder-picker-current-path" id="megaPickerCurrentPath"></div>
       </div>
       <div class="d-flex gap-2 mb-3">
-        <button class="btn btn-secondary btn-sm" id="megaPickerUpBtn">
+        <button class="btn btn-secondary btn-sm folder-picker-up-btn" id="megaPickerUpBtn">
           <i class="fas fa-level-up-alt"></i> Up
         </button>
-        <button class="btn btn-success btn-sm" id="megaPickerCreateFolderBtn">
+        <button class="btn btn-success btn-sm folder-picker-create-folder-btn" id="megaPickerCreateFolderBtn">
           <i class="fas fa-plus"></i> New Folder
         </button>
-        <input type="text" id="megaPickerNewFolderName" class="form-control d-none" style="max-width: 200px;" placeholder="New folder name">
-        <button class="btn btn-success btn-sm d-none" id="megaPickerSaveNewFolderBtn">Create</button>
+        <input type="text" id="megaPickerNewFolderName" class="form-control folder-picker-new-folder-name d-none" style="max-width: 200px;" placeholder="New folder name">
+        <button class="btn btn-success btn-sm folder-picker-save-new-folder-btn d-none" id="megaPickerSaveNewFolderBtn">Create</button>
       </div>
-      <div id="megaPickerDirsList" class="folder-list mb-3"></div>
+      <div id="megaPickerDirsList" class="folder-list folder-picker-dirs-list mb-3"></div>
     </div>
     <div class="modal-footer">
-      <div id="megaPickerError" class="modal-footer-message" role="alert" aria-live="polite"></div>
+      <div id="megaPickerError" class="modal-footer-message folder-picker-error" role="alert" aria-live="polite"></div>
       <div class="modal-footer-actions">
         <button class="btn btn-secondary" data-modal-close>Cancel</button>
-        <button class="btn btn-outline-primary" id="megaPickerSelectCurrentBtn">Select This Folder</button>
+        <button class="btn btn-outline-primary folder-picker-select-current-btn" id="megaPickerSelectCurrentBtn">Select This Folder</button>
       </div>
     </div>
   </div>
@@ -185,7 +195,7 @@
 
 {% block extra_js %}
 <script src="{{ url_for('static', filename='js/mega_folder_picker.js') }}"></script>
-<script src="{{ url_for('static', filename='js/timepicker.js') }}"></script>
+<script type="application/json" id="cloud-backup-copy">{{ cloud_backup_ui_text | tojson }}</script>
 <script src="{{ url_for('static', filename='js/cloud_backup.js') }}"></script>
 <script>
 // Radio option visual selection

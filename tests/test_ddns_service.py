@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from simple_safer_server.services.ddns_service import DdnsService
+from simple_safer_server.modules.ddns import DdnsService
 
 
 class FakeConfigManager:

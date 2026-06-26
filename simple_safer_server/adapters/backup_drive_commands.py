@@ -66,8 +66,8 @@ class BackupDriveCommandAdapter:
             command = ["mount", "-t", "ntfs3", partition, mount_point, "-o", mount_options]
         else:
             mount_options = f"rw,uid={uid},gid={gid}"
-            # ntfs-3g stays the default because it has the longest compatibility
-            # history across the Debian/Ubuntu releases SimpleSaferServer supports.
+            # ntfs-3g stays the default because it is available across the
+            # Debian/Ubuntu releases SimpleSaferServer supports.
             command = ["ntfs-3g", partition, mount_point, "-o", mount_options]
         return self._command_runner.run(
             command,

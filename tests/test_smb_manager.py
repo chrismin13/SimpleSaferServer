@@ -1,10 +1,11 @@
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
-from simple_safer_server.services import smb_manager
+from simple_safer_server.modules.file_sharing import service as smb_manager
 
 
 class FakeSmbCommandAdapter:
@@ -92,6 +93,16 @@ class SMBManagerTests(unittest.TestCase):
 
     def _write_shares(self, content):
         (self.runtime.samba_dir / "simple_safer_server_shares.conf").write_text(content)
+
+    def test_reading_shares_does_not_create_samba_config_directory(self):
+        shutil.rmtree(self.runtime.samba_dir)
+
+        self.assertEqual(self.manager.list_managed_shares(), [])
+        self.assertFalse(self.runtime.samba_dir.exists())
+
+        self.manager.list_unmanaged_shares()
+        self.assertFalse(self.runtime.samba_dir.exists())
+        self.assertTrue(self.runtime.volatile_dir.exists())
 
     def test_list_managed_shares_reads_sss_shares_file_not_main_config_markers(self):
         self._write_conf(
@@ -188,6 +199,35 @@ class SMBManagerTests(unittest.TestCase):
         self.assertIn(f"   path = {share_path}", content)
         self.assertTrue((self.runtime.samba_dir / "simple_safer_server_globals.conf").exists())
         self.assertEqual(len(self.adapter.validated_paths), 3)
+
+    def test_real_mode_create_managed_share_publishes_through_helper(self):
+        share_path = self.root / "share"
+        share_path.mkdir()
+        self.runtime.is_fake = False
+        privileged_actions = SimpleNamespace(run=MagicMock())
+        manager = smb_manager.SMBManager(
+            runtime=self.runtime,
+            command_adapter=self.adapter,
+            privileged_actions=privileged_actions,
+        )
+
+        manager.create_managed_share(
+            "backup",
+            str(share_path),
+            writable=True,
+            comment="Managed by helper",
+            valid_users=["admin"],
+        )
+
+        privileged_actions.run.assert_called_once()
+        action, payload = privileged_actions.run.call_args.args
+        self.assertEqual(action, "file-sharing.write-shares")
+        self.assertIn("[backup]", payload["shares_config"])
+        self.assertIn(f"   path = {share_path}", payload["shares_config"])
+        self.assertFalse((self.runtime.samba_dir / "simple_safer_server_globals.conf").exists())
+        self.assertFalse(
+            (self.runtime.samba_dir / "simple_safer_server_shares.conf").exists()
+        )
 
     def test_default_fake_mode_adapter_does_not_require_samba_binaries(self):
         share_path = self.root / "share"
@@ -741,10 +781,10 @@ class SMBManagerTests(unittest.TestCase):
         self.assertEqual(adapter.restarted_units, ["smbd"])
 
     def test_parse_smb_conf_does_not_treat_marker_comments_as_share_boundaries(self):
-        """_parse_smb_conf should parse through old marker-like comments without
+        """_parse_smb_conf should parse through marker-like comments without
         treating them as share block terminators. The method is used to parse
         testparm output which never contains markers, but this confirms the
-        legacy break logic is gone."""
+        parser only ends shares on real section headers."""
         content = "\n".join(
             [
                 "[media]",
@@ -765,9 +805,8 @@ class SMBManagerTests(unittest.TestCase):
         self.assertTrue(shares[0].writable)
         self.assertEqual(shares[1].name, "photos")
 
-    def test_dead_inline_managed_share_methods_are_removed(self):
-        """The old marker-based managed-share machinery should not exist on
-        SMBManager. These were replaced by the file-path ownership model."""
+    def test_smb_manager_uses_include_files_instead_of_inline_share_writes(self):
+        """SMBManager should not expose direct smb.conf share-writing helpers."""
         self.assertFalse(hasattr(self.manager, '_create_backup'))
         self.assertFalse(hasattr(self.manager, '_write_smb_conf'))
         self.assertFalse(hasattr(self.manager, '_validate_smb_conf_candidate'))
@@ -775,8 +814,8 @@ class SMBManagerTests(unittest.TestCase):
         self.assertFalse(hasattr(self.manager, '_commit_smb_conf'))
         self.assertFalse(hasattr(self.manager, 'backup_dir'))
 
-    def test_dead_marker_constants_are_removed(self):
-        """The old marker constants should not exist in the module."""
+    def test_inline_share_marker_constants_are_not_part_of_the_contract(self):
+        """Managed shares are represented by owned include files."""
         self.assertFalse(hasattr(smb_manager, 'MANAGED_SHARE_BEGIN_PREFIX'))
         self.assertFalse(hasattr(smb_manager, 'MANAGED_SHARE_END_PREFIX'))
 

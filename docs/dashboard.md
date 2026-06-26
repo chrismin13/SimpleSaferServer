@@ -15,27 +15,32 @@ Four cards display real-time status:
   available; SMART remains a detailed inspection surface on the Drive Health page.
 - **System Resources**: Displays CPU and RAM usage, and live network traffic (up/down rates).
 
+## Backup Protection Checklist
+The app has one shared 3-2-1 backup-readiness checklist for setup and dashboard UI. The dashboard
+renders it from the shared partial and can refresh it through the htmx fragment
+`GET /fragments/backup-readiness`. JSON clients can read the same checklist data from
+`GET /api/backup-readiness`. It checks:
+
+- storage has been chosen and has a storage marker
+- the managed `backup` network share exists
+- cloud backup is configured
+- SMTP alerts are configured
+- a backup schedule has been chosen
+
+Each item reports `complete`, `incomplete`, or `skipped`. Skipping cloud backup lets setup continue,
+but the dashboard should still show that backup protection is incomplete until an off-site copy is
+configured.
+
 ## Task Schedule
-- **Table**: Lists all scheduled tasks with columns for Task, Status, Last Run, and Next Run.
-- **Next Run**: Shows the active next run time or a short schedule state label. Temporary disables
-  show `Disabled until 18:00`, `Disabled until Tomorrow 18:00`, or a later date such as
-  `Disabled until May 16 18:00`. Permanent disables show `Disabled`. Timers disabled outside
-  SimpleSaferServer show `Disabled externally`; unexpected timer states show `Schedule issue`.
-  Disabled schedule labels are danger-colored in this field only, so automatic-run suspension stands
-  out without making the entire task row look failed. Schedule issues remain warning-colored because
-  they mean the timer state needs investigation.
-- **Task Schedule Control**: Right-click a task row to Start, Stop, Disable Schedule, or Enable
-  Schedule when that action applies. The menu stays open across passive schedule refreshes so the
-  operator does not lose the selected row actions while reading the menu.
-- **Disable Schedule**: Disables the task's systemd timer, not the service. Automatic runs stop, but manual Start remains available. The shared dialog supports preset durations, permanent disable, and a custom positive
-  whole-hour duration.
+- **Table**: Lists background tasks with columns for Task, Status, Last Run, and Next Run.
+- **Next Run**: Shows the next worker run time or a short worker state label. Schedule issues remain
+  warning-colored because they mean the worker schedule state needs investigation.
+- **Task Actions**: Right-click a task row to Start or Stop the task when that action applies. The
+  menu stays open across passive schedule refreshes so the operator does not lose the selected row
+  actions while reading the menu.
 - Scheduled task success follows the underlying command exit code. For DDNS, a provider-level error or missing provider configuration fails the `DDNS Update` task after the provider details are written for the DDNS page.
-- `App Update` is the application self-update task. It runs the installed Git checkout's
-  fast-forward update path and full installer, and is scheduled before the daily mount check. The
-  task log includes update and installer output, and the log page keeps retrying if the web service
-  briefly restarts during the install. The task detail page refreshes both the log and status badge
-  while auto-refresh is enabled, showing up to the latest 500 journal lines. Installer ANSI colors
-  are rendered in the web log when the journal output includes them.
+- Application self-updates are shown on the System Updates page as unavailable until SSS has a
+  release archive or package updater.
 
 ## System Actions
 - **Unmount Storage**: Opens a modal to confirm a temporary unmount of the configured backup drive. This action is available only when SimpleSaferServer manages the backup drive.

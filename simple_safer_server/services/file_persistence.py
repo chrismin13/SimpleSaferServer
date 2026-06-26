@@ -55,6 +55,14 @@ def atomic_write_text(
                 temp_path.unlink()
 
 
+def match_parent_owner_when_root(path: Path) -> None:
+    """Make a root-written file readable by the service account that owns its directory."""
+    if hasattr(os, "geteuid") and os.geteuid() != 0:
+        return
+    parent_stat = path.parent.stat()
+    os.chown(path, parent_stat.st_uid, parent_stat.st_gid)
+
+
 def atomic_write_json(
     path: Path,
     payload: Any,

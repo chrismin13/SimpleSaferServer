@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "partials/module_help.html" as module_help %}
 
 {% block title %}{{ browser_title('Use an Existing Folder') }}{% endblock %}
 {% block header %}{% endblock %}
@@ -42,7 +43,7 @@
           <i class="fas fa-folder-open"></i> Browse
         </button>
       </div>
-      <div class="form-hint">The folder must already exist and be writable.</div>
+      {{ module_help.field_hint(storage_module, 'existing_folder') }}
       <div class="form-hint">SimpleSaferServer will create <code>.simple-safer-server/storage.json</code> inside this folder for backup safety checks.</div>
     </div>
 
@@ -114,5 +115,6 @@
 
 {% block extra_js %}
 <script src="{{ url_for('static', filename='js/mega_folder_picker.js') }}"></script>
+<script type="application/json" id="storage-existing-folder-copy">{{ storage_existing_folder_ui_text | tojson }}</script>
 <script src="{{ url_for('static', filename='js/storage_existing_folder.js') }}"></script>
 {% endblock %}

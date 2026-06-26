@@ -1,12 +1,103 @@
 (function () {
   const POLL_MS = 2000;
-  const STABLE_BRANCH = 'main';
   let pollTimer = null;
-  let currentApplication = null;
-  let branchChoicesLoaded = false;
-  let branchChoicesLoading = false;
 
   const els = {};
+  const defaultCopy = {
+    badges: {
+      eolSoon: 'EOL Soon',
+      supported: 'Supported',
+      pastSupport: 'Past support',
+      datesPending: 'Dates pending',
+      unknown: 'Unknown',
+      locked: 'Locked',
+      externalAptLock: 'External apt lock',
+      free: 'Free',
+      enabled: 'Enabled',
+      manual: 'Manual',
+      ubuntuOnly: 'Ubuntu only',
+      installed: 'Installed',
+      notInstalled: 'Not installed',
+      upToDate: 'Up to date',
+      updateAvailable: 'Update available',
+      unavailable: 'Unavailable'
+    },
+    distribution: {
+      unknownLinux: 'Unknown Linux',
+      unknown: 'Unknown'
+    },
+    operation: {
+      idle: 'Idle',
+      packageManager: 'Package Manager',
+      noAptOutput: 'No apt output yet.'
+    },
+    settings: {
+      enabled: 'Enabled',
+      disabled: 'Disabled',
+      autocleanEveryDays: 'Every {days} day(s)',
+      upgrades: 'Upgrades',
+      listsOnly: 'Lists only',
+      autoclean: 'Autoclean',
+      manual: 'Manual',
+      readOnlyHint: 'Showing current system apt periodic policy. SSS does not install, enable, or configure automatic OS updates.'
+    },
+    livepatch: {
+      unavailableDetail: 'Livepatch status unavailable.',
+      notAvailable: 'Not available',
+      protected: 'Protected',
+      installed: 'Installed',
+      notInstalled: 'Not installed'
+    },
+    application: {
+      title: 'Application',
+      unavailableDetail: 'Application update status unavailable.',
+      installerArchive: 'Installer archive',
+      package: 'Package',
+      release: 'Release',
+      unknown: 'Unknown',
+      notTracked: 'Not tracked',
+      notChecked: 'Not checked',
+      refreshSuccess: 'Application update status refreshed.',
+      refreshFailure: 'Could not refresh application update status.',
+      started: 'Application update started.',
+      startFailure: 'Could not start application update.'
+    },
+    errors: {
+      loadSummary: 'Could not load system updates.'
+    }
+  };
+
+  function deepMerge(base, overrides) {
+    if (!overrides || typeof overrides !== 'object') return base;
+    Object.keys(overrides).forEach((key) => {
+      if (
+        overrides[key]
+        && typeof overrides[key] === 'object'
+        && !Array.isArray(overrides[key])
+        && base[key]
+        && typeof base[key] === 'object'
+      ) {
+        deepMerge(base[key], overrides[key]);
+      } else {
+        base[key] = overrides[key];
+      }
+    });
+    return base;
+  }
+
+  function readCopy() {
+    const script = document.getElementById('system-updates-copy');
+    if (!script) return defaultCopy;
+    try {
+      const parsed = JSON.parse(script.textContent || '{}');
+      return deepMerge(JSON.parse(JSON.stringify(defaultCopy)), parsed);
+    } catch (error) {
+      console.error('Could not read System Updates page copy:', error);
+      return defaultCopy;
+    }
+  }
+
+  const copy = readCopy();
 
   function $(id) {
     return document.getElementById(id);
@@ -24,25 +115,17 @@
       'apt-phase',
       'apt-progress-text',
       'apt-log',
-      'apt-update-btn',
-      'apt-upgrade-btn',
-      'apt-stop-btn',
       'auto-updates-badge',
       'auto-updates-summary',
-      'auto-updates-form',
-      'auto-update-lists',
-      'auto-unattended-upgrade',
-      'auto-autoclean',
+      'auto-update-lists-status',
+      'auto-upgrades-status',
+      'auto-autoclean-status',
       'auto-updates-hint',
-      'auto-updates-save-btn',
       'livepatch-summary-item',
       'livepatch-badge',
       'livepatch-title',
       'livepatch-section',
       'livepatch-detail',
-      'livepatch-form',
-      'livepatch-token',
-      'livepatch-setup-btn',
       'livepatch-source-link',
       'app-update-title',
       'app-update-detail',
@@ -51,16 +134,7 @@
       'app-update-commit',
       'app-update-checked',
       'app-update-refresh-btn',
-      'app-update-now-btn',
-      'app-update-force-btn',
-      'app-update-switch-main-tooltip',
-      'app-update-switch-main-btn',
-      'app-branch-advanced-trigger',
-      'app-branch-advanced-hint',
-      'app-branch-switch-form',
-      'app-branch-select',
-      'app-branch-switch-btn',
-      'remove-locks-btn'
+      'app-update-now-btn'
     ].forEach((id) => {
       els[id] = $(id);
     });
@@ -75,29 +149,29 @@
   function operationLabel(operation) {
     if (operation === 'update') return 'apt update';
     if (operation === 'upgrade') return 'apt upgrade';
-    return 'Idle';
+    return copy.operation.idle;
   }
 
   function renderDistribution(distribution) {
     if (!distribution) return;
     const support = distribution.support || {};
-    els['distro-name'].textContent = distribution.pretty_name || 'Unknown Linux';
+    els['distro-name'].textContent = distribution.pretty_name || copy.distribution.unknownLinux;
     els['distro-version'].textContent = [
       distribution.version_id,
       distribution.version_codename ? `(${distribution.version_codename})` : ''
-    ].filter(Boolean).join(' ') || 'Unknown';
-    els['max-eol'].textContent = support.max_eol_display || 'Unknown';
+    ].filter(Boolean).join(' ') || copy.distribution.unknown;
+    els['max-eol'].textContent = support.max_eol_display || copy.distribution.unknown;
 
     if (support.is_supported === true && support.approaching_eol) {
-      setBadge(els['support-status-badge'], 'EOL Soon', 'warning');
+      setBadge(els['support-status-badge'], copy.badges.eolSoon, 'warning');
     } else if (support.is_supported === true) {
-      setBadge(els['support-status-badge'], 'Supported', 'success');
+      setBadge(els['support-status-badge'], copy.badges.supported, 'success');
     } else if (support.is_supported === false) {
-      setBadge(els['support-status-badge'], 'Past support', 'danger');
+      setBadge(els['support-status-badge'], copy.badges.pastSupport, 'danger');
     } else if (support.known) {
-      setBadge(els['support-status-badge'], 'Dates pending', 'warning');
+      setBadge(els['support-status-badge'], copy.badges.datesPending, 'warning');
     } else {
-      setBadge(els['support-status-badge'], 'Unknown', 'neutral');
+      setBadge(els['support-status-badge'], copy.badges.unknown, 'neutral');
     }
   }
 
@@ -108,244 +182,121 @@
     const running = status === 'running';
     const locked = Boolean(lock.locked);
 
-    els['apt-operation-title'].textContent = running ? operationLabel(operation.operation) : operationLabel(null);
-    els['apt-progress-bar'].style.width = `${progress}%`;
-    els['apt-progress-bar'].setAttribute('aria-valuenow', String(progress));
-    els['apt-progress-bar'].className = `progress-bar-fill ${
-      status === 'failure' ? 'danger' : status === 'stopped' ? 'warning' : status === 'success' ? 'success' : ''
-    }`;
-    const phase = operation && operation.phase ? operation.phase : 'Idle';
-    const logText = operation && operation.log ? operation.log : 'No apt output yet.';
+    els['apt-operation-title'].textContent = running ? operationLabel(operation.operation) : copy.operation.packageManager;
+    if (els['apt-progress-bar']) {
+      els['apt-progress-bar'].style.width = `${progress}%`;
+      els['apt-progress-bar'].setAttribute('aria-valuenow', String(progress));
+      els['apt-progress-bar'].className = `progress-bar-fill ${
+        status === 'failure' ? 'danger' : status === 'stopped' ? 'warning' : status === 'success' ? 'success' : ''
+      }`;
+    }
+    const phase = operation && operation.phase ? operation.phase : copy.operation.idle;
+    const logText = operation && operation.log ? operation.log : copy.operation.noAptOutput;
     els['apt-phase'].textContent = phase;
-    els['apt-progress-text'].textContent = `${progress}%`;
+    els['apt-progress-text'].textContent = window.AppFormat
+      ? window.AppFormat.percent(progress / 100)
+      : `${progress}%`;
     els['apt-log'].textContent = logText;
     els['apt-log'].scrollTop = els['apt-log'].scrollHeight;
 
     if (running) {
-      setBadge(els['apt-lock-badge'], 'Locked', 'info');
+      setBadge(els['apt-lock-badge'], copy.badges.locked, 'info');
     } else if (locked) {
-      setBadge(els['apt-lock-badge'], 'External apt lock', 'warning');
+      setBadge(els['apt-lock-badge'], copy.badges.externalAptLock, 'warning');
     } else {
-      setBadge(els['apt-lock-badge'], 'Free', 'success');
+      setBadge(els['apt-lock-badge'], copy.badges.free, 'success');
     }
-
-    els['apt-update-btn'].disabled = running || locked;
-    els['apt-upgrade-btn'].disabled = running || locked;
-    els['apt-stop-btn'].disabled = !running;
-    els['remove-locks-btn'].disabled = running;
   }
 
   function renderSettings(settings) {
     if (!settings) return;
-    els['auto-update-lists'].checked = Boolean(settings.update_package_lists);
-    els['auto-unattended-upgrade'].checked = Boolean(settings.unattended_upgrade);
-    els['auto-autoclean'].checked = Boolean(settings.autoclean);
+    els['auto-update-lists-status'].textContent = settings.update_package_lists ? copy.settings.enabled : copy.settings.disabled;
+    els['auto-upgrades-status'].textContent = settings.unattended_upgrade ? copy.settings.enabled : copy.settings.disabled;
+    els['auto-autoclean-status'].textContent = settings.autoclean
+      ? copy.settings.autocleanEveryDays.replace('{days}', settings.autoclean_interval || '?')
+      : copy.settings.disabled;
     if (settings.update_package_lists || settings.unattended_upgrade || settings.autoclean) {
-      setBadge(els['auto-updates-badge'], 'Enabled', 'success');
+      setBadge(els['auto-updates-badge'], copy.badges.enabled, 'success');
       els['auto-updates-summary'].textContent = settings.unattended_upgrade
-        ? 'Upgrades'
-        : (settings.update_package_lists ? 'Lists only' : 'Autoclean');
+        ? copy.settings.upgrades
+        : (settings.update_package_lists ? copy.settings.listsOnly : copy.settings.autoclean);
     } else {
-      setBadge(els['auto-updates-badge'], 'Manual', 'neutral');
-      els['auto-updates-summary'].textContent = 'Manual';
+      setBadge(els['auto-updates-badge'], copy.badges.manual, 'neutral');
+      els['auto-updates-summary'].textContent = copy.settings.manual || copy.badges.manual;
     }
     els['auto-updates-badge'].classList.remove('d-none');
-    if (!settings.unattended_upgrades_installed) {
-      els['auto-updates-hint'].textContent = 'unattended-upgrades is not installed; automatic upgrades will need that package.';
-    } else if (settings.apt_updates_managed) {
-      els['auto-updates-hint'].textContent = 'SimpleSaferServer manages these apt periodic settings.';
-    } else {
-      els['auto-updates-hint'].textContent = 'Showing the current system apt periodic settings. Save to manage them here.';
-    }
+    els['auto-updates-hint'].textContent = copy.settings.readOnlyHint;
   }
 
   function renderLivepatch(livepatch) {
     if (!livepatch) return;
-    els['livepatch-detail'].textContent = livepatch.status_text || 'Livepatch status unavailable.';
+    els['livepatch-detail'].textContent = livepatch.status_text || copy.livepatch.unavailableDetail;
     els['livepatch-source-link'].href = livepatch.source_url || 'https://ubuntu.com/security/livepatch/docs/livepatch/how-to/status';
 
     if (!livepatch.supported_distro) {
       els['livepatch-summary-item'].classList.add('d-none');
       els['livepatch-section'].classList.add('d-none');
-      setBadge(els['livepatch-badge'], 'Ubuntu only', 'neutral');
-      els['livepatch-title'].textContent = 'Not available';
+      setBadge(els['livepatch-badge'], copy.badges.ubuntuOnly, 'neutral');
+      els['livepatch-title'].textContent = copy.livepatch.notAvailable;
       els['livepatch-badge'].classList.add('d-none');
-      els['livepatch-form'].classList.add('d-none');
-      els['livepatch-token'].disabled = true;
-      els['livepatch-setup-btn'].disabled = true;
       return;
     }
 
     els['livepatch-summary-item'].classList.remove('d-none');
     els['livepatch-section'].classList.remove('d-none');
-    els['livepatch-token'].disabled = false;
-    els['livepatch-setup-btn'].disabled = false;
     if (livepatch.enabled) {
-      setBadge(els['livepatch-badge'], 'Enabled', 'success');
-      els['livepatch-title'].textContent = 'Protected';
+      setBadge(els['livepatch-badge'], copy.badges.enabled, 'success');
+      els['livepatch-title'].textContent = copy.livepatch.protected;
       els['livepatch-badge'].classList.add('d-none');
-      els['livepatch-form'].classList.add('d-none');
     } else if (livepatch.installed) {
-      setBadge(els['livepatch-badge'], 'Needs setup', 'warning');
-      els['livepatch-title'].textContent = 'Installed';
+      setBadge(els['livepatch-badge'], copy.badges.installed, 'neutral');
+      els['livepatch-title'].textContent = copy.livepatch.installed;
       els['livepatch-badge'].classList.remove('d-none');
-      els['livepatch-form'].classList.remove('d-none');
     } else {
-      setBadge(els['livepatch-badge'], 'Not installed', 'neutral');
-      els['livepatch-title'].textContent = 'Ready to install';
+      setBadge(els['livepatch-badge'], copy.badges.notInstalled, 'neutral');
+      els['livepatch-title'].textContent = copy.livepatch.notInstalled;
       els['livepatch-badge'].classList.remove('d-none');
-      els['livepatch-form'].classList.remove('d-none');
     }
   }
 
   function appUpdateBadgeType(status) {
     if (status === 'up_to_date') return 'success';
     if (status === 'behind') return 'warning';
-    if (status === 'dirty' || status === 'diverged') return 'danger';
-    if (status === 'ahead' || status === 'pinned') return 'neutral';
     return 'neutral';
   }
 
   function appUpdateBadgeText(status) {
-    if (status === 'up_to_date') return 'Up to date';
-    if (status === 'behind') return 'Update available';
-    if (status === 'dirty') return 'Local edits';
-    if (status === 'diverged') return 'Diverged';
-    if (status === 'ahead') return 'Ahead';
-    if (status === 'pinned') return 'Pinned';
-    if (status === 'unchecked') return 'Not checked';
-    return 'Unavailable';
+    if (status === 'up_to_date') return copy.badges.upToDate;
+    if (status === 'behind') return copy.badges.updateAvailable;
+    return copy.badges.unavailable;
   }
 
   function sourceLabel(application) {
     const sourceType = application && application.source_type ? application.source_type : 'unknown';
     const sourceName = application && application.source_name ? application.source_name : '';
-    if (sourceType === 'branch') return sourceName ? `Branch ${sourceName}` : 'Branch';
-    if (sourceType === 'tag') return sourceName ? `Tag ${sourceName}` : 'Tag';
-    if (sourceType === 'detached') return 'Locked commit';
-    return 'Unknown';
-  }
-
-  function renderSourceLabel(el, application) {
-    const sourceType = application && application.source_type ? application.source_type : 'unknown';
-    const sourceName = application && application.source_name ? application.source_name : '';
-    el.textContent = '';
-
-    if ((sourceType === 'branch' || sourceType === 'tag') && sourceName) {
-      const label = document.createElement('span');
-      label.textContent = `${sourceType === 'branch' ? 'Branch' : 'Tag'} `;
-      const value = document.createElement('code');
-      value.className = 'app-source-code';
-      value.textContent = sourceName;
-      el.appendChild(label);
-      el.appendChild(value);
-      return;
-    }
-
-    el.textContent = sourceLabel(application);
-  }
-
-  function canOfferBranchSwitch(application) {
-    if (!application || application.dirty) return false;
-    const sourceType = application.source_type || 'unknown';
-    return sourceType === 'branch' || sourceType === 'tag' || sourceType === 'detached';
-  }
-
-  function canShowBranchSwitch(application) {
-    if (!application) return false;
-    const sourceType = application.source_type || 'unknown';
-    return sourceType === 'branch' || sourceType === 'tag' || sourceType === 'detached';
-  }
-
-  function shouldShowSwitchToMain(application) {
-    if (!canShowBranchSwitch(application)) return false;
-    if (application.source_type === 'branch') return application.source_name !== STABLE_BRANCH;
-    return application.source_type === 'tag' || application.source_type === 'detached';
-  }
-
-  function renderBranchChoices(branches) {
-    const select = els['app-branch-select'];
-    select.textContent = '';
-    if (!branches.length) {
-      const option = document.createElement('option');
-      option.value = '';
-      option.textContent = 'No branches found';
-      select.appendChild(option);
-      els['app-branch-switch-btn'].disabled = true;
-      return;
-    }
-
-    branches.forEach((branch) => {
-      const option = document.createElement('option');
-      option.value = branch;
-      option.textContent = branch;
-      select.appendChild(option);
-    });
-    if (branches.includes(STABLE_BRANCH)) select.value = STABLE_BRANCH;
-    select.disabled = !canOfferBranchSwitch(currentApplication);
-    els['app-branch-switch-btn'].disabled = !canOfferBranchSwitch(currentApplication);
-  }
-
-  function renderBranchSwitchAvailability(application) {
-    const cleanupMessage = 'Clean up app folder before switching branches.';
-    const blockedByDirtyCheckout = Boolean(application && application.dirty);
-    const canSwitchNow = canOfferBranchSwitch(application);
-
-    els['app-branch-select'].disabled = !canSwitchNow;
-    els['app-branch-switch-btn'].disabled = !branchChoicesLoaded || !canSwitchNow;
-    els['app-branch-advanced-hint'].textContent = blockedByDirtyCheckout
-      ? cleanupMessage
-      : 'Switch branches only for testing or recovery.';
-
-    const switchMainTooltip = els['app-update-switch-main-tooltip'];
-    if (!switchMainTooltip) return;
-    if (blockedByDirtyCheckout && shouldShowSwitchToMain(application)) {
-      // Native disabled buttons do not emit hover/focus reliably, so the wrapper owns the tooltip.
-      switchMainTooltip.className = 'tooltip-trigger';
-      switchMainTooltip.setAttribute('data-tooltip', cleanupMessage);
-      switchMainTooltip.setAttribute('tabindex', '0');
-    } else {
-      switchMainTooltip.className = '';
-      switchMainTooltip.setAttribute('data-tooltip', '');
-      switchMainTooltip.setAttribute('tabindex', '-1');
-    }
+    if (sourceType === 'archive') return sourceName || copy.application.installerArchive;
+    if (sourceType === 'package') return sourceName || copy.application.package;
+    if (sourceType === 'release') return sourceName || copy.application.release;
+    return copy.application.unknown;
   }
 
   function renderApplicationUpdate(application) {
     if (!application) return;
-    currentApplication = application;
     const status = application.status || 'unavailable';
-    const lastRemoteCheck = application.last_remote_check_at || '';
-    els['app-update-title'].textContent = 'Application';
-    els['app-update-detail'].textContent = application.message || 'Application update status unavailable.';
-    renderSourceLabel(els['app-update-source'], application);
-    els['app-update-commit'].textContent = application.current_commit || '—';
-    els['app-update-checked'].textContent = window.formatRelativeTimestamp(lastRemoteCheck, {
-      fallback: 'Not checked',
+    const lastRemoteCheck = application.last_remote_check_at || application.checked_at || '';
+    els['app-update-title'].textContent = copy.application.title;
+    els['app-update-detail'].textContent = application.message || copy.application.unavailableDetail;
+    els['app-update-source'].textContent = sourceLabel(application);
+    els['app-update-commit'].textContent = application.current_commit || copy.application.notTracked;
+    els['app-update-checked'].textContent = window.AppFormat.relativeTimestamp(lastRemoteCheck, {
+      fallback: copy.application.notChecked,
       compact: true
     });
-    // Keep the exact cached fetch time available without making the status strip harder to scan.
-    els['app-update-checked'].title = lastRemoteCheck;
+    els['app-update-checked'].title = window.AppFormat.dateTime(lastRemoteCheck, {
+      fallback: copy.application.notChecked
+    });
     setBadge(els['app-update-badge'], appUpdateBadgeText(status), appUpdateBadgeType(status));
     els['app-update-now-btn'].disabled = !application.can_update;
-    if (application.can_force_update) {
-      els['app-update-force-btn'].classList.remove('d-none');
-      els['app-update-force-btn'].disabled = false;
-    } else {
-      els['app-update-force-btn'].classList.add('d-none');
-      els['app-update-force-btn'].disabled = true;
-    }
-    if (shouldShowSwitchToMain(application)) {
-      els['app-update-switch-main-btn'].classList.remove('d-none');
-      els['app-update-switch-main-btn'].disabled = !canOfferBranchSwitch(application);
-      if (application.source_type === 'tag' || application.source_type === 'detached') {
-        els['app-update-detail'].textContent = 'This install is locked to a tag or commit. Switch to main to resume updates.';
-      }
-    } else {
-      els['app-update-switch-main-btn'].classList.add('d-none');
-      els['app-update-switch-main-btn'].disabled = true;
-    }
-    renderBranchSwitchAvailability(application);
   }
 
   async function loadSummary() {
@@ -357,7 +308,7 @@
       renderLivepatch(data.livepatch);
       renderApplicationUpdate(data.application);
     } catch (error) {
-      showAlert(error.message || 'Could not load system updates.', 'danger');
+      showAlert(error.message || copy.errors.loadSummary, 'danger');
     }
   }
 
@@ -370,205 +321,18 @@
     }
   }
 
-  async function startOperation(operation, button) {
-    window.AsyncButtonState.start(button);
-    let latestOperation = null;
-    try {
-      const { data } = await window.ApiClient.fetchJson(`/api/system_updates/${operation}/start`, {
-        method: 'POST',
-        headers: { 'Accept': 'application/json' }
-      });
-      latestOperation = data.operation;
-      showAlert(`${operationLabel(operation)} started.`, 'success');
-    } catch (error) {
-      showAlert(error.message || `Could not start ${operationLabel(operation)}.`, 'danger');
-    } finally {
-      window.AsyncButtonState.reset(button);
-      if (latestOperation) renderOperation(latestOperation);
-      else pollStatus();
-    }
-  }
-
-  async function stopOperation(button) {
-    window.AsyncButtonState.start(button);
-    let latestOperation = null;
-    try {
-      const { data } = await window.ApiClient.fetchJson('/api/system_updates/stop', {
-        method: 'POST',
-        headers: { 'Accept': 'application/json' }
-      });
-      latestOperation = data.operation;
-      showAlert('Apt operation stop requested.', 'success');
-    } catch (error) {
-      showAlert(error.message || 'Could not stop apt operation.', 'danger');
-    } finally {
-      window.AsyncButtonState.reset(button);
-      if (latestOperation) renderOperation(latestOperation);
-    }
-  }
-
-  async function saveSettings(event) {
-    event.preventDefault();
-    const button = els['auto-updates-save-btn'];
-    window.AsyncButtonState.start(button);
-    try {
-      const { data } = await window.ApiClient.fetchJson('/api/system_updates/settings', {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          update_package_lists: els['auto-update-lists'].checked,
-          unattended_upgrade: els['auto-unattended-upgrade'].checked,
-          autoclean: els['auto-autoclean'].checked
-        })
-      });
-      renderSettings(data.settings);
-      showAlert('Automatic apt settings saved.', 'success');
-    } catch (error) {
-      showAlert(error.message || 'Could not save automatic apt settings.', 'danger');
-    } finally {
-      window.AsyncButtonState.reset(button);
-    }
-  }
-
-  async function setupLivepatch(event) {
-    event.preventDefault();
-    const button = els['livepatch-setup-btn'];
-    window.AsyncButtonState.start(button);
-    try {
-      const { data } = await window.ApiClient.fetchJson('/api/system_updates/livepatch/setup', {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ token: els['livepatch-token'].value })
-      });
-      els['livepatch-token'].value = '';
-      renderLivepatch(data.livepatch);
-      showAlert('Livepatch setup completed.', 'success');
-    } catch (error) {
-      showAlert(error.message || 'Could not set up Livepatch.', 'danger');
-    } finally {
-      window.AsyncButtonState.reset(button);
-    }
-  }
-
-  async function removeStaleLocks(button) {
-    window.AsyncButtonState.start(button);
-    try {
-      const { message } = await window.ApiClient.fetchJson('/api/system_updates/remove_stale_locks', {
-        method: 'POST',
-        headers: { 'Accept': 'application/json' }
-      });
-      showAlert(message || 'Stale apt locks removed.', 'success');
-      pollStatus();
-    } catch (error) {
-      showAlert(error.message || 'Could not remove apt locks.', 'danger');
-    } finally {
-      window.AsyncButtonState.reset(button);
-    }
-  }
-
   async function refreshApplicationUpdate(button) {
     window.AsyncButtonState.start(button);
-    let latestApplication = null;
     try {
       const { data } = await window.ApiClient.fetchJson('/api/system_updates/application/refresh', {
         method: 'POST',
         headers: { 'Accept': 'application/json' }
       });
-      latestApplication = data.application;
-      await loadBranchChoices({ force: true, quiet: true });
-      showAlert('Application update status refreshed.', 'success');
+      renderApplicationUpdate(data.application);
+      showAlert(copy.application.refreshSuccess, 'success');
     } catch (error) {
-      showAlert(error.message || 'Could not refresh application update status.', 'danger');
+      showAlert(error.message || copy.application.refreshFailure, 'danger');
     } finally {
-      window.AsyncButtonState.reset(button);
-      if (latestApplication) renderApplicationUpdate(latestApplication);
-    }
-  }
-
-  async function loadBranchChoices(options) {
-    const opts = options || {};
-    if (branchChoicesLoading || (branchChoicesLoaded && !opts.force)) return;
-    branchChoicesLoading = true;
-    els['app-branch-select'].disabled = true;
-    els['app-branch-switch-btn'].disabled = true;
-    els['app-branch-advanced-hint'].textContent = 'Loading branches...';
-    try {
-      const { data } = await window.ApiClient.fetchJson('/api/system_updates/application/branches', {
-        method: 'POST',
-        headers: { 'Accept': 'application/json' }
-      });
-      renderBranchChoices(Array.isArray(data.branches) ? data.branches : []);
-      branchChoicesLoaded = true;
-      els['app-branch-advanced-hint'].textContent = 'Switch branches only for testing or recovery.';
-    } catch (error) {
-      els['app-branch-advanced-hint'].textContent = error.message || 'Could not load branches.';
-      if (!opts.quiet) showAlert(error.message || 'Could not load branches.', 'danger');
-    } finally {
-      branchChoicesLoading = false;
-      els['app-branch-select'].disabled = !canOfferBranchSwitch(currentApplication);
-      els['app-branch-switch-btn'].disabled = !branchChoicesLoaded || !canOfferBranchSwitch(currentApplication);
-    }
-  }
-
-  function branchSwitchBody(branch) {
-    const body = document.createElement('div');
-    const message = document.createElement('p');
-    message.textContent = `Switch SimpleSaferServer to ${branch} and apply it immediately?`;
-    body.appendChild(message);
-    if (branch !== STABLE_BRANCH) {
-      const purposeWarning = document.createElement('p');
-      // Keep this warning blunt: branch switching is an escape hatch, not a routine update path.
-      purposeWarning.textContent = 'Only do this if you are testing a specific fix or recovering this install.';
-      body.appendChild(purposeWarning);
-
-      const branchWarning = document.createElement('p');
-      branchWarning.textContent = 'Non-main branches can be unfinished, temporary, outdated, or removed without notice.';
-      body.appendChild(branchWarning);
-
-      const installerWarning = document.createElement('p');
-      installerWarning.textContent = 'This will rerun the installer from that branch.';
-      body.appendChild(installerWarning);
-    }
-    return body;
-  }
-
-  async function confirmBranchSwitch(branch) {
-    return window.showConfirmationDialog({
-      title: branch === STABLE_BRANCH ? 'Switch to main?' : 'Danger: switch away from main?',
-      body: branchSwitchBody(branch),
-      confirmLabel: branch === STABLE_BRANCH ? 'Switch to main' : 'I understand, switch branch',
-      confirmClass: branch === STABLE_BRANCH ? 'btn-primary' : 'btn-warning'
-    });
-  }
-
-  async function switchApplicationBranch(branch, button) {
-    if (!branch) {
-      showAlert('Select a branch first.', 'warning');
-      return;
-    }
-    const confirmed = await confirmBranchSwitch(branch);
-    if (!confirmed) return;
-
-    window.AsyncButtonState.start(button);
-    try {
-      const { message, data } = await window.ApiClient.fetchJson('/api/system_updates/application/switch_branch', {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ branch })
-      });
-      showAlert(message || 'Application source switch started.', 'success');
-      window.location.href = data.task_url || '/task/App%20Update';
-    } catch (error) {
-      showAlert(error.message || 'Could not switch application source.', 'danger');
       window.AsyncButtonState.reset(button);
     }
   }
@@ -580,105 +344,17 @@
         method: 'POST',
         headers: { 'Accept': 'application/json' }
       });
-      showAlert(message || 'Application update started.', 'success');
+      showAlert(message || copy.application.started, 'success');
       window.location.href = data.task_url || '/task/App%20Update';
     } catch (error) {
-      showAlert(error.message || 'Could not start application update.', 'danger');
+      showAlert(error.message || copy.application.startFailure, 'danger');
       window.AsyncButtonState.reset(button);
     }
-  }
-
-  async function startApplicationForceUpdate(button) {
-    const confirmed = await confirmApplicationForceUpdate(currentApplication);
-    if (!confirmed) return;
-
-    window.AsyncButtonState.start(button);
-    try {
-      const { message, data } = await window.ApiClient.fetchJson('/api/system_updates/application/force_update', {
-        method: 'POST',
-        headers: { 'Accept': 'application/json' }
-      });
-      showAlert(message || 'Application cleanup update started.', 'success');
-      window.location.href = data.task_url || '/task/App%20Update';
-    } catch (error) {
-      showAlert(error.message || 'Could not clean up and update application.', 'danger');
-      window.AsyncButtonState.reset(button);
-    }
-  }
-
-  function formatDirtyFileKind(file) {
-    if (!file || file.kind !== 'extra') return 'Changed';
-    return 'Extra';
-  }
-
-  function buildDirtyFileList(application) {
-    const files = Array.isArray(application && application.dirty_files) ? application.dirty_files : [];
-    if (!files.length) return null;
-
-    const details = document.createElement('details');
-    details.className = 'app-cleanup-file-details';
-    const summary = document.createElement('summary');
-    summary.textContent = `Show affected files (${files.length})`;
-    details.appendChild(summary);
-
-    const list = document.createElement('ul');
-    files.forEach((file) => {
-      const item = document.createElement('li');
-      const kind = document.createElement('span');
-      kind.className = `app-cleanup-file-kind ${file && file.kind === 'extra' ? 'is-extra' : 'is-changed'}`;
-      kind.textContent = formatDirtyFileKind(file);
-      const path = document.createElement('code');
-      path.textContent = file && file.path ? file.path : 'Unknown file';
-      item.append(kind, path);
-      list.appendChild(item);
-    });
-    details.appendChild(list);
-    return details;
-  }
-
-  function confirmApplicationForceUpdate(application) {
-    const body = document.createElement('div');
-    body.className = 'app-cleanup-confirm';
-
-    const message = document.createElement('p');
-    message.textContent = 'SimpleSaferServer found changed or extra files in its app folder. This can happen after older installs or manual troubleshooting.';
-    body.appendChild(message);
-
-    const action = document.createElement('p');
-    action.textContent = 'Clean Up and Update resets /opt/SimpleSaferServer to the selected branch, removes extra app-folder files, then runs the update.';
-    body.appendChild(action);
-
-    const keep = document.createElement('p');
-    keep.textContent = 'Settings, users, logs, backups, and system config stored outside the app folder are not removed.';
-    body.appendChild(keep);
-
-    const fileList = buildDirtyFileList(application);
-    if (fileList) body.appendChild(fileList);
-
-    return window.showConfirmationDialog({
-      title: 'Clean up app folder and update?',
-      body,
-      confirmLabel: 'Clean Up and Update',
-      confirmClass: 'btn-warning'
-    });
   }
 
   function bindActions() {
-    els['apt-update-btn'].addEventListener('click', () => startOperation('update', els['apt-update-btn']));
-    els['apt-upgrade-btn'].addEventListener('click', () => startOperation('upgrade', els['apt-upgrade-btn']));
-    els['apt-stop-btn'].addEventListener('click', () => stopOperation(els['apt-stop-btn']));
-    els['auto-updates-form'].addEventListener('submit', saveSettings);
-    els['livepatch-form'].addEventListener('submit', setupLivepatch);
     els['app-update-refresh-btn'].addEventListener('click', () => refreshApplicationUpdate(els['app-update-refresh-btn']));
     els['app-update-now-btn'].addEventListener('click', () => startApplicationUpdate(els['app-update-now-btn']));
-    els['app-update-force-btn'].addEventListener('click', () => startApplicationForceUpdate(els['app-update-force-btn']));
-    els['app-update-switch-main-btn'].addEventListener('click', () => switchApplicationBranch(STABLE_BRANCH, els['app-update-switch-main-btn']));
-    els['app-branch-advanced-trigger'].addEventListener('click', () => loadBranchChoices());
-    els['app-branch-switch-form'].addEventListener('submit', (event) => {
-      event.preventDefault();
-      switchApplicationBranch(els['app-branch-select'].value, els['app-branch-switch-btn']);
-    });
-    els['remove-locks-btn'].addEventListener('click', () => removeStaleLocks(els['remove-locks-btn']));
   }
 
   document.addEventListener('DOMContentLoaded', () => {
@@ -695,9 +371,7 @@
   if (window.SystemUpdatesTest) {
     Object.assign(window.SystemUpdatesTest, {
       cacheElements,
-      renderApplicationUpdate,
-      renderBranchChoices,
-      loadBranchChoices
+      renderApplicationUpdate
     });
   }
 })();

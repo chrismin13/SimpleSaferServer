@@ -1,4 +1,5 @@
 import os
+import re
 import subprocess
 import tempfile
 import textwrap
@@ -7,6 +8,9 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 INSTALL_SCRIPT = REPO_ROOT / "install.sh"
+INDEX_HTML = REPO_ROOT / "index.html"
+WEB_SERVICE_FILE = REPO_ROOT / "simple-safer-server-web.service"
+WORKER_SERVICE_FILE = REPO_ROOT / "simple-safer-server-worker.service"
 
 
 class InstallPreflightTests(unittest.TestCase):
@@ -16,7 +20,7 @@ class InstallPreflightTests(unittest.TestCase):
         end = text.index("\n}\n\n", start) + len("\n}\n")
         return text[start:end]
 
-    def run_preflight(self, os_release_text, *args, fake_commands="apt-get,dpkg,systemctl"):
+    def run_preflight(self, os_release_text, *args, fake_commands="curl,systemctl,sudo"):
         with tempfile.TemporaryDirectory() as temp_dir:
             os_release_path = Path(temp_dir) / "os-release"
             os_release_path.write_text(textwrap.dedent(os_release_text))
@@ -60,18 +64,6 @@ class InstallPreflightTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
         self.assertIn("Ubuntu 24.04 LTS", result.stdout)
 
-    def test_older_platform_warns_but_passes(self):
-        result = self.run_preflight(
-            """
-            ID=debian
-            VERSION_ID="10"
-            PRETTY_NAME="Debian GNU/Linux 10 (buster)"
-            """
-        )
-
-        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
-        self.assertIn("older OS compatibility platform", result.stdout)
-
     def run_preflight_with_arch(self, os_release_text, arch):
         with tempfile.TemporaryDirectory() as temp_dir:
             os_release_path = Path(temp_dir) / "os-release"
@@ -79,7 +71,7 @@ class InstallPreflightTests(unittest.TestCase):
             env = {
                 **os.environ,
                 "SSS_INSTALLER_PREFLIGHT_ONLY": "1",
-                "SSS_INSTALLER_TEST_COMMANDS": "apt-get,dpkg,systemctl",
+                "SSS_INSTALLER_TEST_COMMANDS": "curl,systemctl,sudo",
                 "SSS_INSTALLER_TEST_SYSTEMD": "1",
                 "SSS_INSTALLER_TEST_ARCH": arch,
                 "SSS_OS_RELEASE_PATH": str(os_release_path),
@@ -100,7 +92,7 @@ class InstallPreflightTests(unittest.TestCase):
             VERSION_ID="13"
             PRETTY_NAME="Debian GNU/Linux 13 (trixie)"
             """,
-            fake_commands="apt-get,dpkg,systemctl",
+            fake_commands="curl,systemctl,sudo",
         )
         # The default test host architecture should pass; this keeps the arch
         # override test below focused on the unsupported userspace.
@@ -180,7 +172,7 @@ class InstallPreflightTests(unittest.TestCase):
             VERSION_ID="13"
             PRETTY_NAME="Debian GNU/Linux 13 (trixie)"
             """,
-            fake_commands="apt-get,dpkg",
+            fake_commands="curl",
         )
 
         self.assertNotEqual(result.returncode, 0)
@@ -200,7 +192,7 @@ class InstallPreflightTests(unittest.TestCase):
             env = {
                 **os.environ,
                 "SSS_INSTALLER_PREFLIGHT_ONLY": "1",
-                "SSS_INSTALLER_TEST_COMMANDS": "apt-get,dpkg,systemctl",
+                "SSS_INSTALLER_TEST_COMMANDS": "curl,systemctl,sudo",
                 "SSS_INSTALLER_TEST_SYSTEMD": "0",
                 "SSS_OS_RELEASE_PATH": str(os_release_path),
             }
@@ -218,6 +210,47 @@ class InstallPreflightTests(unittest.TestCase):
         self.assertIn(
             "systemd does not appear to be running as the host init system", result.stdout
         )
+
+    def test_missing_sudo_blocks(self):
+        result = self.run_preflight(
+            """
+            ID=debian
+            VERSION_ID="13"
+            PRETTY_NAME="Debian GNU/Linux 13 (trixie)"
+            """,
+            fake_commands="curl,systemctl",
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Missing required host tools", result.stdout)
+        self.assertIn("sudo", result.stdout)
+
+    def test_installer_declares_non_root_web_service_setup(self):
+        script = INSTALL_SCRIPT.read_text()
+
+        self.assertIn('APP_USER="sss"', script)
+        self.assertIn('APP_GROUP="sss"', script)
+        self.assertIn('SERVICE_USER_MARKER="$DATA_DIR/.sss-user-created"', script)
+        self.assertIn('SERVICE_GROUP_MARKER="$DATA_DIR/.sss-group-created"', script)
+        self.assertIn('useradd \\', script)
+        self.assertIn('printf \'%s ALL=(root) NOPASSWD: %s/sss-helper\\n\'', script)
+        self.assertIn('sudo -u "$APP_USER" -n "$VENV_DIR/bin/python3"', script)
+
+    def test_web_service_runs_as_service_user(self):
+        service = WEB_SERVICE_FILE.read_text()
+
+        self.assertIn("User=sss", service)
+        self.assertIn("Group=sss", service)
+        self.assertIn("RuntimeDirectory=SimpleSaferServer", service)
+        self.assertNotIn("User=root", service)
+
+    def test_worker_service_runs_as_service_user(self):
+        service = WORKER_SERVICE_FILE.read_text()
+
+        self.assertIn("User=sss", service)
+        self.assertIn("Group=sss", service)
+        self.assertIn("RuntimeDirectory=SimpleSaferServer", service)
+        self.assertNotIn("User=root", service)
 
     def uv_helper_functions(self):
         return "\n".join(
@@ -318,420 +351,106 @@ class InstallPreflightTests(unittest.TestCase):
             self.assertIn("uv 0.11.21", result.stdout)
             self.assertIn("curl -fLsS https://astral.sh/uv/install.sh", calls_path.read_text())
 
-    def test_script_install_loop_skips_same_app_destination(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            scripts_dir = root / "scripts"
-            bin_dir = root / "bin"
-            scripts_dir.mkdir()
-            bin_dir.mkdir()
-            script = scripts_dir / "app_update.sh"
-            script.write_text("#!/bin/bash\necho app\n")
-            py_script = scripts_dir / "app_update.py"
-            py_script.write_text("#!/usr/bin/env python3\nprint('app')\n")
-
-            snippet = textwrap.dedent(
-                f"""\
-                set -e
-                {self.installer_function("same_file")}
-                {self.installer_function("copy_unless_same_file")}
-                SCRIPTS_DIR="{scripts_dir}"
-                BIN_DIR="{bin_dir}"
-                cd "{root}"
-                for script in scripts/*.sh scripts/*.py; do
-                  script_name="$(basename "$script")"
-                  app_script_path="$SCRIPTS_DIR/$script_name"
-                  bin_script_path="$BIN_DIR/$script_name"
-                  if ! same_file "$script" "$app_script_path"; then
-                    cp "$script" "$app_script_path"
-                    chmod +x "$app_script_path"
-                  fi
-                  copy_unless_same_file "$script" "$bin_script_path"
-                  chmod +x "$bin_script_path"
-                done
-                """
-            )
-
-            result = subprocess.run(
-                ["bash", "-lc", snippet],
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-
-            self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
-            self.assertFalse(os.access(script, os.X_OK))
-            self.assertFalse(os.access(py_script, os.X_OK))
-            self.assertEqual((bin_dir / "app_update.sh").read_text(), "#!/bin/bash\necho app\n")
-            self.assertTrue(os.access(bin_dir / "app_update.sh", os.X_OK))
-            self.assertTrue(os.access(bin_dir / "app_update.py", os.X_OK))
-
-    def test_script_install_loop_preserves_app_script_modes_from_source(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            source_dir = root / "source" / "scripts"
-            app_scripts_dir = root / "app" / "scripts"
-            bin_dir = root / "bin"
-            source_dir.mkdir(parents=True)
-            app_scripts_dir.mkdir(parents=True)
-            bin_dir.mkdir()
-            script = source_dir / "app_update.sh"
-            py_script = source_dir / "app_update.py"
-            script.write_text("#!/bin/bash\necho app\n")
-            py_script.write_text("#!/usr/bin/env python3\nprint('app')\n")
-
-            snippet = textwrap.dedent(
-                f"""\
-                set -e
-                {self.installer_function("same_file")}
-                {self.installer_function("copy_unless_same_file")}
-                SCRIPTS_DIR="{app_scripts_dir}"
-                BIN_DIR="{bin_dir}"
-                cd "{root / "source"}"
-                for script in scripts/*.sh scripts/*.py; do
-                  script_name="$(basename "$script")"
-                  app_script_path="$SCRIPTS_DIR/$script_name"
-                  bin_script_path="$BIN_DIR/$script_name"
-                  if ! same_file "$script" "$app_script_path"; then
-                    cp "$script" "$app_script_path"
-                  fi
-                  copy_unless_same_file "$script" "$bin_script_path"
-                  chmod +x "$bin_script_path"
-                done
-                """
-            )
-
-            result = subprocess.run(
-                ["bash", "-lc", snippet],
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-
-            self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
-            self.assertFalse(os.access(app_scripts_dir / "app_update.sh", os.X_OK))
-            self.assertFalse(os.access(app_scripts_dir / "app_update.py", os.X_OK))
-            self.assertTrue(os.access(bin_dir / "app_update.sh", os.X_OK))
-            self.assertTrue(os.access(bin_dir / "app_update.py", os.X_OK))
-
-    def test_git_safe_directory_helper_adds_system_entry_once(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            fake_bin = root / "bin"
-            config_path = root / "gitconfig"
-            calls_path = root / "calls"
-            fake_bin.mkdir()
-            git = fake_bin / "git"
-            git.write_text(
-                textwrap.dedent(
-                    f"""\
-                    #!/bin/sh
-                    printf '%s\\n' "$*" >> "{calls_path}"
-                    if [ "$1" = "config" ] && [ "$2" = "--system" ] && [ "$3" = "--get-all" ] && [ "$4" = "safe.directory" ]; then
-                        [ -f "{config_path}" ] && cat "{config_path}"
-                        exit 0
-                    fi
-                    if [ "$1" = "config" ] && [ "$2" = "--system" ] && [ "$3" = "--add" ] && [ "$4" = "safe.directory" ]; then
-                        printf '%s\\n' "$5" >> "{config_path}"
-                        exit 0
-                    fi
-                    exit 1
-                    """
-                )
-            )
-            git.chmod(0o755)
-
-            snippet = textwrap.dedent(
-                f"""\
-                set -e
-                {self.installer_function("ensure_git_safe_directory")}
-                export PATH="{fake_bin}:$PATH"
-                ensure_git_safe_directory "/opt/SimpleSaferServer"
-                ensure_git_safe_directory "/opt/SimpleSaferServer"
-                """
-            )
-
-            result = subprocess.run(
-                ["bash", "-lc", snippet],
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-
-            self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
-            config_text = config_path.read_text()
-            self.assertEqual(config_text.count("/opt/SimpleSaferServer"), 1)
-            self.assertEqual(
-                [line for line in calls_path.read_text().splitlines() if "--add" in line],
-                ["config --system --add safe.directory /opt/SimpleSaferServer"],
-            )
-
-    def test_app_rsyncs_prune_removed_app_owned_files(self):
+    def test_installer_excludes_dev_scripts_from_production_app_copy(self):
         text = INSTALL_SCRIPT.read_text()
 
-        self.assertIn("rsync -a --delete", text)
-        self.assertIn("--exclude='.venv'", text)
+        self.assertIn('--exclude="./scripts"', text)
+        self.assertNotIn("for script in scripts/*.sh scripts/*.py", text)
+        self.assertNotIn("chmod +x \"$app_script_path\"", text)
+
+    def test_app_tar_copy_prunes_removed_app_owned_files(self):
+        text = INSTALL_SCRIPT.read_text()
+
+        self.assertIn('find "$APP_DIR" -mindepth 1 -maxdepth 1 ! -name ".venv"', text)
+        self.assertIn('tar \\', text)
+        self.assertIn('--exclude="./.git"', text)
+        self.assertIn('--exclude="./.venv"', text)
         self.assertNotIn("--exclude='venv'", text)
-        self.assertIn("rsync -a --delete static", text)
-        self.assertIn("rsync -a --delete templates", text)
-        self.assertNotIn("rsync -a --delete harddrive_model/", text)
-        self.assertNotIn("LEGACY_VENV_DIR", text)
+        self.assertNotIn("rsync -a --delete", text)
 
-    def test_core_dependency_install_does_not_include_optional_wsdd_daemons(self):
+    def test_base_installer_does_not_install_apt_packages(self):
         text = INSTALL_SCRIPT.read_text()
-        core_install_line = next(
-            line for line in text.splitlines() if "apt-get install -y git ca-certificates" in line
+        active_script = "\n".join(
+            line for line in text.splitlines() if not line.lstrip().startswith("#")
         )
 
-        self.assertIn("samba", core_install_line)
-        self.assertNotIn("python3-flask", core_install_line)
-        self.assertNotIn("python3-psutil", core_install_line)
-        self.assertNotIn("python3-cryptography", core_install_line)
-        self.assertNotIn("wsdd2", core_install_line)
-        self.assertNotIn("wsdd", core_install_line)
-
-    def test_optional_wsdd2_install_warns_and_continues(self):
-        snippet = textwrap.dedent(
-            f"""\
-            set -e
-            {self.installer_function("install_optional_wsdd2")}
-            apt-get() {{
-                printf '%s\\n' "$*" >> "$CALLS_PATH"
-                return 42
-            }}
-            export CALLS_PATH="{Path(tempfile.gettempdir()) / "sss-wsdd2-install-calls"}"
-            rm -f "$CALLS_PATH"
-            install_optional_wsdd2
-            cat "$CALLS_PATH"
-            """
+        self.assertNotIn("apt-get install", text)
+        self.assertNotIn("apt-get update", text)
+        self.assertNotIn("apt install", text)
+        self.assertNotIn("DEBIAN_FRONTEND=noninteractive", text)
+        self.assertNotRegex(
+            active_script,
+            re.compile(r"\b(?:apt|apt-get|aptitude)\b[^\n]*\b(?:install|update|upgrade)\b"),
+        )
+        self.assertNotRegex(
+            active_script,
+            re.compile(r"\bdpkg\b[^\n]*\b(?:--install|-i)\b"),
+        )
+        for package in (
+            "samba",
+            "wsdd2",
+            "rclone",
+            "smartmontools",
+            "hdsentinel",
+            "ntfs-3g",
+            "unattended-upgrades",
+            "msmtp",
+            "git",
+            "ca-certificates",
+        ):
+            self.assertNotIn(f"install {package}", text)
+            self.assertNotIn(f"install -y {package}", text)
+            self.assertNotRegex(
+                active_script,
+                re.compile(
+                    rf"\b(?:apt|apt-get|aptitude)\b[^\n]*\binstall\b[^\n]*\b{re.escape(package)}\b"
+                ),
+            )
+        self.assertNotIn(
+            'install -d -o "$APP_USER" -g "$APP_GROUP" -m 0750 "$CONFIG_DIR/rclone"',
+            text,
         )
 
-        result = subprocess.run(
-            ["bash", "-lc", snippet],
-            text=True,
-            capture_output=True,
-            check=False,
-        )
+    def test_public_install_page_matches_base_install_boundary(self):
+        page = INDEX_HTML.read_text(encoding="utf-8")
 
-        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
-        self.assertIn("install -y wsdd2", result.stdout)
-        self.assertIn("Continuing without modern Windows discovery", result.stdout)
+        self.assertIn("static/vendor/fontawesome/6.4.0/css/all.min.css", page)
+        self.assertIn("web and worker services", page)
+        self.assertIn("belong to module setup flows instead of the base install", page)
+        self.assertNotIn("cdn.jsdelivr.net", page)
+        self.assertNotIn("cdnjs.cloudflare.com", page)
+        self.assertNotIn("fonts.googleapis.com", page)
+        self.assertNotIn("fonts.gstatic.com", page)
+        self.assertNotIn("before installing packages", page)
+        self.assertNotIn("services, timers", page)
 
-    def test_samba_layout_helper_invoked_without_creating_backup_share(self):
+    def test_base_installer_does_not_prepare_samba(self):
         text = INSTALL_SCRIPT.read_text()
 
-        self.assertIn("SambaLayoutService(runtime=rt).ensure_layout()", text)
+        self.assertNotIn("SambaLayoutService(runtime=rt).ensure_layout()", text)
+        self.assertNotIn("configure_samba_discovery_services", text)
+        self.assertNotIn("systemctl enable smbd", text)
+        self.assertNotIn("systemctl start smbd", text)
         self.assertNotIn("create_share('backup'", text)
         self.assertNotIn('create_share("backup"', text)
 
-    def test_samba_services_fail_for_smbd_and_continue_for_discovery(self):
-        snippet = textwrap.dedent(
-            f"""\
-            set -e
-            {self.installer_function("configure_samba_discovery_services")}
-            systemctl() {{
-                printf '%s\\n' "$*" >> "$CALLS_PATH"
-                if [ "$1" = "is-active" ] && [ "$2" = "--quiet" ] && [ "$3" = "smbd" ]; then
-                    return 1
-                fi
-                return 0
-            }}
-            command() {{
-                if [ "$1" = "-v" ] && [ "$2" = "systemctl" ]; then
-                    return 0
-                fi
-                builtin command "$@"
-            }}
-            export CALLS_PATH="{Path(tempfile.gettempdir()) / "sss-samba-service-calls"}"
-            rm -f "$CALLS_PATH"
-            configure_samba_discovery_services
-            """
-        )
-
-        result = subprocess.run(
-            ["bash", "-lc", snippet],
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("ERROR: smbd is not active", result.stdout)
-        self.assertIn("systemctl status smbd", result.stdout)
-
-    def test_top_level_installer_honors_samba_service_setup_failure(self):
+    def test_base_installer_does_not_change_firewall_policy(self):
         text = INSTALL_SCRIPT.read_text()
-        samba_step = text[
-            text.index("# 8. Prepare the SSS-owned Samba include layout") : text.index(
-                "# 9. Install/refresh systemd service for Flask app"
-            )
-        ]
 
-        self.assertIn("if configure_samba_discovery_services; then", samba_step)
-        self.assertIn("ERROR: Failed to start required Samba file serving.", samba_step)
-        self.assertIn("exit 1", samba_step)
+        self.assertNotIn("ufw allow", text)
+        self.assertNotIn("firewall-cmd", text)
+        self.assertNotIn("iptables -A", text)
+        self.assertNotIn("iptables -C", text)
 
-    def test_samba_service_setup_warns_when_smbd_enable_fails_but_active(self):
-        snippet = textwrap.dedent(
-            f"""\
-            set -e
-            {self.installer_function("configure_samba_discovery_services")}
-            systemctl() {{
-                printf '%s\\n' "$*" >> "$CALLS_PATH"
-                case "$*" in
-                    "enable smbd") return 1 ;;
-                    "is-active --quiet smbd") return 0 ;;
-                    *) return 0 ;;
-                esac
-            }}
-            command() {{
-                if [ "$1" = "-v" ] && [ "$2" = "systemctl" ]; then
-                    return 0
-                fi
-                builtin command "$@"
-            }}
-            export CALLS_PATH="{Path(tempfile.gettempdir()) / "sss-smbd-enable-warning-calls"}"
-            rm -f "$CALLS_PATH"
-            configure_samba_discovery_services
-            cat "$CALLS_PATH"
-            """
-        )
+    def test_installer_declares_worker_service_and_sss_cli_wrapper(self):
+        text = INSTALL_SCRIPT.read_text(encoding="utf-8")
 
-        result = subprocess.run(
-            ["bash", "-lc", snippet],
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-
-        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
-        self.assertIn("WARNING: smbd is active, but systemctl enable smbd failed", result.stdout)
-        self.assertIn("smbd: active", result.stdout)
-
-    def test_samba_service_setup_warns_when_smbd_start_fails_but_active(self):
-        snippet = textwrap.dedent(
-            f"""\
-            set -e
-            {self.installer_function("configure_samba_discovery_services")}
-            systemctl() {{
-                printf '%s\\n' "$*" >> "$CALLS_PATH"
-                case "$*" in
-                    "restart smbd") return 1 ;;
-                    "is-active --quiet smbd") return 0 ;;
-                    *) return 0 ;;
-                esac
-            }}
-            smbcontrol() {{
-                return 1
-            }}
-            command() {{
-                if [ "$1" = "-v" ] && [ "$2" = "systemctl" ]; then
-                    return 0
-                fi
-                builtin command "$@"
-            }}
-            export CALLS_PATH="{Path(tempfile.gettempdir()) / "sss-smbd-start-warning-calls"}"
-            rm -f "$CALLS_PATH"
-            configure_samba_discovery_services
-            cat "$CALLS_PATH"
-            """
-        )
-
-        result = subprocess.run(
-            ["bash", "-lc", snippet],
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-
-        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
-        self.assertIn("WARNING: smbd is active, but reload/restart failed", result.stdout)
-        self.assertIn("smbd: active", result.stdout)
-
-    def test_samba_services_summary_reports_best_effort_discovery(self):
-        snippet = textwrap.dedent(
-            f"""\
-            set -e
-            {self.installer_function("configure_samba_discovery_services")}
-            systemctl() {{
-                printf '%s\\n' "$*" >> "$CALLS_PATH"
-                case "$*" in
-                    "is-active --quiet smbd") return 0 ;;
-                    "is-active --quiet nmbd") return 1 ;;
-                    "is-active --quiet wsdd2") return 1 ;;
-                    *) return 0 ;;
-                esac
-            }}
-            command() {{
-                if [ "$1" = "-v" ] && [ "$2" = "systemctl" ]; then
-                    return 0
-                fi
-                builtin command "$@"
-            }}
-            export CALLS_PATH="{Path(tempfile.gettempdir()) / "sss-samba-summary-calls"}"
-            rm -f "$CALLS_PATH"
-            configure_samba_discovery_services
-            cat "$CALLS_PATH"
-            """
-        )
-
-        result = subprocess.run(
-            ["bash", "-lc", snippet],
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-
-        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
-        self.assertIn("enable smbd", result.stdout)
-        self.assertIn("start smbd", result.stdout)
-        self.assertIn("enable nmbd", result.stdout)
-        self.assertIn("start nmbd", result.stdout)
-        self.assertIn("enable wsdd2", result.stdout)
-        self.assertIn("start wsdd2", result.stdout)
-        self.assertIn("smbd: active", result.stdout)
-        self.assertIn("nmbd: inactive", result.stdout)
-        self.assertIn("wsdd2: inactive", result.stdout)
-
-    def test_samba_services_summary_reports_unavailable_when_unit_missing(self):
-        snippet = textwrap.dedent(
-            f"""\
-            set -e
-            {self.installer_function("configure_samba_discovery_services")}
-            systemctl() {{
-                printf '%s\\n' "$*" >> "$CALLS_PATH"
-                case "$*" in
-                    "is-active --quiet smbd") return 0 ;;
-                    "is-active --quiet nmbd") return 0 ;;
-                    "is-active --quiet wsdd2") return 1 ;;
-                    "cat wsdd2") return 1 ;;
-                    *) return 0 ;;
-                esac
-            }}
-            command() {{
-                if [ "$1" = "-v" ] && [ "$2" = "systemctl" ]; then
-                    return 0
-                fi
-                builtin command "$@"
-            }}
-            export CALLS_PATH="{Path(tempfile.gettempdir()) / "sss-samba-unavailable-calls"}"
-            rm -f "$CALLS_PATH"
-            configure_samba_discovery_services
-            cat "$CALLS_PATH"
-            """
-        )
-
-        result = subprocess.run(
-            ["bash", "-lc", snippet],
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-
-        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
-        self.assertIn("smbd: active", result.stdout)
-        self.assertIn("nmbd: active", result.stdout)
-        self.assertIn("wsdd2: unavailable", result.stdout)
+        self.assertIn("simple-safer-server-worker.service", text)
+        self.assertIn("simple_safer_server.cli", text)
+        self.assertIn("simple_safer_server.privileged_helper", text)
+        self.assertIn('cat >"$BIN_DIR/sss"', text)
+        self.assertIn('cat >"$BIN_DIR/sss-helper"', text)
+        self.assertNotIn('bin_script_path="$BIN_DIR/$script_name"', text)
 
 
 if __name__ == "__main__":

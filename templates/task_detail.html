@@ -30,12 +30,7 @@
           <span class="badge badge-warning"><i class="fas fa-question-circle"></i> {{ task.status }}</span>
         {% endif %}
       </span>
-      {# Keep this state list aligned with TaskService.schedule_state() labels. #}
-      {% set disabled_schedule_states = ['temporary', 'permanent', 'restore_failed', 'external_disabled'] %}
-      {% if task_summary.schedule.state in disabled_schedule_states %}
-        {% set schedule_badge_class = 'badge-schedule-danger' %}
-        {% set schedule_icon_class = 'fa-calendar-xmark' %}
-      {% elif task_summary.schedule.state == 'issue' %}
+      {% if task_summary.schedule.state == 'issue' %}
         {% set schedule_badge_class = 'badge-schedule-warning' %}
         {% set schedule_icon_class = 'fa-triangle-exclamation' %}
       {% else %}
@@ -66,14 +61,6 @@
           </button>
         </form>
       </div>
-
-      <div class="btn-group">
-        <button id="manage-schedule-btn" type="button" class="btn btn-secondary btn-sm"
-          aria-haspopup="menu"
-          data-schedule-can-enable="{{ 'true' if task_summary.schedule.can_enable else 'false' }}">
-          <i class="fas fa-calendar-days me-1"></i> Manage Schedule <i class="fas fa-caret-down ms-1"></i>
-        </button>
-      </div>
     </div>
   </div>
 
@@ -97,11 +84,9 @@
   </section>
 </div>
 
-{% set task_schedule_disable_context = 'Automatic runs stop for this task. Manual Start still works and starts the service immediately.' %}
-{% include 'partials/task_schedule_disable_modal.html' %}
 {% endblock %}
 
 {% block extra_js %}
-<script src="{{ url_for('static', filename='js/task_schedule_control.js') }}"></script>
+<script type="application/json" id="task-detail-copy">{{ task_detail_ui_text | tojson }}</script>
 <script src="{{ url_for('static', filename='js/scripts.js') }}"></script>
 {% endblock %}

@@ -7,23 +7,31 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from simple_safer_server.adapters.command_runner import (
-    PIPE,
+    DEVNULL,
     CommandRunner,
-    SubprocessError,
     TimeoutExpired,
 )
 from simple_safer_server.adapters.rclone import RcloneAdapter
-from simple_safer_server.adapters.systemd import CalledProcessError, SystemdAdapter
-from simple_safer_server.services.disabled_timers import (
-    DisabledTimerService,
-    parse_timestamp,
-    utc_now,
+from simple_safer_server.core.builtin_modules import create_builtin_module_registry
+from simple_safer_server.core.job_lifecycle import (
+    job_module_is_applied,
+    require_job_module_applied,
 )
-from simple_safer_server.services.drive_health import (
+from simple_safer_server.core.job_state import (
+    JobStateStore,
+    daily_time_with_offset,
+    format_timestamp,
+    next_daily_run_after,
+    parse_timestamp,
+)
+from simple_safer_server.core.jobs import JobDefinition, create_builtin_job_registry
+from simple_safer_server.core.module_contract import ModuleRegistry
+from simple_safer_server.modules.ddns.updater import main as run_ddns_update
+from simple_safer_server.modules.drive_health.service import (
     hdsentinel_snapshot_has_health,
     run_scheduled_drive_health_check,
 )
-from simple_safer_server.services.storage_location import validate_storage_ready_for_backup
+from simple_safer_server.modules.storage.location import validate_storage_ready_for_backup
 
 
 class Status:
@@ -39,24 +47,8 @@ class Status:
 TERMINAL_FAKE_STATUSES = {Status.SUCCESS, Status.FAILURE, Status.ERROR, Status.STOPPED}
 
 # Keep one app-wide task-log window so routes, auto-refresh, and service defaults
-# do not quietly drift apart after app-update output grows or shrinks.
+# do not quietly drift apart after job output grows or shrinks.
 TASK_LOG_LINE_LIMIT = 500
-
-
-def parse_systemd_datetime(value: str) -> datetime | None:
-    if not value or value in {"Unknown", "Retrieval Error"}:
-        return None
-    formats = [
-        "%Y-%m-%d %H:%M:%S",
-        "%a %Y-%m-%d %H:%M:%S %Z",
-        "%Y-%m-%d %H:%M:00",
-    ]
-    for fmt in formats:
-        try:
-            return datetime.strptime(value, fmt)
-        except ValueError:
-            continue
-    return None
 
 
 def format_compact_schedule_datetime(value: datetime | None, now: datetime) -> str:
@@ -78,11 +70,15 @@ def clamp_task_log_lines(lines: Any) -> int:
 
 
 class Task:
-    def __init__(self, service: TaskService, name: str, service_name: str, timer_name: str):
+    def __init__(
+        self,
+        service: TaskService,
+        name: str,
+        worker_job_name: str,
+    ):
         self._service = service
         self.name = name
-        self.service_name = service_name
-        self.timer_name = timer_name
+        self.worker_job_name = worker_job_name
 
     def get_logs(self, lines: int = TASK_LOG_LINE_LIMIT) -> str:
         """Return the latest systemd journal logs for this service."""
@@ -95,12 +91,6 @@ class Task:
     def stop(self) -> None:
         """Stop the associated service asynchronously."""
         self._service.stop_task(self)
-
-    def disable_schedule(self, mode: str, hours: int | None = None) -> None:
-        self._service.disable_schedule(self, mode, hours=hours)
-
-    def enable_schedule(self) -> None:
-        self._service.enable_schedule(self)
 
     @property
     def next_run(self) -> str:
@@ -128,9 +118,9 @@ class TaskService:
         fake_state: Any | None = None,
         logger: Any | None = None,
         command_runner: CommandRunner | None = None,
-        systemd_adapter: SystemdAdapter | None = None,
         rclone_adapter: RcloneAdapter | None = None,
-        disabled_timer_service: DisabledTimerService | None = None,
+        job_state_store: JobStateStore | None = None,
+        module_registry: ModuleRegistry | None = None,
     ):
         self.runtime = runtime
         self.config_manager = config_manager
@@ -138,22 +128,34 @@ class TaskService:
         self.fake_state = fake_state
         self.logger = logger
         self.command_runner = command_runner or CommandRunner()
-        self.systemd_adapter = systemd_adapter or SystemdAdapter(self.command_runner)
         self.rclone_adapter = rclone_adapter or RcloneAdapter(self.command_runner)
-        self.disabled_timer_service = disabled_timer_service or DisabledTimerService(
-            runtime,
-            self.systemd_adapter,
-            logger=logger,
-        )
+        self.module_registry = module_registry or create_builtin_module_registry()
+        self.job_registry = create_builtin_job_registry()
+        self.job_state_store = job_state_store or JobStateStore(runtime)
         self._fake_task_threads: dict[str, threading.Thread] = {}
         self._fake_task_cancel_events: dict[str, threading.Event] = {}
         self._fake_task_lock = threading.Lock()
         self._tasks = [
-            Task(self, "Check Mount", "check_mount.service", "check_mount.timer"),
-            Task(self, "Drive Health Check", "check_health.service", "check_health.timer"),
-            Task(self, "Cloud Backup", "backup_cloud.service", "backup_cloud.timer"),
-            Task(self, "DDNS Update", "ddns_update.service", "ddns_update.timer"),
-            Task(self, "App Update", "app_update.service", "app_update.timer"),
+            Task(
+                self,
+                "Check Mount",
+                worker_job_name="mount-check",
+            ),
+            Task(
+                self,
+                "Drive Health Check",
+                worker_job_name="drive-health",
+            ),
+            Task(
+                self,
+                "Cloud Backup",
+                worker_job_name="cloud-backup",
+            ),
+            Task(
+                self,
+                "DDNS Update",
+                worker_job_name="ddns-update",
+            ),
         ]
 
     def get_task(self, name: str) -> Task | None:
@@ -187,8 +189,6 @@ class TaskService:
                     "label": "Schedule issue",
                     "source": "system",
                     "raw": str(exc),
-                    "can_disable": True,
-                    "can_enable": True,
                 },
             }
 
@@ -209,19 +209,29 @@ class TaskService:
     def get_logs(self, task: Task, lines: int = TASK_LOG_LINE_LIMIT) -> str:
         if self.runtime.is_fake:
             return self._require_fake_state().get_task_log(task.name)
-        try:
-            return self.systemd_adapter.journal(task.service_name, lines)
-        except CalledProcessError:
-            return "Retrieval Error"
+        return self.job_state_store.task_log(self._worker_job_definition(task))
 
     def start_task(self, task: Task) -> None:
+        self._require_worker_job_module_applied(task)
         if self.runtime.is_fake:
             self._start_fake_task(task.name)
             return
         try:
-            self.systemd_adapter.start_unit(task.service_name)
+            self.command_runner.popen(
+                [
+                    sys.executable,
+                    "-m",
+                    "simple_safer_server.worker",
+                    "--run-job",
+                    task.worker_job_name,
+                ],
+                stdout=DEVNULL,
+                stderr=DEVNULL,
+                start_new_session=True,
+            )
+            return
         except Exception as exc:
-            raise RuntimeError(f"Failed to start {task.service_name}: {exc}") from exc
+            raise RuntimeError(f"Failed to start worker job {task.worker_job_name}: {exc}") from exc
 
     def stop_task(self, task: Task) -> None:
         if self.runtime.is_fake:
@@ -247,244 +257,107 @@ class TaskService:
             ):
                 fake_state.set_task_state(task.name, status=Status.STOPPED)
             return
-        try:
-            self.systemd_adapter.stop_unit(task.service_name)
-        except Exception as exc:
-            raise RuntimeError(f"Failed to stop {task.service_name}: {exc}") from exc
-
-    def disable_schedule(
-        self,
-        task: Task,
-        mode: str,
-        *,
-        hours: int | None = None,
-    ) -> None:
-        expires_at = None
-        if mode == "temporary":
-            if hours is None:
-                raise ValueError("temporary schedule disable requires hours")
-            expires_at = utc_now() + timedelta(hours=hours)
-        self.disabled_timer_service.disable(
-            task.name,
-            task.timer_name,
-            mode=mode,
-            expires_at=expires_at,
-        )
-
-    def enable_schedule(self, task: Task) -> None:
-        self.disabled_timer_service.enable(task.timer_name)
+        raise RuntimeError(f"{task.name} runs through the worker and cannot be stopped here.")
 
     def schedule_state(self, task: Task) -> dict[str, Any]:
-        raw_next_run = self.get_next_run(task)
-        record = self.disabled_timer_service.get_record(task.timer_name)
-        if record:
-            state = "restore_failed" if record.get("restore_failed") else record.get("mode")
-            label = "Restore failed" if state == "restore_failed" else "Disabled"
-            if state == "temporary":
-                try:
-                    label = "Disabled until {}".format(
-                        self._format_compact_datetime(parse_timestamp(record.get("expires_at")))
-                    )
-                except ValueError:
-                    # Malformed state still means systemd is disabled; keep the recovery action visible.
-                    label = "Disabled"
-            return {
-                "state": state,
-                "label": label,
-                "source": "simple_safer_server",
-                "mode": record.get("mode"),
-                "expires_at": record.get("expires_at"),
-                "restore_attempts": record.get("restore_attempts", 0),
-                "restore_failed": bool(record.get("restore_failed")),
-                "raw_next_run": raw_next_run,
-                "can_disable": True,
-                "can_enable": True,
-            }
+        return self._worker_schedule_state(task)
 
-        if self.runtime.is_fake:
-            return {
-                "state": "active",
-                "label": self._format_compact_datetime(parse_systemd_datetime(raw_next_run)),
-                "source": "fake",
-                "raw_next_run": raw_next_run,
-                "can_disable": True,
-                "can_enable": False,
-            }
+    def _worker_job_definition(self, task: Task) -> JobDefinition:
+        return self.job_registry.job_for_name(task.worker_job_name)
 
-        try:
-            unit_state = self._systemd_property(task.timer_name, "UnitFileState")
-            active_state = self._systemd_property(task.timer_name, "ActiveState")
-            load_state = self._systemd_property(task.timer_name, "LoadState")
-        except CalledProcessError as exc:
-            return self._schedule_issue_state(raw_next_run, str(exc))
-
-        if unit_state in {"disabled", "masked"}:
-            return {
-                "state": "external_disabled",
-                "label": "Disabled externally",
-                "source": "systemd",
-                "raw_next_run": raw_next_run,
-                "raw": {
-                    "unit_file_state": unit_state,
-                    "active_state": active_state,
-                    "load_state": load_state,
-                },
-                "can_disable": True,
-                "can_enable": True,
-            }
-        if unit_state == "enabled" and active_state in {"active", "waiting", "inactive"}:
-            return {
-                "state": "active",
-                "label": self._format_compact_datetime(parse_systemd_datetime(raw_next_run)),
-                "source": "systemd",
-                "raw_next_run": raw_next_run,
-                "can_disable": True,
-                "can_enable": False,
-            }
-        return self._schedule_issue_state(
-            raw_next_run,
-            {
-                "unit_file_state": unit_state,
-                "active_state": active_state,
-                "load_state": load_state,
-            },
+    def _require_worker_job_module_applied(self, task: Task) -> None:
+        require_job_module_applied(
+            self._worker_job_definition(task),
+            module_registry=self.module_registry,
+            runtime=self.runtime,
         )
 
-    def _schedule_issue_state(self, raw_next_run: str, raw: Any) -> dict[str, Any]:
-        return {
-            "state": "issue",
-            "label": "Schedule issue",
-            "source": "systemd",
-            "raw_next_run": raw_next_run,
-            "raw": raw,
-            "guidance": "Inspect systemd or regenerate units from System Updates.",
-            "can_disable": True,
-            "can_enable": True,
-        }
+    def _worker_job_module_is_applied(self, task: Task) -> bool:
+        return job_module_is_applied(
+            self._worker_job_definition(task),
+            module_registry=self.module_registry,
+            runtime=self.runtime,
+        )
 
-    def _systemd_property(self, unit_name: str, property_name: str) -> str:
-        output = self.systemd_adapter.show_property(unit_name, property_name)
-        if "=" in output:
-            return output.split("=", 1)[1].strip()
-        return output.strip()
+    def _worker_schedule_state(self, task: Task) -> dict[str, Any]:
+        job = self._worker_job_definition(task)
+        if not self._worker_job_module_is_applied(task):
+            return {
+                "state": "setup-required",
+                "label": "Setup required",
+                "source": "simple_safer_server",
+                "raw_next_run": "Setup required",
+            }
+        if not job.is_worker_scheduled:
+            return {
+                "state": "manual",
+                "label": "Manual only",
+                "source": "simple_safer_server",
+                "raw_next_run": "Manual only",
+            }
+        config = self.config_manager.get_all_config()
+        if not job.is_enabled(config):
+            return {
+                "state": "disabled",
+                "label": "Disabled",
+                "source": "simple_safer_server",
+                "raw_next_run": "Disabled",
+            }
+        state = self.job_state_store.job(job.name)
+        next_run_at = parse_timestamp(state.get("next_run_at"))
+        status = state.get("status", "Not Run Yet")
+        if next_run_at is None and job.is_daily_scheduled:
+            next_run_at = next_daily_run_after(
+                datetime.now().astimezone(),
+                daily_time_with_offset(
+                    job.daily_time_from_config(config),
+                    job.daily_time_offset_minutes,
+                ),
+            )
+            raw_next_run = format_timestamp(next_run_at)
+        else:
+            raw_next_run = state.get("next_run_at")
+        if next_run_at is None:
+            label = "Due now"
+            raw_next_run = "Due now"
+        else:
+            label = self._format_compact_datetime(next_run_at)
+        return {
+            "state": "running" if status == Status.RUNNING else "active",
+            "label": "Running" if status == Status.RUNNING else label,
+            "source": "worker",
+            "raw_next_run": raw_next_run,
+            "interval_seconds": job.interval_seconds,
+        }
 
     def _format_compact_datetime(self, value: datetime | None) -> str:
         if value is not None and value.tzinfo is not None:
-            # Disabled-timer state is stored in UTC, but schedule labels should match
-            # the local clock admins use when choosing a temporary disable duration.
             value = value.astimezone().replace(tzinfo=None)
         return format_compact_schedule_datetime(value, datetime.now())
 
     def get_next_run(self, task: Task) -> str:
-        if self.runtime.is_fake:
-            if task.name == "DDNS Update":
-                # Fake-mode DDNS reports the next 5-minute boundary: start with
-                # datetime.now(), round the minute via (now.minute // 5 + 1) * 5,
-                # and let timedelta handle hour rollover when that reaches 60.
-                # The UI expects a minute-precision "%Y-%m-%d %H:%M:00" string.
-                now = datetime.now()
-                minutes = (now.minute // 5 + 1) * 5
-                next_run = now.replace(minute=0, second=0, microsecond=0) + timedelta(
-                    minutes=minutes
-                )
-                return next_run.strftime("%Y-%m-%d %H:%M:00")
-            if task.name == "App Update":
-                backup_time = self.config_manager.get_value(
-                    "schedule", "backup_cloud_time", "03:00"
-                )
-                return self._require_fake_state().get_next_run(task.name, backup_time or "03:00")
-            backup_time = self.config_manager.get_value("schedule", "backup_cloud_time", "03:00")
-            return self._require_fake_state().get_next_run(task.name, backup_time or "03:00")
-        try:
-            output = self.systemd_adapter.show_property(task.timer_name, "NextElapseUSecRealtime")
-            if "=" in output:
-                return output.split("=")[-1].strip()
-            return "Unknown"
-        except CalledProcessError:
-            return "Retrieval Error"
+        return self._worker_schedule_state(task)["raw_next_run"]
 
     def get_last_run(self, task: Task) -> str:
         if self.runtime.is_fake:
             task_state = self._require_fake_state().get_task_state(task.name)
             return task_state.get("last_run") or "Not Run Yet"
-        try:
-            output = self.systemd_adapter.show_property(task.service_name, "ExecMainStartTimestamp")
-            if "=" in output:
-                return output.split("=")[-1].strip()
-            return "Unknown"
-        except CalledProcessError:
-            return "Retrieval Error"
+        return self.job_state_store.job(task.worker_job_name).get("last_run") or "Not Run Yet"
 
     def get_last_run_duration(self, task: Task) -> str:
         if self.runtime.is_fake:
             task_state = self._require_fake_state().get_task_state(task.name)
             return task_state.get("last_run_duration", "-")
-        try:
-            output = self.systemd_adapter.show_properties(
-                task.service_name,
-                "ExecMainStartTimestampMonotonic",
-                "ExecMainExitTimestampMonotonic",
-            )
-            start = exit_ts = None
-            for line in output.splitlines():
-                if line.startswith("ExecMainStartTimestampMonotonic="):
-                    value = line.split("=", 1)[1].strip()
-                    if value:
-                        start = int(value)
-                elif line.startswith("ExecMainExitTimestampMonotonic="):
-                    value = line.split("=", 1)[1].strip()
-                    if value:
-                        exit_ts = int(value)
-
-            if start is not None and exit_ts is not None and exit_ts >= start:
-                delta = timedelta(microseconds=exit_ts - start)
-                total_seconds = int(delta.total_seconds())
-                months, days = divmod(delta.days, 30)
-                hours, rem = divmod(total_seconds % 86400, 3600)
-                minutes, seconds = divmod(rem, 60)
-                parts = []
-                if months:
-                    parts.append(f"{months}mo")
-                if days:
-                    parts.append(f"{days}d")
-                if hours:
-                    parts.append(f"{hours}h")
-                if minutes:
-                    parts.append(f"{minutes}m")
-                parts.append(f"{seconds}s")
-                return " ".join(parts)
-            return "Unknown"
-        except CalledProcessError:
-            return "Retrieval Error"
+        duration = self.job_state_store.job(task.worker_job_name).get("last_duration_seconds")
+        if duration is None:
+            return "-"
+        return f"{duration}s"
 
     def get_status(self, task: Task) -> str:
         if self.runtime.is_fake:
             task_state = self._require_fake_state().get_task_state(task.name)
             return task_state.get("status", Status.NOT_RUN_YET)
-        try:
-            output = self.systemd_adapter.show_property(task.service_name, "LoadState")
-            if "not-found" in output:
-                return Status.MISSING
-
-            output = self.systemd_adapter.is_active(task.service_name)
-            if output == "activating":
-                return Status.RUNNING
-
-            result_output = self.systemd_adapter.show_property(task.service_name, "Result")
-            if "=" in result_output:
-                result_value = result_output.split("=")[-1].strip()
-                if result_value == "success":
-                    output = self.systemd_adapter.show_property(
-                        task.service_name, "ExecMainStartTimestamp"
-                    )
-                    if output.endswith("=") or output == "":
-                        return Status.NOT_RUN_YET
-                    return Status.SUCCESS
-                return Status.FAILURE
-
-            return Status.ERROR
-        except CalledProcessError:
-            return Status.ERROR
+        return self.job_state_store.job(task.worker_job_name).get("status", Status.NOT_RUN_YET)
 
     def _run_fake_cloud_backup(self, cancel_event: threading.Event) -> None:
         fake_state = self._require_fake_state()
@@ -518,7 +391,7 @@ class TaskService:
         proc = self.rclone_adapter.sync(
             source,
             destination,
-            config_path=str(rclone_config_path) if rclone_config_path.exists() else None,
+            config_path=str(rclone_config_path),
             bandwidth_limit=bandwidth_limit,
         )
         stdout_output, stderr_output = self._collect_process_output(
@@ -655,34 +528,15 @@ class TaskService:
         fake_state = self._require_fake_state()
         if cancel_event.is_set():
             raise RuntimeError("Task was cancelled.")
-        ddns_script = self.runtime.repo_root / "scripts" / "ddns_update.py"
 
         # Fake mode avoids local systemd, but DDNS itself is still a provider
         # integration that developers need to exercise against real test records.
-        try:
-            proc = self.command_runner.popen(
-                [sys.executable, str(ddns_script)],
-                stdout=PIPE,
-                stderr=PIPE,
-                text=True,
-                bufsize=1,
-            )
-            stdout_output, stderr_output = self._collect_process_output(
-                proc, cancel_event, "ddns-update"
-            )
-            if stdout_output:
-                fake_state.append_task_log(task_name, stdout_output)
-            if stderr_output:
-                fake_state.append_task_log(task_name, stderr_output)
-
-            if cancel_event.is_set():
-                raise RuntimeError("Task was cancelled.")
-
-            if proc.returncode != 0:
-                raise RuntimeError(f"DDNS update script exited with code {proc.returncode}")
-        except (OSError, SubprocessError) as exc:
-            fake_state.append_task_log(task_name, f"Subprocess error: {exc!s}")
-            raise RuntimeError(f"Failed to run DDNS update script: {exc!s}") from exc
+        exit_code = int(run_ddns_update() or 0)
+        fake_state.append_task_log(task_name, f"DDNS update exited with code {exit_code}.")
+        if cancel_event.is_set():
+            raise RuntimeError("Task was cancelled.")
+        if exit_code != 0:
+            raise RuntimeError(f"DDNS update exited with code {exit_code}.")
 
     def _collect_process_output(
         self,

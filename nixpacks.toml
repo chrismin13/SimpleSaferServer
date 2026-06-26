@@ -13,7 +13,7 @@ WEB_THREADS = "4"
 # Nixpacks' built-in Python archive can lag behind new Python releases. This
 # pin points at a nixpkgs snapshot that exposes python314 for the Railway demo.
 nixpkgsArchive = "49a4bd0573c376468dd7996ddb6f9fa31d8c4d97"
-nixPkgs = ["python314", "uv", "rclone", "msmtp", "smartmontools"]
+nixPkgs = ["python314", "uv", "rclone", "smartmontools"]
 
 [phases.install]
 cmds = ["uv sync --frozen --no-dev"]

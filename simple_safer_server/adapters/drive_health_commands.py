@@ -10,7 +10,6 @@ from simple_safer_server.adapters.command_runner import (
 BLKID_TIMEOUT_SECONDS = 15
 HDSENTINEL_TIMEOUT_SECONDS = 45
 SMARTCTL_TIMEOUT_SECONDS = 60
-ALERT_EMAIL_TIMEOUT_SECONDS = 30
 
 
 class DriveHealthCommandAdapter:
@@ -49,15 +48,6 @@ class DriveHealthCommandAdapter:
             capture_output=True,
             text=True,
             timeout=HDSENTINEL_TIMEOUT_SECONDS,
-        )
-
-    def send_email(self, from_address: str, email_address: str, email_body: str) -> None:
-        self._command_runner.run(
-            ["msmtp", f"--from={from_address}", email_address],
-            input=email_body,
-            text=True,
-            check=True,
-            timeout=ALERT_EMAIL_TIMEOUT_SECONDS,
         )
 
 

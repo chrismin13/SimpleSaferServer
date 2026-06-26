@@ -23,7 +23,7 @@ class UserCommandAdapter:
 
     def create_system_user(self, username: str) -> None:
         self._command_runner.run(
-            ["useradd", "-m", "-s", "/bin/bash", username],
+            ["useradd", "--system", "--no-create-home", "--shell", "/usr/sbin/nologin", username],
             check=True,
             timeout=USER_COMMAND_TIMEOUT_SECONDS,
         )
@@ -51,6 +51,13 @@ class UserCommandAdapter:
     def remove_samba_user(self, username: str) -> None:
         self._command_runner.run(
             ["smbpasswd", "-x", username],
+            check=True,
+            timeout=USER_COMMAND_TIMEOUT_SECONDS,
+        )
+
+    def remove_system_user(self, username: str) -> None:
+        self._command_runner.run(
+            ["userdel", username],
             check=True,
             timeout=USER_COMMAND_TIMEOUT_SECONDS,
         )

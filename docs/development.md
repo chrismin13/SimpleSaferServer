@@ -34,11 +34,27 @@ Feature routes should live in blueprints. `setup_wizard.py` already uses this pa
 
 System behavior belongs outside route modules. Code that touches systemd, rclone, Samba, filesystems, SMTP, provider APIs, disks, or secrets should live behind a small service or adapter boundary.
 
+New feature work should also follow `docs/redefinition_roadmap.md`. SimpleSaferServer is moving toward a small base app with optional managed modules. A module that writes host state must expose its required tools, owned resources, privileged actions, setup plan, uninstall behavior, route metadata, navigation metadata, worker jobs, and user-facing help text.
+
+When adding or changing a route in a module blueprint, update that module's `ModuleRoute` metadata in the same change. The rule, endpoint, and HTTP methods should match the Flask route. `tests/test_core_modules.py::test_builtin_module_route_metadata_matches_registered_blueprints` checks that the built-in module contracts and registered blueprints stay in sync.
+
 Fake mode should be an alternate implementation behind those boundaries. Avoid scattering `runtime.is_fake` conditionals through unrelated route logic.
 
 Shared response and validation helpers should be preferred over per-route ad hoc response shapes. API routes should follow `docs/api_responses.md`: success responses use a `data` envelope, failures use Problem Details with real HTTP status codes, and services return Python objects or raise app-level exceptions instead of returning HTTP-shaped dictionaries.
 
-Security work should follow the app's admin trust model. SimpleSaferServer is a root-run, admin-only local management tool, so do not hide useful managed credentials or configuration from administrators just for appearance. Credential editor endpoints may return the stored secret when that is the behavior the editor needs. Avoid accidental spread instead: keep secrets out of logs, broad status responses, process argv, unrelated UI, and overly broad filesystem permissions.
+Security work should follow the app's admin trust model. SimpleSaferServer is an admin-only local management tool: the Web UI and worker run as the `sss` service user, and root-only work goes through allowlisted helper actions. Do not hide useful managed credentials or configuration from administrators just for appearance. Credential editor endpoints may return the stored secret when that is the behavior the editor needs. Avoid accidental spread instead: keep secrets out of logs, broad status responses, process argv, unrelated UI, and overly broad filesystem permissions.
+
+Privileged writes should go through `simple_safer_server.core.privileged_actions` when they need a root-capable boundary or carry secrets. The `sss-helper` command accepts one allowlisted action name and a JSON object on stdin. Web routes should use `simple_safer_server.core.privileged_client.PrivilegedActionClient` for helper-backed actions instead of calling the privileged service directly. Do not pass passwords, tokens, or raw config text in argv. A module that adds a privileged action must also list that action in its module contract so `sss module plan <module>` shows it.
+
+Module lifecycle work should use `simple_safer_server.core.module_lifecycle`. Applying a module reruns read-only requirement checks and records only resources marked as apply-time ownership in the module contract. Some planned resources, such as Samba include files, storage markers, and fstab entries, are shown in the setup plan but must be recorded only after the route or helper action actually writes them. Generic uninstall removes safe app-owned files declared with explicit placeholders such as `<config>/smtp.conf`, app-owned config sections such as `<config>/config.conf[ddns]`, app-owned secret keys such as `<config>/.secrets[duckdns_token]`, and no-op `module-state` setup markers, then removes manifest records only if every current record is safe for generic cleanup. Actual host-file removal must be module-specific and conservative. If generic uninstall cannot safely clean a record, it must leave the manifest intact. Read-only modules must reject apply and uninstall actions instead of pretending to perform setup.
+
+Host-writing module routes should call `require_module_applied()` before saving config or running a helper action. First-run setup routes that perform the same write should apply the module as part of the setup flow so later edits have an ownership record to check.
+
+When a helper action writes a host resource, it should record the exact file, account, or entry with `record_runtime_owned_resource()` after the write succeeds. The module contract tells the user what SSS plans to own; the helper record proves what was actually written.
+
+Module setup checks should use `simple_safer_server.core.module_checks`. Checks are read-only:
+they may inspect whether declared tools are available, but they must not install packages, edit
+config, start services, or repair anything.
 
 Avoid persistent writes unless the data must survive restart or is durable operator history/config. Use volatile runtime state for status/cache data that can be rebuilt.
 
@@ -46,14 +62,16 @@ Use `simple_safer_server.services.file_persistence` for app-owned file writes. S
 
 `docs/architecture.md` describes the current package architecture. New code should move toward:
 
+- `simple_safer_server/core/` for module contracts, setup plans, ownership records, CLI helpers, job primitives, and privileged-action routing.
+- `simple_safer_server/modules/` for deep feature modules that keep their routes, services, adapters, help text, jobs, and setup behavior together.
 - `simple_safer_server/routes/` for Flask blueprints.
 - `simple_safer_server/services/` for route-independent behavior.
 - `simple_safer_server/adapters/` for system and fake-mode boundaries.
 - `simple_safer_server/web/` for shared response and validation helpers.
 
-Keep `__init__.py` files minimal. Put meaningful behavior in clearly named modules such as `services/task_service.py` or `routes/ddns.py`.
+Keep `__init__.py` files minimal. Put meaningful behavior in clearly named modules such as `services/task_service.py` or `modules/ddns/service.py`.
 
-Do not add top-level Python modules for application runtime code. Put new route, service, adapter, web helper, or legacy migration behavior inside the `simple_safer_server/` package.
+Do not add top-level Python modules for application runtime code. Put new route, service, adapter, or web helper inside the `simple_safer_server/` package.
 
 ## Python Style
 
@@ -83,11 +101,37 @@ Chronological task notes belong in `notes/`. Notes are handoff history, not cano
 
 When adding files, services, timers, state directories, generated artifacts, or system config, check whether `uninstall.sh` should remove them.
 
-Remove standalone proof-of-concept scripts once their behavior is supported inside the app. If a script is retained only for operator migration, document that status and avoid expanding it.
+Remove standalone proof-of-concept scripts once their behavior is supported inside the app.
 
 ## Frontend Rules
 
-Reuse existing Bunker interface patterns and check `docs/internal_ui_patterns.md` before adding new UI behavior.
+Move new UI toward the component direction in `docs/redefinition_roadmap.md`: ready-made Web Awesome components, shared Jinja UI templates, htmx for server-rendered interactions, and module-owned help text. Existing custom UI patterns may stay in place until a page adopts shared components, but do not add new custom design-system primitives when a ready-made component or shared template covers the need.
+
+User guidance is part of the feature, not an afterthought. New pages and setup flows should include visible plain-English help for purpose, choices, risks, empty states, confirmations, errors, and recovery actions. Important safety warnings should be visible in the page or modal body rather than hidden only in tooltips or markdown docs.
+
+Feature modules should put reusable UI guidance in their `ModuleHelp` contract: field help, tooltips, empty states, confirmations, success messages, error explanations, and recovery actions. They should also declare their page/API routes and sidebar navigation items in the module contract. Page templates can then render module-owned copy and navigation metadata instead of duplicating text and page lists from markdown docs.
+
+Use `templates/partials/module_help.html` for the top-of-page module help band when a module page
+needs purpose text, setup intro text, or visible warnings. Pass the module contract into the
+template and render copy from `ModuleHelp` instead of retyping the same guidance in the page.
+
+`htmx` is available from the local pinned asset at
+`static/vendor/htmx/2.0.10/htmx.min.js`. Use it for server-rendered interactions when HTML
+fragments keep the page simpler than custom `fetch()` code. Do not add a CDN htmx script.
+
+Web Awesome components must be locally vendored before use. The first shared component is
+`wa-callout` from `static/vendor/webawesome/3.9.0/components/callout/callout.js`, used by the
+module help macro. Do not add runtime links to the Web Awesome CDN.
+
+Scheduled feature work belongs in the module contract's job list. `create_builtin_job_registry()` collects jobs from the module registry, so do not add feature jobs directly to the central registry.
+
+Keep English as the source text for now, but write UI copy so it can be localized later. Prefer complete sentences, avoid assembling translated text from fragments, and keep module copy near the module behavior that uses it. Flask templates receive `_` and `gettext` from `simple_safer_server.web.i18n`; use `_()` in shared templates when wrapping user-facing copy is straightforward. Do not add Babel catalogs, message compilation, or a JavaScript translation build until the app actually ships another language.
+
+Page-specific JavaScript should receive user-facing strings from the route/template as JSON instead
+of owning the only copy of that text. Keep the route-side copy gettext-ready, render it with
+`tojson`, and let the browser script keep only fallback strings for unusual failure states. Use
+`window.AppFormat` from `static/js/common.js` for date, relative time, number, and percent display so
+formatting can follow the user's browser locale without a build step.
 
 ## Dependency Management
 
@@ -169,4 +213,4 @@ Continuous integration runs one uv-managed Python lane on the target stable Pyth
 
 Bandit skips the generic subprocess import/execution rules because SimpleSaferServer is a local admin tool that intentionally calls Debian system utilities. Keep those subprocess calls behind services or adapters, validate user-controlled arguments before shelling out, and document operational assumptions near the code.
 
-Short `CommandRunner.run(...)` calls must pass an explicit `timeout=` so admin request handlers do not block forever on a wedged system command. Long-running supervised work such as apt workers, rclone sync, and lifecycle commands such as reboot or poweroff may be deliberately exempted in `tests/test_subprocess_timeouts.py`.
+Short `CommandRunner.run(...)` calls must pass an explicit `timeout=` so admin request handlers do not block forever on a wedged system command. Long-running supervised work such as rclone sync and lifecycle commands such as reboot or poweroff may be deliberately exempted in `tests/test_subprocess_timeouts.py`.

@@ -2,8 +2,8 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from simple_safer_server.services import backup_drive_unmount
-from simple_safer_server.services.backup_drive_setup import BackupDriveSetupError
+from simple_safer_server.modules.storage import backup_drive_unmount
+from simple_safer_server.modules.storage.backup_drive_setup import BackupDriveSetupError
 
 
 class FakeBackupDriveCommandAdapter:
@@ -34,7 +34,7 @@ class FakeBackupDriveCommandAdapter:
 
 
 class BackupDriveUnmountTests(unittest.TestCase):
-    @patch('simple_safer_server.services.backup_drive_unmount._get_mount_for_partition')
+    @patch('simple_safer_server.modules.storage.backup_drive_unmount._get_mount_for_partition')
     def test_is_selected_partition_managed_backup_drive_matches_live_mount_point(
         self,
         mock_get_mount,
@@ -56,7 +56,7 @@ class BackupDriveUnmountTests(unittest.TestCase):
         mock_get_mount.assert_called_once_with('/dev/sdb1', command_adapter=None)
 
     @patch(
-        'simple_safer_server.services.backup_drive_unmount._get_mount_for_partition',
+        'simple_safer_server.modules.storage.backup_drive_unmount._get_mount_for_partition',
         return_value=None,
     )
     def test_is_selected_partition_managed_backup_drive_does_not_match_by_uuid_only(
@@ -79,7 +79,7 @@ class BackupDriveUnmountTests(unittest.TestCase):
         system_utils.is_mounted.assert_not_called()
 
     @patch(
-        'simple_safer_server.services.backup_drive_unmount._get_mount_for_partition',
+        'simple_safer_server.modules.storage.backup_drive_unmount._get_mount_for_partition',
         return_value=None,
     )
     def test_is_selected_partition_managed_backup_drive_does_not_match_unmounted_old_backup_partition(
@@ -120,9 +120,6 @@ class BackupDriveUnmountTests(unittest.TestCase):
             command_adapter.calls,
             [
                 ('close_smb_share', '/media/backup'),
-                ('stop_unit', 'check_mount.service'),
-                ('stop_unit', 'check_health.service'),
-                ('stop_unit', 'backup_cloud.service'),
                 ('stop_unit', 'smbd'),
                 ('stop_unit', 'nmbd'),
                 ('unmount', '/media/backup'),

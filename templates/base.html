@@ -5,14 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="SimpleSaferServer — Manage backups, drives, and network sharing">
     <title>{% block title %}{{ browser_title('SimpleSaferServer') }}{% endblock %}</title>
-    <!-- Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <!-- Font Awesome -->
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <!-- Design System -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/design-tokens.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/fontawesome/6.4.0/css/all.min.css') }}">
+    <!-- App theme -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/favicon.png') }}">
@@ -46,35 +42,11 @@
             </div>
 
             <div class="sidebar-nav">
-                <a href="{{ url_for('task_routes.dashboard') }}" class="nav-item {% if request.endpoint == 'task_routes.dashboard' %}active{% endif %}">
-                    <i class="fas fa-house fa-fw"></i> Overview
+                {% for item in sidebar_nav_items %}
+                <a href="{{ url_for(item.endpoint) }}" class="nav-item {% if request.endpoint in item.active_endpoints %}active{% endif %}">
+                    <i class="{{ item.icon }}"></i> {{ item.label }}
                 </a>
-                <a href="{{ url_for('network_file_sharing') }}" class="nav-item {% if request.endpoint == 'network_file_sharing' %}active{% endif %}">
-                    <i class="fas fa-share-nodes fa-fw"></i> File Sharing
-                </a>
-                <a href="{{ url_for('users_routes.users_page') }}" class="nav-item {% if request.endpoint == 'users_routes.users_page' %}active{% endif %}">
-                    <i class="fas fa-users fa-fw"></i> Users
-                </a>
-                <a href="{{ url_for('storage_routes.storage_page') }}" class="nav-item {% if request.endpoint in ['storage_routes.storage_page', 'storage_routes.storage_change_drive_page', 'storage_routes.storage_existing_folder_page'] %}active{% endif %}">
-                    <i class="fas fa-folder-tree fa-fw"></i> Storage
-                </a>
-                <a href="{{ url_for('drive_health_routes.drives') }}" class="nav-item {% if request.endpoint == 'drive_health_routes.drives' %}active{% endif %}">
-                    <i class="fas fa-hard-drive fa-fw"></i> Drive Health
-                </a>
-                {% if is_admin %}
-                <a href="{{ url_for('ddns_routes.ddns_page') }}" class="nav-item {% if request.endpoint == 'ddns_routes.ddns_page' %}active{% endif %}">
-                    <i class="fas fa-globe fa-fw"></i> DDNS
-                </a>
-                {% endif %}
-                <a href="{{ url_for('cloud_backup_routes.cloud_backup_page') }}" class="nav-item {% if request.endpoint == 'cloud_backup_routes.cloud_backup_page' %}active{% endif %}">
-                    <i class="fas fa-cloud-arrow-up fa-fw"></i> Cloud Backup
-                </a>
-                <a href="{{ url_for('system_updates_routes.system_updates_page') }}" class="nav-item {% if request.endpoint == 'system_updates_routes.system_updates_page' %}active{% endif %}">
-                    <i class="fas fa-download fa-fw"></i> System Updates
-                </a>
-                <a href="{{ url_for('alerts_routes.alerts_page') }}" class="nav-item {% if request.endpoint == 'alerts_routes.alerts_page' %}active{% endif %}">
-                    <i class="fas fa-bell fa-fw"></i> Alerts
-                </a>
+                {% endfor %}
             </div>
 
             <div class="sidebar-footer">
@@ -121,6 +93,8 @@
         </div>
     </div>
 
+    <script type="module" src="{{ url_for('static', filename='vendor/webawesome/3.9.0/components/callout/callout.js') }}"></script>
+    <script src="{{ url_for('static', filename='vendor/htmx/2.0.10/htmx.min.js') }}" defer></script>
     <script src="{{ url_for('static', filename='js/common.js') }}"></script>
     {% block extra_js %}{% endblock %}
 </body>

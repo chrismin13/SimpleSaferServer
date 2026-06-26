@@ -19,12 +19,28 @@ SimpleSaferServer separates management access from file-share access.
 
 ## Admin Trust Model
 
-SimpleSaferServer is a root-run local management tool. Administrators are trusted operators with
-server-level access, so credential editor screens may show stored credentials and credential-bearing
-configuration when that is useful for inspection or edits.
+SimpleSaferServer is an admin-only local management tool. Administrators are trusted operators with
+server-level access, so credential editor screens may show stored credentials and
+credential-bearing configuration when that is useful for inspection or edits.
 
 The app should still avoid accidental credential spread. Do not put secrets in broad status
 responses, unrelated UI, logs, process arguments, or world-readable files.
+
+The installed Web UI and worker run as the `sss` service user instead of root. Privileged work goes
+through allowlisted actions. `sss-helper` runs registered actions from JSON passed on stdin, which
+lets root-capable writes avoid leaking secrets through argv. The installer gives the `sss` user a
+narrow sudoers rule for `/usr/local/bin/sss-helper` only. Current helper-backed actions cover SMTP
+config writes, cloud backup sync, DDNS updates, file sharing config publishing and reloads, Samba
+user sync/removal after File Sharing is applied, Drive Health live probes and scheduled checks, managed-drive
+setup, storage mounts, storage unmounts, storage formatting, storage safety checks, scheduled mount
+checks, restart, and shutdown.
+
+The Web UI calls the helper client for Samba share-file publishing and reloads,
+Samba user sync/removal after File Sharing is applied, Drive Health live probes, managed-drive setup, storage mounts, storage
+unmounts, and storage formatting. Dashboard restart and shutdown also go through the helper. Those
+actions still require admin intent in the UI, but the route code no longer performs the privileged
+work directly. The worker and `sss job run` use helper actions for Cloud Backup, DDNS, scheduled
+Drive Health, and the managed-drive mount check.
 
 ## Non-Admin Accounts
 
@@ -35,7 +51,9 @@ responses, unrelated UI, logs, process arguments, or world-readable files.
 ## Why This Matters
 
 - The web UI can change backup settings, schedules, alerts, cloud destinations, and managed storage configuration.
-- Some actions also trigger privileged system changes such as service restarts, Samba updates, apt package operations, Livepatch setup, and managed `/etc/fstab` changes.
+- Some actions also trigger privileged system changes such as service restarts, Samba updates,
+  storage safety checks, disk formatting, storage unmounts, and managed
+  `/etc/fstab` changes. The System Updates page is read-only for apt and Livepatch.
 - Keeping the management interface admin-only avoids mixing day-to-day file access with system administration privileges.
 
 ## Related Documentation

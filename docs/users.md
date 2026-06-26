@@ -23,7 +23,7 @@ The Users page allows administrators to manage user accounts.
 ## Behavior
 - User list updates live after changes.
 - All actions are performed via modals for a smooth experience.
-- Creating a user or changing a password also updates the Samba account used for SMB access. If Samba cannot accept the password, the web-login password is not saved, so the web UI and SMB access stay on the same credentials.
+- When File Sharing is applied, creating a user or changing a password also updates the File Sharing-owned Samba account used for SMB access. SSS refuses to overwrite an unmanaged Samba account with the same username. If Samba cannot accept the password, the web-login password is not saved, so the web UI and SMB access stay on the same credentials.
 
 ---
 

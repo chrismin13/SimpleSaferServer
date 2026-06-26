@@ -4,6 +4,50 @@
   const browseExistingBtn = document.getElementById('browseExistingStorageBtn');
   const existingError = document.getElementById('existingStorageError');
   const existingStatus = document.getElementById('existingStorageStatus');
+  const defaultCopy = {
+    messages: {
+      pathRequired: 'Enter a storage folder path.',
+      saving: 'Saving storage folder...',
+      saved: 'Storage folder saved.',
+      saveFailed: 'Could not save storage folder.'
+    },
+    folderPicker: {
+      loading: 'Loading...',
+      emptyMessage: 'No folders or files in this directory.',
+      loadFailed: 'Could not load folders.'
+    }
+  };
+
+  function mergeCopy(base, overrides) {
+    if (!overrides || typeof overrides !== 'object') return base;
+    Object.keys(overrides).forEach((key) => {
+      if (
+        overrides[key]
+        && typeof overrides[key] === 'object'
+        && !Array.isArray(overrides[key])
+        && base[key]
+        && typeof base[key] === 'object'
+      ) {
+        mergeCopy(base[key], overrides[key]);
+      } else {
+        base[key] = overrides[key];
+      }
+    });
+    return base;
+  }
+
+  function readCopy() {
+    const script = document.getElementById('storage-existing-folder-copy');
+    if (!script) return defaultCopy;
+    try {
+      return mergeCopy(JSON.parse(JSON.stringify(defaultCopy)), JSON.parse(script.textContent || '{}'));
+    } catch (error) {
+      console.error('Could not read Storage existing-folder page copy:', error);
+      return defaultCopy;
+    }
+  }
+
+  const copy = readCopy();
 
   function showInlineError(message) {
     if (!existingError) return;
@@ -33,11 +77,11 @@
     hideInlineError();
     const path = existingPathInput ? existingPathInput.value.trim() : '';
     if (!path) {
-      showInlineError('Enter a storage folder path.');
+      showInlineError(copy.messages.pathRequired);
       return;
     }
 
-    setStatus('Saving storage folder...', 'info');
+    setStatus(copy.messages.saving, 'info');
     window.AsyncButtonState.start(saveExistingBtn);
     try {
       const { message } = await window.ApiClient.fetchJson('/api/storage/existing-folder', {
@@ -45,16 +89,16 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path })
       });
-      setStatus(message || 'Storage folder saved.', 'success');
+      setStatus(message || copy.messages.saved, 'success');
       window.AsyncButtonState.success(saveExistingBtn);
-      if (window.showAlert) window.showAlert(message || 'Storage folder saved.', 'success');
+      if (window.showAlert) window.showAlert(message || copy.messages.saved, 'success');
       window.setTimeout(() => {
         window.location.assign('/storage');
       }, 900);
     } catch (error) {
       window.AsyncButtonState.error(saveExistingBtn);
       setStatus('', 'info');
-      showInlineError(error.message || 'Could not save storage folder.');
+      showInlineError(error.message || copy.messages.saveFailed);
     }
   }
 
@@ -66,6 +110,7 @@
       startPath: existingPathInput.value.trim() || '/',
       canCreate: false,
       showFiles: true,
+      copy: copy.folderPicker,
       onSelect: (folderPath) => {
         existingPathInput.value = folderPath;
         hideInlineError();

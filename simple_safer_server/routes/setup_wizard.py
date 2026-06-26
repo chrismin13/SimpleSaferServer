@@ -1,32 +1,39 @@
 import logging
-import os
-import stat
-import time
 from datetime import UTC, datetime
 from functools import wraps
 
 from flask import Blueprint, current_app, redirect, render_template, session
 
-from simple_safer_server.adapters.command_runner import CalledProcessError, SubprocessError
-from simple_safer_server.adapters.setup_commands import SetupCommandAdapter
-from simple_safer_server.services.backup_drive_setup import (
-    BackupDriveSetupError,
-    _get_mounted_partitions_for_disk,
-    apply_backup_drive_configuration,
-    unmount_disk_partitions,
-    unmount_selected_partition,
+from simple_safer_server.core.backup_readiness import build_backup_readiness
+from simple_safer_server.core.module_lifecycle import (
+    ModuleLifecycleError,
+    apply_module,
+    ensure_module_can_apply,
 )
-from simple_safer_server.services.backup_drive_setup import (
+from simple_safer_server.core.module_serialization import module_data, module_plan_data
+from simple_safer_server.core.ownership import record_runtime_owned_resource
+from simple_safer_server.core.privileged_client import (
+    PrivilegedActionClient,
+    PrivilegedActionClientError,
+)
+from simple_safer_server.modules.alerts.module import create_module as create_alerts_module
+from simple_safer_server.modules.cloud_backup import normalize_bandwidth_limit
+from simple_safer_server.modules.cloud_backup.module import (
+    create_module as create_cloud_backup_module,
+)
+from simple_safer_server.modules.storage.backup_drive_setup import BackupDriveSetupError
+from simple_safer_server.modules.storage.backup_drive_setup import (
     list_available_drives as get_available_backup_drives,
 )
-from simple_safer_server.services.backup_drive_unmount import (
-    is_selected_partition_managed_backup_drive,
-    unmount_managed_backup_drive,
+from simple_safer_server.modules.storage.location import (
+    StorageLocationError,
+    configure_existing_folder,
+    marker_path,
 )
-from simple_safer_server.services.cloud_backup_service import normalize_bandwidth_limit
+from simple_safer_server.modules.storage.module import create_module as create_storage_module
 from simple_safer_server.services.config_manager import ConfigManager
 from simple_safer_server.services.filesystem_browser import list_local_path
-from simple_safer_server.services.runtime import get_fake_state, get_runtime
+from simple_safer_server.services.runtime import get_runtime
 from simple_safer_server.services.schedule_time import (
     ScheduleTimeError,
     normalize_ui_schedule_time,
@@ -36,17 +43,12 @@ from simple_safer_server.services.server_identity import (
     ServerIdentityError,
     ServerIdentityService,
 )
-from simple_safer_server.services.smb_manager import SMBManager
-from simple_safer_server.services.storage_location import (
-    StorageLocationError,
-    configure_existing_folder,
-    mark_managed_drive_storage,
-)
-from simple_safer_server.services.system_utils import SystemUtils
 from simple_safer_server.services.user_manager import UserManager
 from simple_safer_server.web.api import json_data, json_problem, json_request_data
+from simple_safer_server.web.i18n import gettext
 from simple_safer_server.web.problems import (
     ApiProblem,
+    ConflictProblem,
     ForbiddenProblem,
     OperationProblem,
     UnauthorizedProblem,
@@ -54,21 +56,11 @@ from simple_safer_server.web.problems import (
 )
 
 setup = Blueprint('setup', __name__)
-runtime = get_runtime()
-fake_state = get_fake_state() if runtime.is_fake else None
-config_manager = ConfigManager(runtime=runtime)
-system_utils = SystemUtils(runtime=runtime)
-user_manager = UserManager(runtime=runtime)
-smb_manager = SMBManager(runtime=runtime)
-server_identity_service = ServerIdentityService(config_manager=config_manager, runtime=runtime)
-setup_command_adapter = SetupCommandAdapter()
+runtime = None
+config_manager = None
+user_manager = None
+server_identity_service = None
 logger = logging.getLogger(__name__)
-
-# How long to wait for udev to create a newly-partitioned device node
-# (e.g. /dev/nvme0n1p1) before giving up and reporting an error.
-PARTITION_POLL_INTERVAL_SECONDS = 0.5  # delay between existence checks
-PARTITION_POLL_TIMEOUT_SECONDS = 5.0  # maximum total wait
-MICROSOFT_BASIC_DATA_PARTITION_TYPE = "EBD0A0A2-B9E5-4433-87C0-68B6B72699C7"
 
 
 def _validation_problem(message, **extra):
@@ -77,6 +69,16 @@ def _validation_problem(message, **extra):
 
 def _operation_problem(message, **extra):
     return json_problem(OperationProblem(message, slug='setup-operation-failed', extra=extra))
+
+
+def _module_setup_problem(error):
+    return json_problem(
+        ConflictProblem(
+            str(error),
+            title=gettext("Module setup required"),
+            slug="module-setup-required",
+        )
+    )
 
 
 def _cloud_backup_service():
@@ -92,12 +94,240 @@ def _storage_command_runner():
     return None
 
 
+def _privileged_actions():
+    """Return the shared helper client, with fallback support for route tests."""
+    services = current_app.extensions.get("simple_safer_server")
+    if services is not None and hasattr(services, "privileged_actions"):
+        return services.privileged_actions
+    return PrivilegedActionClient()
+
+
+def _runtime():
+    """Return the active runtime, including fake-mode test/runtime overrides."""
+    services = current_app.extensions.get("simple_safer_server")
+    if services is not None and hasattr(services, "runtime"):
+        return services.runtime
+    if runtime is not None:
+        return runtime
+    return get_runtime()
+
+
+def _config_manager():
+    """Return the shared config manager without creating one at import time."""
+    services = current_app.extensions.get("simple_safer_server")
+    if services is not None and hasattr(services, "config_manager"):
+        return services.config_manager
+    if config_manager is not None:
+        return config_manager
+    return ConfigManager(runtime=_runtime())
+
+
+def _user_manager():
+    """Return the shared user manager so setup user writes use helper-backed services."""
+    services = current_app.extensions.get("simple_safer_server")
+    if services is not None and hasattr(services, "user_manager"):
+        return services.user_manager
+    if user_manager is not None:
+        return user_manager
+    try:
+        return UserManager(runtime=_runtime(), privileged_actions=_privileged_actions())
+    except TypeError:
+        # Route tests replace UserManager with a tiny constructor that only
+        # accepts runtime. The real app path above uses app.extensions.
+        return UserManager(runtime=_runtime())
+
+
+def _prepare_module_setup(module):
+    """Check module setup requirements before setup routes perform host writes."""
+    ensure_module_can_apply(module)
+
+
+def _record_module_setup(module):
+    """Record module ownership after setup routes finish the host write."""
+    apply_module(module, _runtime())
+
+
+def _record_storage_marker_write(storage_path: str):
+    """Record the exact marker file written by existing-folder setup."""
+    record_runtime_owned_resource(
+        _runtime(),
+        "storage",
+        kind="marker-file",
+        identifier=str(marker_path(storage_path)),
+        reason="Confirm cloud backup is reading the intended storage location.",
+    )
+
+
 def _server_identity_service():
     """Return the shared server-identity service, with test fallback support."""
     services = current_app.extensions.get("simple_safer_server")
     if services is not None and hasattr(services, "server_identity_service"):
         return services.server_identity_service
-    return server_identity_service
+    if server_identity_service is not None:
+        return server_identity_service
+    return ServerIdentityService(config_manager=_config_manager(), runtime=_runtime())
+
+
+def _backup_readiness():
+    """Return the shared backup-protection checklist used by setup and dashboard UI."""
+    services = current_app.extensions.get("simple_safer_server")
+    active_config_manager = (
+        services.config_manager
+        if services is not None and hasattr(services, "config_manager")
+        else _config_manager()
+    )
+    active_smb_manager = (
+        services.smb_manager if services is not None and hasattr(services, "smb_manager") else None
+    )
+    active_runtime = (
+        services.runtime if services is not None and hasattr(services, "runtime") else _runtime()
+    )
+    return build_backup_readiness(
+        active_config_manager,
+        runtime=active_runtime,
+        smb_manager=active_smb_manager,
+    )
+
+
+def _setup_module_plans():
+    """Build read-only setup plan previews for modules configured by onboarding."""
+    active_runtime = _runtime()
+    modules = {
+        "storage": create_storage_module(),
+        "cloud_backup": create_cloud_backup_module(),
+        "alerts": create_alerts_module(),
+    }
+    return {
+        key: {
+            "module": module_data(module, active_runtime),
+            "plan": module_plan_data(module.build_plan()),
+        }
+        for key, module in modules.items()
+    }
+
+
+def _setup_ui_text():
+    """Return browser copy used by the setup wizard script."""
+    _ = gettext
+    return {
+        "driveTypes": {
+            "usb": _("USB Drive"),
+            "removable": _("Removable Drive"),
+            "internal": _("Internal Drive"),
+        },
+        "storage": {
+            "selectDrive": _("Select a drive…"),
+            "unmountedReady": _("Unmounted (ready for formatting)"),
+            "mounted": _("Mounted"),
+            "mountedAtTemplate": _(" (Mounted at {mountpoint})"),
+            "unmountedSuffix": _("[unmounted]"),
+            "refreshingDrives": _("Refreshing drives…"),
+            "driveListRefreshed": _("Drive list refreshed."),
+            "loadFormatDrivesFailed": _("Failed to load drives for formatting"),
+            "refreshDrivesFailed": _("Failed to refresh drives."),
+            "refreshingPartitions": _("Refreshing partitions…"),
+            "partitionListRefreshed": _("Partition list refreshed."),
+            "loadMountDrivesFailed": _("Failed to load NTFS drives for mounting"),
+            "refreshPartitionsFailed": _("Failed to refresh partitions."),
+            "selectDriveFirst": _("Please select a drive first."),
+            "formattingDrive": _("Formatting drive…"),
+            "driveFormatted": _("Drive formatted successfully."),
+            "formatDriveFailed": _("Failed to format drive."),
+            "formatDriveError": _("An error occurred while formatting the drive"),
+            "unmountingDrive": _("Unmounting drive…"),
+            "driveUnmountedForFormat": _("Drive unmounted. You can continue formatting."),
+            "unmountDriveFailed": _("Failed to unmount drive."),
+            "unmountDriveError": _("An error occurred while unmounting the drive"),
+            "selectDriveToMount": _("Please select a drive to mount"),
+            "selectDriveShort": _("Please select a drive."),
+            "mountingDrive": _("Mounting drive…"),
+            "driveMounted": _("Drive mounted successfully."),
+            "mountDriveFailed": _("Failed to mount drive."),
+            "mountDriveError": _("An error occurred while mounting the drive"),
+            "existingFolderRequired": _("Enter the folder path to use for storage."),
+            "existingFolderFailed": _("Could not use this folder."),
+            "retryManagedUnmount": _("Retrying with the SMB-safe unmount path…"),
+            "driveUnmountedForMount": _(
+                "Drive unmounted. You can continue mounting the selected partition."
+            ),
+        },
+        "alerts": {
+            "correctFields": _("Please correct the highlighted fields."),
+            "allEmailFieldsRequired": _("Please fill in all email fields"),
+            "setupEmailPrefix": _("Error setting up email: "),
+            "setupEmailFallback": _("An error occurred while setting up email"),
+        },
+        "schedule": {
+            "correctFields": _("Please correct the highlighted fields."),
+            "selectBackupTime": _("Please select a backup time."),
+            "saveSchedulePrefix": _("Error saving schedule: "),
+        },
+        "cloudBackup": {
+            "skipFailed": _("Could not skip cloud backup."),
+            "connectMegaFailed": _("Error connecting to MEGA."),
+            "saveMegaFailed": _("Error saving MEGA config."),
+            "saveRcloneFailed": _("Error saving rclone config."),
+        },
+        "folderPicker": {
+            "mega": {
+                "loading": _("Loading..."),
+                "emptyMessage": _("No subfolders in this directory."),
+                "credentialsRequired": _("MEGA credentials are required before creating a folder."),
+                "loadFailed": _("Could not load folders."),
+                "createFailed": _("Error creating folder."),
+            },
+            "local": {
+                "loading": _("Loading..."),
+                "emptyMessage": _("No folders or files in this directory."),
+                "loadFailed": _("Could not load folders."),
+            },
+        },
+        "completion": {
+            "missingPrefix": _("Setup is still missing: "),
+            "missingSuffix": _("."),
+            "missingRequired": _("Setup is still missing a few required details."),
+            "failed": _("Could not complete setup."),
+            "fieldLabels": {
+                "backup.email_address": _("backup alert email address"),
+                "backup.mount_point": _("storage location"),
+                "backup.uuid": _("managed drive selection"),
+                "storage.mode": _("storage choice"),
+                "storage.path": _("storage folder"),
+                "storage.storage_id": _("storage marker"),
+                "email.email_from_address": _("email sender address"),
+                "email.smtp_server": _("SMTP server"),
+                "email.smtp_port": _("SMTP port"),
+                "email.smtp_user": _("SMTP username"),
+                "email.smtp_password": _("SMTP password"),
+                "schedule.backup_cloud_time": _("cloud backup schedule"),
+                "schedule.bandwidth_limit": _("bandwidth limit"),
+                "system.server_name": _("server name"),
+                "user.username": _("admin username"),
+            },
+        },
+        "admin": {
+            "correctFields": _("Please correct the highlighted fields."),
+            "createUserPrefix": _("Error creating user: "),
+            "createUserFallback": _("An error occurred while creating the user"),
+            "configureSystemPrefix": _("Error configuring system: "),
+            "configureSystemFallback": _("An error occurred while configuring the system"),
+        },
+    }
+
+
+def _render_setup_page():
+    try:
+        readiness = _backup_readiness()
+    except Exception as exc:
+        logger.error("Error building setup readiness checklist for page: %s", exc)
+        readiness = None
+    return render_template(
+        'setup.html',
+        server_name_help_text=SERVER_NAME_HELP_TEXT,
+        backup_readiness=readiness,
+        setup_module_plans=_setup_module_plans(),
+        setup_ui_text=_setup_ui_text(),
+    )
 
 
 def _valid_tcp_port(value):
@@ -113,9 +343,10 @@ def setup_api_access_required(route_handler):
 
     @wraps(route_handler)
     def wrapped(*args, **kwargs):
+        active_config_manager = _config_manager()
         # Once setup is complete these routes become admin maintenance tools,
         # so old bookmarked setup URLs must not keep working anonymously.
-        if not config_manager.is_setup_complete():
+        if not active_config_manager.is_setup_complete():
             return route_handler(*args, **kwargs)
 
         if 'username' not in session:
@@ -124,8 +355,9 @@ def setup_api_access_required(route_handler):
             )
 
         # Reload user data to ensure admin checks use the latest persisted roles.
-        user_manager.reload_users()
-        if not user_manager.is_admin(session['username']):
+        active_user_manager = _user_manager()
+        active_user_manager.reload_users()
+        if not active_user_manager.is_admin(session['username']):
             return json_problem(
                 ForbiddenProblem('Admin privileges required.', slug='setup-admin-required')
             )
@@ -145,50 +377,7 @@ MANAGED_UNMOUNT_RETRY_DETAILS = (
 )
 
 
-def get_partition_node(disk):
-    """Return the first-partition device node for *disk*.
-
-    Linux names partition nodes differently depending on the disk type:
-    - Standard SCSI/SATA disks (e.g. /dev/sdb)  → /dev/sdb1
-    - NVMe and MMC devices whose path already ends in a digit
-      (e.g. /dev/nvme0n1, /dev/mmcblk0)         → /dev/nvme0n1p1, /dev/mmcblk0p1
-
-    The rule is: if the last character of the disk path is a digit, insert a
-    'p' separator before the partition number so the kernel can tell where the
-    disk name ends and the partition number begins.
-
-    Raises ValueError if *disk* is not a non-empty string.
-    """
-    if not isinstance(disk, str) or not disk:
-        raise ValueError(f"disk must be a non-empty string, got {disk!r}")
-    if disk[-1].isdigit():
-        return f"{disk}p1"
-    return f"{disk}1"
-
-
-def _get_configured_backup_drive_identity():
-    return (
-        config_manager.get_value('backup', 'mount_point', runtime.default_mount_point),
-        config_manager.get_value('backup', 'uuid', ''),
-    )
-
-
-def _is_busy_unmount_error(error):
-    return 'busy' in str(error).lower()
-
-
-def _build_managed_unmount_retry_response(partition, configured_mount_point, configured_uuid):
-    if not is_selected_partition_managed_backup_drive(
-        partition,
-        configured_mount_point,
-        configured_uuid,
-        system_utils,
-        runtime=runtime,
-    ):
-        return None
-
-    # This response only appears after the exact-partition unmount already
-    # failed, so power users can make an explicit choice about stopping SMB.
+def _managed_unmount_retry_problem():
     return ValidationProblem(
         MANAGED_UNMOUNT_RETRY_ERROR,
         slug='setup-managed-unmount-retry-available',
@@ -199,48 +388,6 @@ def _build_managed_unmount_retry_response(partition, configured_mount_point, con
     )
 
 
-def _unmount_selected_partition_with_managed_retry(partition, force_managed=False):
-    if force_managed:
-        configured_mount_point, configured_uuid = _get_configured_backup_drive_identity()
-        if not is_selected_partition_managed_backup_drive(
-            partition,
-            configured_mount_point,
-            configured_uuid,
-            system_utils,
-            runtime=runtime,
-        ):
-            raise BackupDriveSetupError(
-                'The selected partition is no longer the active configured backup drive.'
-            )
-        unmount_managed_backup_drive(
-            configured_mount_point,
-            configured_uuid,
-            system_utils,
-            runtime=runtime,
-            power_down=False,
-        )
-        return (
-            'Drive unmounted after the SMB-safe retry temporarily stopped SMB access '
-            'and related background backup tasks.'
-        )
-
-    try:
-        return unmount_selected_partition(partition, runtime=runtime)
-    except BackupDriveSetupError as exc:
-        if not _is_busy_unmount_error(exc):
-            raise
-
-        configured_mount_point, configured_uuid = _get_configured_backup_drive_identity()
-        retry_response = _build_managed_unmount_retry_response(
-            partition,
-            configured_mount_point,
-            configured_uuid,
-        )
-        if retry_response is not None:
-            return retry_response
-        raise
-
-
 @setup.route('/setup')
 def setup_page():
     """Render the setup wizard page"""
@@ -248,8 +395,9 @@ def setup_page():
         # Setup routes still support module-level test seams, while shared
         # services write through the app-factory ConfigManager. Reload before
         # validation so cross-service setup writes are visible immediately.
-        config_manager.load_config()
-        current_config = config_manager.get_all_config()
+        active_config_manager = _config_manager()
+        active_config_manager.load_config()
+        current_config = active_config_manager.get_all_config()
         # Log section names only; setup config can include admin contact details
         # and managed service paths that do not belong in routine logs.
         logger.debug(
@@ -257,7 +405,7 @@ def setup_page():
         )
 
         # Check if setup is complete
-        if config_manager.is_setup_complete():
+        if active_config_manager.is_setup_complete():
             logger.info("Setup is complete, redirecting to main page")
             return redirect('/')
 
@@ -268,7 +416,7 @@ def setup_page():
             'storage': ['mode', 'path', 'storage_id'],
             'schedule': ['backup_cloud_time'],
         }
-        storage_mode = current_config.get('storage', {}).get('mode', 'managed_drive')
+        storage_mode = current_config.get('storage', {}).get('mode', 'existing_folder')
         cloud_enabled = (
             str(current_config.get('backup', {}).get('cloud_enabled', 'false')).lower() == 'true'
         )
@@ -288,16 +436,16 @@ def setup_page():
 
         if missing_fields:
             logger.info(f"Setup incomplete, missing fields: {missing_fields}")
-            return render_template('setup.html', server_name_help_text=SERVER_NAME_HELP_TEXT)
+            return _render_setup_page()
 
         # Do NOT mark setup as complete here. Only do so in /api/setup/complete.
-        return render_template('setup.html', server_name_help_text=SERVER_NAME_HELP_TEXT)
+        return _render_setup_page()
 
     except ApiProblem:
         raise
     except Exception as e:
         logger.error(f"Error checking setup status: {e}")
-        return render_template('setup.html', server_name_help_text=SERVER_NAME_HELP_TEXT)
+        return _render_setup_page()
 
 
 @setup.route('/api/setup/user', methods=['POST'])
@@ -312,12 +460,13 @@ def create_user():
         if not username or not password:
             return _validation_problem('Username and password are required')
 
-        success, message = user_manager.create_user(username, password, is_admin=True)
+        active_config_manager = _config_manager()
+        success, message = _user_manager().create_user(username, password, is_admin=True)
         if success:
             # The setup admin is the account Samba and completion checks must
             # use later; keep this tied to the account creation step so the
             # system-info step cannot drift into a second source of truth.
-            config_manager.set_value('system', 'username', username)
+            active_config_manager.set_value('system', 'username', username)
             # Log in the user
             session['username'] = username
             return json_data()
@@ -337,7 +486,7 @@ def list_format_drives():
         # Step 2 is intentionally broader than the mount pickers because it is
         # the "set up or erase this disk" step, not the "pick an NTFS backup
         # partition" step.
-        drives = get_available_backup_drives(runtime=runtime, ntfs_only=False)
+        drives = get_available_backup_drives(runtime=_runtime(), ntfs_only=False)
         return json_data({'drives': drives})
     except ApiProblem:
         raise
@@ -355,7 +504,7 @@ def list_mount_drives():
         # it must reuse the same NTFS scan as the Storage managed-drive flow. That
         # includes the blkid fallback when lsblk reports ntfs-3g mounts as
         # fuseblk, which is easy to miss if this route ever gets "simplified".
-        drives = get_available_backup_drives(runtime=runtime, ntfs_only=True)
+        drives = get_available_backup_drives(runtime=_runtime(), ntfs_only=True)
         return json_data({'drives': drives})
     except ApiProblem:
         raise
@@ -369,12 +518,7 @@ def list_mount_drives():
 def format_drive():
     """Format the selected drive"""
     try:
-        if runtime.is_fake:
-            return _validation_problem(
-                'Formatting is disabled in fake mode',
-                details='Fake mode never formats local disks. Use the mount step to point the backup source at an existing folder instead.',
-            )
-
+        _prepare_module_setup(create_storage_module())
         data = json_request_data()
         # Step 2 is intentionally disk-oriented because formatting and partition
         # creation are destructive whole-disk operations.
@@ -387,160 +531,25 @@ def format_drive():
         if disk is None:
             return _validation_problem('No disk selected')
 
-        # A JSON client could send a non-string value (e.g. 123 or False);
-        # os.path.realpath would raise TypeError, so we catch it here.
         if not isinstance(disk, str):
             return _validation_problem('Invalid disk path: must be a string')
 
-        # Reject an empty string after the type check — the `disk is None` guard
-        # above only catches a missing key; an explicit empty string must be
-        # rejected here.
         if not disk:
             return _validation_problem('No disk selected')
 
-        # Resolve symlinks first so a symlink inside /dev/ pointing elsewhere
-        # cannot be used to bypass the /dev/ prefix check, then verify the
-        # caller is targeting an existing whole-disk block device.
-        disk = os.path.realpath(disk)
-        if not disk.startswith('/dev/'):
-            return _validation_problem('Invalid disk path: must be a /dev/ device node')
+        result = _privileged_actions().run('storage.format', {'disk': disk})
+        return json_data(
+            {'result': result.data}, message=result.data.get('message', 'Drive formatted.')
+        )
 
-        # Use os.stat() directly so the error message reflects the actual
-        # failure: a missing node (FileNotFoundError) is different from a
-        # permission problem (PermissionError), and os.path.exists() silently
-        # maps both to False, which would produce a misleading "does not exist"
-        # message when the real issue is a permissions error.
-        try:
-            disk_stat = os.stat(disk)
-        except FileNotFoundError:
-            return _validation_problem('Invalid disk path: device does not exist')
-        except PermissionError:
-            return _validation_problem(
-                'Invalid disk path: permission denied while inspecting device node'
-            )
-        except OSError:
-            return _validation_problem('Invalid disk path: unable to inspect device node')
-
-        if not stat.S_ISBLK(disk_stat.st_mode):
-            return _validation_problem('Invalid disk path: must be a block device node')
-
-        # Confirm the node is a whole disk rather than a partition (e.g. /dev/sda
-        # has TYPE=disk; /dev/sda1 has TYPE=part).  Passing a partition path here
-        # would corrupt get_partition_node output (e.g. /dev/sda1 → /dev/sda11).
-        try:
-            lsblk_result = setup_command_adapter.whole_disk_type(disk)
-        except SubprocessError, OSError:
-            return _validation_problem('Unable to verify disk type')
-
-        if lsblk_result.stdout.strip() != 'disk':
-            return _validation_problem('Invalid disk path: must be a whole-disk block device')
-
-        mounted_partitions = _get_mounted_partitions_for_disk(disk)
-
-        if mounted_partitions:
-            partition_info = '\n'.join(
-                [f"- {p['device']} at {p['mount_point']}" for p in mounted_partitions]
-            )
-            return _validation_problem(
-                'Drive has mounted partitions',
-                details=f'The following partitions are currently mounted:\n{partition_info}\n\nPlease unmount all partitions before formatting.',
-                can_unmount=True,
-            )
-
-        # Determine the correct first-partition device node.
-        # NVMe/MMC paths end in a digit (e.g. /dev/nvme0n1), so their partition
-        # nodes use a 'p' separator (e.g. /dev/nvme0n1p1).  Standard SCSI/SATA
-        # disks (e.g. /dev/sdb) just append the number (e.g. /dev/sdb1).
-        partition = get_partition_node(disk)
-        # Step 2 promises to erase and set up the whole selected disk, so
-        # formatting must not quietly reuse an old multi-partition layout.
-        # sfdisk creates a fresh GPT layout with one full-size partition that
-        # Windows and Linux both recognize as general data storage.
-        partition_script = f"type={MICROSOFT_BASIC_DATA_PARTITION_TYPE}\n"
-        result = setup_command_adapter.create_partition(disk, partition_script.encode())
-        if result.returncode != 0:
-            return _operation_problem(
-                'Failed to set up drive',
-                details='Could not erase and set up the selected drive. Please make sure it is not in use and try again.',
-            )
-
-        # Ask the kernel to re-read the partition table so the new partition
-        # node (e.g. /dev/nvme0n1p1) appears in /dev before mkfs.ntfs runs.
-        # partprobe failures are non-fatal: mkfs.ntfs will still succeed on
-        # most kernels without it, but we log at debug so failures are
-        # visible if troubleshooting a race condition.
-        try:
-            result_probe = setup_command_adapter.partprobe(disk)
-            if result_probe.returncode != 0:
-                logger.debug(
-                    "partprobe %s exited %d: %s",
-                    disk,
-                    result_probe.returncode,
-                    result_probe.stderr.strip(),
-                )
-        except OSError as e:
-            logger.debug("partprobe failed for %s; continuing without it: %s", disk, e)
-
-        # Poll for up to 5 seconds so udev has time to create the new device
-        # node before mkfs.ntfs tries to open it.  Without this wait, mkfs can
-        # fail with "No such file or directory" on kernels where udev
-        # processing is slightly delayed.
-        deadline = time.monotonic() + PARTITION_POLL_TIMEOUT_SECONDS
-        while True:
-            # Verify the node exists *and* is a block device — udev could
-            # briefly create a placeholder file of the wrong type.
-            try:
-                is_block_device = stat.S_ISBLK(os.stat(partition).st_mode)
-            except OSError:
-                is_block_device = False
-            if is_block_device:
-                break
-            if time.monotonic() >= deadline:
-                return _operation_problem(
-                    'Partition node did not appear after partitioning',
-                    details=(
-                        f'{partition} was not created within '
-                        f'{PARTITION_POLL_TIMEOUT_SECONDS:.0f} seconds of partitioning. '
-                        'The kernel may not have processed the new partition table yet. '
-                        'Please try again.'
-                    ),
-                )
-            time.sleep(PARTITION_POLL_INTERVAL_SECONDS)
-
-        # Verify the partition node immediately before formatting so both the
-        # "already existed" and "just created" paths are protected.
-        deadline = time.monotonic() + PARTITION_POLL_TIMEOUT_SECONDS
-        while True:
-            try:
-                partition_lstat = os.lstat(partition)
-                is_symlink = stat.S_ISLNK(partition_lstat.st_mode)
-                is_block_device = (not is_symlink) and stat.S_ISBLK(os.stat(partition).st_mode)
-            except OSError:
-                is_block_device = False
-            if is_block_device:
-                break
-            if time.monotonic() >= deadline:
-                return _validation_problem(
-                    'Invalid partition path: must be a partition block device',
-                    details=(
-                        f'{partition} was not a valid block device within '
-                        f'{PARTITION_POLL_TIMEOUT_SECONDS:.0f} seconds. '
-                        'Please verify the drive path and try again.'
-                    ),
-                )
-            time.sleep(PARTITION_POLL_INTERVAL_SECONDS)
-        # Format the partition as NTFS
-        result = setup_command_adapter.format_ntfs(partition)
-
-        if result.returncode != 0:
-            error_msg = result.stderr.strip() if result.stderr else 'Unknown error occurred'
-            return _operation_problem(
-                f'Error formatting partition: {error_msg}',
-                details='Please ensure the drive is not in use and try again.',
-            )
-
-        return json_data()
-
+    except PrivilegedActionClientError as e:
+        if e.exit_code == 2:
+            return _validation_problem(str(e))
+        logger.error("Privileged format action failed: %s", e)
+        return _operation_problem(
+            'Error formatting drive',
+            details='An unexpected error occurred. Please check the system logs for more information.',
+        )
     except ApiProblem:
         raise
     except Exception as e:
@@ -556,6 +565,7 @@ def format_drive():
 def unmount_drive():
     """Unmount the selected drive"""
     try:
+        _prepare_module_setup(create_storage_module())
         data = json_request_data()
         # The setup wizard uses this route for two different UI controls:
         # whole-disk unmount before formatting, and exact-partition unmount
@@ -563,19 +573,25 @@ def unmount_drive():
         disk = data.get('disk')
         partition = data.get('partition')
         force_managed = bool(data.get('force_managed'))
-        if disk:
-            message = unmount_disk_partitions(disk, runtime=runtime)
-        else:
-            message = _unmount_selected_partition_with_managed_retry(
-                partition,
-                force_managed=force_managed,
-            )
-
-        if isinstance(message, ValidationProblem):
-            return json_problem(message)
-        return json_data(message=message)
-    except BackupDriveSetupError as e:
-        return _validation_problem(str(e), details=e.details)
+        result = _privileged_actions().run(
+            'storage.unmount',
+            {
+                'disk': disk or '',
+                'partition': partition or '',
+                'force_managed': force_managed,
+            },
+        )
+        if result.data.get('can_retry_managed_unmount'):
+            return json_problem(_managed_unmount_retry_problem())
+        return json_data(message=result.data.get('message', 'Drive unmounted.'))
+    except PrivilegedActionClientError as e:
+        if e.exit_code == 2:
+            return _validation_problem(str(e))
+        logger.error("Privileged unmount action failed: %s", e)
+        return _operation_problem(
+            f'Error unmounting drive: {e!s}',
+            details='An unexpected error occurred. Please check the system logs for more information.',
+        )
     except ApiProblem:
         raise
     except Exception as e:
@@ -591,33 +607,42 @@ def unmount_drive():
 def mount_drive():
     """Mount the selected drive"""
     try:
+        storage_module = create_storage_module()
+        _prepare_module_setup(storage_module)
         data = json_request_data()
         # Step 3 always selects a filesystem-bearing partition, never a whole
         # disk. That aligns it with the managed-drive flow on Storage.
         partition = data.get('partition')
         if not partition:
             return _validation_problem('partition is required')
-        mount_point = data.get('mount_point') or runtime.default_mount_point
+        active_runtime = _runtime()
+        mount_point = data.get('mount_point') or active_runtime.default_mount_point
         # SimpleSaferServer-managed backup drives are always registered for boot
-        # remounts; the UI no longer exposes a non-persistent mount mode.
-        auto_mount = True
-        result = apply_backup_drive_configuration(
-            partition,
-            mount_point,
-            auto_mount,
-            config_manager,
-            smb_manager,
-            runtime=runtime,
-        )
-        mark_managed_drive_storage(
-            config_manager, result.get('mount_point', mount_point), runtime=runtime
+        # remounts by the allowlisted managed-drive helper action.
+        result = _privileged_actions().run(
+            'storage.managed-drive',
+            {
+                'partition': partition,
+                'mount_point': mount_point,
+                'ntfs_driver': data.get('ntfs_driver', 'ntfs-3g'),
+            },
         )
         logger.info(
-            "Backup drive mounted successfully at %s", result.get('mount_point', mount_point)
+            "Backup drive mounted successfully at %s",
+            result.data.get('mount_point', mount_point),
         )
-        return json_data(message=result['message'])
+        _record_module_setup(storage_module)
+        return json_data(message=result.data.get('message', 'Backup drive mounted successfully.'))
     except BackupDriveSetupError as e:
         return _validation_problem(str(e), details=e.details)
+    except PrivilegedActionClientError as e:
+        if e.exit_code == 2:
+            return _validation_problem(str(e))
+        logger.error("Privileged backup drive setup action failed: %s", e)
+        return _operation_problem(
+            'Error mounting drive',
+            details='An unexpected error occurred. Please check the system logs for more information.',
+        )
     except ApiProblem:
         raise
     except Exception as e:
@@ -633,13 +658,19 @@ def mount_drive():
 def setup_existing_folder():
     """Use a folder that is already managed or mounted outside SimpleSaferServer."""
     try:
+        storage_module = create_storage_module()
+        _prepare_module_setup(storage_module)
         data = json_request_data()
+        active_runtime = _runtime()
+        active_config_manager = _config_manager()
         location = configure_existing_folder(
-            config_manager,
+            active_config_manager,
             data.get('path', ''),
-            runtime=runtime,
+            runtime=active_runtime,
             command_runner=_storage_command_runner(),
         )
+        _record_storage_marker_write(location.path)
+        _record_module_setup(storage_module)
         return json_data(
             {
                 'path': location.path,
@@ -677,9 +708,11 @@ def setup_list_path():
 def skip_cloud_backup():
     """Allow local-only setup without forcing an rclone destination."""
     try:
-        config_manager.set_value('backup', 'cloud_enabled', 'false')
-        config_manager.set_value('backup', 'cloud_mode', '')
-        config_manager.set_value('backup', 'rclone_dir', '')
+        active_config_manager = _config_manager()
+        active_config_manager.set_value('backup', 'cloud_enabled', 'false')
+        active_config_manager.set_value('backup', 'cloud_skipped', 'true')
+        active_config_manager.set_value('backup', 'cloud_mode', '')
+        active_config_manager.set_value('backup', 'rclone_dir', '')
         return json_data(message='Cloud backup skipped.')
     except ApiProblem:
         raise
@@ -700,8 +733,10 @@ def setup_rclone():
         if not config or not remote_name:
             return _validation_problem('Config and remote name are required')
 
-        # Setup keeps its historical field names; the cloud-backup service owns
-        # rclone persistence and mode flags for every cloud configuration flow.
+        cloud_backup_module = create_cloud_backup_module()
+        _prepare_module_setup(cloud_backup_module)
+        # The cloud-backup service owns rclone persistence and mode flags for
+        # every cloud configuration flow.
         _cloud_backup_service().save_config(
             {
                 'cloud_mode': 'advanced',
@@ -709,8 +744,11 @@ def setup_rclone():
                 'remote_name': remote_name,
             }
         )
+        _record_module_setup(cloud_backup_module)
 
         return json_data()
+    except ModuleLifecycleError as exc:
+        return _module_setup_problem(exc)
     except ApiProblem:
         raise
     except Exception as e:
@@ -737,22 +775,37 @@ def setup_email():
         if not all([email, from_address, smtp_server, smtp_port, smtp_username, smtp_password]):
             logger.error("Missing email fields")
             return _validation_problem('All email fields are required')
-        # Validate and write the same canonical value so msmtp never receives
-        # whitespace that happened to pass the numeric port check.
+        # Validate and write the same canonical value so the saved SMTP config
+        # never keeps whitespace that happened to pass the numeric port check.
         smtp_port = str(smtp_port).strip()
         if not _valid_tcp_port(smtp_port):
             return _validation_problem('SMTP port must be between 1 and 65535')
 
-        if not system_utils.write_msmtp_config(
-            from_address, smtp_server, smtp_port, smtp_username, smtp_password
-        ):
-            return _operation_problem('Failed to write msmtp configuration')
+        alerts_module = create_alerts_module()
+        _prepare_module_setup(alerts_module)
+        try:
+            _privileged_actions().run(
+                'alerts.write-smtp-config',
+                {
+                    'from_address': from_address,
+                    'smtp_server': smtp_server,
+                    'smtp_port': smtp_port,
+                    'smtp_username': smtp_username,
+                    'smtp_password': smtp_password,
+                },
+            )
+        except PrivilegedActionClientError:
+            return _operation_problem('Failed to write SMTP configuration')
 
-        # Persist the UI-facing addresses only after msmtp is safely written.
-        config_manager.set_value('backup', 'email_address', email)
-        config_manager.set_value('backup', 'from_address', from_address)
+        # Persist the UI-facing addresses only after SMTP config is safely written.
+        active_config_manager = _config_manager()
+        active_config_manager.set_value('backup', 'email_address', email)
+        active_config_manager.set_value('backup', 'from_address', from_address)
+        _record_module_setup(alerts_module)
 
         return json_data()
+    except ModuleLifecycleError as exc:
+        return _module_setup_problem(exc)
     except ApiProblem:
         raise
     except Exception as e:
@@ -780,11 +833,13 @@ def save_schedule():
                 details='Time must be in HH:MM format (24-hour)',
             )
 
-        # Store the same HH:MM shape emitted by browser time inputs so later
-        # timer generation does not need to guess which UI contract produced it.
-        config_manager.set_value('schedule', 'backup_cloud_time', schedule_time)
+        # Store the same HH:MM shape emitted by browser time inputs so the worker
+        # scheduler does not need to guess which UI contract produced it.
+        active_config_manager = _config_manager()
+        active_config_manager.set_value('schedule', 'backup_cloud_time', schedule_time)
+        active_config_manager.set_value('schedule', 'configured', 'true')
         if bandwidth_limit is not None:
-            config_manager.set_value('backup', 'bandwidth_limit', bandwidth_limit)
+            active_config_manager.set_value('backup', 'bandwidth_limit', bandwidth_limit)
 
         logger.info(f"Schedule saved: daily at {schedule_time}, bandwidth limit: {bandwidth_limit}")
         return json_data(message='Backup settings saved successfully')
@@ -799,90 +854,6 @@ def save_schedule():
         )
 
 
-def install_systemd_tasks(config):
-    """Generate and install systemd service/timer files for all main tasks."""
-    try:
-        if runtime.is_fake:
-            return True, None
-
-        # Create the systemd configuration file
-        ok, err = system_utils.create_systemd_config_file(config)
-        if not ok:
-            return False, f"Failed to create systemd config file: {err}"
-
-        # Install the scripts to /usr/local/bin/
-        ok, err = system_utils.install_systemd_scripts(config)
-        if not ok:
-            return False, f"Failed to install systemd scripts: {err}"
-
-        # Install systemd services and timers
-        ok, err = system_utils.install_systemd_services_and_timers(config)
-        if not ok:
-            return False, f"Failed to install systemd services and timers: {err}"
-
-        return True, None
-    except ApiProblem:
-        raise
-    except Exception as e:
-        logger.error(f"Error installing systemd tasks: {e}")
-        return False, str(e)
-
-
-def setup_smb_share(config):
-    """Set up SMB share configuration"""
-    try:
-        backup = config.get('backup', {})
-        mount_point = backup.get('mount_point', runtime.default_mount_point)
-        system = config.get('system', {})
-        admin_username = system.get('username', 'admin')
-
-        if runtime.is_fake:
-            smb_manager.ensure_default_backup_share(
-                mount_point,
-                admin_username,
-                fake_mode_comment='Fake-mode backup share',
-            )
-            return True, None
-
-        # Another setup worker may have just created the admin account; validate
-        # SMB setup against persisted users instead of this module's old cache.
-        user_manager.reload_users()
-        if admin_username not in user_manager.users:
-            return False, f"Admin user {admin_username} not found in user database"
-
-        # Ensure admin user exists in Samba
-        if not user_manager.user_exists_in_samba(admin_username):
-            return False, (
-                f"Admin user {admin_username} is missing from Samba. "
-                "The setup flow does not store plaintext passwords, so the Samba account cannot be recreated automatically. "
-                "Recreate the admin user through the setup flow or reset the Samba password manually."
-            )
-
-        smb_manager.ensure_default_backup_share(mount_point, admin_username)
-        logger.info("Ensured the SimpleSaferServer-managed backup share points at %s", mount_point)
-
-        # Enable SMB services to start on boot
-        try:
-            setup_command_adapter.enable_smb_unit('smbd')
-            setup_command_adapter.enable_smb_unit('nmbd')
-            logger.info("SMB services enabled for boot")
-        except (CalledProcessError, OSError) as e:
-            logger.error(f"Failed to enable SMB services: {e}")
-            # Don't fail setup for this, just log it
-
-        logger.info(
-            "SMB share setup completed successfully. Share 'backup' is configured at %s",
-            mount_point,
-        )
-        return True, None
-
-    except ApiProblem:
-        raise
-    except Exception as e:
-        logger.error(f"Error setting up SMB share: {e}")
-        return False, str(e)
-
-
 @setup.route('/api/setup/complete', methods=['POST'])
 @setup_api_access_required
 def complete_setup():
@@ -891,8 +862,10 @@ def complete_setup():
         # Cloud-backup setup writes through the shared app-factory service; this
         # module-level manager must reload before final missing-field checks and
         # systemd generation use the setup snapshot.
-        config_manager.load_config()
-        current_config = config_manager.get_all_config()
+        active_config_manager = _config_manager()
+        active_user_manager = _user_manager()
+        active_config_manager.load_config()
+        current_config = active_config_manager.get_all_config()
         # The validation loop below logs only missing section/field names.
         logger.debug("Completing setup after loading current configuration")
 
@@ -903,7 +876,7 @@ def complete_setup():
             'storage': ['mode', 'path', 'storage_id'],
             'schedule': ['backup_cloud_time'],
         }
-        storage_mode = current_config.get('storage', {}).get('mode', 'managed_drive')
+        storage_mode = current_config.get('storage', {}).get('mode', 'existing_folder')
         cloud_enabled = (
             str(current_config.get('backup', {}).get('cloud_enabled', 'false')).lower() == 'true'
         )
@@ -927,31 +900,26 @@ def complete_setup():
             logger.error(f"Setup validation failed. Missing fields: {missing_fields}")
             return _validation_problem('Missing required fields', details=missing_fields)
 
+        if str(current_config.get('schedule', {}).get('configured', 'false')).lower() != 'true':
+            return _validation_problem(
+                'Missing required fields',
+                details=['Missing schedule.configured'],
+            )
+
         # Update the user's last login time since they completed the setup
         if 'username' in session:
             username = session['username']
-            if username in user_manager.users:
-                user_manager.users[username]['last_login'] = str(datetime.now(UTC))
-                user_manager._save_users()
+            if username in active_user_manager.users:
+                active_user_manager.users[username]['last_login'] = str(datetime.now(UTC))
+                active_user_manager._save_users()
                 logger.info(f"Updated last login time for user {username} after setup completion")
 
-        # Install systemd services and timers
-        ok, err = install_systemd_tasks(current_config)
-        if not ok:
-            return _operation_problem(f'Failed to install systemd tasks: {err}')
+        # Completing first-run records the saved choices. Optional host setup
+        # belongs to module apply flows so the admin can review each plan first.
+        active_config_manager.mark_setup_complete()
+        active_config_manager.load_config()  # Ensure in-memory config is up to date
 
-        # Set up SMB share
-        ok, err = setup_smb_share(current_config)
-        if not ok:
-            return _operation_problem(f'Failed to set up SMB share: {err}')
-
-        # Mark setup as complete AFTER all systemd tasks are installed
-        config_manager.mark_setup_complete()
-        config_manager.load_config()  # Ensure in-memory config is up to date
-
-        logger.info(
-            "Setup completed successfully, systemd tasks installed, and SMB share configured."
-        )
+        logger.info("Setup completed successfully.")
         return json_data()
 
     except ApiProblem:
@@ -964,29 +932,31 @@ def complete_setup():
         )
 
 
+@setup.route('/api/setup/readiness', methods=['GET'])
+@setup_api_access_required
+def setup_readiness():
+    """Return the shared 3-2-1 backup-protection checklist."""
+    try:
+        return json_data(_backup_readiness())
+    except ApiProblem:
+        raise
+    except Exception as exc:
+        logger.error("Error building setup readiness checklist: %s", exc)
+        return _operation_problem('Could not build setup checklist')
+
+
 @setup.route('/api/setup/system', methods=['POST'])
 @setup_api_access_required
 def setup_system_info():
     """Save system-level info after the admin account has been created."""
     try:
         data = json_request_data()
-        username = data.get('username')
         server_name = data.get('server_name')
 
         if not server_name:
             return _validation_problem('Server name is required')
 
-        if username:
-            configured_username = config_manager.get_value('system', 'username', '')
-            # Older setup pages still send username with the server name. Treat
-            # it as a consistency check only; /api/setup/user owns persistence.
-            user_manager.reload_users()
-            if username != configured_username or username not in user_manager.users:
-                return _validation_problem(
-                    'Username must match the admin account created during setup'
-                )
-
-        _server_identity_service().update_server_name(server_name, restart_samba=False)
+        _server_identity_service().save_server_name(server_name)
         return json_data()
     except ServerIdentityError as e:
         return _validation_problem(str(e))
@@ -1074,8 +1044,10 @@ def mega_save():
         folder = data.get('folder')
         if not email or not password or not folder:
             return _validation_problem('Email, password, and folder are required.')
-        # Setup keeps its concise field names; the service keeps write ordering
-        # consistent with post-onboarding cloud-backup management.
+        cloud_backup_module = create_cloud_backup_module()
+        _prepare_module_setup(cloud_backup_module)
+        # The service keeps rclone writes before config writes for every
+        # cloud-backup setup path.
         _cloud_backup_service().save_config(
             {
                 'cloud_mode': 'mega',
@@ -1084,7 +1056,10 @@ def mega_save():
                 'mega_folder': folder,
             }
         )
+        _record_module_setup(cloud_backup_module)
         return json_data()
+    except ModuleLifecycleError as exc:
+        return _module_setup_problem(exc)
     except ApiProblem:
         raise
     except Exception as e:

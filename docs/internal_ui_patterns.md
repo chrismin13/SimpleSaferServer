@@ -12,9 +12,134 @@ Rules:
 - Do not add login-only management routes. A signed session cookie is not enough by itself because an account can be demoted after the cookie was issued.
 - Setup API routes are the exception: they allow anonymous access only until setup is complete, then require admin access for maintenance use.
 
-## Bunker Aesthetic
-- **Frosted Glass Components:** Use a dark frosted-glass treatment (for example, `hsla(220, 16%, 12%, 0.75–0.85)` with `backdrop-filter: blur(20–32px)` and matching `-webkit-backdrop-filter`) for main interface structures (e.g., `.card`, `.sidebar`, `.status-tile`, `.modal-container`). Individual components may tune opacity and blur within this range to meet contrast and legibility requirements.
-- **Global Background:** The animated `app-bg-container` creates an ambient textured environment behind the translucent glass elements.
+## Current Visual Style
+
+The current interface still uses custom CSS, but new work should move toward ready-made Web Awesome components and shared templates. Keep existing pages visually consistent while migrating them, and avoid adding new custom component styles when a shared component already covers the job.
+
+`htmx` is vendored at `static/vendor/htmx/2.0.10/htmx.min.js` and loaded by
+`templates/base.html`. Use it for server-rendered partial updates when it replaces page-local
+`fetch()` glue without adding complicated client-side state. Do not load htmx from a CDN at
+runtime.
+
+Web Awesome is being introduced one component at a time. The first locally vendored component is
+`wa-callout` from Web Awesome `3.9.0`, served from
+`static/vendor/webawesome/3.9.0/components/callout/callout.js`. Use it through shared templates
+instead of loading Web Awesome from `ka-f.webawesome.com` at runtime.
+
+Font Awesome `6.4.0` is vendored under `static/vendor/fontawesome/6.4.0/` because the current
+templates still use `fas` icon classes. Runtime templates should load that local stylesheet instead
+of `cdnjs`. The app uses system font stacks from `static/css/theme.css`; do not add Google Fonts or
+another external font host to runtime pages.
+
+## Module Help
+
+Use `templates/partials/module_help.html` when a module page needs shared help text. It renders the
+shared Web Awesome callout component and field-level hints from the module contract.
+The page route should pass the module contract into the template, and the template should render
+`ModuleHelp` text through shared macros instead of copying the same text into the page.
+The macros pass visible module help strings through the template `_()` helper so this text is ready
+for future gettext catalogs without adding a translation compile step today.
+
+Rules:
+
+- Keep safety warnings visible in the band or main workflow when they affect real services, disks,
+  credentials, or host state.
+- Use `module_help.field_hint(module, 'field_key')` for form hints that belong to a module field.
+  Add the matching `HelpEntry` in the module contract instead of hard-coding the sentence in the
+  template.
+- Do not use tooltips as the only place for important warnings.
+- Hide context-specific warnings when the context does not apply. For example, the DDNS page shows
+  the fake-mode live-DNS warning only in fake mode.
+
+Current examples:
+
+- `templates/alerts.html`
+- `templates/cloud_backup.html`
+- `templates/ddns.html`
+- `templates/drive_health.html`
+- `templates/network_file_sharing.html`
+- `templates/storage.html`
+- `templates/system_updates.html`
+
+## Module Plan Preview
+
+Use `templates/partials/module_plan_preview.html` when a setup page or htmx interaction needs to
+show what applying a module would do. `GET /fragments/modules/<slug>/plan` renders this partial from
+the same module plan data used by `GET /api/modules/<slug>/plan` and `sss module plan <module>`.
+Setup pages should use the `setup_plan_details(module, plan, summary)` macro from the same partial
+instead of hand-writing repeated `<details>` blocks.
+
+Rules:
+
+- Keep the preview read-only. Apply and uninstall actions must remain explicit lifecycle calls.
+- Show changes, missing tools, owned resources, ownership recording timing, warnings, and privileged actions before a module is applied.
+- Do not rebuild plan tables in page-specific JavaScript unless the UI genuinely needs client-side state.
+
+## JavaScript Page Copy And Formatting
+
+When a page script needs user-facing text, pass that text from the Flask route into the template as
+JSON. The page should render one `<script type="application/json">` block for that copy, and the
+script should read it on load. This keeps English as the source text today while leaving a clear path
+for gettext/Babel later.
+
+Rules:
+
+- Keep the copy object close to the route or module that owns the page behavior.
+- Use complete strings instead of building sentences from small fragments.
+- Keep JavaScript fallback strings only as a soft failure path for tests or unusual browser states.
+- Use `window.AppFormat` from `static/js/common.js` for dates, relative times, numbers, and
+  percentages instead of hand-formatting those values in page scripts.
+- Use native `input type="time"` controls for schedule times. Page scripts may call the browser's
+  `showPicker()` when available, but do not add a custom time-picker widget unless native controls
+  cannot support a required workflow.
+- Do not add a JavaScript translation build step until the app ships another language.
+
+Current example:
+
+- `templates/alerts.html`
+- `templates/cloud_backup.html`
+- `templates/dashboard.html`
+- `templates/ddns.html`
+- `templates/network_file_sharing.html`
+- `templates/setup.html`
+- `templates/storage.html`
+- `templates/storage_change_drive.html`
+- `templates/storage_existing_folder.html`
+- `templates/system_updates.html`
+- `templates/task_detail.html`
+- `templates/users.html`
+- `simple_safer_server/modules/alerts/routes.py`
+- `simple_safer_server/modules/cloud_backup/routes.py`
+- `simple_safer_server/modules/ddns/routes.py`
+- `simple_safer_server/modules/file_sharing/routes.py`
+- `simple_safer_server/modules/storage/routes.py`
+- `simple_safer_server/routes/setup_wizard.py`
+- `simple_safer_server/routes/tasks.py`
+- `simple_safer_server/routes/users.py`
+- `static/js/cloud_backup.js`
+- `static/js/ddns.js`
+- `static/js/mega_folder_picker.js`
+- `static/js/scripts.js`
+- `static/js/storage.js`
+- `static/js/storage_change_drive.js`
+- `static/js/storage_existing_folder.js`
+- `static/js/system_updates.js`
+
+## Backup Readiness Checklist
+
+Use `templates/partials/backup_readiness.html` for the 3-2-1 backup checklist. Do not duplicate this
+markup in setup or dashboard pages.
+
+Rules:
+
+- Dashboard API clients can load checklist data from `GET /api/backup-readiness`.
+- First-run setup UI should load checklist data from `GET /api/setup/readiness`.
+- Dashboard htmx refreshes use `GET /fragments/backup-readiness`, which renders the same shared
+  partial as HTML.
+- Use `window.refreshBackupReadiness()` after setup actions that change storage, cloud backup,
+  alerts, or schedule state.
+- Treat `skipped` as incomplete protection. It means the user made a choice, not that the server is
+  fully protected.
 
 ## Layout Stability
 

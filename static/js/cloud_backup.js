@@ -1,12 +1,78 @@
 // Cloud Backup Page JS
 
+const cloudBackupDefaultCopy = {
+  status: {
+    success: 'Success',
+    failure: 'Failure',
+    running: 'Running',
+    missing: 'Missing',
+    notRunYet: 'Not Run Yet',
+    error: 'Error',
+    dash: '—'
+  },
+  messages: {
+    loadStatusFailure: 'Could not load backup status.',
+    runStarted: 'Cloud backup started.',
+    runFailure: 'Could not start backup.',
+    loadScheduleFailure: 'Could not load schedule.',
+    scheduleSaved: 'Backup settings saved successfully.',
+    saveScheduleFailure: 'Could not save schedule.',
+    credentialsValidated: 'Connection successful. You are signed in.',
+    validateCredentialsFailure: 'Could not validate credentials.',
+    loadConfigFailure: 'Could not load backup settings.',
+    configSaved: 'Cloud backup settings saved successfully.',
+    saveConfigFailure: 'Could not save backup settings.'
+  },
+  folderPicker: {
+    loading: 'Loading...',
+    emptyMessage: 'No subfolders in this directory.',
+    credentialsRequired: 'MEGA credentials are required before creating a folder.',
+    loadFailed: 'Could not load folders.',
+    createFailed: 'Error creating folder.'
+  }
+};
+
+function mergeCloudBackupCopy(base, overrides) {
+  if (!overrides || typeof overrides !== 'object') return base;
+  Object.keys(overrides).forEach((key) => {
+    if (
+      overrides[key]
+      && typeof overrides[key] === 'object'
+      && !Array.isArray(overrides[key])
+      && base[key]
+      && typeof base[key] === 'object'
+    ) {
+      mergeCloudBackupCopy(base[key], overrides[key]);
+    } else {
+      base[key] = overrides[key];
+    }
+  });
+  return base;
+}
+
+function readCloudBackupCopy() {
+  const script = document.getElementById('cloud-backup-copy');
+  if (!script) return cloudBackupDefaultCopy;
+  try {
+    return mergeCloudBackupCopy(
+      JSON.parse(JSON.stringify(cloudBackupDefaultCopy)),
+      JSON.parse(script.textContent || '{}')
+    );
+  } catch (error) {
+    console.error('Could not read Cloud Backup page copy:', error);
+    return cloudBackupDefaultCopy;
+  }
+}
+
+const cloudBackupCopy = readCloudBackupCopy();
+
 function renderStatusBadge(status) {
-  if (status === 'Success') return '<span class="badge badge-success"><i class="fas fa-circle-check"></i> Success</span>';
-  if (status === 'Failure') return '<span class="badge badge-danger"><i class="fas fa-circle-xmark"></i> Failure</span>';
-  if (status === 'Running') return '<span class="badge badge-info"><i class="fas fa-spinner fa-spin"></i> Running</span>';
-  if (status === 'Missing') return '<span class="badge badge-warning"><i class="fas fa-circle-exclamation"></i> Missing</span>';
-  if (status === 'Not Run Yet') return '<span class="badge badge-neutral"><i class="fas fa-clock"></i> Not Run Yet</span>';
-  if (status === 'Error') return '<span class="badge badge-danger"><i class="fas fa-triangle-exclamation"></i> Error</span>';
+  if (status === 'Success') return `<span class="badge badge-success"><i class="fas fa-circle-check"></i> ${cloudBackupCopy.status.success}</span>`;
+  if (status === 'Failure') return `<span class="badge badge-danger"><i class="fas fa-circle-xmark"></i> ${cloudBackupCopy.status.failure}</span>`;
+  if (status === 'Running') return `<span class="badge badge-info"><i class="fas fa-spinner fa-spin"></i> ${cloudBackupCopy.status.running}</span>`;
+  if (status === 'Missing') return `<span class="badge badge-warning"><i class="fas fa-circle-exclamation"></i> ${cloudBackupCopy.status.missing}</span>`;
+  if (status === 'Not Run Yet') return `<span class="badge badge-neutral"><i class="fas fa-clock"></i> ${cloudBackupCopy.status.notRunYet}</span>`;
+  if (status === 'Error') return `<span class="badge badge-danger"><i class="fas fa-triangle-exclamation"></i> ${cloudBackupCopy.status.error}</span>`;
   return `<span class="badge badge-warning">${status}</span>`;
 }
 
@@ -17,22 +83,29 @@ function loadStatus() {
   const lastDuration = document.getElementById('cloud-backup-last-duration');
 
   statusBadge.innerHTML = '<span class="spinner"></span>';
-  lastRun.textContent = '-';
-  nextRun.textContent = '-';
-  lastDuration.textContent = '-';
+  lastRun.textContent = cloudBackupCopy.status.dash;
+  nextRun.textContent = cloudBackupCopy.status.dash;
+  lastDuration.textContent = cloudBackupCopy.status.dash;
   window.ApiClient.fetchJson('/api/cloud_backup/status')
     .then(({ data }) => {
       const s = data;
       statusBadge.innerHTML = renderStatusBadge(s.status);
-      lastRun.textContent = window.formatRelativeTimestamp(s.last_run, { fallback: '-' });
+      lastRun.textContent = window.AppFormat.relativeTimestamp(s.last_run, {
+        fallback: cloudBackupCopy.status.dash,
+        compact: true
+      });
       lastRun.title = s.last_run || '';
-      nextRun.textContent = window.formatRelativeTimestamp(s.next_run, { fallback: '-', futurePrefix: false });
+      nextRun.textContent = window.AppFormat.relativeTimestamp(s.next_run, {
+        fallback: cloudBackupCopy.status.dash,
+        compact: true,
+        futurePrefix: false
+      });
       nextRun.title = s.next_run || '';
-      lastDuration.textContent = s.last_run_duration || '-';
+      lastDuration.textContent = s.last_run_duration || cloudBackupCopy.status.dash;
     })
     .catch(e => {
       statusBadge.innerHTML = renderStatusBadge('Error');
-      showAlert(e.message || 'Could not load backup status.', 'danger');
+      showAlert(e.message || cloudBackupCopy.messages.loadStatusFailure, 'danger');
     });
 }
 
@@ -46,12 +119,12 @@ function runBackupNow() {
   })
     .then(({ message }) => {
       window.AsyncButtonState.success(runBtn);
-      showAlert(message || 'Cloud backup started.', 'success');
+      showAlert(message || cloudBackupCopy.messages.runStarted, 'success');
       loadStatus();
     })
     .catch(e => {
       window.AsyncButtonState.error(runBtn);
-      showAlert(e.message || 'Could not start backup.', 'danger');
+      showAlert(e.message || cloudBackupCopy.messages.runFailure, 'danger');
     });
 }
 
@@ -114,7 +187,7 @@ document.addEventListener('DOMContentLoaded', function () {
         fillScheduleForm(data);
       })
       .catch(e => {
-        showAlert(e.message || 'Could not load schedule.', 'danger');
+        showAlert(e.message || cloudBackupCopy.messages.loadScheduleFailure, 'danger');
       });
   }
 
@@ -138,13 +211,13 @@ document.addEventListener('DOMContentLoaded', function () {
     })
       .then(() => {
         window.AsyncButtonState.success(scheduleSaveBtn);
-        showAlert('Backup settings saved successfully!', 'success');
+        showAlert(cloudBackupCopy.messages.scheduleSaved, 'success');
         loadSchedule();
         loadStatus();
       })
       .catch(e => {
         window.AsyncButtonState.error(scheduleSaveBtn);
-        showAlert(e.message || 'Could not save schedule.', 'danger');
+        showAlert(e.message || cloudBackupCopy.messages.saveScheduleFailure, 'danger');
       });
   });
 
@@ -203,7 +276,7 @@ document.addEventListener('DOMContentLoaded', function () {
     if (locked) {
       megaPassword.value = '********';
       if (showStatus) {
-        megaCredStatus.textContent = 'Connection successful. You are signed in.';
+        megaCredStatus.textContent = cloudBackupCopy.messages.credentialsValidated;
         megaCredStatus.classList.remove('d-none');
         megaCredStatus.className = 'alert alert-success mt-2';
         megaCredStatus.style.fontSize = 'var(--text-sm)';
@@ -254,7 +327,7 @@ document.addEventListener('DOMContentLoaded', function () {
       })
       .catch(e => {
         window.AsyncButtonState.error(megaSaveCredsBtn);
-        megaCredStatus.textContent = e.message || 'Could not validate credentials.';
+        megaCredStatus.textContent = e.message || cloudBackupCopy.messages.validateCredentialsFailure;
         megaCredStatus.classList.remove('d-none');
         megaCredStatus.className = 'alert alert-danger mt-2';
         megaCredStatus.style.fontSize = 'var(--text-sm)';
@@ -306,7 +379,7 @@ document.addEventListener('DOMContentLoaded', function () {
         fillConfigForm(data);
       })
       .catch(e => {
-        showAlert(e.message || 'Could not load backup settings.', 'danger');
+        showAlert(e.message || cloudBackupCopy.messages.loadConfigFailure, 'danger');
       });
   }
 
@@ -355,14 +428,14 @@ document.addEventListener('DOMContentLoaded', function () {
     })
       .then(() => {
         window.AsyncButtonState.success(saveBtn);
-        showAlert('Cloud backup settings saved successfully!', 'success');
+        showAlert(cloudBackupCopy.messages.configSaved, 'success');
         if (data.cloud_mode === 'mega') {
           setMegaCredsLocked(true, data.mega_email, true);
         }
       })
       .catch(e => {
         window.AsyncButtonState.error(saveBtn);
-        showAlert(e.message || 'Could not save backup settings.', 'danger');
+        showAlert(e.message || cloudBackupCopy.messages.saveConfigFailure, 'danger');
       });
   });
 
@@ -383,7 +456,8 @@ document.addEventListener('DOMContentLoaded', function () {
       },
       modalId: 'megaFolderPickerModal',
       listUrl: '/api/cloud_backup/mega/list_folders',
-      createUrl: '/api/cloud_backup/mega/create_folder'
+      createUrl: '/api/cloud_backup/mega/create_folder',
+      copy: cloudBackupCopy.folderPicker
     });
   });
 
