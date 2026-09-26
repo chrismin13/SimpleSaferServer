@@ -15,7 +15,11 @@ connection and one dedicated destination folder; additional connections are avai
 
 The questions depend on the provider and your answers, so there is no fixed question count.
 **Back** restores the preceding question and its draft configuration. **Cancel** discards the
-unsaved connection. Creating a folder is immediate and is not undone by cancelling configuration.
+unsaved connection edits. If only OAuth tokens changed, Cancel preserves them when the saved
+configuration still matches the draft's starting configuration. This keeps token refreshes from
+folder browsing available to backups. A running backup can delay cancellation until those tokens
+can be saved; retry after it finishes. Creating a folder is immediate and is not undone by
+cancelling configuration.
 
 Existing connections are read from the managed `rclone.conf`, including MEGA connections. Choose
 one to select its folder, or edit it without changing the selected backup path. Saving an extra

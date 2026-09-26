@@ -116,6 +116,10 @@ refresh. Web saves fail promptly while the lock is held. The config is atomicall
 before related settings; an ordinary settings/timer failure restores the prior file. Two files
 cannot be one crash-atomic filesystem transaction; inspect configuration after an interrupted
 system update or hard shutdown. External rclone processes do not honor the SSS lock automatically.
+Cancellation also preserves nonempty OAuth token updates when they are the only configuration
+changes. It uses the publication lock and rechecks the saved config against the draft's base
+before writing, without changing destination settings. If the lock is busy, the draft remains
+open for retry; if the saved config changed, cancellation discards the draft without publishing.
 
 See [Cloud Backup](cloud_backup.md) for configuration paths and authentication behavior, and
 [rclone's RC API](https://rclone.org/rc/) and

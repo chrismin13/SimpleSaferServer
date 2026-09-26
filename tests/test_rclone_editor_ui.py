@@ -8,6 +8,61 @@ from pathlib import Path
 import pytest
 
 
+def test_cancel_preserves_live_drafts_on_conflict_and_allows_retry():
+    node = shutil.which('node')
+    if node is None:
+        pytest.skip('Node.js is required for the rclone editor JavaScript harness.')
+    script = r"""
+const assert = require('assert/strict');
+const fs = require('fs');
+const vm = require('vm');
+const source = fs.readFileSync('static/js/rclone_editor.js', 'utf8');
+// Exercise the shipped cancellation handler with its closure state and API boundary.
+const handler = source.slice(source.indexOf('async function cancelDraft()'),
+                             source.indexOf('async function startDraft('));
+(async () => {
+  for (const scenario of ['busy', 'expired', 'error', 'success']) {
+    let conflict = scenario !== 'success';
+    const context = {
+      polling: null, pollGeneration: 0, folderRequest: 0,
+      draft: { id: 'draft' }, path: 'Backups', state: {}, clearTimeout,
+      api: async action => {
+        if (action === 'cancel') {
+          if (conflict) throw Object.assign(new Error(scenario), {
+            status: scenario === 'error' ? 500 : 409
+          });
+          return {};
+        }
+        if (action === 'state') return {
+          draft: conflict && scenario === 'busy' ? { id: 'draft' } : null
+        };
+        throw new Error(action);
+      }
+    };
+    vm.runInNewContext(handler, context);
+    if (scenario === 'busy' || scenario === 'error') {
+      await assert.rejects(context.cancelDraft(), { message: scenario });
+      assert.equal(context.draft.id, 'draft');
+      assert.equal(context.path, 'Backups');
+      conflict = false;
+    }
+    await context.cancelDraft();
+    assert.equal(context.draft, null);
+    assert.equal(context.path, '');
+    assert.equal(context.state.draft, null);
+  }
+})().catch(error => { console.error(error); process.exitCode = 1; });
+"""
+    subprocess.run(
+        [node, '-e', script],
+        cwd=Path(__file__).resolve().parents[1],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+
+
 def test_advanced_form_submits_the_fresh_snapshot_instead_of_old_page_settings():
     node = shutil.which('node')
     if node is None:

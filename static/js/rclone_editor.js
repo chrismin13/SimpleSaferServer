@@ -448,6 +448,9 @@ window.RcloneEditor = {
           });
         } catch (err) {
           if (err.status !== 409) throw err;
+          // A live draft may need to save refreshed tokens once a backup finishes.
+          // Only an already-ended session can be dismissed after a conflict.
+          if ((await api('state')).draft?.id === draft.id) throw err;
         }
       }
       draft = null;

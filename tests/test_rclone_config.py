@@ -3,6 +3,7 @@
 import shutil
 import time
 import urllib.parse
+from contextlib import contextmanager
 from types import SimpleNamespace
 
 import pytest
@@ -201,6 +202,108 @@ def test_edit_preserves_unknown_values_and_other_existing_remotes(service):
     call(service, 'cancel', result)
     assert call(service, 'raw')['config'] == text
     assert call(service, 'state')['destination']['path'] == 'bucket/path with spaces'
+
+
+@pytest.mark.parametrize('action', ['cancel', 'save'])
+def test_token_only_draft_publishes_once_and_cleans_up(service, monkeypatch, action):
+    text = '[cloud]\ntype = dropbox\ntoken = old\n\n[other]\ntype = drive\ntoken = old\n'
+    raw(service, text, 'cloud:Backups', True)
+    result = call(service, 'start', {'name': 'cloud', 'purpose': 'choose'})
+    draft = service.drafts[OWNER]
+    # Model rclone refreshing credentials in its private file during folder browsing.
+    refreshed = text.replace('token = old', 'token = refreshed').replace('type =', 'type=')
+    draft.worker.path.write_text(refreshed)
+    publishing = service._publishing
+    publications = []
+
+    @contextmanager
+    def track_publication():
+        publications.append(True)
+        with publishing():
+            yield
+
+    monkeypatch.setattr(service, '_publishing', track_publication)
+    if action == 'cancel':
+        # Cancellation must not roll back destination settings changed elsewhere.
+        service.cloud.save_destination('other:Elsewhere', False)
+        call(service, action, result)
+        assert service._settings() == ('other:Elsewhere', 'false')
+    else:
+        save(service, result)
+        assert service._settings() == ('cloud:Backups', 'true')
+    assert service.path.read_text() == refreshed
+    assert service.path.stat().st_mode & 0o777 == 0o600
+    assert len(publications) == 1
+    assert OWNER not in service.drafts
+    assert draft.worker.process.poll() is not None
+    assert not draft.worker.path.exists()
+
+
+@pytest.mark.parametrize(
+    'candidate',
+    [
+        '[cloud]\ntype = dropbox\ntoken = old\n',
+        '[cloud]\ntype=dropbox\ntoken=old\n',
+        '[cloud]\ntype = drive\ntoken = refreshed\n',
+        '[cloud]\ntype = dropbox\ntoken = refreshed\nclient_id = edited\n',
+        '[cloud]\ntype = dropbox\ntoken = refreshed\n\n[new]\ntype = local\n',
+        '[cloud]\ntype = dropbox\n',
+        '',
+        'invalid config',
+    ],
+)
+def test_cancel_discards_drafts_without_only_refreshed_tokens(service, candidate):
+    text = '[cloud]\ntype = dropbox\ntoken = old\n'
+    raw(service, text)
+    result = call(service, 'start', {'name': 'cloud', 'purpose': 'choose'})
+    draft = service.drafts[OWNER]
+    draft.worker.path.write_text(candidate)
+    with locked_path(service.lock_path):
+        assert call(service, 'cancel', result) == {}
+    assert service.path.read_text() == text
+    assert OWNER not in service.drafts
+    assert draft.worker.process.poll() is not None
+    assert not draft.worker.path.exists()
+
+
+def test_cancel_checks_saved_config_under_publication_lock(service, monkeypatch):
+    text = '[cloud]\ntype = dropbox\ntoken = old\n'
+    raw(service, text)
+    result = call(service, 'start', {'name': 'cloud', 'purpose': 'choose'})
+    draft = service.drafts[OWNER]
+    draft.worker.path.write_text(text.replace('old', 'refreshed'))
+    external = text.replace('old', 'externally-refreshed')
+    publishing = service._publishing
+
+    @contextmanager
+    def concurrent_publication():
+        with publishing():
+            service.path.write_text(external)
+            yield
+
+    monkeypatch.setattr(service, '_publishing', concurrent_publication)
+    call(service, 'cancel', result)
+    assert service.path.read_text() == external
+    assert OWNER not in service.drafts
+    assert not draft.worker.path.exists()
+
+
+def test_cancel_keeps_refreshed_tokens_for_retry_when_backup_holds_lock(service):
+    text = '[cloud]\ntype = dropbox\ntoken = old\n'
+    raw(service, text)
+    result = call(service, 'start', {'name': 'cloud', 'purpose': 'choose'})
+    draft = service.drafts[OWNER]
+    refreshed = text.replace('old', 'refreshed')
+    draft.worker.path.write_text(refreshed)
+    with locked_path(service.lock_path):
+        with pytest.raises(ConflictProblem, match='backup or another save'):
+            call(service, 'cancel', result)
+    assert service.path.read_text() == text
+    assert service.drafts[OWNER] is draft
+    assert draft.worker.path.read_text() == refreshed
+    call(service, 'cancel', result)
+    assert service.path.read_text() == refreshed
+    assert OWNER not in service.drafts
 
 
 def test_manage_and_dependency_guards(service):

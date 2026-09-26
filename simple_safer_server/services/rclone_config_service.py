@@ -368,8 +368,30 @@ class RcloneConfigService:
         draft.revision += 1
         return draft.view()
 
+    @staticmethod
+    def _only_token_changes(base, text):
+        try:
+            original, updated = parse_config(base), parse_config(text)
+        except ValidationProblem:
+            return False
+        if original == updated:
+            return False
+        # Only nonempty tokens on existing remotes can be preserved on cancel;
+        # removed credentials and other connection edits must remain unsaved.
+        for name in original.sections():
+            if token := updated.get(name, 'token', fallback=''):
+                original.set(name, 'token', token)
+        return original == updated
+
     def cancel(self, owner, data):
         draft = self.require_draft(owner, data)
+        text = draft.worker.path.read_text()
+        if self._only_token_changes(draft.base, text):
+            # Browsing can rotate refresh tokens, invalidating the saved ones.
+            # Keep them only when all other config is unchanged.
+            with self._publishing():
+                if self._read() == draft.base:
+                    atomic_write_text(self.path, text, mode=0o600)
         draft.close()
         del self.drafts[owner]
         return {}
@@ -449,7 +471,9 @@ class RcloneConfigService:
             if use_destination:
                 destination, enabled = draft.name + ':' + path, 'true'
             self._publish(draft.worker.path.read_text(), destination, enabled == 'true')
-        self.cancel(owner, data)
+        # Publication is complete; cleanup must not try to acquire the save lock again.
+        draft.close()
+        del self.drafts[owner]
         return self.snapshot(owner)
 
     def raw(self):
