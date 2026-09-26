@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from contextlib import nullcontext
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -82,6 +83,18 @@ class FakeBackupDriveCommandAdapter:
 
 
 class BackupDriveSetupTests(unittest.TestCase):
+    def setUp(self):
+        # These command-adapter tests use imaginary mount points. Marker and
+        # configuration recovery are exercised with real files in separate tests.
+        self.enterContext(patch.object(backup_drive_setup, "mark_managed_drive_storage"))
+        self.enterContext(
+            patch.object(
+                backup_drive_setup,
+                "storage_configuration",
+                side_effect=lambda *a, **k: nullcontext(),
+            )
+        )
+
     def test_backup_share_update_snapshot_ignores_later_share_mutation(self):
         share = {
             'path': '/media/backup',

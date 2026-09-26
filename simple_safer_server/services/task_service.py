@@ -504,6 +504,7 @@ class TaskService:
             self.system_utils,
             runtime=self.runtime,
             command_runner=self.command_runner,
+            expected_source=source,
         )
         if not destination:
             raise RuntimeError("No cloud destination configured.")

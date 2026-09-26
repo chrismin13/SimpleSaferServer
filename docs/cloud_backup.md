@@ -44,6 +44,7 @@ Before a scheduled or manual cloud backup starts, SimpleSaferServer checks the c
 
 The check confirms:
 
+- the source passed to the backup command matches the configured storage folder
 - the configured storage path exists
 - the `.simple-safer-server/storage.json` marker file exists
 - the marker file contains the storage ID saved in the app config
@@ -53,6 +54,8 @@ The check confirms:
 - the test file can be deleted
 
 For a drive managed by SimpleSaferServer, the check also confirms that the app-managed mount point is mounted and that the mounted filesystem UUID matches the configured drive UUID. For an existing folder, the app does not mount it, but it records where that folder was mounted when it was selected. If the folder later appears under a different mount source, the backup fails until an administrator checks it.
+
+Folder names are read with the same INI parser as the app, so characters such as `=` and double quotes stay part of the path. If the backup source and saved storage folder disagree, the backup stops before rclone runs. Choose the storage target again on the Storage page to save matching settings.
 
 These checks are deliberately cautious. The safest failure is to skip a backup and alert the administrator. The unsafe failure would be syncing an empty or wrong folder to the cloud and deleting good remote files.
 

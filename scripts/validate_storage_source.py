@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import argparse
 import sys
 from pathlib import Path
 
@@ -28,6 +29,9 @@ from simple_safer_server.services.system_utils import SystemUtils  # noqa: E402
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Verify the cloud backup source folder.")
+    parser.add_argument("--source", help="Exact source path that will be passed to rclone")
+    args = parser.parse_args()
     runtime = get_runtime()
     config_manager = ConfigManager(runtime=runtime)
     system_utils = SystemUtils(runtime=runtime)
@@ -35,6 +39,7 @@ def main():
         config_manager,
         system_utils,
         runtime=runtime,
+        expected_source=args.source,
     )
     print(f"Storage source verified: {location.path}")
 

@@ -326,12 +326,11 @@ def test_managed_drive_storage_refreshes_systemd_timers():
         "simple_safer_server.routes.storage.apply_backup_drive_configuration",
         return_value={"mount_point": "/media/backup"},
     ):
-        with patch("simple_safer_server.routes.storage.mark_managed_drive_storage"):
-            response = _admin_post(
-                app,
-                "/api/backup_drive/configure",
-                {"partition": "/dev/sdb1", "mount_point": "/media/backup"},
-            )
+        response = _admin_post(
+            app,
+            "/api/backup_drive/configure",
+            {"partition": "/dev/sdb1", "mount_point": "/media/backup"},
+        )
 
     assert response.status_code == 200
     services.system_utils.create_systemd_config_file.assert_called_once_with(
@@ -350,16 +349,15 @@ def test_managed_drive_configure_passes_ntfs_driver():
         "simple_safer_server.routes.storage.apply_backup_drive_configuration",
         return_value={"mount_point": "/media/backup"},
     ) as apply_backup_drive_configuration:
-        with patch("simple_safer_server.routes.storage.mark_managed_drive_storage"):
-            response = _admin_post(
-                app,
-                "/api/backup_drive/configure",
-                {
-                    "partition": "/dev/sdb1",
-                    "mount_point": "/media/backup",
-                    "ntfs_driver": "ntfs3",
-                },
-            )
+        response = _admin_post(
+            app,
+            "/api/backup_drive/configure",
+            {
+                "partition": "/dev/sdb1",
+                "mount_point": "/media/backup",
+                "ntfs_driver": "ntfs3",
+            },
+        )
 
     assert response.status_code == 200
     assert apply_backup_drive_configuration.call_args.kwargs["ntfs_driver"] == "ntfs3"

@@ -40,7 +40,6 @@ from simple_safer_server.services.smb_manager import SMBManager
 from simple_safer_server.services.storage_location import (
     StorageLocationError,
     configure_existing_folder,
-    mark_managed_drive_storage,
 )
 from simple_safer_server.services.system_utils import SystemUtils
 from simple_safer_server.services.user_manager import UserManager
@@ -608,9 +607,6 @@ def mount_drive():
             config_manager,
             smb_manager,
             runtime=runtime,
-        )
-        mark_managed_drive_storage(
-            config_manager, result.get('mount_point', mount_point), runtime=runtime
         )
         logger.info(
             "Backup drive mounted successfully at %s", result.get('mount_point', mount_point)

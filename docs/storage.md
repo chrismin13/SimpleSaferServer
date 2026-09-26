@@ -70,6 +70,8 @@ The current storage configuration changes only after **Use This Drive** succeeds
 - creates the storage marker file in the selected storage location
 - refreshes the generated systemd services and timers
 
+If marker creation or saving the drive settings fails, the app restores the previous storage settings, network share path, and `/etc/fstab` entry, and unmounts the newly selected partition. Any marker already present on the selected drive is restored before that partition is unmounted.
+
 If an administrator leaves the change page after formatting or unmounting but before using a partition, the previous storage configuration remains in place.
 
 The advanced options on the change page allow changing the mount point and choosing the NTFS driver. `ntfs-3g` is the default. `ntfs3` is available for systems where the in-kernel driver is preferred.
@@ -126,6 +128,7 @@ The marker exists because cloud backup uses `rclone sync`. If the local storage 
 
 Before each cloud backup, the app checks that:
 
+- the source passed to the backup command matches the configured storage folder
 - the marker exists
 - the marker ID matches the saved config
 - the marker can be read

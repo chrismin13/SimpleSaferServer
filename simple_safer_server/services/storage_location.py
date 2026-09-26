@@ -390,6 +390,25 @@ def existing_folder_configuration(config_manager, path, runtime=None, command_ru
     """Prepare a folder and undo changes if the caller cannot finish saving it."""
     runtime = runtime or get_runtime()
     resolved = validate_existing_folder_path(path, runtime=runtime)
+    with storage_configuration(config_manager, resolved, runtime=runtime) as previous_location:
+        location = prepare_existing_folder(
+            str(resolved),
+            runtime=runtime,
+            command_runner=command_runner,
+            previous_location=previous_location,
+        )
+        yield location
+
+
+@contextmanager
+def storage_configuration(config_manager, path, runtime=None):
+    """Restore the marker and storage settings if a storage change fails.
+
+    Managed drives must enter this context after mounting and leave it before
+    unmounting, so recovery can still reach the selected drive's marker.
+    """
+    runtime = runtime or get_runtime()
+    resolved = _normalize_storage_path(path)
     previous_location = get_storage_location(config_manager, runtime=runtime)
     marker = marker_path(resolved)
     # Only app-owned regular files may be replaced. Following a marker symlink
@@ -397,6 +416,8 @@ def existing_folder_configuration(config_manager, path, runtime=None, command_ru
     if marker.parent.is_symlink() or marker.is_symlink():
         raise StorageLocationError("The storage marker and its folder must not be symbolic links.")
     marker_folder_existed = marker.parent.exists()
+    if marker_folder_existed and not marker.parent.is_dir():
+        raise StorageLocationError("The storage marker folder must be a directory.")
     original_content = None
     original_mode = None
     original_stat = None
@@ -409,25 +430,14 @@ def existing_folder_configuration(config_manager, path, runtime=None, command_ru
         original_stat = marker.stat()
         original_mode = stat.S_IMODE(original_stat.st_mode)
 
-    config_attempted = False
     try:
-        location = prepare_existing_folder(
-            str(resolved),
-            runtime=runtime,
-            command_runner=command_runner,
-            previous_location=previous_location,
-        )
-        # Callers save only after their other prerequisites (such as Samba) pass.
-        # Once yielded, even a partially failed config write must be rolled back.
-        config_attempted = True
-        yield location
+        yield previous_location
     except Exception as exc:
         failures = []
-        if config_attempted:
-            try:
-                save_storage_location(config_manager, previous_location)
-            except Exception:
-                failures.append("storage settings")
+        try:
+            save_storage_location(config_manager, previous_location)
+        except Exception:
+            failures.append("storage settings")
         try:
             if original_content is None:
                 marker.unlink(missing_ok=True)
@@ -452,7 +462,7 @@ def existing_folder_configuration(config_manager, path, runtime=None, command_ru
             failures.append("storage marker")
         if failures:
             raise StorageLocationError(
-                f"Folder change failed and could not restore {', '.join(failures)}. "
+                f"Storage change failed and could not restore {', '.join(failures)}. "
                 "Check the storage settings and run a safety check before backing up."
             ) from exc
         raise
@@ -536,10 +546,18 @@ def validate_storage_ready_for_backup(
     system_utils: Any,
     runtime: Any | None = None,
     command_runner: CommandRunner | None = None,
+    expected_source: str | None = None,
 ) -> StorageLocation:
     runtime = runtime or get_runtime()
     location = get_storage_location(config_manager, runtime=runtime)
     storage_path = _normalize_storage_path(location.path)
+    # The shell runner reads backup.mount_point separately. Never approve one
+    # folder and then let rclone sync another after a partial or concurrent save.
+    if expected_source is not None and _normalize_storage_path(expected_source) != storage_path:
+        raise StorageLocationError(
+            "The cloud backup source does not match the configured storage folder. "
+            "Choose the storage target again before backing up."
+        )
     if not storage_path.exists() or not storage_path.is_dir():
         raise StorageLocationError(f"Storage location is not available: {storage_path}")
 

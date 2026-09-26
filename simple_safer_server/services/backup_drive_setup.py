@@ -13,6 +13,10 @@ from tempfile import NamedTemporaryFile
 from simple_safer_server.adapters.backup_drive_commands import BackupDriveCommandAdapter
 from simple_safer_server.adapters.command_runner import SubprocessError
 from simple_safer_server.services.runtime import get_fake_state, get_runtime
+from simple_safer_server.services.storage_location import (
+    mark_managed_drive_storage,
+    storage_configuration,
+)
 
 LOGGER = logging.getLogger(__name__)
 FSTAB_MARKER = "# SimpleSaferServer managed backup drive"
@@ -982,17 +986,19 @@ def apply_backup_drive_configuration(
             )
             _reload_systemd_mount_units(runtime=runtime, command_adapter=command_adapter)
 
-            share_backup = _replace_backup_share_path(
-                smb_manager, selected_path_str, previous_mount_point
-            )
+            with storage_configuration(config_manager, selected_path_str, runtime=runtime):
+                share_backup = _replace_backup_share_path(
+                    smb_manager, selected_path_str, previous_mount_point
+                )
 
-            config_updated = True
-            config_manager.set_value('backup', 'mount_point', selected_path_str)
-            config_manager.set_value('backup', 'uuid', uuid)
-            config_manager.set_value('backup', 'usb_id', usb_id)
-            fake_state.set_mount(
-                True, mount_point=selected_path_str, drive=partition or '/dev/fakebackup1'
-            )
+                config_updated = True
+                config_manager.set_value('backup', 'mount_point', selected_path_str)
+                config_manager.set_value('backup', 'uuid', uuid)
+                config_manager.set_value('backup', 'usb_id', usb_id)
+                mark_managed_drive_storage(config_manager, selected_path_str, runtime=runtime)
+                fake_state.set_mount(
+                    True, mount_point=selected_path_str, drive=partition or '/dev/fakebackup1'
+                )
             return {
                 'message': f'Successfully selected local backup source at {selected_path}',
                 'uuid': uuid,
@@ -1062,12 +1068,17 @@ def apply_backup_drive_configuration(
             raise BackupDriveSetupError(f'Error mounting drive: {error_msg}')
         mounted = True
 
-        share_backup = _replace_backup_share_path(smb_manager, mount_point, previous_mount_point)
+        with storage_configuration(config_manager, mount_point, runtime=runtime):
+            share_backup = _replace_backup_share_path(
+                smb_manager, mount_point, previous_mount_point
+            )
 
-        config_updated = True
-        config_manager.set_value('backup', 'mount_point', mount_point)
-        config_manager.set_value('backup', 'uuid', uuid)
-        config_manager.set_value('backup', 'usb_id', usb_id)
+            config_updated = True
+            config_manager.set_value('backup', 'mount_point', mount_point)
+            config_manager.set_value('backup', 'uuid', uuid)
+            config_manager.set_value('backup', 'usb_id', usb_id)
+
+            mark_managed_drive_storage(config_manager, mount_point, runtime=runtime)
 
         return {
             'message': f'Successfully configured {partition} at {mount_point}',

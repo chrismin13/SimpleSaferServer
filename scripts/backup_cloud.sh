@@ -11,13 +11,16 @@ if [ ! -x "$PYTHON_BIN" ]; then
 fi
 
 get_config_value() {
-  section=$1
-  key=$2
-  awk -F '=' -v section="[$section]" -v key="$key" '
-        $0 == section { in_section=1; next }
-        /^\[.*\]/     { in_section=0 }
-        in_section && $1 ~ "^[ \t]*"key"[ \t]*$" { gsub(/^[ \t]+|[ \t]+$/, "", $2); print $2; exit }
-    ' "$CONFIG_FILE" | tr -d '"'
+  # Use the same INI parser as the app. Folder names may contain '=' or quotes.
+  "$PYTHON_BIN" - "$CONFIG_FILE" "$1" "$2" <<'PYCONFIG'
+import configparser
+import sys
+
+config = configparser.ConfigParser()
+with open(sys.argv[1], encoding="utf-8") as handle:
+    config.read_file(handle)
+print(config.get(sys.argv[2], sys.argv[3], fallback=""))
+PYCONFIG
 }
 
 MOUNT_POINT=$(get_config_value backup mount_point)
@@ -50,8 +53,8 @@ fi
 # rclone sync makes the cloud destination match the local source. If a mount is
 # missing and the source folder looks empty, a sync can delete the cloud copy.
 # Keep this safety gate immediately before the source checks and sync command.
-if [ -x "$VALIDATE_STORAGE_SCRIPT" ]; then
-  if ! "$PYTHON_BIN" "$VALIDATE_STORAGE_SCRIPT"; then
+if [ -f "$VALIDATE_STORAGE_SCRIPT" ] && [ -r "$VALIDATE_STORAGE_SCRIPT" ]; then
+  if ! "$PYTHON_BIN" "$VALIDATE_STORAGE_SCRIPT" --source "$MOUNT_POINT"; then
     send_email "BACKUP TO CLOUD FAILED - Storage Source Check Failed" "SimpleSaferServer could not verify the storage source at $MOUNT_POINT. Cloud backup was stopped so it would not sync the wrong or empty folder."
     exit 1
   fi
@@ -60,9 +63,7 @@ else
   exit 1
 fi
 
-# Check for I/O errors after the marker and write probe pass. This gives older
-# installs a familiar broad directory-read failure while the marker check catches
-# wrong-source and missing-mount cases first.
+# Check for directory-read errors after the marker and write probe pass.
 if ! ls "$MOUNT_POINT" >/dev/null 2>&1; then
   send_email "BACKUP TO CLOUD FAILED - Drive has IO Errors" "Check the connection to the Hard Drive at $MOUNT_POINT!"
   exit 1

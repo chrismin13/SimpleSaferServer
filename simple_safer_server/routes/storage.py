@@ -26,7 +26,6 @@ from simple_safer_server.services.storage_location import (
     MODE_EXISTING_FOLDER,
     StorageLocationError,
     get_storage_location,
-    mark_managed_drive_storage,
     passive_storage_status,
     repair_storage_marker,
     storage_status,
@@ -450,11 +449,6 @@ def api_backup_drive_configure():
             smb_manager=services.smb_manager,
             runtime=services.runtime,
             ntfs_driver=data.get("ntfs_driver", "ntfs-3g"),
-        )
-        mark_managed_drive_storage(
-            services.config_manager,
-            result.get("mount_point", data.get("mount_point")),
-            runtime=services.runtime,
         )
         _refresh_storage_timers(services)
         return json_data({"result": result})
