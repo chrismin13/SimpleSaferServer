@@ -1,4 +1,6 @@
 from pathlib import Path
+from subprocess import CompletedProcess
+from typing import Any
 
 from simple_safer_server.adapters.command_runner import CommandRunner
 
@@ -74,3 +76,49 @@ class SmbCommandAdapter:
         if cat_result.returncode != 0:
             return "unavailable"
         return status
+
+
+class FakeSmbCommandAdapter:
+    """Simulates Samba command behavior for fake mode without host Samba tools."""
+
+    def __init__(self, fake_state: Any | None = None) -> None:
+        self._fake_state = fake_state
+
+    def validate_config(self, validator: str, candidate_path: Path, cwd: Path | None = None):
+        # Fake mode runs on macOS and Railway where testparm/smbd are usually
+        # absent. Return the candidate text so callers that parse testparm's
+        # effective-config stdout still exercise the same parsing path.
+        candidate_text = Path(candidate_path).read_text(encoding="utf-8")
+        return CompletedProcess(
+            args=[validator, str(candidate_path)],
+            returncode=0,
+            stdout=candidate_text,
+            stderr="",
+        )
+
+    def restart_unit(self, unit_name: str) -> None:
+        self._set_service_active(unit_name)
+
+    def reload_config(self) -> None:
+        self._set_service_active("smbd")
+
+    def unit_status(self, unit_name: str) -> str:
+        if self._fake_state is None:
+            return "active"
+        return self._fake_state.get_smb_services().get(unit_name, "unavailable")
+
+    def _set_service_active(self, unit_name: str) -> None:
+        if self._fake_state is None:
+            return
+        statuses = {
+            "smbd": "active",
+            "nmbd": "active",
+            "wsdd2": "active",
+            **self._fake_state.get_smb_services(),
+        }
+        statuses[unit_name] = "active"
+        self._fake_state.set_smb_services(
+            statuses["smbd"],
+            statuses["nmbd"],
+            statuses["wsdd2"],
+        )

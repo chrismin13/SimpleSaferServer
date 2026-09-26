@@ -212,6 +212,175 @@ class DriveHealthTests(unittest.TestCase):
                 root / "var-lib" / "hdsentinel_state.json",
             )
 
+    @patch(
+        "simple_safer_server.services.drive_health._run_hdsentinel_command",
+        side_effect=TimeoutExpired(cmd=["HDSentinel", "-solid"], timeout=45),
+    )
+    def test_collect_hdsentinel_drive_list_returns_empty_on_timeout(self, mock_run):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            binary_path = root / "hdsentinel"
+            binary_path.touch()
+            runtime = SimpleNamespace(is_fake=False, bin_dir=root)
+            config_manager = SimpleNamespace(
+                get_value=lambda section, key, default=None: {
+                    ("hdsentinel", "enabled"): "true",
+                    ("hdsentinel", "health_change_alert"): "true",
+                }.get((section, key), default)
+            )
+
+            self.assertEqual(
+                drive_health.collect_hdsentinel_drive_list(config_manager, runtime=runtime),
+                [],
+            )
+            mock_run.assert_called_once_with(binary_path, ["-solid"])
+
+    @patch("simple_safer_server.services.drive_health._log_and_email_alert")
+    @patch("simple_safer_server.services.drive_health.collect_hdsentinel_drive_list")
+    def test_hdsentinel_monitor_alerts_per_detected_drive(self, mock_drive_list, mock_alert):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            runtime = SimpleNamespace(
+                is_fake=False,
+                data_dir=root,
+                bin_dir=root,
+            )
+            config_manager = SimpleNamespace(
+                get_value=lambda section, key, default=None: {
+                    ("hdsentinel", "enabled"): "true",
+                    ("hdsentinel", "health_change_alert"): "true",
+                }.get((section, key), default)
+            )
+            previous = [
+                {
+                    "available": True,
+                    "device": "/dev/sda",
+                    "model": "Disk A",
+                    "serial": "SERIAL-A",
+                    "health_pct": 100,
+                },
+                {
+                    "available": True,
+                    "device": "/dev/sdb",
+                    "model": "Disk B",
+                    "serial": "SERIAL-B",
+                    "health_pct": 80,
+                },
+            ]
+            drive_health.save_hdsentinel_drive_state(previous, runtime=runtime)
+            current = [
+                dict(previous[0]),
+                {
+                    "available": True,
+                    "device": "/dev/sdb",
+                    "model": "Disk B",
+                    "serial": "SERIAL-B",
+                    "health_pct": 70,
+                    "performance_pct": 99,
+                },
+            ]
+            mock_drive_list.return_value = current
+
+            result = drive_health.run_hdsentinel_health_monitor(
+                config_manager,
+                system_utils=SimpleNamespace(),
+                runtime=runtime,
+            )
+
+            self.assertTrue(result["alert_sent"])
+            self.assertEqual(result["snapshot"]["serial"], "SERIAL-B")
+            mock_alert.assert_called_once()
+            self.assertIn("Disk B", mock_alert.call_args.args[3])
+            saved = drive_health.load_hdsentinel_drive_state(runtime)
+            self.assertEqual(saved["serial:SERIAL-B"]["health_pct"], 70)
+
+    def test_hdsentinel_drive_key_uses_device_for_placeholder_serials(self):
+        for serial in ("-", "?", "unknown", "Unknown", " unknown "):
+            with self.subTest(serial=serial):
+                self.assertEqual(
+                    drive_health.hdsentinel_drive_key({"device": "/dev/sda", "serial": serial}),
+                    "device:/dev/sda",
+                )
+
+        self.assertEqual(
+            drive_health.hdsentinel_drive_key({"device": "/dev/sda", "serial": "SERIAL-A"}),
+            "serial:SERIAL-A",
+        )
+
+    def test_hdsentinel_drive_state_keeps_placeholder_serial_drives_separate(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime = SimpleNamespace(
+                is_fake=False,
+                data_dir=Path(temp_dir),
+                bin_dir=Path(temp_dir),
+            )
+
+            drive_health.save_hdsentinel_drive_state(
+                [
+                    {"available": True, "device": "/dev/sda", "serial": "-", "health_pct": 90},
+                    {"available": True, "device": "/dev/sdb", "serial": "-", "health_pct": 80},
+                ],
+                runtime=runtime,
+            )
+
+            saved = drive_health.load_hdsentinel_drive_state(runtime)
+            self.assertEqual(saved["device:/dev/sda"]["health_pct"], 90)
+            self.assertEqual(saved["device:/dev/sdb"]["health_pct"], 80)
+
+    def test_save_hdsentinel_state_preserves_drive_state(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime = SimpleNamespace(
+                is_fake=False,
+                data_dir=Path(temp_dir),
+                bin_dir=Path(temp_dir),
+            )
+            drives = [
+                {"available": True, "device": "/dev/sda", "serial": "SERIAL-A", "health_pct": 90},
+                {"available": True, "device": "/dev/sdb", "serial": "SERIAL-B", "health_pct": 80},
+            ]
+            snapshot = {"available": True, "device": "/dev/sda", "health_pct": 95}
+
+            drive_health.save_hdsentinel_drive_state(drives, runtime=runtime)
+            drive_health.save_hdsentinel_state(snapshot, runtime=runtime)
+
+            self.assertEqual(drive_health.load_hdsentinel_state(runtime), snapshot)
+            saved = drive_health.load_hdsentinel_drive_state(runtime)
+            self.assertEqual(saved["serial:SERIAL-A"]["health_pct"], 90)
+            self.assertEqual(saved["serial:SERIAL-B"]["health_pct"], 80)
+
+    @patch(
+        "simple_safer_server.services.drive_health.resolve_backup_parent_device",
+        return_value=("/dev/sdb", "/dev/sdb1", None),
+    )
+    def test_mark_managed_storage_drive_marks_matching_detected_drive(self, _mock_resolve):
+        config_manager = SimpleNamespace(
+            get_all_config=lambda: {
+                "storage": {
+                    "mode": "managed_drive",
+                    "path": "/media/backup",
+                    "storage_id": "id",
+                },
+                "backup": {"uuid": "UUID"},
+            },
+            get_value=lambda section, key, default=None: {
+                ("backup", "uuid"): "UUID",
+            }.get((section, key), default),
+        )
+        drives = [
+            {"device": "/dev/sda", "model": "System Disk"},
+            {"device": "/dev/sdb", "model": "Backup Disk"},
+        ]
+
+        marked = drive_health.mark_managed_storage_drive(
+            drives,
+            config_manager,
+            system_utils=SimpleNamespace(),
+            runtime=SimpleNamespace(is_fake=False, default_mount_point="/media/backup"),
+        )
+
+        self.assertFalse(marked[0]["is_managed_storage"])
+        self.assertTrue(marked[1]["is_managed_storage"])
+
     @patch("simple_safer_server.services.drive_health._log_and_email_alert")
     @patch("simple_safer_server.services.drive_health.run_hdsentinel_health_monitor")
     @patch("simple_safer_server.services.drive_health.get_smart_attributes")

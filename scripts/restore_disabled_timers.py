@@ -42,7 +42,7 @@ def main():
     )
     LOGGER.info("Starting disabled timer restore check")
     try:
-        result = service.restore_expired()
+        result = service.restore_expired(config_manager.get_all_config())
     except Exception:
         # The restore helper is timer-driven, so journal-visible failures are important when
         # diagnosing why temporary Disable Schedule records did not recover automatically.

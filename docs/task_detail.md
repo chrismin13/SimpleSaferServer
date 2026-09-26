@@ -21,6 +21,11 @@ The Task Detail page shows information and logs for a specific scheduled task.
 - **Permanent Disable**: Leaves automatic runs off until Enable Schedule is used.
 - **Auto Refresh**: Toggle to enable/disable auto-refresh of logs.
 
+When a temporary pause expires, the app checks the current settings before restarting automatic runs.
+Check Mount stays off when storage uses an existing folder, and Cloud Backup stays off when cloud
+backup is disabled. The expired pause is cleared without enabling that task. No paused tasks restart
+while first-time setup is incomplete.
+
 If the schedule is in an unexpected systemd state, the page shows the raw timer state and points the
 admin toward checking systemd or regenerating units through System Updates.
 

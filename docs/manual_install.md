@@ -76,7 +76,7 @@ The app environment is `/opt/SimpleSaferServer/.venv`. Do not use distro Python 
 ```bash
 sudo mkdir -p /usr/local/bin
 sudo cp scripts/* /usr/local/bin/
-sudo chmod +x /usr/local/bin/check_mount.sh /usr/local/bin/check_health.sh /usr/local/bin/check_health.py /usr/local/bin/backup_cloud.sh /usr/local/bin/app_update.sh /usr/local/bin/app_update.py /usr/local/bin/log_alert.py /usr/local/bin/ddns_update.sh /usr/local/bin/ddns_update.py /usr/local/bin/restore_disabled_timers.py
+sudo chmod +x /usr/local/bin/check_mount.sh /usr/local/bin/check_health.sh /usr/local/bin/check_health.py /usr/local/bin/backup_cloud.sh /usr/local/bin/validate_storage_source.py /usr/local/bin/app_update.sh /usr/local/bin/app_update.py /usr/local/bin/log_alert.py /usr/local/bin/ddns_update.sh /usr/local/bin/ddns_update.py /usr/local/bin/restore_disabled_timers.py
 ```
 
 ## 7. Prepare Samba Layout

@@ -1,5 +1,7 @@
 # Network File Sharing
 
+Changing the storage folder preserves the existing `backup` share's allowed users, read-only setting, and custom Samba options. Only its folder path changes. It does not change other shares or the ownership and permissions of stored files. See [Storage](storage.md) for folder selection and recovery after a failed change.
+
 The Network File Sharing page manages Samba shares and Samba service status.
 It also includes the server name. This is the name you'll use to find this
 server on your network. Scheduled task alert emails include it in the subject.
@@ -214,6 +216,8 @@ Reload the Network File Sharing page after that.
 ## Setup Wizard Behavior
 
 During setup, SimpleSaferServer tries to create or refresh the default `backup` share using the same ownership-aware SMB logic as the main UI.
+
+The default `backup` share points at the configured storage location. If the Storage page is later used to choose an existing folder, SimpleSaferServer updates that default share to point at the new folder.
 
 If an Unmanaged Samba Share named `[backup]` already exists anywhere Samba loads it:
 

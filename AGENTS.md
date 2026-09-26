@@ -16,12 +16,10 @@ instead just do
 
 Prefer refactoring code if the end result will mean that the code will be simpler, more effective, and easier to maintain, rather than sticking to existing conventions, even if it means more work in the short term
 
-When designing any UI elements, always use the uncodixfy skill. Try to reuse existing UI elements and UI patterns from elsewhere in the system or, if as a last resort creating new ones, follow the same "Bunker" style. Make good use of vertical space, so more things can be visible at once with your design. Consider how the page will be viewed both on desktop and mobile.
+When designing any UI elements, try to reuse existing UI elements and UI patterns from elsewhere in the system or, if as a last resort creating new ones, follow the same "Bunker" style. Make good use of vertical space, so more things can be visible at once with your design. Consider how the page will be viewed both on desktop and mobile.
 
 Consider if anything that you add needs to be removed during the uninstallation by the uninstall.sh script.
 
 SimpleSaferServer is a root-run, admin-only local management tool. Admin users are trusted operators with server-level access, so do not hide useful managed secrets or config from them just for appearance; still avoid accidental leaks into logs, broad status responses, process argv, or unrelated UI.
 
 Do not edit the README.md, any edits to it will be done by the user.
-
-Once you're done with your changes, commit and push them if we're already on a branch. Only do this once the implementation is complete.

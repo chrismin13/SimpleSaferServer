@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+
+{% block title %}{{ browser_title('Storage') }}{% endblock %}
+{% block header %}{% endblock %}
+
+{% set is_existing_folder = storage_location.mode == 'existing_folder' %}
+{% set mode_label = 'Existing folder' if is_existing_folder else 'Managed drive' %}
+
+{% block content %}
+<div class="storage-page storage-overview-page" data-storage-current-mode="{{ storage_location.mode }}">
+  <div class="storage-page-heading">
+    <h1>Storage</h1>
+    <p>Manage where SimpleSaferServer stores backup files.</p>
+  </div>
+
+  <section class="card storage-current-card">
+    <div class="storage-card-title">
+      <i class="fas fa-hard-drive"></i>
+      <h2>Current storage</h2>
+    </div>
+    <div class="storage-current-grid">
+      <div class="storage-current-cell storage-current-location">
+        <div class="storage-field-label">Storage location</div>
+        <div class="storage-current-value text-mono">{{ storage_location.path }}</div>
+      </div>
+      <div class="storage-current-cell">
+        <div class="storage-field-label">Mode</div>
+        <div class="storage-current-mode">{{ mode_label }}</div>
+        <div class="storage-current-note">
+          {% if is_existing_folder %}
+            SimpleSaferServer uses this folder but does not mount it.
+          {% else %}
+            SimpleSaferServer mounts and manages this drive.
+          {% endif %}
+        </div>
+      </div>
+      <div class="storage-current-cell">
+        <div class="storage-field-label">Status</div>
+        <!-- These IDs repeat only inside exclusive Jinja branches, so storage.js always sees one status line and one note. -->
+        {% if not storage_status.checked %}
+          {% if storage_status.ok %}
+            <div class="storage-ready-line" id="storageCurrentStatusLine"><i class="fas fa-circle-check"></i> Configured</div>
+            <div class="storage-current-note" id="storageCurrentStatusNote">Safety checks have not run yet.</div>
+          {% else %}
+            <div class="storage-error-line" id="storageCurrentStatusLine"><i class="fas fa-circle-xmark"></i> Not mounted</div>
+            <div class="storage-current-note" id="storageCurrentStatusNote">{{ storage_status.error }}</div>
+          {% endif %}
+        {% elif storage_status.ok %}
+          <div class="storage-ready-line" id="storageCurrentStatusLine"><i class="fas fa-circle-check"></i> Safety check passed</div>
+          <div class="storage-current-note" id="storageCurrentStatusNote">Storage location is ready for cloud backups.</div>
+        {% else %}
+          <div class="storage-error-line" id="storageCurrentStatusLine"><i class="fas fa-circle-xmark"></i> Check failed</div>
+          <div class="storage-current-note" id="storageCurrentStatusNote">{{ storage_status.error }}</div>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+
+  <div class="storage-overview-grid">
+    <section class="card storage-details-card">
+      <div class="storage-card-title">
+        <i class="fas fa-database"></i>
+        <h2>Storage details</h2>
+      </div>
+
+      <h3 class="storage-subheading">Drive identity</h3>
+      <div class="storage-table">
+        <div class="storage-table-row">
+          <div>Mount point</div>
+          <code>{{ drive_config.mount_point }}</code>
+        </div>
+        <div class="storage-table-row">
+          <div>Filesystem</div>
+          <code>{{ drive_config.filesystem }}</code>
+        </div>
+        <div class="storage-table-row">
+          <div>Drive UUID</div>
+          <code>{{ drive_config.uuid or '—' }}</code>
+        </div>
+        <div class="storage-table-row">
+          <div>USB ID</div>
+          <code>{{ drive_config.usb_id or '—' }}</code>
+        </div>
+        <div class="storage-table-row">
+          <div>Last verified</div>
+          <code id="storageLastVerified">{{ drive_config.last_verified }}</code>
+        </div>
+      </div>
+
+      <h3 class="storage-subheading">Safety checks</h3>
+      <div class="storage-table storage-safety-table" id="storageSafetyChecks">
+        {% for check in safety_checks %}
+          <div class="storage-table-row storage-check-{{ check.state }}">
+            <div><i class="fas {% if check.state == 'pass' %}fa-circle-check{% elif check.state == 'fail' %}fa-circle-xmark{% else %}fa-circle-minus{% endif %}"></i> {{ check.label }}</div>
+            <span>{{ check.detail }}</span>
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="card storage-actions-card">
+      <div class="storage-card-title">
+        <i class="fas fa-screwdriver-wrench"></i>
+        <h2>Storage actions</h2>
+      </div>
+
+      <div class="storage-action-group">
+        <div>
+          <h3>Operational action</h3>
+          <p>Resolve issues without changing storage.</p>
+        </div>
+        <div class="storage-action-row">
+          <div class="storage-action-icon"><i class="fas fa-shield-halved"></i></div>
+          <div class="storage-action-copy">
+            <div class="storage-action-title">Run safety check</div>
+            <div>Checks that the configured storage is ready.</div>
+          </div>
+          <button type="button" id="runSafetyCheckBtn" class="btn btn-secondary btn-sm">
+            Run check
+          </button>
+        </div>
+        <div id="runSafetyCheckError" class="alert alert-danger d-none storage-feedback-below-actions"></div>
+        <div class="storage-action-row">
+          <div class="storage-action-icon"><i class="fas fa-screwdriver-wrench"></i></div>
+          <div class="storage-action-copy">
+            <div class="storage-action-title">Repair storage marker</div>
+            <div>Recreate the storage marker file.</div>
+          </div>
+          <button type="button" id="repairMarkerBtn" class="btn btn-secondary btn-sm">
+            Repair marker
+          </button>
+        </div>
+        <div id="repairMarkerError" class="alert alert-danger d-none storage-feedback-below-actions"></div>
+      </div>
+
+      <div class="storage-config-change">
+        <h3>Configuration change</h3>
+        <p>Choose a new storage target. Current storage stays active until the selected change succeeds.</p>
+        <div class="storage-change-entry">
+          <div class="storage-action-icon"><i class="fas fa-database"></i></div>
+          <div class="storage-action-copy">
+            <div class="storage-action-title">Change managed drive</div>
+            <div>Format or use a replacement NTFS drive without changing storage until the final apply succeeds.</div>
+          </div>
+          <a href="{{ url_for('storage_routes.storage_change_drive_page') }}" class="btn btn-primary btn-sm">
+            Change drive <i class="fas fa-arrow-right ms-1"></i>
+          </a>
+        </div>
+        <div class="storage-change-entry">
+          <div class="storage-action-icon"><i class="fas fa-folder"></i></div>
+          <div class="storage-action-copy">
+            <div class="storage-action-title">Use an existing folder</div>
+            <div>Use this for ZFS, RAID, mergerfs, SnapRAID, NFS, or a normal folder. SimpleSaferServer will not mount or format anything.</div>
+          </div>
+          <a href="{{ url_for('storage_routes.storage_existing_folder_page') }}" class="btn btn-primary btn-sm">
+            Choose folder <i class="fas fa-arrow-right ms-1"></i>
+          </a>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/storage.js') }}"></script>
+{% endblock %}

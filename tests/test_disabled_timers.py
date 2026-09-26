@@ -5,6 +5,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import pytest
+
 from simple_safer_server.services.disabled_timers import DisabledTimerService, parse_timestamp
 
 
@@ -30,6 +32,14 @@ class FakeSystemd:
 
 def _runtime(temp_dir, is_fake=False):
     return SimpleNamespace(is_fake=is_fake, data_dir=Path(temp_dir))
+
+
+def _config():
+    return {
+        "system": {"setup_complete": "true"},
+        "storage": {"mode": "managed_drive"},
+        "backup": {"cloud_enabled": "true"},
+    }
 
 
 def test_disable_writes_state_after_systemd_success_and_replaces_existing_state():
@@ -125,7 +135,7 @@ def test_restore_expired_temporary_records_and_leaves_future_and_permanent_recor
         )
         service.disable("App Update", "app_update.timer", mode="permanent")
 
-        result = service.restore_expired(now=now)
+        result = service.restore_expired(_config(), now=now)
 
         assert result["restored"] == ["backup_cloud.timer"]
         assert systemd.enabled == ["backup_cloud.timer"]
@@ -144,10 +154,10 @@ def test_restore_failures_retry_three_times_then_alert_once_and_stop_retrying():
 
         service.disable("Cloud Backup", "backup_cloud.timer", mode="temporary", expires_at=now)
 
-        service.restore_expired(now=now)
-        service.restore_expired(now=now + timedelta(minutes=5))
-        service.restore_expired(now=now + timedelta(minutes=10))
-        service.restore_expired(now=now + timedelta(minutes=15))
+        service.restore_expired(_config(), now=now)
+        service.restore_expired(_config(), now=now + timedelta(minutes=5))
+        service.restore_expired(_config(), now=now + timedelta(minutes=10))
+        service.restore_expired(_config(), now=now + timedelta(minutes=15))
 
         record = service.get_record("backup_cloud.timer")
         assert record is not None
@@ -156,6 +166,53 @@ def test_restore_failures_retry_three_times_then_alert_once_and_stop_retrying():
         assert record["last_restore_attempt_at"].endswith("+00:00")
         assert len(systemd.enable_attempts) == 3
         alert_notifier.notify.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    ("timer_name", "section", "key", "value"),
+    [
+        ("check_mount.timer", "storage", "mode", "existing_folder"),
+        ("backup_cloud.timer", "backup", "cloud_enabled", "false"),
+    ],
+)
+def test_expired_pause_does_not_restart_task_disabled_by_config(
+    tmp_path, timer_name, section, key, value
+):
+    systemd = FakeSystemd()
+    service = DisabledTimerService(_runtime(tmp_path), systemd)
+    now = datetime(2026, 5, 13, 12, 0, 0, tzinfo=UTC)
+    service.disable("Paused task", timer_name, mode="temporary", expires_at=now)
+    service.disable("DDNS Update", "ddns_update.timer", mode="temporary", expires_at=now)
+    config = _config()
+    config[section][key] = value
+
+    # The periodic helper runs in a new process and must use the current config,
+    # rather than treating the saved pause as permission to restart any task.
+    restorer = DisabledTimerService(_runtime(tmp_path), systemd)
+    result = restorer.restore_expired(config, now=now)
+
+    assert systemd.enabled == ["ddns_update.timer"]
+    assert result == {"restored": ["ddns_update.timer"], "failed": []}
+    assert restorer.get_record(timer_name) is None
+
+
+def test_expired_pause_waits_for_setup_completion(tmp_path):
+    systemd = FakeSystemd()
+    service = DisabledTimerService(_runtime(tmp_path), systemd)
+    now = datetime(2026, 5, 13, 12, 0, 0, tzinfo=UTC)
+    service.disable("Cloud Backup", "backup_cloud.timer", mode="temporary", expires_at=now)
+    config = _config()
+    config["system"]["setup_complete"] = "false"
+
+    assert service.restore_expired(config, now=now) == {"restored": [], "failed": []}
+    assert systemd.enabled == []
+    assert service.get_record("backup_cloud.timer") is not None
+
+    config["system"]["setup_complete"] = "true"
+    service.restore_expired(config, now=now)
+
+    assert systemd.enabled == ["backup_cloud.timer"]
+    assert service.get_record("backup_cloud.timer") is None
 
 
 def test_parse_timestamp_rejects_naive_state_values():

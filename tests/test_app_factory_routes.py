@@ -68,6 +68,31 @@ def test_fake_dashboard_renders_storage_action_urls():
         runtime._fake_state = previous_fake_state
 
 
+def test_setup_wizard_renders_drive_refresh_controls():
+    previous_runtime = runtime._runtime
+    previous_fake_state = runtime._fake_state
+    try:
+        with TemporaryDirectory() as temp_dir:
+            app = _create_fake_app(temp_dir)
+
+            with app.test_client() as client:
+                response = client.get("/setup")
+
+            assert response.status_code == 200
+            page = response.get_data(as_text=True)
+            # The setup wizard can be open while an operator plugs in or formats
+            # a disk, so both storage selectors need a manual rescan control.
+            assert 'id="refreshFormatDrivesBtn"' in page
+            assert "Refresh drives" in page
+            assert 'id="refreshPartitionsBtn"' in page
+            assert "Refresh partitions" in page
+            assert "refreshFormatDrives()" in page
+            assert "refreshMountDrives()" in page
+    finally:
+        runtime._runtime = previous_runtime
+        runtime._fake_state = previous_fake_state
+
+
 def test_network_file_sharing_renders_three_service_status_labels_and_help_text():
     previous_runtime = runtime._runtime
     previous_fake_state = runtime._fake_state

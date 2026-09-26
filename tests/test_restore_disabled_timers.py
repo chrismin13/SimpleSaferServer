@@ -8,13 +8,15 @@ from scripts import restore_disabled_timers
 class FakeService:
     result: ClassVar[dict[str, list[str]] | None] = None
     exception: ClassVar[Exception | None] = None
+    config: ClassVar[dict | None] = None
 
     def __init__(self, runtime, systemd_adapter, alert_notifier=None):
         self.runtime = runtime
         self.systemd_adapter = systemd_adapter
         self.alert_notifier = alert_notifier
 
-    def restore_expired(self):
+    def restore_expired(self, config):
+        FakeService.config = config
         if self.exception:
             raise self.exception
         return self.result or {"restored": [], "failed": []}
@@ -30,7 +32,10 @@ def test_main_returns_zero_when_restore_check_completes(caplog):
     FakeService.result = {"restored": ["backup_cloud.timer"], "failed": ["check_mount.timer"]}
 
     with patch("scripts.restore_disabled_timers.get_runtime", return_value=FakeRuntime()):
-        with patch("scripts.restore_disabled_timers.ConfigManager"):
+        with patch("scripts.restore_disabled_timers.ConfigManager") as config_manager:
+            config_manager.return_value.get_all_config.return_value = {
+                "storage": {"mode": "existing_folder"}
+            }
             with patch("scripts.restore_disabled_timers.SystemdAdapter"):
                 with patch("scripts.restore_disabled_timers.AlertNotifier"):
                     with patch(
@@ -40,6 +45,7 @@ def test_main_returns_zero_when_restore_check_completes(caplog):
                         assert restore_disabled_timers.main() == 0
 
     assert "Disabled timer restore check completed: restored=1 failed=1" in caplog.text
+    assert FakeService.config == {"storage": {"mode": "existing_folder"}}
 
 
 def test_main_returns_nonzero_and_logs_traceback_when_restore_check_raises(caplog):

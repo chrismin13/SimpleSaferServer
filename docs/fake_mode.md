@@ -15,6 +15,10 @@ machine:
 - restart, shutdown, and other destructive machine actions
 - writes to real `/etc` paths
 
+Fake mode does not require host Samba tools such as `testparm`, `smbd`, or `smbcontrol`.
+Managed-share setup validates the generated config through the fake Samba adapter so macOS and
+Railway previews can complete setup without Linux-only services installed.
+
 The default fake-mode data directory is `.dev-data/`. `run_fake.sh` starts the app with
 `SSS_MODE=fake` and enables auto-login by default. Set `SSS_SKIP_LOGIN=false` to use the normal
 login screen. `reset_fake_mode.sh` deletes `.dev-data/` so setup can be run again from a clean
@@ -34,6 +38,9 @@ exercising provider behavior from fake mode.
 Fake-mode config, users, secrets, logs, and simulated machine state live under `.dev-data/` unless
 `SSS_DATA_DIR` points somewhere else. Operational state that does not need to survive a restart can
 use the runtime volatile directory.
+
+Managed-drive storage checks use the simulated mount point and UUID saved in fake state. They do
+not compare against the development machine's real mounted filesystem UUID.
 
 Disable Schedule writes the same `disabled_timers.json` state in fake mode, but it does not invoke
 systemd. Enable Schedule removes the fake disabled-schedule record so dashboard labels return to the
