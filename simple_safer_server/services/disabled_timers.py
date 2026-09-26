@@ -120,13 +120,24 @@ class DisabledTimerService:
             lock_mode=0o644,
         )
 
-    def restore_expired(self, *, now: datetime | None = None) -> dict[str, list[str]]:
+    def restore_expired(
+        self, config: dict[str, dict[str, str]], *, now: datetime | None = None
+    ) -> dict[str, list[str]]:
         now = now or utc_now()
         if now.tzinfo is None:
             raise ValueError("restore timestamp must include a timezone offset")
         now = now.astimezone(UTC)
         restored: list[str] = []
         failed: list[str] = []
+
+        if str(config.get("system", {}).get("setup_complete", "false")).lower() != "true":
+            return {"restored": restored, "failed": failed}
+
+        unused_timers = set()
+        if config.get("storage", {}).get("mode", "managed_drive") != "managed_drive":
+            unused_timers.add("check_mount.timer")
+        if str(config.get("backup", {}).get("cloud_enabled", "false")).lower() != "true":
+            unused_timers.add("backup_cloud.timer")
 
         for timer_name, record in sorted(self.list_records().items()):
             if record.get("mode") != "temporary" or record.get("restore_failed"):
@@ -135,6 +146,11 @@ class DisabledTimerService:
             if expires_at is None or expires_at > now:
                 continue
             try:
+                # A pause can outlive a storage-mode change or disabling cloud backup.
+                # Expire its record without turning the unused task back on.
+                if timer_name in unused_timers:
+                    self._remove_record(timer_name)
+                    continue
                 if not self.runtime.is_fake:
                     self.systemd_adapter.enable_timer_now(timer_name)
                 self._remove_record(timer_name)

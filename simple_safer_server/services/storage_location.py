@@ -1,12 +1,18 @@
 import json
 import os
 import secrets
+import stat
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from simple_safer_server.adapters.command_runner import CommandRunner
-from simple_safer_server.services.file_persistence import atomic_write_json, atomic_write_text
+from simple_safer_server.services.file_persistence import (
+    atomic_write_json,
+    atomic_write_text,
+    locked_path,
+)
 from simple_safer_server.services.runtime import get_fake_state, get_runtime
 
 STORAGE_SECTION = "storage"
@@ -368,22 +374,115 @@ def configure_existing_folder(
     runtime: Any | None = None,
     command_runner: CommandRunner | None = None,
 ) -> StorageLocation:
-    location = prepare_existing_folder(path, runtime=runtime, command_runner=command_runner)
-    save_storage_location(config_manager, location)
-    return get_storage_location(config_manager, runtime=runtime)
+    runtime = runtime or get_runtime()
+    with (
+        locked_path(runtime.config_dir / "storage-change.lock", mode=0o600),
+        existing_folder_configuration(
+            config_manager, path, runtime=runtime, command_runner=command_runner
+        ) as location,
+    ):
+        save_storage_location(config_manager, location)
+        return location
+
+
+@contextmanager
+def existing_folder_configuration(config_manager, path, runtime=None, command_runner=None):
+    """Prepare a folder and undo changes if the caller cannot finish saving it."""
+    runtime = runtime or get_runtime()
+    resolved = validate_existing_folder_path(path, runtime=runtime)
+    previous_location = get_storage_location(config_manager, runtime=runtime)
+    marker = marker_path(resolved)
+    # Only app-owned regular files may be replaced. Following a marker symlink
+    # could make a storage change overwrite a file elsewhere on the server.
+    if marker.parent.is_symlink() or marker.is_symlink():
+        raise StorageLocationError("The storage marker and its folder must not be symbolic links.")
+    marker_folder_existed = marker.parent.exists()
+    original_content = None
+    original_mode = None
+    original_stat = None
+    if marker.exists():
+        if not marker.is_file():
+            raise StorageLocationError("The storage marker must be a regular file.")
+        # Preserve text exactly, including line endings, even for a broken JSON marker.
+        with marker.open(encoding="utf-8", newline="") as handle:
+            original_content = handle.read()
+        original_stat = marker.stat()
+        original_mode = stat.S_IMODE(original_stat.st_mode)
+
+    config_attempted = False
+    try:
+        location = prepare_existing_folder(
+            str(resolved),
+            runtime=runtime,
+            command_runner=command_runner,
+            previous_location=previous_location,
+        )
+        # Callers save only after their other prerequisites (such as Samba) pass.
+        # Once yielded, even a partially failed config write must be rolled back.
+        config_attempted = True
+        yield location
+    except Exception as exc:
+        failures = []
+        if config_attempted:
+            try:
+                save_storage_location(config_manager, previous_location)
+            except Exception:
+                failures.append("storage settings")
+        try:
+            if original_content is None:
+                marker.unlink(missing_ok=True)
+                if not marker_folder_existed and marker.parent.exists():
+                    marker.parent.rmdir()
+            else:
+                try:
+                    with marker.open(encoding="utf-8", newline="") as handle:
+                        current_content = handle.read()
+                except FileNotFoundError:
+                    current_content = None
+                if current_content != original_content:
+                    atomic_write_text(marker, original_content, mode=original_mode)
+                    if original_stat is not None:
+                        current_stat = marker.stat()
+                        if (current_stat.st_uid, current_stat.st_gid) != (
+                            original_stat.st_uid,
+                            original_stat.st_gid,
+                        ):
+                            os.chown(marker, original_stat.st_uid, original_stat.st_gid)
+        except Exception:
+            failures.append("storage marker")
+        if failures:
+            raise StorageLocationError(
+                f"Folder change failed and could not restore {', '.join(failures)}. "
+                "Check the storage settings and run a safety check before backing up."
+            ) from exc
+        raise
 
 
 def prepare_existing_folder(
     path: str,
     runtime: Any | None = None,
     command_runner: CommandRunner | None = None,
+    previous_location: StorageLocation | None = None,
 ) -> StorageLocation:
     """Validate a folder and write its marker without changing app config."""
     runtime = runtime or get_runtime()
     resolved = validate_existing_folder_path(path, runtime=runtime)
-    storage_id = _storage_id()
-    marker_dir(resolved).mkdir(mode=0o700, exist_ok=True)
-    _write_storage_marker(resolved, storage_id)
+    reuse_marker = bool(
+        previous_location
+        and previous_location.storage_id
+        and _normalize_storage_path(previous_location.path) == resolved
+    )
+    if reuse_marker and previous_location is not None:
+        storage_id = previous_location.storage_id
+        if _read_storage_marker(resolved).get("storage_id") != storage_id:
+            raise StorageLocationError(
+                "Storage marker does not match the app configuration. "
+                "Confirm this is the correct folder and repair its marker before selecting it again."
+            )
+    else:
+        storage_id = _storage_id()
+        marker_dir(resolved).mkdir(mode=0o700, exist_ok=True)
+        _write_storage_marker(resolved, storage_id)
     _probe_storage_write(resolved)
     mount_identity = _detect_mount_identity(resolved, command_runner=command_runner)
     return StorageLocation(

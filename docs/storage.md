@@ -108,6 +108,10 @@ Use **Choose folder** on the Storage page to open the existing-folder change pag
 
 The page saves the new folder only after **Use This Folder** succeeds. On success, SimpleSaferServer stores the folder path, updates the default `backup` share, creates the storage marker, and refreshes generated task timers.
 
+Changing the folder keeps the existing `backup` share's allowed users, read-only setting, and custom Samba options. It changes only the share's path. Other shares and the ownership and permissions of your folders and files are left alone. The new folder's existing filesystem permissions still apply, so a user allowed through the network share also needs access to that folder on the server.
+
+Selecting the current folder again keeps its matching storage marker and ID. A missing or mismatched marker must be repaired explicitly after confirming the folder is correct. If a folder change fails, the app restores the previous storage settings and marker, and reverses any completed share and timer changes. Any marker already present in a different selected folder is restored on failure. If recovery cannot finish, the error names what needs attention before another backup.
+
 ## The Storage Marker
 
 SimpleSaferServer writes this marker file inside the selected storage location:

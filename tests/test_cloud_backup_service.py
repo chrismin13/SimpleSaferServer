@@ -32,6 +32,7 @@ class FakeSystemUtils:
         self.setup_rclone_result = True
         self.created_systemd_config = False
         self.installed_timers = False
+        self.activated_timers = False
         self.systemd_config = None
 
     def setup_rclone(self, config):
@@ -43,8 +44,9 @@ class FakeSystemUtils:
         self.systemd_config = config
         return True, None
 
-    def install_systemd_services_and_timers(self, config):
+    def install_systemd_services_and_timers(self, config, activate_timers=True):
         self.installed_timers = True
+        self.activated_timers = activate_timers
         return True, None
 
 
@@ -182,6 +184,32 @@ class CloudBackupServiceTests(unittest.TestCase):
         self.assertEqual(config.config["backup"]["cloud_enabled"], "false")
         self.assertTrue(system_utils.created_systemd_config)
         self.assertTrue(system_utils.installed_timers)
+
+    def test_cloud_destination_save_keeps_timers_stopped_until_setup_finishes(self):
+        for mode in ("mega", "advanced"):
+            with self.subTest(mode=mode):
+                service, config, system_utils, _runtime = self.make_service(is_fake=False)
+                config.config["system"] = {"setup_complete": "false"}
+                config.config["backup"]["mega_email"] = "user@example.com"
+                config.config["backup"]["mega_pass"] = "stored-obscured"
+                data = {
+                    "cloud_mode": mode,
+                    "mega_email": "user@example.com",
+                    "mega_folder": "/Backups",
+                    "rclone_config": "[remote]\ntype = local\n",
+                    "remote_name": "remote:backups",
+                }
+
+                service.save_config(data)
+
+                self.assertEqual(config.config["backup"]["cloud_enabled"], "true")
+                self.assertTrue(system_utils.installed_timers)
+                self.assertFalse(system_utils.activated_timers)
+
+                config.config["system"]["setup_complete"] = "true"
+                service.save_config(data)
+
+                self.assertTrue(system_utils.activated_timers)
 
     def test_fake_schedule_save_does_not_reinstall_timers(self):
         service, config, system_utils, _runtime = self.make_service(is_fake=True)

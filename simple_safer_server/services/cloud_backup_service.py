@@ -269,7 +269,12 @@ class CloudBackupService:
         if not ok:
             raise OperationProblem(f"Failed to update systemd config: {err}")
 
-        ok, err = self._system_utils.install_systemd_services_and_timers(config)
+        # The setup wizard saves cloud settings before email and final confirmation.
+        # Generate the units here, but leave recurring work stopped until setup ends.
+        setup_complete = str(config.get("system", {}).get("setup_complete", "false")).lower()
+        ok, err = self._system_utils.install_systemd_services_and_timers(
+            config, activate_timers=setup_complete == "true"
+        )
         if not ok:
             raise OperationProblem(f"Failed to update systemd timers: {err}")
 

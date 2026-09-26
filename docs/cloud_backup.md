@@ -23,6 +23,7 @@ SimpleSaferServer therefore checks the configured storage location before every 
   - MEGA (Simple)
   - Advanced (Paste rclone config)
 - **Disabled**: Cloud Backup can be skipped during setup. When it is disabled, the timer is not enabled and manual backup runs are blocked until Cloud Backup is configured.
+- Saving a cloud destination during first-time setup keeps recurring jobs stopped. They are enabled when setup finishes.
 - **Required setting**: `backup.cloud_enabled` must be `true` or `false`. If that setting is missing or invalid, cloud backup fails loudly and alerts the administrator instead of guessing what to do.
 
 ### MEGA Simple Mode

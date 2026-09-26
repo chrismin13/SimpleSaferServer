@@ -436,6 +436,61 @@ class SMBManagerTests(unittest.TestCase):
         ):
             self.manager.ensure_default_backup_share(str(share_path), "admin")
 
+    def test_backup_folder_change_preserves_custom_rules_and_other_shares(self):
+        old_path = self.root / "old-backup"
+        new_path = self.root / "new-backup"
+        old_path.mkdir(mode=0o750)
+        new_path.mkdir(mode=0o700)
+        payload = new_path / "private.txt"
+        payload.write_text("private data")
+        payload.chmod(0o600)
+        original = (
+            "[backup]\n"
+            f"   path = {old_path}\n"
+            "   read only = yes\n"
+            "   valid users = admin alice @family\n"
+            "   write list = alice\n"
+            "   create mask = 0640\n"
+            "   directory mask = 0750\n"
+            "   veto files = /private/\n"
+            "   comment = Family backups\n"
+            "\n[photos]\n"
+            f"   path = {old_path}\n"
+            "   valid users = bob\n"
+            "   read only = yes\n"
+        )
+        self._write_shares(original)
+        before = {path: path.stat() for path in (old_path, new_path, payload)}
+
+        self.manager.ensure_default_backup_share(str(new_path), "admin")
+
+        expected = original.replace(f"path = {old_path}", f"path = {new_path}", 1)
+        self.assertEqual(self.manager.sss_shares_path.read_text(), expected)
+        for path, metadata in before.items():
+            current = path.stat()
+            self.assertEqual(current.st_mode, metadata.st_mode)
+            self.assertEqual(current.st_uid, metadata.st_uid)
+            self.assertEqual(current.st_gid, metadata.st_gid)
+
+        self.manager.update_managed_share_path("backup", str(old_path))
+
+        self.assertEqual(self.manager.sss_shares_path.read_text(), original)
+
+    def test_backup_path_change_restores_exact_config_on_validation_failure(self):
+        old_path = self.root / "old-backup"
+        new_path = self.root / "new-backup"
+        old_path.mkdir()
+        new_path.mkdir()
+        original = f"[backup]\npath = {old_path}\nread only = yes\nvalid users = alice\n"
+        self._write_shares(original)
+        with patch.object(
+            self.manager, "_validate_effective_smb_config", side_effect=ValueError("invalid")
+        ):
+            with self.assertRaisesRegex(ValueError, "invalid"):
+                self.manager.update_managed_share_path("backup", str(new_path))
+
+        self.assertEqual(self.manager.sss_shares_path.read_text(), original)
+
     def test_create_managed_share_rejects_unmanaged_conflict_from_main_config(self):
         share_path = self.root / "new-backup"
         share_path.mkdir()

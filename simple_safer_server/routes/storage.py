@@ -17,15 +17,18 @@ from simple_safer_server.services.backup_drive_unmount import (
     unmount_managed_backup_drive,
 )
 from simple_safer_server.services.filesystem_browser import list_local_path
+from simple_safer_server.services.storage_configuration import (
+    StorageConfigurationError,
+    change_existing_folder,
+    refresh_storage_timers,
+)
 from simple_safer_server.services.storage_location import (
     MODE_EXISTING_FOLDER,
     StorageLocationError,
     get_storage_location,
     mark_managed_drive_storage,
     passive_storage_status,
-    prepare_existing_folder,
     repair_storage_marker,
-    save_storage_location,
     storage_status,
 )
 from simple_safer_server.services.user_manager import admin_required, api_admin_required
@@ -151,30 +154,10 @@ def _apt_lock_block_response(action: str):
 
 
 def _refresh_storage_timers(services: Any) -> None:
-    config = services.config_manager.get_all_config()
-    ok, error = services.system_utils.create_systemd_config_file(config)
-    if not ok:
-        raise OperationProblem(f"Storage was saved, but systemd config was not refreshed: {error}")
-    ok, error = services.system_utils.install_systemd_services_and_timers(config)
-    if not ok:
-        raise OperationProblem(f"Storage was saved, but task timers were not refreshed: {error}")
-
-
-def _restore_storage_location_after_failure(
-    services: Any, previous_location: Any, admin_username: str
-) -> bool:
-    restored = True
     try:
-        save_storage_location(services.config_manager, previous_location)
-    except Exception:
-        current_app.logger.exception("Could not restore previous storage location after failure")
-        restored = False
-    try:
-        services.smb_manager.ensure_default_backup_share(previous_location.path, admin_username)
-    except Exception:
-        current_app.logger.exception("Could not restore previous backup share after failure")
-        restored = False
-    return restored
+        refresh_storage_timers(services.config_manager, services.system_utils)
+    except StorageConfigurationError as exc:
+        raise OperationProblem(f"Storage was saved, but {exc}") from exc
 
 
 @storage.route("/unmount", methods=["POST"])
@@ -579,44 +562,22 @@ def storage_existing_folder_page():
 @api_admin_required
 def api_existing_folder():
     services = _get_services()
-    storage_saved = False
-    previous_location = None
-    admin_username = ""
     try:
         data = json_request_data()
-        admin_username = services.config_manager.get_value("system", "username", "")
-        previous_location = get_storage_location(
-            services.config_manager,
-            runtime=services.runtime,
-        )
-        location = prepare_existing_folder(
+        location = change_existing_folder(
             data.get("path", ""),
+            config_manager=services.config_manager,
+            smb_manager=services.smb_manager,
+            system_utils=services.system_utils,
             runtime=services.runtime,
             command_runner=services.command_runner,
         )
-        services.smb_manager.ensure_default_backup_share(
-            location.path,
-            admin_username,
-        )
-        save_storage_location(services.config_manager, location)
-        storage_saved = True
-        _refresh_storage_timers(services)
         return json_data({"path": location.path}, message="Storage folder saved.")
     except StorageLocationError as exc:
         return json_problem(ValidationProblem(str(exc), slug="storage-validation-error"))
-    except OperationProblem as exc:
-        if storage_saved and previous_location is not None:
-            restored = _restore_storage_location_after_failure(
-                services, previous_location, admin_username
-            )
-            if restored:
-                return json_problem(
-                    OperationProblem(f"{exc.detail} Previous storage settings were restored.")
-                )
-        return json_problem(exc)
+    except StorageConfigurationError as exc:
+        return json_problem(OperationProblem(str(exc)))
     except Exception:
-        if storage_saved and previous_location is not None:
-            _restore_storage_location_after_failure(services, previous_location, admin_username)
         current_app.logger.exception("Could not configure existing storage folder")
         return json_problem(OperationProblem("Could not configure the storage folder."))
 

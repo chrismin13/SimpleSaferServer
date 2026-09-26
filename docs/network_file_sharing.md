@@ -1,5 +1,7 @@
 # Network File Sharing
 
+Changing the storage folder preserves the existing `backup` share's allowed users, read-only setting, and custom Samba options. Only its folder path changes. It does not change other shares or the ownership and permissions of stored files. See [Storage](storage.md) for folder selection and recovery after a failed change.
+
 The Network File Sharing page manages Samba shares and Samba service status.
 It also includes the server name. This is the name you'll use to find this
 server on your network. Scheduled task alert emails include it in the subject.

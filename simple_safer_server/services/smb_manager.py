@@ -807,6 +807,35 @@ class SMBManager:
 
         return True
 
+    def update_managed_share_path(self, name, path):
+        """Move a managed share without rebuilding its access rules or custom options."""
+        self._validate_share_input(name, path)
+        self._ensure_layout_for_share_write()
+        lines, shares = self._load_managed_shares_file()
+        share = self._find_share_record(shares, name, managed=True)
+        if share is None:
+            raise ValueError(f"Managed share {name} not found")
+        if share.path == path:
+            return True
+
+        replacement = []
+        found_path = False
+        for line in lines[share.start_line : share.end_line]:
+            key, separator, _value = line.strip().partition("=")
+            if separator and key.strip().lower() == "path":
+                # Replace every path assignment: Samba uses the last one when
+                # a manually edited section contains duplicates.
+                indentation = line[: len(line) - len(line.lstrip())]
+                replacement.append(f"{indentation}path = {path}\n")
+                found_path = True
+            else:
+                replacement.append(line)
+        if not found_path:
+            replacement.insert(1, f"   path = {path}\n")
+        lines[share.start_line : share.end_line] = replacement
+        self._commit_sss_shares_file("".join(lines))
+        return True
+
     def ensure_default_backup_share(
         self, mount_point, admin_username, fake_mode_comment=None, comment=None
     ):
@@ -825,14 +854,7 @@ class SMBManager:
 
         managed_backup = self.get_managed_share("backup")
         if managed_backup is not None:
-            return self.update_managed_share(
-                "backup",
-                "backup",
-                mount_point,
-                writable=True,
-                comment=comment,
-                valid_users=[admin_username],
-            )
+            return self.update_managed_share_path("backup", mount_point)
 
         return self.create_managed_share(
             "backup",
