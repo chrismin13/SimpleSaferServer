@@ -1,5 +1,34 @@
 /* This client renders rclone's questions. Provider branches stay inside rclone. */
 window.RcloneEditor = {
+  optionField(option) {
+    // DefaultStr preserves rclone's syntax for durations, sizes, lists and
+    // large integers. Converting through JavaScript numbers can lose data.
+    const initial = option.DefaultStr ?? String(option.Default ?? '');
+    const required = !!option.Required && initial === '';
+    const secret = !!option.IsPassword;
+    let choices = (option.Examples || []).map(item => ({ ...item, Value: String(item.Value) }));
+    const boolean = option.Type === 'bool' || option.Type === 'Tristate';
+    if (boolean && !choices.length) {
+      choices = [{ Value: 'true', Help: 'Yes' }, { Value: 'false', Help: 'No' }];
+      if (option.Type === 'Tristate') choices.push({ Value: 'unset', Help: 'Automatic (unset)' });
+    }
+    // Password handling takes precedence over examples and name-based hints.
+    if (secret) choices = [];
+    const compact = choices.length <= 5;
+    const custom = choices.length > 0 && !option.Exclusive && !boolean;
+    // Optional exclusive questions can accept an empty value, too. Do not
+    // silently select the first example when rclone has supplied no default.
+    if (choices.length && !required && initial === '' && !choices.some(item => item.Value === '')) {
+      choices.unshift({ Value: '', Help: 'Leave empty (default)' });
+    }
+    const selected = choices.findIndex(item => item.Value === initial);
+    return {
+      initial, required, secret, choices, compact, custom,
+      selection: selected >= 0 ? String(selected) : custom && initial !== '' ? 'custom' : '',
+      multiline: !secret && (option.Name.includes('json') || initial.includes('\n'))
+    };
+  },
+
   mount(root) {
     if (root.dataset.mounted) return;
     root.dataset.mounted = "true";
@@ -216,6 +245,57 @@ window.RcloneEditor = {
         questionActions(null), 'Sign in');
     }
 
+    function answerInput(field) {
+      const attributes = `id="answer" class="form-control${field.multiline ? ' rclone-code' : ''}" aria-labelledby="question-title" autocomplete="off" spellcheck="false" ${field.required ? 'required' : ''}`;
+      if (field.multiline) return `<textarea ${attributes}>${esc(field.initial)}</textarea>`;
+      // Keep text input for rclone-specific types; browser number/date inputs
+      // reject valid units and sentinel values before rclone can validate them.
+      return `<div class="rclone-secret"><input ${attributes} type="${field.secret ? 'password' : 'text'}" value="${esc(field.initial)}">${field.secret ? button('reveal',icon('eye'),'secondary','aria-label="Show password"') : ''}</div>`;
+    }
+
+    function answerControl(field) {
+      if (!field.choices.length) return answerInput(field);
+      const choices = field.choices.map((item, index) => ({ ...item, key: String(index) }));
+      // Use separate selection keys so real values like "custom" or "" never
+      // collide with the UI's custom-entry option.
+      if (field.custom) choices.push({ key: 'custom', Help: 'Custom value', Value: '' });
+      let control;
+      if (field.compact) {
+        control = `<div class="rclone-choice-list" role="group" aria-labelledby="question-title">${choices.map(item => `<label class="rclone-choice"><input type="radio" name="answer-choice" value="${esc(item.key)}" ${item.key === field.selection ? 'checked' : ''}><span>${esc(item.Help || item.Value)}${item.Value && item.Help && item.Help !== item.Value ? `<small>${esc(item.Value)}</small>` : ''}</span></label>`).join('')}</div>`;
+      } else {
+        control = `<select id="answer-choice" name="answer-choice" class="form-control" aria-labelledby="question-title"><option value="" disabled ${field.selection === '' ? 'selected' : ''}>Choose an option…</option>${choices.map(item => `<option value="${esc(item.key)}" ${item.key === field.selection ? 'selected' : ''}>${esc((item.Help || item.Value).split('\n')[0])}${item.Value && item.Help !== item.Value ? ` — ${esc(item.Value)}` : ''}</option>`).join('')}</select><div id="answer-choice-help" class="rclone-help-content"></div>`;
+      }
+      if (field.custom) control += `<div id="answer-custom" class="rclone-field" hidden><label for="answer">Custom value</label>${answerInput(field)}</div>`;
+      return control;
+    }
+
+    function selectedAnswerChoice() {
+      return $('#answer-choice')?.value ?? $('input[name="answer-choice"]:checked')?.value;
+    }
+
+    function updateAnswerChoice(focus = false) {
+      const selection = selectedAnswerChoice();
+      const custom = $('#answer-custom');
+      if (custom) {
+        custom.hidden = selection !== 'custom';
+        $('#answer').disabled = custom.hidden;
+        if (focus && !custom.hidden) $('#answer').focus({ preventScroll: true });
+      }
+      const help = $('#answer-choice-help');
+      if (help) {
+        const field = window.RcloneEditor.optionField(draft.option);
+        help.textContent = field.choices[selection]?.Help || '';
+      }
+    }
+
+    function questionAnswer() {
+      const field = window.RcloneEditor.optionField(draft.option);
+      if (!field.choices.length || selectedAnswerChoice() === 'custom') return $('#answer').value;
+      const choice = field.choices[selectedAnswerChoice()];
+      if (!choice) throw new Error('Choose an answer to continue.');
+      return choice.Value;
+    }
+
     function renderQuestion() {
       const option = draft.option;
       if (!option) {
@@ -226,8 +306,8 @@ window.RcloneEditor = {
         renderAuthorizationChoice(option);
         return;
       }
-      const examples = option.Examples || [];
-      const initial = option.DefaultStr ?? String(option.Default ?? '');
+      const field = window.RcloneEditor.optionField(option);
+      const initial = field.initial;
       const lines = (option.Help || '').split('\n');
       const title = lines[0] || option.Name;
       const tokenQuestion = option.Name === 'config_token';
@@ -238,34 +318,17 @@ window.RcloneEditor = {
         ${draft.error ? `<div class="rclone-error" role="alert">${esc(draft.error)}</div>` : ''}`, questionActions('Apply authorization'), 'Authorize with rclone');
         return;
       }
-      let control;
-      if (option.Type === 'bool' || (option.Exclusive && examples.length <= 5 && examples.length)) {
-        const choices = examples.length ? examples : [{
-          Value: 'true',
-          Help: 'Yes'
-        }, {
-          Value: 'false',
-          Help: 'No'
-        }];
-        control = `<div class="rclone-choice-list" role="group" aria-labelledby="question-title">${choices.map(item => `<label class="rclone-choice"><input type="radio" name="answer" value="${esc(item.Value)}" ${String(item.Value) === initial ? 'checked' : ''}><span>${esc(item.Help || item.Value)}${option.Type !== 'bool' && item.Help && item.Help !== item.Value ? `<small>${esc(item.Value)}</small>` : ''}</span></label>`).join('')}</div>`;
-      } else if (option.Exclusive) {
-        control = `<select id="answer" class="form-control" aria-labelledby="question-title"><option value="">Choose an option…</option>${examples.map(item => `<option value="${esc(item.Value)}" ${String(item.Value) === initial ? 'selected' : ''}>${esc(item.Help || item.Value)} — ${esc(item.Value)}</option>`).join('')}</select>`;
-      } else if (option.Name.includes('json')) {
-        control = `<textarea id="answer" class="form-control rclone-code" aria-labelledby="question-title" autocomplete="off" placeholder="Paste the value here">${esc(initial)}</textarea>`;
-      } else {
-        control = `<div class="rclone-secret"><input id="answer" class="form-control" type="${option.IsPassword ? 'password' : 'text'}" value="${esc(initial)}" autocomplete="off" spellcheck="false" ${examples.length ? 'list="answer-examples"' : ''} aria-label="${esc(title)}">${option.IsPassword ? button('reveal',icon('eye'),'secondary','aria-label="Show password"') : ''}</div>
-      ${examples.length ? `<datalist id="answer-examples">${examples.map(item => `<option value="${esc(item.Value)}">${esc(item.Help)}</option>`).join('')}</datalist>` : ''}`;
-      }
       const help = lines.slice(1).join('\n').trim();
       panel(`<form id="question-form"><div class="rclone-field">
         <h3 id="question-title">${esc(title)}</h3>
-        <div aria-labelledby="question-title">${control}</div>
+        <div aria-labelledby="question-title">${answerControl(field)}</div>
         ${!option.Required && !initial ? '<p class="rclone-default">Optional</p>' : ''}
         <div class="rclone-help"><div class="rclone-help-content">${helpMarkup(help)}${help ? '\n\n' : ''}<code>${esc(option.Name)}</code></div>
-        ${examples.length > 5 && !option.Exclusive ? `<div class="rclone-help-content">${examples.map(item => `<b>${esc(item.Value)}</b> — ${esc(item.Help)}`).join('\n\n')}</div>` : ''}</div>
+        </div>
         </div></form>${draft.error ? `<div class="rclone-error" role="alert">${esc(draft.error)}</div>` : ''}`,
         questionActions(), flow === 'edit' ? 'Connection settings' : 'Connect storage');
-      $('#answer')?.focus({
+      updateAnswerChoice();
+      (overlay.querySelector('input[name="answer-choice"]:checked') || $('#answer-choice') || overlay.querySelector('input[name="answer-choice"]') || $('#answer'))?.focus({
         preventScroll: true
       });
     }
@@ -606,6 +669,7 @@ window.RcloneEditor = {
     });
     on('change', event => {
       if (event.target.id === 'destination-ack') $('[data-action="save"]').disabled = !event.target.checked;
+      if (event.target.name === 'answer-choice') updateAnswerChoice(true);
     });
     on('contextmenu', event => {
       const row = event.target.closest('[data-remote-row]');
@@ -622,8 +686,7 @@ window.RcloneEditor = {
       const submitter = event.submitter;
       perform(submitter, async () => {
         if (form.id === 'question-form') {
-          const answer = $('#answer')?.value ?? $('input[name="answer"]:checked')?.value;
-          if (answer === undefined) throw new Error('Choose an answer to continue.');
+          const answer = draft.option.Name === 'config_token' ? $('#answer').value : questionAnswer();
           acceptDraft(await api('advance', {
             id: draft.id,
             answer

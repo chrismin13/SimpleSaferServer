@@ -13,6 +13,18 @@ connection and one dedicated destination folder; additional connections are avai
 3. Browse to a destination folder, create a folder, or enter the exact path.
 4. Review the destination and confirm that it is dedicated to this server's backups, then save.
 
+Suggested values appear as selectable choices with descriptions. Short lists, including Google
+Drive's scopes, use radio buttons; longer lists use a dropdown with the selected choice's full
+description below it. **Custom value** is available when rclone accepts values beyond its examples,
+such as a comma-separated combination of Drive scopes. Questions restricted to a fixed list do
+not offer custom entry. Empty defaults remain selectable when allowed, and saved custom values
+are retained when reopening settings.
+
+Boolean questions offer Yes/No; tri-state questions also offer Automatic (unset). Passwords use
+a revealable password field. Other values retain rclone's text syntax, including durations,
+sizes with units, lists, and provider-specific formats. Rclone validates answers and supplies
+any follow-up questions or errors.
+
 The questions depend on the provider and your answers, so there is no fixed question count.
 **Back** restores the preceding question and its draft configuration. **Cancel** discards the
 unsaved connection edits. If only OAuth tokens changed, Cancel preserves them when the saved

@@ -155,17 +155,23 @@ bash check_security.sh
 
 `check_security.sh` runs Bandit and `uv run pip-audit --local`. Run it before releases, after dependency changes, or when touching sensitive subprocess/auth/filesystem code.
 
-When you need exact GitHub Actions reproduction, run:
+To run the Python and shell checks in the GitHub Actions base image, run:
 
 ```bash
 bash check_ci_docker.sh
 ```
 
-The Docker check uses the same uv/Python Debian image as `.github/workflows/python-ci.yml`.
+The Docker check uses the same uv/Python Debian base image as `.github/workflows/python-ci.yml`.
+GitHub Actions also installs Node.js for the JavaScript tests. For those tests in the Docker
+wrapper, set `CI_IMAGE` to a derivative image containing Node.js; otherwise they skip.
 
 ## Current Baseline Policy
 
 Continuous integration runs one uv-managed Python lane on the target stable Python version. If repository branch protection uses required status checks, update those required check names after workflow or job renames. The current workflow file is `.github/workflows/python-ci.yml`, with job `python-ci`.
+
+The CI image installs Node.js for the browserless JavaScript tests collected by pytest. Put
+`node` on `PATH` to run those checks locally; without it, the UI tests skip. The rclone editor
+also checks every option in the installed rclone provider catalog when `rclone` is available.
 
 Bandit skips the generic subprocess import/execution rules because SimpleSaferServer is a local admin tool that intentionally calls Debian system utilities. Keep those subprocess calls behind services or adapters, validate user-controlled arguments before shelling out, and document operational assumptions near the code.
 

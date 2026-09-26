@@ -104,6 +104,16 @@ a config checkpoint and its state by restarting the worker; cancellation/expiry 
 The frontend has two shared OAuth presentations (`config_is_local` and `config_token`), with a
 generic renderer for all other questions. New backends do not require an SSS provider registry.
 
+The renderer interprets `Examples` as visible choices and `Exclusive` as a restriction on custom
+entry. These are independent properties: a string question can offer choices and still accept
+arbitrary text. Small choice sets use radio groups; large sets use a dropdown and selected-item
+help. Selection keys are separate from submitted values, including empty values. `DefaultStr`
+preserves rclone's serialized defaults, `Required` controls empty input when no default exists,
+and `IsPassword` takes precedence over other presentation hints. Boolean and tri-state types have
+dedicated choices. Other types use text (multiline for JSON-named fields or multiline defaults),
+so rclone retains authority over units, sentinels, list syntax, validation and provider branching.
+Unknown types remain editable without adding a provider-specific field mapping.
+
 The shipped server uses one threaded worker. Draft state is process-local (maximum four open
 editors, one per browser session); multi-worker deployments need a shared editor coordinator.
 A cleanup thread expires idle drafts after 30 minutes and normal process exit closes workers.
@@ -127,4 +137,8 @@ See [Cloud Backup](cloud_backup.md) for configuration paths and authentication b
 protocol. `tests/test_rclone_config.py` exercises it against installed rclone using temporary
 local storage and a local OAuth token issuer. Run it with
 `uv run pytest tests/test_rclone_config.py`; these integration tests skip when rclone is absent.
+`tests/test_rclone_editor_ui.py` also exercises rendering and answer selection across synthetic
+metadata combinations and every option in the installed provider catalog. Run it with Node.js
+on `PATH`; the catalog check additionally needs rclone. These checks cover field presentation and
+value preservation, not successful authorization with every external provider.
 Fake-mode account and folder operations still contact the selected provider.

@@ -126,6 +126,34 @@ def test_dynamic_questions_back_cancel_and_private_file_permissions(service):
     assert not service.path.exists()
 
 
+@pytest.mark.parametrize('scope', ['drive.file', 'drive,drive.metadata.readonly'])
+def test_drive_scope_exposes_suggestions_and_accepts_custom_values(service, scope):
+    result = settle(service, call(service, 'start', {'name': 'cloud', 'type': 'drive'}))
+    for name in ('client_id', 'client_secret'):
+        assert result['option']['Name'] == name
+        result = settle(service, call(service, 'advance', {**result, 'answer': ''}))
+    option = result['option']
+    assert option['Name'] == 'scope'
+    assert option['Type'] == 'string'
+    assert not option['Exclusive']
+    assert {example['Value'] for example in option['Examples']} >= {
+        'drive',
+        'drive.readonly',
+        'drive.file',
+        'drive.appfolder',
+        'drive.metadata.readonly',
+    }
+    result = settle(service, call(service, 'advance', {**result, 'answer': scope}))
+    assert not result['error']
+    assert result['option']['Name'] != 'scope'
+    assert f'scope = {scope}' in service.drafts[OWNER].worker.path.read_text()
+    # Stop before authorization: this regression uses real provider metadata
+    # and parsing without contacting Google or needing an account.
+    result = call(service, 'back', result)
+    assert result['option'] == option
+    call(service, 'cancel', result)
+
+
 def test_create_folder_save_edit_and_reopen_durable_configuration(service):
     result = local_draft(service)
     call(service, 'mkdir', {**result, 'path': '', 'name': 'Server files'})

@@ -97,7 +97,7 @@ body.fake-mode-active .rclone-editor.modal-overlay { --rclone-banner-offset: var
 .rclone-field .rclone-choice { display: flex; align-items: flex-start; gap: 12px; padding: 12px; margin: 0; border: 1px solid var(--border-default); border-radius: 8px; background: var(--bg-input); cursor: pointer; }
 .rclone-choice:has(input:checked) { background: var(--accent-subtle); border-color: var(--accent); }
 .rclone-choice input { accent-color: var(--accent); margin: 3px 0 0; }
-.rclone-choice span { font-size: 13px; line-height: 1.5; }
+.rclone-choice span { min-width: 0; font-size: 13px; line-height: 1.5; white-space: pre-line; overflow-wrap: anywhere; }
 .rclone-choice small { display: block; color: var(--text-secondary); font-size: 11px; margin-top: 4px; }
 .rclone-auth-method { padding: 16px 0; border-bottom: 1px solid var(--border-subtle); }
 .rclone-auth-method:first-child { padding-top: 0; }
