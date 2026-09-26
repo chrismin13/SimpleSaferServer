@@ -20,7 +20,6 @@ MODE_MANAGED_DRIVE = "managed_drive"
 MODE_EXISTING_FOLDER = "existing_folder"
 STORAGE_MARKER_DIR_NAME = ".simple-safer-server"
 STORAGE_MARKER_FILE_NAME = "storage.json"
-PROBE_FILE_NAME = ".probe.tmp"
 
 
 class StorageLocationError(Exception):
@@ -228,8 +227,10 @@ def _read_storage_marker(path: str | Path) -> dict[str, Any]:
 
 
 def _probe_storage_write(path: str | Path) -> None:
-    probe_path = marker_dir(path) / PROBE_FILE_NAME
     token = _storage_id()
+    # Manual checks and backup validation can overlap, including across processes.
+    # Each invocation must read and remove only its own probe.
+    probe_path = marker_dir(path) / f".probe-{token}.tmp"
     try:
         atomic_write_text(probe_path, token, mode=0o600)
         if probe_path.read_text(encoding="utf-8") != token:

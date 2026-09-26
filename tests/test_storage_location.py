@@ -1,4 +1,6 @@
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Barrier
 from types import SimpleNamespace
 
 import pytest
@@ -175,6 +177,39 @@ def test_storage_validation_fails_when_write_probe_readback_does_not_match(tmp_p
         validate_storage_ready_for_backup(config, FakeSystemUtils(), runtime=runtime)
 
 
+def test_overlapping_safety_checks_succeed_and_remove_their_probes(tmp_path, monkeypatch):
+    storage_path = tmp_path / "storage"
+    storage_path.mkdir()
+    runtime = fake_runtime(tmp_path)
+    config = FakeConfigManager(storage_path)
+    runner = FakeCommandRunner()
+    location = configure_existing_folder(
+        config, str(storage_path), runtime=runtime, command_runner=runner
+    )
+    writes_finished = Barrier(2)
+    write_text = storage_location.atomic_write_text
+
+    def overlapping_write(*args, **kwargs):
+        write_text(*args, **kwargs)
+        # Force both probes to exist before either check reads or deletes its
+        # file, as can happen when a manual check overlaps a scheduled backup.
+        writes_finished.wait(timeout=10)
+
+    monkeypatch.setattr(storage_location, "atomic_write_text", overlapping_write)
+
+    def check():
+        return validate_storage_ready_for_backup(
+            config, FakeSystemUtils(), runtime=runtime, command_runner=runner
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        checks = [executor.submit(check) for _ in range(2)]
+        results = [future.result(timeout=15) for future in checks]
+
+    assert results == [location, location]
+    assert list(marker_path(storage_path).parent.iterdir()) == [marker_path(storage_path)]
+
+
 def test_storage_status_handles_marker_read_errors(tmp_path, monkeypatch):
     storage_path = tmp_path / "storage"
     storage_path.mkdir()
@@ -227,7 +262,7 @@ def test_storage_status_handles_probe_readback_errors(tmp_path, monkeypatch):
     original_read_text = Path.read_text
 
     def fail_probe_read(path, *args, **kwargs):
-        if path.name == storage_location.PROBE_FILE_NAME:
+        if path.parent == marker_path(storage_path).parent and path.name.startswith(".probe-"):
             raise PermissionError("probe is not readable")
         return original_read_text(path, *args, **kwargs)
 

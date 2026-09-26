@@ -479,19 +479,27 @@ class SetupWizardTests(unittest.TestCase):
         user_manager.users = {'admin': {}}
         user_manager.user_exists_in_samba.return_value = True
 
-        with patch.object(self.setup_wizard, 'smb_manager', smb_manager):
-            with patch.object(self.setup_wizard, 'user_manager', user_manager):
-                ok, err = self.setup_wizard.setup_smb_share(
-                    {
-                        'backup': {'mount_point': '/media/backup'},
-                        'system': {'username': 'admin'},
-                    }
-                )
+        # Unit tests must not enable host services or depend on a running systemd.
+        with (
+            patch.object(self.setup_wizard, 'smb_manager', smb_manager),
+            patch.object(self.setup_wizard, 'user_manager', user_manager),
+            patch.object(self.setup_wizard.setup_command_adapter, 'enable_smb_unit') as enable_unit,
+        ):
+            ok, err = self.setup_wizard.setup_smb_share(
+                {
+                    'backup': {'mount_point': '/media/backup'},
+                    'system': {'username': 'admin'},
+                }
+            )
 
         self.assertTrue(ok)
         self.assertIsNone(err)
         user_manager.reload_users.assert_called_once_with()
         smb_manager.ensure_default_backup_share.assert_called_once_with('/media/backup', 'admin')
+        self.assertEqual(
+            enable_unit.call_args_list,
+            [unittest.mock.call('smbd'), unittest.mock.call('nmbd')],
+        )
 
     def test_setup_smb_share_surfaces_unmanaged_backup_guidance(self):
         smb_manager = MagicMock()

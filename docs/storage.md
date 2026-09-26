@@ -139,6 +139,8 @@ Before each cloud backup, the app checks that:
 
 If any of those checks fail, the cloud backup is blocked.
 
+Each safety check uses its own temporary test file and deletes it when the check finishes. This lets a manual safety check overlap cloud-backup validation without the two checks interfering with each other's test files.
+
 The same full check also runs when an administrator chooses a new storage target, repairs the marker, or manually runs **Run safety check**. Those actions are allowed to touch the drive because the administrator asked for storage work or the cloud backup is about to read the drive anyway.
 
 ## Repairing The Marker
