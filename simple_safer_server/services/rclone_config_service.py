@@ -144,9 +144,12 @@ class RcloneConfigService:
             self.config_manager.get_value('backup', 'cloud_enabled', 'false'),
         )
 
-    def _version(self, text=None) -> str:
+    def _version(self, text=None, *, settings=None) -> str:
         return hashlib.sha256(
-            ((self._read() if text is None else text) + repr(self._settings())).encode()
+            (
+                (self._read() if text is None else text)
+                + repr(self._settings() if settings is None else settings)
+            ).encode()
         ).hexdigest()
 
     def _workspace(self, text):
@@ -188,7 +191,8 @@ class RcloneConfigService:
             # Advanced without losing the saved destination or enable setting.
             parser = parse_config('')
             configuration_error = exc.detail
-        destination, enabled = self._settings()
+        settings = self._settings()
+        destination, enabled = settings
         name, sep, path = destination.partition(':')
         return {
             'remotes': [{'name': s, 'type': parser.get(s, 'type')} for s in parser.sections()],
@@ -198,7 +202,7 @@ class RcloneConfigService:
             'destination_text': destination,
             'enabled': enabled == 'true',
             'source': self.config_manager.get_value('backup', 'mount_point', ''),
-            'version': self._version(text),
+            'version': self._version(text, settings=settings),
             'configuration_error': configuration_error,
             'draft': self.drafts[owner].view() if owner in self.drafts else None,
         }
@@ -389,8 +393,10 @@ class RcloneConfigService:
         result = draft.worker.call(
             'operations/list',
             {
-                'fs': draft.name + ':',
-                'remote': path,
+                # RC's remote is relative to fs. Put the exact destination in
+                # fs so absolute paths retain the same meaning as rclone sync.
+                'fs': draft.name + ':' + path,
+                'remote': '',
                 'opt': {'dirsOnly': True, 'noModTime': True, 'noMimeType': True},
             },
         )
@@ -402,8 +408,7 @@ class RcloneConfigService:
         if not name.strip() or name in {'.', '..'} or any(c in name for c in '/\\\x00\r\n'):
             raise ValidationProblem('Enter a folder name without slashes.')
         path = self._path(data)
-        remote = f'{path.rstrip("/")}/{name}' if path else name
-        draft.worker.call('operations/mkdir', {'fs': draft.name + ':', 'remote': remote})
+        draft.worker.call('operations/mkdir', {'fs': draft.name + ':' + path, 'remote': name})
         return {}
 
     @contextmanager
@@ -449,7 +454,16 @@ class RcloneConfigService:
 
     def raw(self):
         text = self._read()
-        return {'config': text, 'version': self._version(text)}
+        settings = self._settings()
+        destination, enabled = settings
+        # The editor must populate every field from the snapshot this version
+        # identifies, rather than combining fresh config with stale page state.
+        return {
+            'config': text,
+            'destination_text': destination,
+            'enabled': enabled == 'true',
+            'version': self._version(text, settings=settings),
+        }
 
     def _check_version(self, data):
         if data.get('version') != self._version():

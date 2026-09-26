@@ -66,6 +66,8 @@ activates the appropriate jobs. `backup.cloud_enabled` must explicitly be `true`
 Cloud Backup uses `rclone sync`: files in the destination will be overwritten or deleted as needed
 to match the local source. Choose a dedicated backup folder. Folder selection shows this warning before
 saving; it can also accept an exact path when the provider does not permit directory listing.
+Browsing and creating folders use the exact destination path, including the leading slash when
+the backend distinguishes absolute paths from paths relative to its default directory.
 
 ## Advanced configuration and existing installations
 
@@ -80,6 +82,8 @@ Other remote sections and unknown settings are retained. Rclone and INI serializ
 normalize formatting and comments. Configs encrypted with rclone's config password must be
 decrypted using rclone before editing here. Environment-only remotes and inherited `RCLONE_*`
 overrides are not imported into the editor; put managed settings in the file.
+Opening Advanced reloads the configuration, destination, and enable setting together. Changes
+saved elsewhere after that snapshot require reopening the editor before saving.
 
 Drafts live privately on the server and expire after 30 minutes without a request. Refreshing the
 page resumes a draft in the same browser session. Restarting SSS ends drafts; saved settings

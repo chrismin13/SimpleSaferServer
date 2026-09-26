@@ -141,6 +141,58 @@ def test_create_folder_save_edit_and_reopen_durable_configuration(service):
         other.close()
 
 
+@pytest.mark.parametrize('absolute', [False, True])
+def test_folder_actions_use_the_same_destination_as_backup(
+    service, tmp_path, monkeypatch, absolute
+):
+    cwd = tmp_path / 'worker-cwd'
+    cwd.mkdir()
+    monkeypatch.chdir(cwd)
+    destination = tmp_path / 'destination' if absolute else cwd / 'destination'
+    destination.mkdir()
+    (destination / 'intended').mkdir()
+    path = str(destination) if absolute else 'destination'
+    if absolute:
+        # RC remote paths are relative to fs even when they begin with '/'.
+        # A matching relative directory makes the wrong listing look valid.
+        wrong_destination = cwd / path.lstrip('/')
+        wrong_destination.mkdir(parents=True)
+        (wrong_destination / 'wrong-directory').mkdir()
+
+    raw(service, '[disk]\ntype = local\n')
+    result = call(service, 'start', {'name': 'disk', 'purpose': 'choose'})
+    listing = call(service, 'folders', {**result, 'path': path})
+    assert [entry['Name'] for entry in listing['folders']] == ['intended']
+    call(service, 'mkdir', {**result, 'path': path, 'name': 'created'})
+    assert (destination / 'created').is_dir()
+    if absolute:
+        assert not (wrong_destination / 'created').exists()
+    assert save(service, result, path)['destination_text'] == 'disk:' + path
+
+
+def test_advanced_snapshot_refreshes_destination_and_enabled_with_its_version(service):
+    text = '[disk]\ntype = local\n'
+    old_page = raw(service, text, 'disk:old', True)
+    raw(service, text, 'disk:new', False)
+    snapshot = call(service, 'raw')
+    assert snapshot['destination_text'] == 'disk:new'
+    assert snapshot['enabled'] is False
+    assert snapshot['version'] != old_page['version']
+
+    result = call(
+        service,
+        'apply_raw',
+        {
+            'config': snapshot['config'],
+            'destination': snapshot['destination_text'],
+            'enabled': snapshot['enabled'],
+            'version': snapshot['version'],
+        },
+    )
+    assert result['destination_text'] == 'disk:new'
+    assert result['enabled'] is False
+
+
 def test_edit_preserves_unknown_values_and_other_existing_remotes(service):
     text = '[cloud]\ntype = s3\nprovider = Cloudflare\ncustom_key = 100% keep\n\n[other]\ntype = local\n'
     raw(service, text, 'cloud:bucket/path with spaces', True)

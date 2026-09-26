@@ -413,17 +413,23 @@ window.RcloneEditor = {
       rawVersion = null;
       panel(`
       <form id="advanced-form"><label class="rclone-label" for="raw-config">rclone.conf <span class="text-muted">(includes credentials)</span></label><textarea id="raw-config" class="form-control rclone-code" autocomplete="off" spellcheck="false" placeholder="Loading saved configuration…" disabled></textarea>
-      <div class="rclone-field"><label for="raw-destination">Exact backup destination</label><input id="raw-destination" class="form-control" value="${esc(destinationString())}" placeholder="remote:folder" spellcheck="false"><p class="rclone-default">Use remote:folder or an absolute local path.</p></div>
-      <label class="rclone-ack"><input id="raw-enabled" type="checkbox" ${state.enabled ? 'checked' : ''}>Enable cloud backup</label>
+      <div class="rclone-field"><label for="raw-destination">Exact backup destination</label><input id="raw-destination" class="form-control" placeholder="remote:folder" spellcheck="false" disabled><p class="rclone-default">Use remote:folder or an absolute local path.</p></div>
+      <label class="rclone-ack"><input id="raw-enabled" type="checkbox" disabled>Enable cloud backup</label>
       <div class="rclone-warning">Files in this destination will be overwritten or deleted as needed to match your server.</div>
-      <label class="rclone-ack"><input id="raw-ack" type="checkbox">This destination is dedicated to this server’s backups.</label></form>`,
+      <label class="rclone-ack"><input id="raw-ack" type="checkbox" disabled>This destination is dedicated to this server’s backups.</label></form>`,
         `${button('home','Cancel')}<button class="btn btn-primary btn-sm" id="raw-save" form="advanced-form" type="submit" disabled>Save configuration</button>`, 'Advanced rclone config');
       try {
         const result = await api('raw');
         if (view === 'advanced') {
+          // These values share one version; page state may predate a save in
+          // another tab, including a change to the destination or enable flag.
           $('#raw-config').value = result.config;
-          $('#raw-config').disabled = false;
+          $('#raw-destination').value = result.destination_text;
+          $('#raw-enabled').checked = result.enabled;
           rawVersion = result.version;
+          ['raw-config', 'raw-destination', 'raw-enabled', 'raw-ack'].forEach(id => {
+            $(`#${id}`).disabled = false;
+          });
           $('#raw-save').disabled = false;
         }
       } catch (err) {
