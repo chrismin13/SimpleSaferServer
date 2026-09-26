@@ -72,7 +72,11 @@ def _run_script(
 
     # Match a fresh installation: Python helpers under /opt are readable files,
     # without executable bits. Run the real validator and real INI parser.
-    validate_script = tmp_path / "validate_storage_source.py"
+    # Give the copied helper an app layout so it imports this checkout, even
+    # when a separate installed SSS exists at /opt/SimpleSaferServer.
+    (tmp_path / 'scripts').mkdir()
+    (tmp_path / 'simple_safer_server').symlink_to(REPO / 'simple_safer_server')
+    validate_script = tmp_path / 'scripts' / 'validate_storage_source.py'
     if not missing_helper:
         validate_script.write_bytes((REPO / "scripts" / validate_script.name).read_bytes())
         validate_script.chmod(0o644)
@@ -90,6 +94,7 @@ def _run_script(
             "SSS_MODE": "fake",
             "SSS_DATA_DIR": str(data_dir),
             "SSS_CONFIG_FILE": str(config_path),
+            "SSS_RCLONE_CONFIG_FILE": str(data_dir / "rclone" / "rclone.conf"),
             "SSS_PYTHON_BIN": sys.executable,
             "SSS_VALIDATE_STORAGE_SCRIPT": str(validate_script),
             "SSS_LOG_ALERT_SCRIPT": str(log_alert_script),
@@ -125,7 +130,8 @@ def test_backup_cloud_script_exits_cleanly_when_cloud_backup_is_disabled(tmp_pat
 
 
 @pytest.mark.parametrize(
-    "source_name", ["storage", "storage=photos", 'family "photos"', "photos & videos"]
+    "source_name",
+    ["storage", "storage=photos", 'family "photos"', "photos & videos", "100% photos"],
 )
 def test_backup_uses_exact_validated_path_with_nonexecutable_helper(tmp_path, source_name):
     result, calls = _run_script(tmp_path, cloud_enabled="true", source_name=source_name)
@@ -135,6 +141,8 @@ def test_backup_uses_exact_validated_path_with_nonexecutable_helper(tmp_path, so
         "rclone:sync",
         f"rclone:{tmp_path / source_name}",
         'rclone:remote:/backup="photos"',
+        "rclone:--config",
+        f"rclone:{tmp_path / 'data' / 'rclone' / 'rclone.conf'}",
         "rclone:--create-empty-src-dirs",
         "rclone:-v",
     ]

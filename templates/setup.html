@@ -10,6 +10,7 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/design-tokens.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/rclone_editor.css') }}">
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/favicon.png') }}">
 </head>
@@ -37,35 +38,35 @@
             <div class="setup-layout">
                 <!-- Vertical Stepper Rail -->
                 <div class="stepper-rail" id="stepperRail">
-                    <div class="stepper-item current" data-step="1" onclick="goToStep(1)">
-                        <div class="stepper-dot">1</div>
+                    <button type="button" class="stepper-item current" data-step="1" onclick="goToStep(1)">
+                        <span class="stepper-dot">1</span>
                         <span class="stepper-label">Admin Account</span>
-                    </div>
+                    </button>
                     <div class="stepper-connector"></div>
-                    <div class="stepper-item" data-step="2" onclick="goToStep(2)">
-                        <div class="stepper-dot">2</div>
+                    <button type="button" class="stepper-item" data-step="2" onclick="goToStep(2)">
+                        <span class="stepper-dot">2</span>
                         <span class="stepper-label">Storage Location</span>
-                    </div>
+                    </button>
                     <div class="stepper-connector"></div>
-                    <div class="stepper-item" data-step="3" onclick="goToStep(3)">
-                        <div class="stepper-dot">3</div>
+                    <button type="button" class="stepper-item" data-step="3" onclick="goToStep(3)">
+                        <span class="stepper-dot">3</span>
                         <span class="stepper-label">Set Up Drive</span>
-                    </div>
+                    </button>
                     <div class="stepper-connector"></div>
-                    <div class="stepper-item" data-step="4" onclick="goToStep(4)">
-                        <div class="stepper-dot">4</div>
+                    <button type="button" class="stepper-item" data-step="4" onclick="goToStep(4)">
+                        <span class="stepper-dot">4</span>
                         <span class="stepper-label">Cloud Backup</span>
-                    </div>
+                    </button>
                     <div class="stepper-connector"></div>
-                    <div class="stepper-item" data-step="5" onclick="goToStep(5)">
-                        <div class="stepper-dot">5</div>
+                    <button type="button" class="stepper-item" data-step="5" onclick="goToStep(5)">
+                        <span class="stepper-dot">5</span>
                         <span class="stepper-label">Email Alerts</span>
-                    </div>
+                    </button>
                     <div class="stepper-connector"></div>
-                    <div class="stepper-item" data-step="6" onclick="goToStep(6)">
-                        <div class="stepper-dot">6</div>
+                    <button type="button" class="stepper-item" data-step="6" onclick="goToStep(6)">
+                        <span class="stepper-dot">6</span>
                         <span class="stepper-label">Backup Settings</span>
-                    </div>
+                    </button>
                 </div>
 
                 <!-- Step Content -->
@@ -251,89 +252,11 @@ unmount the share, then restart SMB automatically."
                         </div>
                     </div>
 
-                    <!-- Step 4: Backup Configuration -->
+                    <!-- Cloud settings share the same editor as admin maintenance. -->
                     <div id="step4" class="setup-step">
-                        <div class="setup-card">
-                            <h3>Cloud Backup Configuration</h3>
-                            <div class="feedback-slot feedback-slot-compact mb-4">
-                                <div id="backupConfigError" class="alert alert-danger d-none"></div>
-                            </div>
-                            <div class="tabs-container mb-4">
-                                <div class="tabs-nav" role="tablist" aria-label="Cloud backup mode">
-                                    <button type="button" class="tab-btn active" data-tab="mega" id="tab-setup-mega" role="tab" aria-selected="true" aria-controls="megaConfigFields">MEGA (Simple)</button>
-                                    <button type="button" class="tab-btn" data-tab="advanced" id="tab-setup-advanced" role="tab" aria-selected="false" aria-controls="advancedConfigFields">Advanced (rclone)</button>
-                                </div>
-
-                                <!-- Hidden radio inputs to maintain logic compatibility -->
-                                <div class="d-none">
-                                    <input type="radio" name="backupMode" id="backupModeMega" value="mega" checked>
-                                    <input type="radio" name="backupMode" id="backupModeAdvanced" value="advanced">
-                                </div>
-
-                                <div class="tab-content">
-                                    <!-- MEGA Fields -->
-                                    <div id="megaConfigFields" class="tab-pane active" role="tabpanel" aria-labelledby="tab-setup-mega">
-                                        <div class="mb-4">
-                                            <img src="/static/img/mega-logo.svg" alt="MEGA logo" style="height: 48px; margin-bottom: var(--sp-2);">
-                                            <div class="fw-semi" style="font-size: var(--text-md);">Sign in to your MEGA account</div>
-                                            <a href="https://mega.io/register" target="_blank" rel="noopener" class="mt-1 d-inline-block" style="font-size: var(--text-sm);">Don't have a MEGA account? Create one here</a>
-                                        </div>
-                                        <div class="form-group mb-3">
-                                            <label class="form-label">MEGA Email</label>
-                                            <input type="email" id="megaEmail" class="form-control" placeholder="your@email.com">
-                                            <div class="invalid-feedback">Please enter a valid MEGA email.</div>
-                                        </div>
-                                        <div class="form-group mb-3">
-                                            <label class="form-label">MEGA Password</label>
-                                            <input type="password" id="megaPassword" class="form-control" placeholder="Password">
-                                            <div class="invalid-feedback">Please enter your MEGA password.</div>
-                                        </div>
-                                        <div class="mb-3">
-                                            <button id="megaConnectBtn" class="btn btn-primary btn-sm" type="button">
-                                                Connect &amp; Choose Folder
-                                            </button>
-                                        </div>
-                                        <div id="megaFolderPathArea" class="d-none mb-3">
-                                            <div class="form-group mb-3">
-                                                <label class="form-label">MEGA Folder Path</label>
-                                                <div class="input-group">
-                                                    <input type="text" id="megaFolderPath" class="form-control" placeholder="/backups" readonly>
-                                                    <button id="megaBrowseBtn" class="btn btn-secondary" type="button"><i class="fas fa-folder-open"></i> Browse</button>
-                                                </div>
-                                                <div class="invalid-feedback">Please select a folder.</div>
-                                            </div>
-                                            <div id="megaFolderWarning" class="alert alert-warning" style="font-size: var(--text-sm);">
-                                                <div><strong>Warning:</strong> When you run a backup, <strong>all files and folders in the selected MEGA directory will be overwritten or deleted to match your local backup.</strong></div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <!-- Advanced rclone Fields -->
-                                    <div id="advancedConfigFields" class="tab-pane" role="tabpanel" aria-labelledby="tab-setup-advanced">
-                                        <div class="form-group mb-3">
-                                            <label class="form-label">Rclone Configuration</label>
-                                            <textarea id="rcloneConfig" rows="7" class="form-control" placeholder="Paste your rclone configuration here…"></textarea>
-                                            <div class="invalid-feedback">Rclone configuration is required.</div>
-                                        </div>
-                                        <div class="form-group mb-3">
-                                            <label class="form-label">Remote Name and Path</label>
-                                            <input type="text" id="remoteName" class="form-control" placeholder="e.g., myremote:/backups">
-                                            <div class="invalid-feedback">Remote name and path is required. Use format: remotename:/path</div>
-                                        </div>
-                                        <div class="alert alert-warning" style="font-size: var(--text-sm);">
-                                            <div><strong>Warning:</strong> rclone will synchronize the remote path to match your local backup directory. Files may be <strong>overwritten or deleted</strong>.</div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="setup-actions">
-                                <button id="skipCloudBackupBtn" type="button" class="btn btn-secondary">
-                                    Skip Cloud Backup <i class="fas fa-arrow-right ms-1"></i>
-                                </button>
-                                <button id="saveBackupConfigBtn" onclick="saveBackupConfig()" class="btn btn-primary">
-                                    Save Backup Configuration <i class="fas fa-arrow-right ms-1"></i>
-                                </button>
-                            </div>
-                        </div>
+                        {% with rclone_api='/api/setup/cloud-backup/rclone', rclone_setup=true %}
+                            {% include 'components/rclone_editor.html' %}
+                        {% endwith %}
                     </div>
 
                     <!-- Step 5: Email Setup -->
@@ -414,34 +337,6 @@ unmount the share, then restart SMB automatically."
         </div>
     </div>
 
-    <!-- MEGA Folder Picker Modal -->
-    <div class="modal-overlay" id="megaFolderPickerModal">
-        <div class="modal-container modal-lg">
-            <div class="modal-header">
-                <h5><i class="fas fa-folder-open me-2"></i>Select MEGA Folder</h5>
-                <button class="modal-close" data-modal-close><i class="fas fa-xmark"></i></button>
-            </div>
-            <div class="modal-body">
-                <div class="mb-3">
-                    <strong>Current Path:</strong>
-                    <div class="path-breadcrumbs text-mono" id="megaPickerCurrentPath"></div>
-                </div>
-                <div class="d-flex gap-2 mb-3">
-                    <button class="btn btn-secondary btn-sm" id="megaPickerUpBtn"><i class="fas fa-level-up-alt"></i> Up</button>
-                    <button class="btn btn-success btn-sm" id="megaPickerCreateFolderBtn"><i class="fas fa-plus"></i> New Folder</button>
-                    <input type="text" id="megaPickerNewFolderName" class="form-control d-none" style="max-width: 200px;" placeholder="New folder name">
-                    <button class="btn btn-success btn-sm d-none" id="megaPickerSaveNewFolderBtn">Create</button>
-                </div>
-                <div id="megaPickerDirsList" class="folder-list mb-3"></div>
-                <div id="megaPickerError" class="alert alert-danger d-none"></div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" data-modal-close>Cancel</button>
-                <button class="btn btn-outline-primary" id="megaPickerSelectCurrentBtn">Select This Folder</button>
-            </div>
-        </div>
-    </div>
-
     <div class="modal-overlay" id="existingFolderPickerModal">
         <div class="modal-container modal-lg">
             <div class="modal-header">
@@ -487,7 +382,8 @@ unmount the share, then restart SMB automatically."
         </div>
     </div>
 
-    <script src="{{ url_for('static', filename='js/mega_folder_picker.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/folder_picker.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/rclone_editor.js') }}"></script>
     <script src="{{ url_for('static', filename='js/common.js') }}"></script>
     <script src="{{ url_for('static', filename='js/scripts.js') }}"></script>
     <script src="{{ url_for('static', filename='js/timepicker.js') }}"></script>
@@ -543,6 +439,7 @@ unmount the share, then restart SMB automatically."
             if (target) target.classList.add('active');
             updateStepIndicators();
             showPersistentStepSuccess();
+            if (step === 4) window.RcloneEditor.mount(document.getElementById("rclone-editor"));
         }
 
         function nextStep() {
@@ -831,8 +728,8 @@ unmount the share, then restart SMB automatically."
         function browseExistingFolder() {
             const pathInput = document.getElementById('existingFolderPath');
             const errorDiv = document.getElementById('existingFolderError');
-            if (!pathInput || !window.openMegaFolderPicker) return;
-            window.openMegaFolderPicker({
+            if (!pathInput || !window.openFolderPicker) return;
+            window.openFolderPicker({
                 modalId: 'existingFolderPickerModal',
                 listUrl: '/api/setup/list-path',
                 startPath: pathInput.value.trim() || '/',
@@ -927,23 +824,6 @@ unmount the share, then restart SMB automatically."
                 if (completed) window.AsyncButtonState.success(saveBtn);
                 else window.AsyncButtonState.error(saveBtn);
             } catch (error) { window.AsyncButtonState.error(saveBtn); showError('Error saving schedule: ' + (error.message || error)); }
-        }
-
-        async function skipCloudBackup() {
-            const skipBtn = document.getElementById('skipCloudBackupBtn');
-            window.AsyncButtonState.start(skipBtn);
-            try {
-                await window.ApiClient.fetchJson('/api/setup/cloud-backup/skip', { method: 'POST' });
-                window.AsyncButtonState.success(skipBtn);
-                nextStep();
-            } catch (error) {
-                window.AsyncButtonState.error(skipBtn);
-                const backupConfigError = document.getElementById('backupConfigError');
-                if (backupConfigError) {
-                    backupConfigError.textContent = error.message || 'Could not skip cloud backup.';
-                    backupConfigError.classList.remove('d-none');
-                }
-            }
         }
 
         // --- Complete ---
@@ -1048,8 +928,6 @@ unmount the share, then restart SMB automatically."
         function validateServerName() { const input = document.getElementById('serverName'); const normalized = normalizeServerName(input.value); if (!isValidServerName(normalized)) { input.classList.add('is-invalid'); return false; } input.value = normalized; input.classList.remove('is-invalid'); return true; }
         function validatePassword() { const input = document.getElementById('password'); const help = document.getElementById('passwordHelp'); if (input.value.length < 4) { input.classList.add('is-invalid'); if (help) help.classList.add('text-danger'); return false; } else { input.classList.remove('is-invalid'); if (help) help.classList.remove('text-danger'); return true; } }
         function validateConfirmPassword() { const input = document.getElementById('confirmPassword'); if (input.value !== document.getElementById('password').value || !input.value) { input.classList.add('is-invalid'); return false; } else { input.classList.remove('is-invalid'); return true; } }
-        function validateRcloneConfig() { const input = document.getElementById('rcloneConfig'); if (!input.value.trim()) { input.classList.add('is-invalid'); return false; } else { input.classList.remove('is-invalid'); return true; } }
-        function validateRemoteName() { const input = document.getElementById('remoteName'); if (!/^[a-zA-Z0-9_-]+:(?:\/[^\s]*)?$/.test(input.value.trim())) { input.classList.add('is-invalid'); return false; } else { input.classList.remove('is-invalid'); return true; } }
         function validateEmail() { const input = document.getElementById('emailAddress'); if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(input.value.trim())) { input.classList.add('is-invalid'); return false; } else { input.classList.remove('is-invalid'); return true; } }
         function validateFromAddress() { const input = document.getElementById('fromAddress'); if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(input.value.trim())) { input.classList.add('is-invalid'); return false; } else { input.classList.remove('is-invalid'); return true; } }
         function validateSmtpServer() { const input = document.getElementById('smtpServer'); if (!input.value.trim()) { input.classList.add('is-invalid'); return false; } else { input.classList.remove('is-invalid'); return true; } }
@@ -1061,6 +939,7 @@ unmount the share, then restart SMB automatically."
 
         // --- Init ---
         document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById("rclone-editor").addEventListener("rclone:complete", nextStep);
             loadStepFromStorage();
             loadDrives();
             showStep(currentStep);
@@ -1089,7 +968,6 @@ unmount the share, then restart SMB automatically."
             // Use explicit validation function references
             const validationMap = {
                 'username': validateUsername, 'serverName': validateServerName, 'password': validatePassword, 'confirmPassword': validateConfirmPassword,
-                'rcloneConfig': validateRcloneConfig, 'remoteName': validateRemoteName,
                 'emailAddress': validateEmail, 'fromAddress': validateFromAddress, 'smtpServer': validateSmtpServer, 'smtpPort': validateSmtpPort, 'smtpUsername': validateSmtpUsername, 'smtpPassword': validateSmtpPassword,
                 'backupTime': validateBackupTime, 'bandwidthLimit': validateBandwidthLimit
             };
@@ -1119,8 +997,6 @@ unmount the share, then restart SMB automatically."
             if (saveExistingFolderBtn) saveExistingFolderBtn.addEventListener('click', saveExistingFolder);
             const browseExistingFolderBtn = document.getElementById('browseExistingFolderBtn');
             if (browseExistingFolderBtn) browseExistingFolderBtn.addEventListener('click', browseExistingFolder);
-            const skipCloudBackupBtn = document.getElementById('skipCloudBackupBtn');
-            if (skipCloudBackupBtn) skipCloudBackupBtn.addEventListener('click', skipCloudBackup);
             const refreshFormatBtn = document.getElementById('refreshFormatDrivesBtn');
             if (refreshFormatBtn) refreshFormatBtn.addEventListener('click', refreshFormatDrives);
             const refreshPartitionsBtn = document.getElementById('refreshPartitionsBtn');

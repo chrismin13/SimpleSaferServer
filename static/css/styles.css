@@ -2735,6 +2735,11 @@ pre code {
 }
 
 .stepper-item {
+  border: 0;
+  background: transparent;
+  width: 100%;
+  font: inherit;
+  text-align: left;
   display: flex;
   align-items: flex-start;
   gap: var(--sp-3);

@@ -24,6 +24,9 @@ class FakeConfigManager:
         self.rclone_dir = rclone_dir
         self.storage_id = "test-storage-id"
 
+    def load_config(self):
+        pass
+
     def get_all_config(self):
         return {
             "backup": {
@@ -42,6 +45,7 @@ class FakeConfigManager:
         values = {
             ("backup", "mount_point"): self.mount_point,
             ("backup", "rclone_dir"): self.rclone_dir,
+            ("backup", "cloud_enabled"): "true",
             ("backup", "bandwidth_limit"): "",
             ("storage", "storage_id"): self.storage_id,
             ("schedule", "backup_cloud_time"): "03:00",
@@ -276,6 +280,7 @@ class TaskServiceTests(unittest.TestCase):
             mount_point=str(source),
             rclone_dir=str(Path(temp_dir.name) / "fake-backup"),
         )
+        service.runtime.rclone_config_dir = Path(temp_dir.name)
         service.rclone_adapter = MagicMock()
         service.rclone_adapter.sync.return_value = FakeProcess(stdout="copied\n")
 

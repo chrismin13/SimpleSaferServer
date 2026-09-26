@@ -16,12 +16,21 @@ get_config_value() {
 import configparser
 import sys
 
-config = configparser.ConfigParser()
+config = configparser.ConfigParser(interpolation=None)
 with open(sys.argv[1], encoding="utf-8") as handle:
     config.read_file(handle)
 print(config.get(sys.argv[2], sys.argv[3], fallback=""))
 PYCONFIG
 }
+
+# The editor and backup job share a stable lock: rclone may refresh tokens
+# during sync, and destination settings must stay consistent with that config.
+RCLONE_CONFIG_FILE="${SSS_RCLONE_CONFIG_FILE:-$HOME/.config/rclone/rclone.conf}"
+umask 077
+if ! mkdir -p "$(dirname "$RCLONE_CONFIG_FILE")" || ! exec 9>"$RCLONE_CONFIG_FILE.sss.lock" || ! chmod 600 "$RCLONE_CONFIG_FILE.sss.lock" || ! flock 9; then
+  echo "Could not lock the rclone configuration; cloud backup was stopped." >&2
+  exit 1
+fi
 
 MOUNT_POINT=$(get_config_value backup mount_point)
 FROM_ADDRESS=$(get_config_value backup from_address)
@@ -89,7 +98,7 @@ echo "Destination: $RCLONE_DIR"
 
 # Keep the failure branch next to rclone so ShellCheck and future readers do not
 # have to track a saved exit code through unrelated lines.
-if ! rclone sync "$MOUNT_POINT" "$RCLONE_DIR" --create-empty-src-dirs -v "${extra_args[@]}"; then
+if ! rclone sync "$MOUNT_POINT" "$RCLONE_DIR" --config "$RCLONE_CONFIG_FILE" --create-empty-src-dirs -v "${extra_args[@]}"; then
   logs=$(journalctl -u backup_cloud.service -n 100 --no-pager 2>/dev/null || echo "Could not retrieve logs")
   send_email "BACKUP TO CLOUD FAILED - Unknown Error" "Backup failed. Recent logs:\n\n$logs"
   exit 1

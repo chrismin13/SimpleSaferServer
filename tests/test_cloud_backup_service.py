@@ -1,12 +1,10 @@
-import logging
+import copy
 import types
 import unittest
 from pathlib import Path
-from subprocess import CalledProcessError
 from tempfile import TemporaryDirectory
 
 from simple_safer_server.services.cloud_backup_service import (
-    RCLONE_ADMIN_TIMEOUT_SECONDS,
     CloudBackupService,
 )
 from simple_safer_server.web.problems import OperationProblem, ValidationProblem
@@ -14,13 +12,20 @@ from simple_safer_server.web.problems import OperationProblem, ValidationProblem
 
 class FakeConfigManager:
     def __init__(self):
-        self.config = {"backup": {}, "schedule": {}}
+        self.config = {"backup": {}, "schedule": {}, "system": {"setup_complete": "true"}}
 
     def get_all_config(self):
-        return self.config
+        return copy.deepcopy(self.config)
 
     def get_value(self, section, key, default=None):
         return self.config.get(section, {}).get(key, default)
+
+    def load_config(self):
+        pass
+
+    def update_values(self, values):
+        for section, entries in values.items():
+            self.config.setdefault(section, {}).update(entries)
 
     def set_value(self, section, key, value):
         self.config.setdefault(section, {})[key] = value
@@ -28,16 +33,10 @@ class FakeConfigManager:
 
 class FakeSystemUtils:
     def __init__(self):
-        self.rclone_config = None
-        self.setup_rclone_result = True
         self.created_systemd_config = False
         self.installed_timers = False
         self.activated_timers = False
         self.systemd_config = None
-
-    def setup_rclone(self, config):
-        self.rclone_config = config
-        return self.setup_rclone_result
 
     def create_systemd_config_file(self, config):
         self.created_systemd_config = True
@@ -45,6 +44,7 @@ class FakeSystemUtils:
         return True, None
 
     def install_systemd_services_and_timers(self, config, activate_timers=True):
+        self.systemd_config = config
         self.installed_timers = True
         self.activated_timers = activate_timers
         return True, None
@@ -72,30 +72,8 @@ class FakeTaskService:
         return None
 
 
-class FakeCommandRunner:
-    def __init__(self):
-        self.calls = []
-        self.results = []
-
-    def queue_result(self, returncode=0, stdout="", stderr=""):
-        self.results.append(
-            types.SimpleNamespace(returncode=returncode, stdout=stdout, stderr=stderr)
-        )
-
-    def run(self, command, **kwargs):
-        self.calls.append((command, kwargs))
-        if not self.results:
-            raise AssertionError("No fake command result queued.")
-        result = self.results.pop(0)
-        if kwargs.get("check") and result.returncode != 0:
-            raise CalledProcessError(
-                result.returncode, command, output=result.stdout, stderr=result.stderr
-            )
-        return result
-
-
 class CloudBackupServiceTests(unittest.TestCase):
-    def make_service(self, is_fake=True, task=None, command_runner=None):
+    def make_service(self, is_fake=True, task=None):
         temp_dir = TemporaryDirectory()
         self.addCleanup(temp_dir.cleanup)
         runtime = types.SimpleNamespace(
@@ -110,28 +88,42 @@ class CloudBackupServiceTests(unittest.TestCase):
             config,
             system_utils,
             task_service,
-            logging.getLogger("test"),
-            command_runner=command_runner,
         )
         return service, config, system_utils, runtime
 
-    def test_get_config_exposes_existing_rclone_text_for_admin_editing(self):
-        service, config, _system_utils, runtime = self.make_service()
+    def test_public_settings_keep_credentials_in_dedicated_editor(self):
+        service, config, _utils, runtime = self.make_service()
         config.config["backup"] = {
-            "cloud_mode": "advanced",
-            "mega_email": "user@example.com",
+            "cloud_enabled": "true",
             "mega_pass": "secret",
-            "rclone_dir": "remote:/backups",
+            "rclone_dir": "remote:backups",
         }
-        config.config["schedule"] = {"backup_cloud_time": "02:30"}
-        rclone_path = runtime.rclone_config_dir / "rclone.conf"
-        rclone_path.write_text("[remote]\ntype = test\n")
-
+        (runtime.rclone_config_dir / "rclone.conf").write_text("[remote]\ntype = local\n")
         payload = service.get_config()
-
-        self.assertEqual(payload["mega_email"], "user@example.com")
+        self.assertNotIn("rclone_config", payload)
         self.assertNotIn("mega_pass", payload)
-        self.assertEqual(payload["rclone_config"], "[remote]\ntype = test\n")
+        self.assertEqual(payload["rclone_dir"], "remote:backups")
+
+    def test_destination_save_defers_timers_until_setup_complete(self):
+        service, config, system_utils, _runtime = self.make_service(is_fake=False)
+        config.config["system"] = {"setup_complete": "false"}
+        service.save_destination("remote:backups", True)
+        self.assertEqual(config.config["backup"]["cloud_enabled"], "true")
+        self.assertFalse(system_utils.installed_timers)
+        self.assertFalse(system_utils.activated_timers)
+        config.config["system"]["setup_complete"] = "true"
+        service.save_destination("remote:backups", True)
+        self.assertTrue(system_utils.activated_timers)
+
+    def test_failed_timer_update_restores_destination_and_enabled(self):
+        service, config, system_utils, _runtime = self.make_service(is_fake=False)
+        config.config["backup"] = {"cloud_enabled": "false", "rclone_dir": "saved:folder"}
+        system_utils.install_systemd_services_and_timers = lambda *a, **kw: (False, "Unavailable")
+        with self.assertRaises(OperationProblem):
+            service.save_destination("new:folder", True)
+        self.assertEqual(
+            config.config["backup"], {"cloud_enabled": "false", "rclone_dir": "saved:folder"}
+        )
 
     def test_status_and_manual_run_use_cloud_backup_task(self):
         task = FakeTask()
@@ -172,44 +164,17 @@ class CloudBackupServiceTests(unittest.TestCase):
     def test_save_config_accepts_string_false_for_cloud_enabled(self):
         service, config, _system_utils, _runtime = self.make_service()
 
-        service.save_config({"cloud_enabled": "false"})
+        service.save_destination("", False)
 
         self.assertEqual(config.config["backup"]["cloud_enabled"], "false")
 
     def test_real_save_config_refreshes_timers_when_cloud_backup_is_disabled(self):
         service, config, system_utils, _runtime = self.make_service(is_fake=False)
 
-        service.save_config({"cloud_enabled": "false"})
+        service.save_destination("", False)
 
         self.assertEqual(config.config["backup"]["cloud_enabled"], "false")
-        self.assertTrue(system_utils.created_systemd_config)
         self.assertTrue(system_utils.installed_timers)
-
-    def test_cloud_destination_save_keeps_timers_stopped_until_setup_finishes(self):
-        for mode in ("mega", "advanced"):
-            with self.subTest(mode=mode):
-                service, config, system_utils, _runtime = self.make_service(is_fake=False)
-                config.config["system"] = {"setup_complete": "false"}
-                config.config["backup"]["mega_email"] = "user@example.com"
-                config.config["backup"]["mega_pass"] = "stored-obscured"
-                data = {
-                    "cloud_mode": mode,
-                    "mega_email": "user@example.com",
-                    "mega_folder": "/Backups",
-                    "rclone_config": "[remote]\ntype = local\n",
-                    "remote_name": "remote:backups",
-                }
-
-                service.save_config(data)
-
-                self.assertEqual(config.config["backup"]["cloud_enabled"], "true")
-                self.assertTrue(system_utils.installed_timers)
-                self.assertFalse(system_utils.activated_timers)
-
-                config.config["system"]["setup_complete"] = "true"
-                service.save_config(data)
-
-                self.assertTrue(system_utils.activated_timers)
 
     def test_fake_schedule_save_does_not_reinstall_timers(self):
         service, config, system_utils, _runtime = self.make_service(is_fake=True)
@@ -245,7 +210,7 @@ class CloudBackupServiceTests(unittest.TestCase):
     def test_real_config_save_routes_schedule_values_through_timer_update(self):
         service, config, system_utils, _runtime = self.make_service(is_fake=False)
 
-        result = service.save_config(
+        result = service.save_schedule(
             {
                 "cloud_mode": "",
                 "backup_cloud_time": "05:15",
@@ -254,7 +219,6 @@ class CloudBackupServiceTests(unittest.TestCase):
         )
 
         self.assertEqual(result, {})
-        self.assertTrue(system_utils.created_systemd_config)
         self.assertTrue(system_utils.installed_timers)
         systemd_config = system_utils.systemd_config
         if systemd_config is None:
@@ -270,98 +234,9 @@ class CloudBackupServiceTests(unittest.TestCase):
         result = service.save_schedule({"bandwidth_limit": "8M"})
 
         self.assertEqual(result, {})
-        self.assertTrue(system_utils.created_systemd_config)
+        self.assertTrue(system_utils.installed_timers)
         self.assertEqual(config.config["schedule"]["backup_cloud_time"], "03:00")
         self.assertEqual(config.config["backup"]["bandwidth_limit"], "8M")
-
-    def test_advanced_config_requires_remote_and_rclone_config(self):
-        service, _config, _system_utils, _runtime = self.make_service()
-
-        with self.assertRaisesRegex(ValidationProblem, "Rclone config and remote name"):
-            service.save_config({"cloud_mode": "advanced", "rclone_config": "", "remote_name": ""})
-
-    def test_mega_config_rewrites_rclone_when_reusing_stored_credentials(self):
-        service, config, system_utils, _runtime = self.make_service()
-        config.config["backup"] = {
-            "mega_email": "user@example.com",
-            "mega_pass": "stored-obscured",
-        }
-
-        result = service.save_config(
-            {
-                "cloud_mode": "mega",
-                "mega_email": "user@example.com",
-                "mega_folder": "/Backups",
-            }
-        )
-
-        self.assertEqual(result, {})
-        rclone_config = system_utils.rclone_config
-        if rclone_config is None:
-            self.fail("Expected rclone config to be written")
-        self.assertIn("stored-obscured", rclone_config)
-
-    def test_mega_config_does_not_store_new_credentials_when_rclone_write_fails(self):
-        command_runner = FakeCommandRunner()
-        command_runner.queue_result(stdout="obscured-password\n")
-        service, config, system_utils, _runtime = self.make_service(command_runner=command_runner)
-        system_utils.setup_rclone_result = False
-
-        with self.assertRaisesRegex(OperationProblem, "Failed to write rclone config"):
-            service.save_config(
-                {
-                    "cloud_mode": "mega",
-                    "mega_email": "user@example.com",
-                    "mega_password": "secret",
-                    "mega_folder": "/Backups",
-                }
-            )
-        self.assertNotIn("mega_email", config.config["backup"])
-        self.assertNotIn("mega_pass", config.config["backup"])
-
-    def test_list_mega_folders_uses_command_runner(self):
-        command_runner = FakeCommandRunner()
-        command_runner.queue_result(stdout='[{"Name": "Backups", "IsDir": true}]')
-        service, config, _system_utils, _runtime = self.make_service(command_runner=command_runner)
-        config.config["backup"] = {"mega_email": "user@example.com", "mega_pass": "obscured"}
-
-        result = service.list_mega_folders({"path": "/"})
-
-        self.assertEqual(result.folders, ["Backups"])
-        self.assertEqual(command_runner.calls[0][0][:3], ["rclone", "lsjson", "mega:/"])
-        self.assertTrue(command_runner.calls[0][1]["capture_output"])
-        self.assertEqual(command_runner.calls[0][1]["timeout"], RCLONE_ADMIN_TIMEOUT_SECONDS)
-
-    def test_create_mega_folder_uses_command_runner_timeout(self):
-        command_runner = FakeCommandRunner()
-        command_runner.queue_result(stdout="")
-        service, config, _system_utils, _runtime = self.make_service(command_runner=command_runner)
-        config.config["backup"] = {"mega_email": "user@example.com", "mega_pass": "obscured"}
-
-        service.create_mega_folder({"path": "/", "folder_name": "Backups"})
-
-        self.assertEqual(command_runner.calls[0][0][:3], ["rclone", "mkdir", "mega:/Backups"])
-        self.assertEqual(command_runner.calls[0][1]["timeout"], RCLONE_ADMIN_TIMEOUT_SECONDS)
-
-    def test_validate_mega_uses_command_runner_for_obscure_and_lsjson(self):
-        command_runner = FakeCommandRunner()
-        command_runner.queue_result(stdout="obscured-password\n")
-        command_runner.queue_result(stdout="[]")
-        service, config, system_utils, _runtime = self.make_service(command_runner=command_runner)
-
-        result = service.validate_mega({"email": "user@example.com", "password": "secret"})
-
-        self.assertIsNone(result)
-        self.assertEqual(command_runner.calls[0][0], ["rclone", "obscure", "-"])
-        self.assertEqual(command_runner.calls[0][1]["input"], "secret\n")
-        self.assertEqual(command_runner.calls[0][1]["timeout"], RCLONE_ADMIN_TIMEOUT_SECONDS)
-        self.assertEqual(command_runner.calls[1][0][0:3], ["rclone", "lsjson", "mega:/"])
-        self.assertEqual(command_runner.calls[1][1]["timeout"], RCLONE_ADMIN_TIMEOUT_SECONDS)
-        self.assertEqual(config.config["backup"]["mega_pass"], "obscured-password")
-        rclone_config = system_utils.rclone_config
-        self.assertIsNotNone(rclone_config)
-        if rclone_config is not None:
-            self.assertIn("obscured-password", rclone_config)
 
 
 if __name__ == "__main__":

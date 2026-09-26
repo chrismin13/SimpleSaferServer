@@ -56,8 +56,8 @@ Use dataclasses for repeated result shapes:
 
 ```python
 @dataclass(frozen=True)
-class MegaFolderList:
-    folders: List[str]
+class RemoteFolderList:
+    folders: list[str]
     path: str
     parent: str
 ```
@@ -129,18 +129,10 @@ The requested capability is unavailable in the current runtime or operating syst
 
 The Cloud Backup task is missing from the configured task service.
 
-### cloud-backup-missing-mega-credentials
-
-MEGA credentials were required for the operation, but no request credentials or stored credentials
-were available.
-
-### cloud-backup-rclone-error
-
-`rclone` returned an error while performing a Cloud Backup provider operation.
-
-### cloud-backup-rclone-config-write-failed
-
-SimpleSaferServer could not write the rclone configuration needed for Cloud Backup.
+Connection editor validation and provider errors use `validation-error`. Expired drafts,
+stale question revisions, changed saved configuration, and a running backup use `conflict`.
+Credentials are available only through the admin/setup credential editor, not general backup
+status or settings responses.
 
 ### alerts-fake-mode-required
 

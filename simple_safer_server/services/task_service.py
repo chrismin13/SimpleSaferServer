@@ -23,6 +23,7 @@ from simple_safer_server.services.drive_health import (
     hdsentinel_snapshot_has_health,
     run_scheduled_drive_health_check,
 )
+from simple_safer_server.services.file_persistence import locked_path
 from simple_safer_server.services.storage_location import validate_storage_ready_for_backup
 
 
@@ -487,6 +488,14 @@ class TaskService:
             return Status.ERROR
 
     def _run_fake_cloud_backup(self, cancel_event: threading.Event) -> None:
+        lock_path = self.runtime.rclone_config_dir / "rclone.conf.sss.lock"
+        with locked_path(lock_path, mode=0o600):
+            self.config_manager.load_config()
+            if self.config_manager.get_value("backup", "cloud_enabled", "false") != "true":
+                raise RuntimeError("Cloud backup is disabled.")
+            self._run_fake_cloud_backup_locked(cancel_event)
+
+    def _run_fake_cloud_backup_locked(self, cancel_event: threading.Event) -> None:
         fake_state = self._require_fake_state()
         source = self.config_manager.get_value(
             "backup",

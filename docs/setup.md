@@ -110,29 +110,18 @@ Boot behavior:
 
 Cloud Backup is optional.
 
-Choose one cloud-backup mode:
+The connection dialog opens on first setup. Choose a service and answer the questions returned
+by rclone, then choose or create a dedicated destination folder. Existing rclone connections are offered first so they can be reused. **Back**
+restores a question; **Cancel** discards unsaved connection settings. **Advanced config** accepts
+a full rclone configuration and exact destination.
 
-- Easy MEGA Cloud Backup
-- Advanced rclone configuration
+Browser sign-in and command-based authorization are available through rclone's shared OAuth flow.
+See [Cloud Backup](cloud_backup.md#authorize-an-account) for remote-browser callback instructions.
 
-You can also skip cloud backup. This is useful when:
-
-- the server is only used for local network backups
-- another tool already handles off-site backup
-- you want to finish setup first and configure cloud backup later
-
-SimpleSaferServer saves cloud backup as explicitly enabled or disabled. If that setting is missing or invalid, scheduled cloud backup fails and alerts the administrator instead of guessing.
-
-MEGA mode:
-
-- Enter MEGA credentials.
-- Connect and choose the target folder.
-- The selected remote folder is shown before saving.
-
-Advanced mode:
-
-- Paste the rclone config.
-- Enter the remote in `remote:/path` form.
+You can skip Cloud Backup and configure it later. Disabling it preserves existing connections and
+the saved destination. Cloud backup is saved as explicitly enabled or disabled; a missing or
+invalid setting prevents scheduled backups rather than guessing. No recurring job is activated
+until setup finishes.
 
 Before every cloud backup, SimpleSaferServer checks the storage marker and confirms it can read and write in the storage location. If those checks fail, the backup does not run. This avoids syncing an empty or broken local folder to the cloud and accidentally deleting the remote copy.
 

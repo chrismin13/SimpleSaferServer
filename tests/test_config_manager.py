@@ -162,3 +162,42 @@ class ConfigManagerDefaultsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_percent_in_backup_destination_survives_disk_reload():
+    manager = create_config_manager()
+    destination = 'remote:Photos/100% original'
+    manager.update_values({'backup': {'rclone_dir': destination, 'cloud_enabled': 'true'}})
+    manager.load_config()
+    assert manager.get_value('backup', 'rclone_dir') == destination
+    assert manager.get_all_config()['backup']['rclone_dir'] == destination
+
+
+def test_reload_does_not_expose_a_partially_parsed_config():
+    import threading
+
+    manager = create_config_manager()
+    manager.set_value('backup', 'rclone_dir', 'saved:folder')
+    started = threading.Event()
+    finish = threading.Event()
+    original_read = configparser.ConfigParser.read
+
+    def delayed_read(parser, *args, **kwargs):
+        result = original_read(parser, *args, **kwargs)
+        value = parser._sections['backup']['rclone_dir']
+        # ConfigParser temporarily holds lists while assembling multiline values.
+        parser._sections['backup']['rclone_dir'] = [value]
+        started.set()
+        assert finish.wait(5)
+        parser._sections['backup']['rclone_dir'] = value
+        return result
+
+    with patch.object(configparser.ConfigParser, 'read', delayed_read):
+        worker = threading.Thread(target=manager.load_config)
+        worker.start()
+        try:
+            assert started.wait(5)
+            assert manager.get_value('backup', 'rclone_dir') == 'saved:folder'
+        finally:
+            finish.set()
+            worker.join(5)

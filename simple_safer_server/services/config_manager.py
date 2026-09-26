@@ -27,7 +27,8 @@ class ConfigManager:
         self.key_path = self.config_dir / '.key'
         self.alerts_path = self.config_dir / 'alerts.json'
         self.alert_store = AlertStore(self.alerts_path)
-        self.config = configparser.ConfigParser()
+        # Paths and provider values are literal; percent signs are not INI substitutions.
+        self.config = configparser.ConfigParser(interpolation=None)
         self.logger = logging.getLogger(__name__)
 
         self.config_dir.mkdir(parents=True, exist_ok=True)
@@ -82,15 +83,18 @@ class ConfigManager:
         """Load the configuration file"""
         # ConfigParser.read() merges into existing state, so reloads need a
         # fresh parser or deleted options can linger in memory.
-        self.config = configparser.ConfigParser()
         if self.config_path.exists():
-            self.config.read(self.config_path)
+            config = configparser.ConfigParser(interpolation=None)
+            config.read(self.config_path)
+            # Threaded status/editor requests must never observe ConfigParser's
+            # partially parsed (list-valued) internal state during a reload.
+            self.config = config
         else:
             self.create_default_config()
 
     def _default_config_parser(self):
         """Build the first-run configuration without touching disk."""
-        config = configparser.ConfigParser()
+        config = configparser.ConfigParser(interpolation=None)
         config['system'] = {'username': '', 'server_name': '', 'setup_complete': 'false'}
 
         config['backup'] = {
@@ -144,7 +148,7 @@ class ConfigManager:
         # config.conf is replaced atomically, so all writers must lock a stable
         # sidecar path and re-read the latest file before applying their change.
         with locked_path(self.config_lock_path, mode=0o644):
-            config = configparser.ConfigParser()
+            config = configparser.ConfigParser(interpolation=None)
             if self.config_path.exists():
                 config.read(self.config_path)
             else:
@@ -190,6 +194,18 @@ class ConfigManager:
             if not config.has_section(section):
                 config.add_section(section)
             config.set(section, key, str(value))
+
+        self._locked_config_update(update)
+
+    def update_values(self, values):
+        """Publish related settings together without replacing other sections."""
+
+        def update(config):
+            for section, options in values.items():
+                if not config.has_section(section):
+                    config.add_section(section)
+                for key, value in options.items():
+                    config.set(section, key, str(value))
 
         self._locked_config_update(update)
 
@@ -278,6 +294,7 @@ class ConfigManager:
     def get_all_config(self):
         """Get all non-sensitive configuration"""
         config_dict = {}
-        for section in self.config.sections():
-            config_dict[section] = dict(self.config[section])
+        config = self.config
+        for section in config.sections():
+            config_dict[section] = dict(config[section])
         return config_dict

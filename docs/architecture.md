@@ -61,7 +61,7 @@ execution boundary. `SystemdAdapter` wraps task-related systemd and journalctl c
 `StorageCommandAdapter` wraps dashboard storage controls, and `BackupDriveCommandAdapter` wraps
 managed backup-drive setup and detach commands. `SystemUpdatesCommandAdapter` wraps System Updates
 package-manager, lock, config-write, Livepatch, and long-running apt worker commands.
-`SetupCommandAdapter` wraps setup wizard disk-format, SMB enable, and MEGA picker commands.
+`SetupCommandAdapter` wraps setup wizard disk-format and SMB enable commands.
 `DriveHealthCommandAdapter` wraps SMART, HDSentinel, backup-drive lookup, and alert email commands.
 New runtime behavior should live under `simple_safer_server/`; do not add top-level Python modules
 for app services or route helpers.
@@ -82,3 +82,45 @@ app. The legacy import tool remains available for bundles produced by
 `https://github.com/chrismin13/SimpleSaferServer-old`; remove it only after that migration path is no
 longer needed. Root-level files are reserved for repository metadata, install/deploy entrypoints,
 public docs, and operator scripts.
+
+## Rclone connection editor
+
+`routes/rclone_config.py` exposes an explicit action vocabulary under
+`/api/cloud_backup/rclone/` (admin) and `/api/setup/cloud-backup/rclone/` (first-run setup,
+then admin). Requests require the `X-SSS-Rclone: 1` header, JSON mutations, and normal session
+authorization; CORS is not enabled. Responses cannot be cached. `state` lists remote names and
+types; `raw` and private draft questions are the credential-editing surfaces.
+
+`RcloneConfigService` owns session-bound, revisioned, expiring drafts and atomic publication.
+`RcloneWorker` runs authenticated loopback RC processes against private mode-0600 files under
+`runtime.volatile_dir/rclone`, with mode-0700 directories and no ambient `RCLONE_*` overrides.
+Credentials travel in JSON, while RC authentication uses private environment variables. Worker
+output is discarded. Provider errors are returned only to the editor, without request payloads
+or credential-bearing logs. No arbitrary RC passthrough exists.
+
+`config/providers` supplies the catalog. Non-interactive `config/create` and `config/update`
+return opaque state plus question metadata. Jobs are polled asynchronously. Back restores both
+a config checkpoint and its state by restarting the worker; cancellation/expiry terminates it.
+The frontend has two shared OAuth presentations (`config_is_local` and `config_token`), with a
+generic renderer for all other questions. New backends do not require an SSS provider registry.
+
+The shipped server uses one threaded worker. Draft state is process-local (maximum four open
+editors, one per browser session); multi-worker deployments need a shared editor coordinator.
+A cleanup thread expires idle drafts after 30 minutes and normal process exit closes workers.
+Volatile drafts are not configuration backups and are discarded on restart.
+
+Publication compares the config and selected destination with the editor's starting revision.
+The stable `rclone.conf.sss.lock` is shared with production and fake-mode sync jobs. The backup
+holds it before reading destination settings through completion of rclone, including token
+refresh. Web saves fail promptly while the lock is held. The config is atomically published
+before related settings; an ordinary settings/timer failure restores the prior file. Two files
+cannot be one crash-atomic filesystem transaction; inspect configuration after an interrupted
+system update or hard shutdown. External rclone processes do not honor the SSS lock automatically.
+
+See [Cloud Backup](cloud_backup.md) for configuration paths and authentication behavior, and
+[rclone's RC API](https://rclone.org/rc/) and
+[non-interactive configuration](https://rclone.org/commands/rclone_config_create/) for the upstream
+protocol. `tests/test_rclone_config.py` exercises it against installed rclone using temporary
+local storage and a local OAuth token issuer. Run it with
+`uv run pytest tests/test_rclone_config.py`; these integration tests skip when rclone is absent.
+Fake-mode account and folder operations still contact the selected provider.

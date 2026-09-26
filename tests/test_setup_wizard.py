@@ -8,26 +8,7 @@ from unittest.mock import MagicMock, patch
 
 from flask import Flask
 
-from simple_safer_server.services.cloud_backup_service import MegaFolderList
 from simple_safer_server.services.server_identity import ServerIdentityError
-
-
-class FakeCloudBackupService:
-    def __init__(self):
-        self.calls = []
-
-    def list_mega_folders(self, data):
-        self.calls.append(("list_mega_folders", data))
-        path = data.get("path", "/")
-        parent = "/".join(path.rstrip("/").split("/")[:-1]) or "/"
-        return MegaFolderList(folders=["Backups"], path=path, parent=parent)
-
-    def create_mega_folder(self, data):
-        self.calls.append(("create_mega_folder", data))
-
-    def save_config(self, data):
-        self.calls.append(("save_config", data))
-        return {}
 
 
 class FakeServerIdentityService:
@@ -90,10 +71,8 @@ class SetupWizardTests(unittest.TestCase):
         self.setup_wizard = importlib.import_module("simple_safer_server.routes.setup_wizard")
         self.app = Flask(__name__)
         self.app.secret_key = 'test-secret'
-        self.cloud_backup_service = FakeCloudBackupService()
         self.server_identity_service = FakeServerIdentityService()
         self.app.extensions["simple_safer_server"] = types.SimpleNamespace(
-            cloud_backup_service=self.cloud_backup_service,
             server_identity_service=self.server_identity_service,
         )
         self.app.register_error_handler(
@@ -187,118 +166,6 @@ class SetupWizardTests(unittest.TestCase):
                     {"name": "readme.txt", "type": "file"},
                 ],
             },
-        )
-
-    def test_setup_mega_connect_delegates_to_cloud_backup_service(self):
-        with self.app.test_client() as client:
-            response = client.post(
-                "/api/setup/mega/connect",
-                json={"email": "user@example.com", "password": "secret"},
-            )
-
-        self.assertDataResponse(response, {"folders": ["Backups"]})
-        self.assertEqual(
-            self.cloud_backup_service.calls,
-            [
-                (
-                    "list_mega_folders",
-                    {"email": "user@example.com", "password": "secret", "path": "/"},
-                )
-            ],
-        )
-
-    def test_setup_mega_list_folders_delegates_to_cloud_backup_service(self):
-        with self.app.test_client() as client:
-            response = client.post(
-                "/api/setup/mega/list_folders",
-                json={"email": "user@example.com", "password": "secret", "path": "/Photos"},
-            )
-
-        self.assertDataResponse(
-            response,
-            {"folders": ["Backups"], "path": "/Photos", "parent": "/"},
-        )
-        self.assertEqual(
-            self.cloud_backup_service.calls,
-            [
-                (
-                    "list_mega_folders",
-                    {"email": "user@example.com", "password": "secret", "path": "/Photos"},
-                )
-            ],
-        )
-
-    def test_setup_mega_create_folder_delegates_to_cloud_backup_service(self):
-        with self.app.test_client() as client:
-            response = client.post(
-                "/api/setup/mega/create_folder",
-                json={
-                    "email": "user@example.com",
-                    "password": "secret",
-                    "path": "/",
-                    "folder_name": "Backups",
-                },
-            )
-
-        self.assertDataResponse(response)
-        self.assertEqual(
-            self.cloud_backup_service.calls,
-            [
-                (
-                    "create_mega_folder",
-                    {
-                        "email": "user@example.com",
-                        "password": "secret",
-                        "path": "/",
-                        "folder_name": "Backups",
-                    },
-                )
-            ],
-        )
-
-    def test_setup_mega_save_delegates_to_cloud_backup_service(self):
-        with self.app.test_client() as client:
-            response = client.post(
-                "/api/setup/mega/save",
-                json={"email": "user@example.com", "password": "secret", "folder": "/Backups"},
-            )
-
-        self.assertDataResponse(response)
-        self.assertEqual(
-            self.cloud_backup_service.calls,
-            [
-                (
-                    "save_config",
-                    {
-                        "cloud_mode": "mega",
-                        "mega_email": "user@example.com",
-                        "mega_password": "secret",
-                        "mega_folder": "/Backups",
-                    },
-                )
-            ],
-        )
-
-    def test_setup_rclone_delegates_to_cloud_backup_service(self):
-        with self.app.test_client() as client:
-            response = client.post(
-                "/api/setup/rclone",
-                json={"config": "[remote]\ntype = test\n", "remote_name": "remote:/Backups"},
-            )
-
-        self.assertDataResponse(response)
-        self.assertEqual(
-            self.cloud_backup_service.calls,
-            [
-                (
-                    "save_config",
-                    {
-                        "cloud_mode": "advanced",
-                        "rclone_config": "[remote]\ntype = test\n",
-                        "remote_name": "remote:/Backups",
-                    },
-                )
-            ],
         )
 
     def test_setup_api_requires_admin_after_setup_is_complete(self):
@@ -725,19 +592,6 @@ class SetupWizardTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertProblemDetail(response, 'Missing required fields')
         config_manager.set_value.assert_not_called()
-
-    def test_skip_cloud_backup_saves_explicit_disabled_state(self):
-        config_manager = MagicMock()
-        config_manager.is_setup_complete.return_value = False
-
-        with patch.object(self.setup_wizard, 'config_manager', config_manager):
-            with self.app.test_client() as client:
-                response = client.post('/api/setup/cloud-backup/skip')
-
-        self.assertEqual(response.status_code, 200)
-        config_manager.set_value.assert_any_call('backup', 'cloud_enabled', 'false')
-        config_manager.set_value.assert_any_call('backup', 'cloud_mode', '')
-        config_manager.set_value.assert_any_call('backup', 'rclone_dir', '')
 
     def test_complete_setup_allows_skipped_cloud_backup_without_rclone_dir(self):
         config_manager = MagicMock()

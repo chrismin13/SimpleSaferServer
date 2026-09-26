@@ -460,7 +460,7 @@ main() {
   remove_git_safe_directory "$APP_DIR"
 
   echo "Removing SimpleSaferServer rclone configuration if present..."
-  rm -f "$RCLONE_CONFIG_PATH"
+  rm -f "$RCLONE_CONFIG_PATH" "$RCLONE_CONFIG_PATH.sss.lock"
   rmdir "$RCLONE_CONFIG_DIR" 2>/dev/null || true
 
   echo "Removing legacy SimpleSaferServer user and group if present..."
