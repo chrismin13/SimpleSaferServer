@@ -33,6 +33,11 @@ should stay close enough to real behavior that provider bugs can be reproduced d
 Use disposable domains, test subdomains, scoped Cloudflare tokens, and test cloud destinations when
 exercising provider behavior from fake mode.
 
+Cloud Backup waits while the connection editor owns the shared rclone configuration lock. **Stop**
+cancels a waiting backup without waiting for the editor to finish; a subsequent **Start** queues a
+new run. A cancelled run does not start rclone when the lock becomes available or after a pending
+storage check finishes.
+
 ## State And Persistence
 
 Fake-mode config, users, secrets, logs, and simulated machine state live under `.dev-data/` unless

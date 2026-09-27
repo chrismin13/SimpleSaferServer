@@ -38,6 +38,7 @@ creates folders, completes a configuration question, or waits for browser sign-i
 released after refreshed credentials are saved; an idle question or folder picker does not hold it.
 If writing credentials fails, backups keep waiting while the editor retries rather than using an
 invalidated token. A running backup prevents new provider operations; retry after it finishes.
+**Stop** on the task page also cancels backups waiting for this lock, including in fake mode.
 Creating a folder is immediate and is not undone by cancelling configuration.
 
 Existing connections are read from the managed `rclone.conf`, including MEGA connections. Choose

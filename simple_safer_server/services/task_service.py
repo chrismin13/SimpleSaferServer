@@ -3,6 +3,7 @@ import queue
 import sys
 import threading
 import time
+from contextlib import ExitStack
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -489,7 +490,18 @@ class TaskService:
 
     def _run_fake_cloud_backup(self, cancel_event: threading.Event) -> None:
         lock_path = self.runtime.rclone_config_dir / "rclone.conf.sss.lock"
-        with locked_path(lock_path, mode=0o600):
+        with ExitStack() as stack:
+            # An editor can hold this lock throughout browser authorization.
+            # Stop must wake the waiting task without waiting for that editor;
+            # only acquisition failures retry, never errors from backup work.
+            while not cancel_event.is_set():
+                try:
+                    stack.enter_context(locked_path(lock_path, mode=0o600, blocking=False))
+                    break
+                except BlockingIOError:
+                    cancel_event.wait(0.25)
+            if cancel_event.is_set():
+                raise RuntimeError("Cloud backup was cancelled.")
             self.config_manager.load_config()
             if self.config_manager.get_value("backup", "cloud_enabled", "false") != "true":
                 raise RuntimeError("Cloud backup is disabled.")
@@ -519,6 +531,10 @@ class TaskService:
             raise RuntimeError("No cloud destination configured.")
         if ":" in destination and not rclone_config_path.exists():
             raise RuntimeError(f"Rclone config not found at {rclone_config_path}")
+        # Storage validation may take time on a sleeping or unresponsive disk.
+        # A Stop during that check must not launch provider work afterward.
+        if cancel_event.is_set():
+            raise RuntimeError("Cloud backup was cancelled.")
 
         fake_state.append_task_log(
             "Cloud Backup",

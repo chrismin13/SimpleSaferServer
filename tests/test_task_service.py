@@ -4,11 +4,13 @@ import tempfile
 import threading
 import time
 import unittest
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+from simple_safer_server.services.file_persistence import locked_path
 from simple_safer_server.services.storage_location import marker_path
 from simple_safer_server.services.task_service import (
     TASK_LOG_LINE_LIMIT,
@@ -291,6 +293,73 @@ class TaskServiceTests(unittest.TestCase):
             ("Cloud Backup", "copied"),
             fake_state.logs,
         )
+
+    def test_fake_cloud_backup_can_stop_and_restart_while_editor_holds_lock(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            service, fake_state = self.build_service()
+            service.runtime.rclone_config_dir = Path(temporary)
+            service._run_fake_cloud_backup_locked = MagicMock()
+            task = service.get_task("Cloud Backup")
+            assert task is not None
+            attempted = threading.Event()
+            threads = []
+
+            @contextmanager
+            def observed_lock(*args, **kwargs):
+                attempted.set()
+                with locked_path(*args, **kwargs):
+                    yield
+
+            try:
+                # Keep the real editor lock held across both Stop and restart.
+                # Events establish the wait boundary without scheduling sleeps.
+                with (
+                    locked_path(Path(temporary) / "rclone.conf.sss.lock", mode=0o600),
+                    patch("simple_safer_server.services.task_service.locked_path", observed_lock),
+                ):
+                    for _ in range(2):
+                        attempted.clear()
+                        task.start()
+                        thread = service._fake_task_threads[task.name]
+                        threads.append(thread)
+                        self.assertTrue(attempted.wait(2))
+                        self.assertEqual(
+                            fake_state.get_task_state(task.name)["status"], Status.RUNNING
+                        )
+                        service._run_fake_cloud_backup_locked.assert_not_called()
+
+                        task.stop()
+                        thread.join(2)
+
+                        self.assertFalse(thread.is_alive())
+                        self.assertEqual(
+                            fake_state.get_task_state(task.name)["status"], Status.STOPPED
+                        )
+                        self.assertNotIn(task.name, service._fake_task_threads)
+                        self.assertNotIn(task.name, service._fake_task_cancel_events)
+                        service._run_fake_cloud_backup_locked.assert_not_called()
+            finally:
+                task.stop()
+                for thread in threads:
+                    thread.join(2)
+            service._run_fake_cloud_backup_locked.assert_not_called()
+
+    def test_fake_cloud_backup_cancellation_during_source_check_prevents_rclone(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            service, _fake_state = self.build_service(
+                mount_point=temporary, rclone_dir=str(Path(temporary) / "destination")
+            )
+            service.runtime.rclone_config_dir = Path(temporary)
+            service.rclone_adapter = MagicMock()
+            service.rclone_adapter.sync.return_value = FakeProcess()
+            cancel_event = threading.Event()
+            with patch(
+                "simple_safer_server.services.task_service.validate_storage_ready_for_backup",
+                side_effect=lambda *args, **kwargs: cancel_event.set(),
+            ):
+                with self.assertRaisesRegex(RuntimeError, "Cloud backup was cancelled"):
+                    service._run_fake_cloud_backup(cancel_event)
+            service.rclone_adapter.sync.assert_not_called()
 
     @patch("simple_safer_server.services.task_service.run_scheduled_drive_health_check")
     def test_fake_drive_health_logs_smart_collection(self, mock_health_check):
