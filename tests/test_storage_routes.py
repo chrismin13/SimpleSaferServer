@@ -133,7 +133,7 @@ def test_existing_folder_page_renders_inside_storage_shell():
     assert "Use This Folder" in body
     assert "browseExistingStorageBtn" in body
     assert "existingStorageFolderPickerModal" in body
-    assert "/static/js/mega_folder_picker.js" in body
+    assert "/static/js/folder_picker.js" in body
     assert "/static/js/storage_existing_folder.js" in body
 
 

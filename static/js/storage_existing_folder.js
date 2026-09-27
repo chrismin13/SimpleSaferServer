@@ -59,8 +59,8 @@
   }
 
   function browseExistingStorage() {
-    if (!window.openMegaFolderPicker || !existingPathInput) return;
-    window.openMegaFolderPicker({
+    if (!window.openFolderPicker || !existingPathInput) return;
+    window.openFolderPicker({
       modalId: 'existingStorageFolderPickerModal',
       listUrl: '/api/storage/list-path',
       startPath: existingPathInput.value.trim() || '/',

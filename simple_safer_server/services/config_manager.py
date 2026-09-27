@@ -3,6 +3,7 @@ import io
 import logging
 import os
 import stat
+from dataclasses import dataclass
 
 from cryptography.fernet import Fernet
 
@@ -16,6 +17,14 @@ from simple_safer_server.services.file_persistence import (
 from simple_safer_server.services.runtime import get_runtime
 
 
+@dataclass(frozen=True)
+class ConfigUpdate:
+    """Independent snapshots of the settings read and published by one transaction."""
+
+    previous: dict[str, dict[str, str]]
+    current: dict[str, dict[str, str]]
+
+
 class ConfigManager:
     def __init__(self, runtime=None):
         self.runtime = runtime or get_runtime()
@@ -27,7 +36,8 @@ class ConfigManager:
         self.key_path = self.config_dir / '.key'
         self.alerts_path = self.config_dir / 'alerts.json'
         self.alert_store = AlertStore(self.alerts_path)
-        self.config = configparser.ConfigParser()
+        # Paths and provider values are literal; percent signs are not INI substitutions.
+        self.config = configparser.ConfigParser(interpolation=None)
         self.logger = logging.getLogger(__name__)
 
         self.config_dir.mkdir(parents=True, exist_ok=True)
@@ -82,15 +92,18 @@ class ConfigManager:
         """Load the configuration file"""
         # ConfigParser.read() merges into existing state, so reloads need a
         # fresh parser or deleted options can linger in memory.
-        self.config = configparser.ConfigParser()
         if self.config_path.exists():
-            self.config.read(self.config_path)
+            config = configparser.ConfigParser(interpolation=None)
+            config.read(self.config_path)
+            # Threaded status/editor requests must never observe ConfigParser's
+            # partially parsed (list-valued) internal state during a reload.
+            self.config = config
         else:
             self.create_default_config()
 
     def _default_config_parser(self):
         """Build the first-run configuration without touching disk."""
-        config = configparser.ConfigParser()
+        config = configparser.ConfigParser(interpolation=None)
         config['system'] = {'username': '', 'server_name': '', 'setup_complete': 'false'}
 
         config['backup'] = {
@@ -144,14 +157,18 @@ class ConfigManager:
         # config.conf is replaced atomically, so all writers must lock a stable
         # sidecar path and re-read the latest file before applying their change.
         with locked_path(self.config_lock_path, mode=0o644):
-            config = configparser.ConfigParser()
+            config = configparser.ConfigParser(interpolation=None)
             if self.config_path.exists():
                 config.read(self.config_path)
             else:
                 config = self._default_config_parser()
+            previous = self._config_snapshot(config)
             update_config(config)
             self._write_config_parser(config)
             self.config = config
+            # A concurrent reload may replace self.config immediately. Side effects
+            # and rollback must use this transaction's own before/after values.
+            return ConfigUpdate(previous, self._config_snapshot(config))
 
     def create_default_config(self):
         """Create default configuration if no on-disk config exists."""
@@ -192,6 +209,18 @@ class ConfigManager:
             config.set(section, key, str(value))
 
         self._locked_config_update(update)
+
+    def update_values(self, values) -> ConfigUpdate:
+        """Publish related settings and return their locked before/after snapshots."""
+
+        def update(config):
+            for section, options in values.items():
+                if not config.has_section(section):
+                    config.add_section(section)
+                for key, value in options.items():
+                    config.set(section, key, str(value))
+
+        return self._locked_config_update(update)
 
     def store_secret(self, key, value):
         """Store a sensitive value"""
@@ -277,7 +306,8 @@ class ConfigManager:
 
     def get_all_config(self):
         """Get all non-sensitive configuration"""
-        config_dict = {}
-        for section in self.config.sections():
-            config_dict[section] = dict(self.config[section])
-        return config_dict
+        return self._config_snapshot(self.config)
+
+    @staticmethod
+    def _config_snapshot(config):
+        return {section: dict(config[section]) for section in config.sections()}

@@ -56,6 +56,7 @@ class CommandRunner:
         bufsize: int = -1,
         env: Any | None = None,
         start_new_session: bool = False,
+        cwd: Any | None = None,
     ) -> subprocess.Popen:
         return subprocess.Popen(
             command,
@@ -65,4 +66,5 @@ class CommandRunner:
             bufsize=bufsize,
             env=env,
             start_new_session=start_new_session,
+            cwd=cwd,
         )

@@ -27,6 +27,8 @@ Rules:
 - When inline feedback is required, do NOT artificially reserve empty whitespace ahead of time. Use a naturally collapsing `.feedback-slot` so the interface remains densely packed and only shifts slightly when an error absolutely must be displayed.
 - In modals, prefer a compact footer status line for modal-level errors instead of inserting a full alert above the fields.
 - Keep button rows and action bars in a stable position across empty, loading, success, and error states.
+- Multi-step dialogs keep Cancel, Back, and the primary action in consistent slots. Leave an
+  unavailable action's slot empty or disabled so another action cannot replace it under the pointer.
 - Treat layout shift as a bug. The UI should not move around as the user clicks through normal flows unless movement is necessary for the task itself.
 - Keep short, related values in compact horizontal groups when they belong to the same status.
   Add vertical space only when it improves comprehension or the available width requires wrapping.
@@ -69,6 +71,7 @@ Rules:
 - Add the right-click menu as an extra shortcut, not a replacement.
 - Reuse the same handlers for both the inline buttons and the context menu items.
 - For new implementations, use `window.ActionContextMenu` from `static/js/common.js`.
+- Give menu icons a fixed-width column so labels align regardless of the glyph's shape.
 
 Current examples:
 

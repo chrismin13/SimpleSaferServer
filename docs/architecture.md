@@ -36,6 +36,11 @@ Existing extracted services include task handling, DDNS, Cloud Backup, storage l
 blueprints cover dashboard/tasks, DDNS, Cloud Backup, System Updates, alerts, SMB, users, storage,
 and drive health.
 
+`ConfigManager.update_values()` returns independent configuration snapshots from before and after
+its locked file transaction. Cloud Backup uses those snapshots to install timers and restore changed
+settings if installation fails. Concurrent status reloads can replace the shared in-memory parser,
+so it must not supply either snapshot for these save-related actions.
+
 Storage location checks live in `simple_safer_server.services.storage_location`. That service owns
 the small marker file inside the configured storage folder and the read/write checks that run before
 Cloud Backup. Routes and scripts should use that service instead of open-coding storage safety
@@ -61,7 +66,7 @@ execution boundary. `SystemdAdapter` wraps task-related systemd and journalctl c
 `StorageCommandAdapter` wraps dashboard storage controls, and `BackupDriveCommandAdapter` wraps
 managed backup-drive setup and detach commands. `SystemUpdatesCommandAdapter` wraps System Updates
 package-manager, lock, config-write, Livepatch, and long-running apt worker commands.
-`SetupCommandAdapter` wraps setup wizard disk-format, SMB enable, and MEGA picker commands.
+`SetupCommandAdapter` wraps setup wizard disk-format and SMB enable commands.
 `DriveHealthCommandAdapter` wraps SMART, HDSentinel, backup-drive lookup, and alert email commands.
 New runtime behavior should live under `simple_safer_server/`; do not add top-level Python modules
 for app services or route helpers.
@@ -82,3 +87,114 @@ app. The legacy import tool remains available for bundles produced by
 `https://github.com/chrismin13/SimpleSaferServer-old`; remove it only after that migration path is no
 longer needed. Root-level files are reserved for repository metadata, install/deploy entrypoints,
 public docs, and operator scripts.
+
+## Rclone connection editor
+
+`routes/rclone_config.py` exposes an explicit action vocabulary under
+`/api/cloud_backup/rclone/` (admin) and `/api/setup/cloud-backup/rclone/` (first-run setup,
+then admin). Requests require the `X-SSS-Rclone: 1` header, JSON mutations, and normal session
+authorization; CORS is not enabled. Responses cannot be cached. `state` lists remote names and
+types; `raw` and private draft questions are the credential-editing surfaces.
+
+`RcloneConfigService` owns session-bound, revisioned, expiring drafts and atomic publication.
+`RcloneWorker` runs authenticated loopback RC processes against private mode-0600 files under
+`runtime.volatile_dir/rclone`, with mode-0700 directories and no ambient `RCLONE_*` overrides.
+Credentials travel in JSON, while RC authentication uses private environment variables. Worker
+output is discarded. Provider errors are returned only to the editor, without request payloads
+or credential-bearing logs. No arbitrary RC passthrough exists.
+
+Editor workers, the Python sync adapter, and the production backup script run rclone with `/` as
+its working directory. This gives relative local destinations the same meaning during browsing,
+folder creation, and sync, including paths reached through alias/crypt connections. The script
+resolves its rclone executable, source, and config path before changing the subprocess directory;
+relative `SSS_*` overrides, helper paths, and executable lookup remain tied to the caller's directory.
+The Python adapters share `managed_rclone_environment()`, and the shell script applies equivalent
+filtering, to remove inherited `RCLONE_*` variables before launching rclone. Remote, backend, and
+credential overrides must not make sync resolve a different destination from the editor. Unrelated
+environment variables remain available; private RC credentials are added after filtering for each
+editor worker. The shell filter passes variable names, never their values, through command arguments.
+
+`config/providers` supplies the catalog. Non-interactive `config/create` and `config/update`
+return opaque state plus question metadata. Jobs are polled asynchronously. Back restores both
+a config checkpoint and its state, retaining eligible refreshed tokens. Workers stop after provider
+operations and restart from their private files for subsequent work; this prevents cached backends
+or background token writers from continuing outside the shared backup lock.
+The frontend has two shared OAuth presentations (`config_is_local` and `config_token`), with a
+generic renderer for all other questions. New backends do not require an SSS provider registry.
+
+The renderer interprets `Examples` as visible choices and `Exclusive` as a restriction on custom
+entry. These are independent properties: a string question can offer choices and still accept
+arbitrary text. Small choice sets use radio groups; large sets use a dropdown and selected-item
+help. Selection keys are separate from submitted values, including empty values. `DefaultStr`
+preserves rclone's serialized defaults, `Required` controls empty input when no default exists,
+and `IsPassword` takes precedence over other presentation hints. Boolean and tri-state types have
+dedicated choices. Other types use text (multiline for JSON-named fields or multiline defaults),
+so rclone retains authority over units, sentinels, list syntax, validation and provider branching.
+Unknown types remain editable without adding a provider-specific field mapping.
+
+The shipped server uses one threaded worker. Draft state is process-local (maximum four open
+editors, one per browser session); multi-worker deployments need a shared editor coordinator.
+A cleanup thread expires idle drafts after 30 minutes. Normal process exit stops workers and
+preserves eligible token refreshes before cleaning up their private workspaces. Unsaved connection
+settings are discarded; volatile drafts are not configuration backups.
+
+Publication compares the config and selected destination with the editor's starting revision.
+The stable `rclone.conf.sss.lock` is shared with production and fake-mode sync jobs. The backup
+holds it before reading destination settings through completion of rclone, including token
+refresh. Provider work uses one shared service boundary: it acquires the lock before reading or
+changing credentials, and keeps it for the whole synchronous call or asynchronous configuration job.
+The worker stops before its final credential snapshot, including after RC errors/timeouts, Back,
+Cancel, expiry, or shutdown. Eligible refreshes are published before the lock is released, including
+when a provider operation fails after refreshing its token. Backups can therefore wait during
+active editor work or browser authorization, but idle questions and folder pickers do not block them.
+The janitor polls active jobs every minute so browser disconnection does not strand a finished job's
+lock. Publication failures retain lock ownership for retry while the server is running.
+
+Before the next provider operation, newer saved tokens are adopted only into draft sections that
+still match their baseline. Unrelated durable edits or changed identities require reopening the
+draft. Publishing or adopting tokens also updates the draft baseline and eligible Back checkpoints,
+including token-question defaults, so the editor cannot undo its own refresh or create a false Save
+conflict. Unsaved remote changes remain private. Web saves and other provider operations fail
+promptly while the shared lock is held. The config is atomically published
+before related settings; an ordinary settings/timer failure restores the prior file. Two files
+cannot be one crash-atomic filesystem transaction; inspect configuration after an interrupted
+system update or hard shutdown. External rclone processes do not honor the SSS lock automatically.
+Cancellation and expiration preserve nonempty OAuth token updates per existing remote when its
+other settings are unchanged. Cleanup reconstructs the starting configuration with only those
+eligible tokens, so added, edited, or removed connections remain unsaved. This matters when an
+unsaved alias/crypt connection refreshes its existing upstream's single-use credentials.
+Cleanup uses the publication lock and compares each saved remote against its section in the draft's
+base before writing, without changing destination settings. Unrelated saved edits remain intact.
+A remote whose saved settings or token changed is excluded from reconciliation. If the lock is busy,
+the draft remains open for retry.
+Expired drafts delayed by a busy lock or failed file write retain their original expiry time,
+so the cleanup thread retries on its next one-minute pass. They count toward the four-draft
+limit. Unexpected cleanup failures are logged by exception type and cannot stop that thread.
+Destination access tests use the frontend's shared draft cleanup path, refresh the saved version
+after token publication, and expose a close retry when the draft must remain open.
+
+Shutdown uses the same reconciliation without waiting for the backup lock. If publication fails,
+it atomically writes a mode-0600 JSON recovery record under the mode-0700
+`runtime.data_dir/rclone-recovery` directory. Records contain the original saved configuration and
+eligible token-only updates, excluding unsaved connection changes. Construction retries them before
+serving editor requests and starts the cleanup thread if any remain; that thread retries every
+minute even with no browser requests. Replay compares each remote to its recorded base under the
+publication lock, making repeated replay safe if shutdown occurs after publication but before record
+removal. The uninstaller removes records with the app data directory.
+
+If both publication and recovery persistence fail, shutdown retains the stopped worker's volatile
+workspace and logs its app-generated path for manual credential recovery. Workspaces use explicit
+cleanup so `TemporaryDirectory` finalization cannot silently remove this last copy. Operators must
+recover it before reboot; abrupt termination or power loss can still lose unpersisted draft tokens.
+
+See [Cloud Backup](cloud_backup.md) for configuration paths and authentication behavior, and
+[rclone's RC API](https://rclone.org/rc/) and
+[non-interactive configuration](https://rclone.org/commands/rclone_config_create/) for the upstream
+protocol. `tests/test_rclone_config.py` exercises it against installed rclone using temporary
+local storage and a local OAuth token issuer. Run it with
+`uv run pytest tests/test_rclone_config.py`; these integration tests skip when rclone is absent.
+`tests/test_rclone_editor_ui.py` also exercises rendering and answer selection across synthetic
+metadata combinations and every option in the installed provider catalog. Run it with Node.js
+on `PATH`; the catalog check additionally needs rclone. These checks cover field presentation and
+value preservation, not successful authorization with every external provider.
+Fake-mode account and folder operations still contact the selected provider.

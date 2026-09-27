@@ -40,22 +40,6 @@ class SystemUtils:
             self.logger.error(f"Command failed: {e.stderr}")
             raise
 
-    def setup_rclone(self, config):
-        """Set up rclone configuration"""
-        try:
-            # Create rclone config directory if it doesn't exist
-            rclone_dir = self.runtime.rclone_config_dir
-            rclone_dir.mkdir(parents=True, exist_ok=True)
-
-            # Write rclone config
-            config_path = rclone_dir / 'rclone.conf'
-            atomic_write_text(config_path, config, mode=0o600)
-
-            return True
-        except Exception as e:
-            self.logger.error(f"Error setting up rclone: {e}")
-            return False
-
     def write_msmtp_config(self, from_address, server, port, user, password):
         """Write /etc/msmtprc with the supplied SMTP settings. 'from_address' is used for the 'from' line and as the envelope-from in scripts."""
         try:
@@ -177,7 +161,7 @@ account default : simplesaferserver
             schedule_config = config.get('schedule', {})
             hdsentinel_config = config.get('hdsentinel', {})
             ddns_config = config.get('ddns', {})
-            parser = configparser.ConfigParser()
+            parser = configparser.ConfigParser(interpolation=None)
             # This file is consumed by both Python helpers and shell scripts.
             # Let ConfigParser serialize values so first-run setup input cannot
             # create accidental extra sections or keys by containing newlines.
@@ -197,10 +181,6 @@ account default : simplesaferserver
                 'rclone_dir': str(backup_config.get('rclone_dir', '')),
                 'bandwidth_limit': str(backup_config.get('bandwidth_limit', '')),
                 'cloud_enabled': str(backup_config.get('cloud_enabled', 'false')),
-                'cloud_mode': str(backup_config.get('cloud_mode', '')),
-                'mega_email': str(backup_config.get('mega_email', '')),
-                'mega_pass': str(backup_config.get('mega_pass', '')),
-                'mega_folder': str(backup_config.get('mega_folder', '')),
             }
             parser['storage'] = {
                 'mode': str(storage_config.get('mode', 'managed_drive')),

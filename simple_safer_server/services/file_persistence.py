@@ -72,13 +72,16 @@ def atomic_write_json(
 
 
 @contextmanager
-def locked_path(lock_path: Path, *, mode: int | None = None) -> Iterator[None]:
+def locked_path(
+    lock_path: Path, *, mode: int | None = None, blocking: bool = True
+) -> Iterator[None]:
     """Hold an exclusive flock on a stable sidecar path."""
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with lock_path.open("a+") as lock_file:
         if mode is not None:
             lock_path.chmod(mode)
-        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        flags = fcntl.LOCK_EX | (0 if blocking else fcntl.LOCK_NB)
+        fcntl.flock(lock_file.fileno(), flags)
         try:
             yield
         finally:

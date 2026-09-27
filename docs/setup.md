@@ -110,29 +110,23 @@ Boot behavior:
 
 Cloud Backup is optional.
 
-Choose one cloud-backup mode:
+Choose **Choose destination** to open the connection dialog. Choose a service and answer the
+questions returned by rclone, then choose or create a dedicated destination folder. Existing
+rclone connections are offered first so they can be reused. **Back** restores a question;
+**Cancel** discards unsaved connection settings. Cancel stays on the left, Back in the middle,
+and the next or save action on the right, including during sign-in.
 
-- Easy MEGA Cloud Backup
-- Advanced rclone configuration
+New connections use an available name such as `sss-backup`, `sss-backup-2`, or `sss-backup-3`.
+Expand **Advanced options** in the service picker to change the connection name or open
+**Advanced rclone config**, which accepts a full configuration and exact destination.
 
-You can also skip cloud backup. This is useful when:
+Browser sign-in and command-based authorization are available through rclone's shared OAuth flow.
+See [Cloud Backup](cloud_backup.md#authorize-an-account) for remote-browser callback instructions.
 
-- the server is only used for local network backups
-- another tool already handles off-site backup
-- you want to finish setup first and configure cloud backup later
-
-SimpleSaferServer saves cloud backup as explicitly enabled or disabled. If that setting is missing or invalid, scheduled cloud backup fails and alerts the administrator instead of guessing.
-
-MEGA mode:
-
-- Enter MEGA credentials.
-- Connect and choose the target folder.
-- The selected remote folder is shown before saving.
-
-Advanced mode:
-
-- Paste the rclone config.
-- Enter the remote in `remote:/path` form.
+You can skip Cloud Backup and configure it later. Disabling it preserves existing connections and
+the saved destination. Cloud backup is saved as explicitly enabled or disabled; a missing or
+invalid setting prevents scheduled backups rather than guessing. No recurring job is activated
+until setup finishes.
 
 Before every cloud backup, SimpleSaferServer checks the storage marker and confirms it can read and write in the storage location. If those checks fail, the backup does not run. This avoids syncing an empty or broken local folder to the cloud and accidentally deleting the remote copy.
 

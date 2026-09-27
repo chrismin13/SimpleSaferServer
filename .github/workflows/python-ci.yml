@@ -18,6 +18,13 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
+      # Browserless UI regressions are pytest tests that execute the shipped JS.
+      # Keep Node available so they do not silently skip in the Python image.
+      - name: Install JavaScript test runtime
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends nodejs
+
       - name: Run source checks
         run: bash check_ci.sh --check-format
 

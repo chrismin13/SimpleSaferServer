@@ -2735,6 +2735,11 @@ pre code {
 }
 
 .stepper-item {
+  border: 0;
+  background: transparent;
+  width: 100%;
+  font: inherit;
+  text-align: left;
   display: flex;
   align-items: flex-start;
   gap: var(--sp-3);
@@ -3273,6 +3278,13 @@ pre code {
 .action-context-menu-item:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
+}
+
+/* Font Awesome glyphs have different natural widths; labels share one column. */
+.action-context-menu-item > i {
+  flex: 0 0 1.25em;
+  width: 1.25em;
+  text-align: center;
 }
 
 .action-context-menu-item.danger {

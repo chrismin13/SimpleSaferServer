@@ -78,11 +78,6 @@ def _operation_problem(message, **extra):
     return json_problem(OperationProblem(message, slug='setup-operation-failed', extra=extra))
 
 
-def _cloud_backup_service():
-    """Return the shared cloud-backup service registered by the app factory."""
-    return current_app.extensions["simple_safer_server"].cloud_backup_service
-
-
 def _storage_command_runner():
     """Return the app command runner for storage mount identity checks."""
     services = current_app.extensions.get("simple_safer_server")
@@ -668,52 +663,6 @@ def setup_list_path():
         return _operation_problem('Could not list that folder')
 
 
-@setup.route('/api/setup/cloud-backup/skip', methods=['POST'])
-@setup_api_access_required
-def skip_cloud_backup():
-    """Allow local-only setup without forcing an rclone destination."""
-    try:
-        config_manager.set_value('backup', 'cloud_enabled', 'false')
-        config_manager.set_value('backup', 'cloud_mode', '')
-        config_manager.set_value('backup', 'rclone_dir', '')
-        return json_data(message='Cloud backup skipped.')
-    except ApiProblem:
-        raise
-    except Exception as exc:
-        logger.error("Error skipping cloud backup: %s", exc)
-        return _operation_problem('Could not skip cloud backup')
-
-
-@setup.route('/api/setup/rclone', methods=['POST'])
-@setup_api_access_required
-def setup_rclone():
-    """Set up advanced rclone configuration through the shared backup service."""
-    try:
-        data = json_request_data()
-        config = data.get('config')
-        remote_name = data.get('remote_name')
-
-        if not config or not remote_name:
-            return _validation_problem('Config and remote name are required')
-
-        # Setup keeps its historical field names; the cloud-backup service owns
-        # rclone persistence and mode flags for every cloud configuration flow.
-        _cloud_backup_service().save_config(
-            {
-                'cloud_mode': 'advanced',
-                'rclone_config': config,
-                'remote_name': remote_name,
-            }
-        )
-
-        return json_data()
-    except ApiProblem:
-        raise
-    except Exception as e:
-        logger.error(f"Error setting up rclone: {e}")
-        return _operation_problem('Could not set up rclone')
-
-
 @setup.route('/api/setup/email', methods=['POST'])
 @setup_api_access_required
 def setup_email():
@@ -991,98 +940,3 @@ def setup_system_info():
     except Exception as e:
         logger.error(f"Error saving system info: {e}")
         return _operation_problem('Could not save system information')
-
-
-@setup.route('/api/setup/mega/connect', methods=['POST'])
-@setup_api_access_required
-def mega_connect():
-    """Authenticate with MEGA and return root folders using the shared service."""
-    try:
-        data = json_request_data()
-        email = data.get('email')
-        password = data.get('password')
-        if not email or not password:
-            return _validation_problem('Email and password are required.')
-        folder_list = _cloud_backup_service().list_mega_folders(
-            {'email': email, 'password': password, 'path': '/'}
-        )
-        return json_data({'folders': folder_list.folders})
-    except ApiProblem:
-        raise
-    except Exception as e:
-        logger.error(f"Error connecting to MEGA: {e!s}")
-        return _operation_problem('Error connecting to MEGA')
-
-
-@setup.route('/api/setup/mega/list_folders', methods=['POST'])
-@setup_api_access_required
-def mega_list_folders():
-    """List folders at a given MEGA path using the shared service."""
-    try:
-        data = json_request_data()
-        path = data.get('path', '/')
-        email = data.get('email')
-        password = data.get('password')
-        if not email or not password:
-            return _validation_problem('Email and password are required.')
-        folder_list = _cloud_backup_service().list_mega_folders(
-            {'email': email, 'password': password, 'path': path}
-        )
-        return json_data(folder_list)
-    except ApiProblem:
-        raise
-    except Exception as e:
-        logger.error(f"Error listing MEGA folders: {e!s}")
-        return _operation_problem('Error listing MEGA folders')
-
-
-@setup.route('/api/setup/mega/create_folder', methods=['POST'])
-@setup_api_access_required
-def mega_create_folder_picker():
-    """Create a new MEGA folder using the shared service."""
-    try:
-        data = json_request_data()
-        folder_name = data.get('folder_name')
-        path = data.get('path', '/')
-        email = data.get('email')
-        password = data.get('password')
-        if not folder_name or not email or not password:
-            return _validation_problem('Folder name, email, and password are required.')
-        _cloud_backup_service().create_mega_folder(
-            {'email': email, 'password': password, 'path': path, 'folder_name': folder_name}
-        )
-        return json_data()
-    except ApiProblem:
-        raise
-    except Exception as e:
-        logger.error(f"Error creating MEGA folder: {e!s}")
-        return _operation_problem('Error creating folder')
-
-
-@setup.route('/api/setup/mega/save', methods=['POST'])
-@setup_api_access_required
-def mega_save():
-    """Save MEGA credentials and selected folder through the shared backup service."""
-    try:
-        data = json_request_data()
-        email = data.get('email')
-        password = data.get('password')
-        folder = data.get('folder')
-        if not email or not password or not folder:
-            return _validation_problem('Email, password, and folder are required.')
-        # Setup keeps its concise field names; the service keeps write ordering
-        # consistent with post-onboarding cloud-backup management.
-        _cloud_backup_service().save_config(
-            {
-                'cloud_mode': 'mega',
-                'mega_email': email,
-                'mega_password': password,
-                'mega_folder': folder,
-            }
-        )
-        return json_data()
-    except ApiProblem:
-        raise
-    except Exception as e:
-        logger.error(f"Error saving MEGA config: {e!s}")
-        return _operation_problem('Error saving MEGA config')

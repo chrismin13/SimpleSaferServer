@@ -6,7 +6,7 @@ SETUP_RCLONE_TIMEOUT_SECONDS = 60
 
 
 class SetupCommandAdapter:
-    """Wraps setup wizard commands for disk formatting, SMB boot enable, and MEGA setup."""
+    """Wraps setup wizard commands for disk formatting, SMB boot enable."""
 
     def __init__(self, command_runner: CommandRunner | None = None) -> None:
         self._command_runner = command_runner or CommandRunner()

@@ -16,12 +16,27 @@ get_config_value() {
 import configparser
 import sys
 
-config = configparser.ConfigParser()
+config = configparser.ConfigParser(interpolation=None)
 with open(sys.argv[1], encoding="utf-8") as handle:
     config.read_file(handle)
 print(config.get(sys.argv[2], sys.argv[3], fallback=""))
 PYCONFIG
 }
+
+# The editor and backup job share a stable lock: rclone may refresh tokens
+# during sync, and destination settings must stay consistent with that config.
+RCLONE_CONFIG_FILE="${SSS_RCLONE_CONFIG_FILE:-$HOME/.config/rclone/rclone.conf}"
+# Resolve overrides before rclone changes directory; helpers and config reads
+# still use the script caller's directory.
+case "$RCLONE_CONFIG_FILE" in
+  /*) ;;
+  *) RCLONE_CONFIG_FILE="$PWD/$RCLONE_CONFIG_FILE" ;;
+esac
+umask 077
+if ! mkdir -p "$(dirname "$RCLONE_CONFIG_FILE")" || ! exec 9>"$RCLONE_CONFIG_FILE.sss.lock" || ! chmod 600 "$RCLONE_CONFIG_FILE.sss.lock" || ! flock 9; then
+  echo "Could not lock the rclone configuration; cloud backup was stopped." >&2
+  exit 1
+fi
 
 MOUNT_POINT=$(get_config_value backup mount_point)
 FROM_ADDRESS=$(get_config_value backup from_address)
@@ -89,7 +104,32 @@ echo "Destination: $RCLONE_DIR"
 
 # Keep the failure branch next to rclone so ShellCheck and future readers do not
 # have to track a saved exit code through unrelated lines.
-if ! rclone sync "$MOUNT_POINT" "$RCLONE_DIR" --create-empty-src-dirs -v "${extra_args[@]}"; then
+if ! (
+  # Match the editor and Python backup adapter, including local paths behind
+  # alias/crypt remotes. Keep relative PATH entries and source paths tied to
+  # the caller before entering the shared rclone working directory.
+  RCLONE_BIN=$(command -v rclone) || exit 1
+  case "$RCLONE_BIN" in
+    /*) ;;
+    *) RCLONE_BIN="$PWD/$RCLONE_BIN" ;;
+  esac
+  case "$MOUNT_POINT" in
+    /*) ;;
+    *) MOUNT_POINT="$PWD/$MOUNT_POINT" ;;
+  esac
+  # Match managed_rclone_environment() in the Python adapters: inherited
+  # RCLONE_* overrides must not redirect sync away from the confirmed folder.
+  # Enumerate the actual environment, including names containing punctuation,
+  # and pass only variable names to env; credential values never enter argv.
+  rclone_environment_args=()
+  while IFS= read -r -d '' rclone_environment_entry; do
+    case "$rclone_environment_entry" in
+      RCLONE_*=*) rclone_environment_args+=(-u "${rclone_environment_entry%%=*}") ;;
+    esac
+  done < <(env -0)
+  cd / || exit 1
+  exec env "${rclone_environment_args[@]}" "$RCLONE_BIN" sync "$MOUNT_POINT" "$RCLONE_DIR" --config "$RCLONE_CONFIG_FILE" --create-empty-src-dirs -v "${extra_args[@]}"
+); then
   logs=$(journalctl -u backup_cloud.service -n 100 --no-pager 2>/dev/null || echo "Could not retrieve logs")
   send_email "BACKUP TO CLOUD FAILED - Unknown Error" "Backup failed. Recent logs:\n\n$logs"
   exit 1
