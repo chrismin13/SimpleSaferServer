@@ -36,6 +36,11 @@ Existing extracted services include task handling, DDNS, Cloud Backup, storage l
 blueprints cover dashboard/tasks, DDNS, Cloud Backup, System Updates, alerts, SMB, users, storage,
 and drive health.
 
+`ConfigManager.update_values()` returns independent configuration snapshots from before and after
+its locked file transaction. Cloud Backup uses those snapshots to install timers and restore changed
+settings if installation fails. Concurrent status reloads can replace the shared in-memory parser,
+so it must not supply either snapshot for these save-related actions.
+
 Storage location checks live in `simple_safer_server.services.storage_location`. That service owns
 the small marker file inside the configured storage folder and the read/write checks that run before
 Cloud Backup. Routes and scripts should use that service instead of open-coding storage safety

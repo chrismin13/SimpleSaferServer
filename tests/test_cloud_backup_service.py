@@ -1,12 +1,17 @@
+import configparser
 import copy
+import threading
 import types
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+import pytest
+
 from simple_safer_server.services.cloud_backup_service import (
     CloudBackupService,
 )
+from simple_safer_server.services.config_manager import ConfigManager, ConfigUpdate
 from simple_safer_server.web.problems import OperationProblem, ValidationProblem
 
 
@@ -24,8 +29,10 @@ class FakeConfigManager:
         pass
 
     def update_values(self, values):
+        previous = self.get_all_config()
         for section, entries in values.items():
             self.config.setdefault(section, {}).update(entries)
+        return ConfigUpdate(previous, self.get_all_config())
 
     def set_value(self, section, key, value):
         self.config.setdefault(section, {})[key] = value
@@ -237,6 +244,110 @@ class CloudBackupServiceTests(unittest.TestCase):
         self.assertTrue(system_utils.installed_timers)
         self.assertEqual(config.config["schedule"]["backup_cloud_time"], "03:00")
         self.assertEqual(config.config["backup"]["bandwidth_limit"], "8M")
+
+
+@pytest.mark.parametrize("operation", ["destination", "schedule"])
+@pytest.mark.parametrize("timer_success", [True, False])
+def test_save_uses_transaction_snapshots_during_status_reload(
+    tmp_path, monkeypatch, operation, timer_success
+):
+    runtime = types.SimpleNamespace(
+        is_fake=False, config_dir=tmp_path / "config", default_mount_point="/media/backup"
+    )
+    config = ConfigManager(runtime=runtime)
+    config.update_values(
+        {
+            "system": {"setup_complete": "true"},
+            "backup": {"cloud_enabled": "false", "rclone_dir": "initial:folder"},
+            "schedule": {"backup_cloud_time": "03:00"},
+        }
+    )
+    other_config = ConfigManager(runtime=runtime)
+    system_utils = FakeSystemUtils()
+    install_timers = system_utils.install_systemd_services_and_timers
+
+    def install(config, **kwargs):
+        install_timers(config, **kwargs)
+        return timer_success, None if timer_success else "Unavailable"
+
+    monkeypatch.setattr(system_utils, "install_systemd_services_and_timers", install)
+    service = CloudBackupService(runtime, config, system_utils, FakeTaskService())
+    read_finished = threading.Event()
+    resume_reload = threading.Event()
+    original_read = configparser.ConfigParser.read
+    statuses = []
+
+    def delayed_read(parser, *args, **kwargs):
+        result = original_read(parser, *args, **kwargs)
+        if threading.current_thread() is reader:
+            # Hold a real status request just before load_config replaces the
+            # shared parser, then let it publish its stale read after the save.
+            read_finished.set()
+            assert resume_reload.wait(5)
+        return result
+
+    reader = threading.Thread(target=lambda: statuses.append(service.get_status()))
+    monkeypatch.setattr(configparser.ConfigParser, "read", delayed_read)
+    original_update = config.update_values
+    first_update = True
+    previous = config.get_all_config()
+
+    def update(values):
+        nonlocal first_update, previous
+        if not first_update:
+            return original_update(values)
+        first_update = False
+        if not timer_success:
+            # Rollback must restore the file the transaction actually read,
+            # including another writer's update before it acquired the lock.
+            other_config.update_values(
+                {
+                    "backup": {"rclone_dir": "saved:folder", "cloud_enabled": "true"},
+                    "schedule": {"backup_cloud_time": "04:00"},
+                    "system": {"server_name": "other-writer"},
+                }
+            )
+            previous = other_config.get_all_config()
+        result = original_update(values)
+        resume_reload.set()
+        reader.join(5)
+        assert not reader.is_alive()
+        return result
+
+    monkeypatch.setattr(config, "update_values", update)
+    changes = (
+        {"backup": {"rclone_dir": "new:folder", "cloud_enabled": "true"}}
+        if operation == "destination"
+        else {"backup": {"bandwidth_limit": "8M"}, "schedule": {"backup_cloud_time": "05:15"}}
+    )
+
+    def save():
+        if operation == "destination":
+            service.save_destination("new:folder", True)
+        else:
+            service.save_schedule({"backup_cloud_time": "05:15", "bandwidth_limit": "8M"})
+
+    reader.start()
+    try:
+        assert read_finished.wait(5)
+        if timer_success:
+            save()
+        else:
+            with pytest.raises(OperationProblem, match="Unavailable"):
+                save()
+    finally:
+        resume_reload.set()
+        reader.join(5)
+    assert not reader.is_alive()
+    assert len(statuses) == 1
+    assert statuses[0].status == "Disabled"
+
+    published = copy.deepcopy(previous)
+    for section, values in changes.items():
+        published[section].update(values)
+    assert system_utils.systemd_config == published
+    config.load_config()
+    assert config.get_all_config() == (published if timer_success else previous)
 
 
 if __name__ == "__main__":

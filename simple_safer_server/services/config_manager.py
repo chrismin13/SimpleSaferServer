@@ -3,6 +3,7 @@ import io
 import logging
 import os
 import stat
+from dataclasses import dataclass
 
 from cryptography.fernet import Fernet
 
@@ -14,6 +15,14 @@ from simple_safer_server.services.file_persistence import (
     read_json,
 )
 from simple_safer_server.services.runtime import get_runtime
+
+
+@dataclass(frozen=True)
+class ConfigUpdate:
+    """Independent snapshots of the settings read and published by one transaction."""
+
+    previous: dict[str, dict[str, str]]
+    current: dict[str, dict[str, str]]
 
 
 class ConfigManager:
@@ -153,9 +162,13 @@ class ConfigManager:
                 config.read(self.config_path)
             else:
                 config = self._default_config_parser()
+            previous = self._config_snapshot(config)
             update_config(config)
             self._write_config_parser(config)
             self.config = config
+            # A concurrent reload may replace self.config immediately. Side effects
+            # and rollback must use this transaction's own before/after values.
+            return ConfigUpdate(previous, self._config_snapshot(config))
 
     def create_default_config(self):
         """Create default configuration if no on-disk config exists."""
@@ -197,8 +210,8 @@ class ConfigManager:
 
         self._locked_config_update(update)
 
-    def update_values(self, values):
-        """Publish related settings together without replacing other sections."""
+    def update_values(self, values) -> ConfigUpdate:
+        """Publish related settings and return their locked before/after snapshots."""
 
         def update(config):
             for section, options in values.items():
@@ -207,7 +220,7 @@ class ConfigManager:
                 for key, value in options.items():
                     config.set(section, key, str(value))
 
-        self._locked_config_update(update)
+        return self._locked_config_update(update)
 
     def store_secret(self, key, value):
         """Store a sensitive value"""
@@ -293,8 +306,8 @@ class ConfigManager:
 
     def get_all_config(self):
         """Get all non-sensitive configuration"""
-        config_dict = {}
-        config = self.config
-        for section in config.sections():
-            config_dict[section] = dict(config[section])
-        return config_dict
+        return self._config_snapshot(self.config)
+
+    @staticmethod
+    def _config_snapshot(config):
+        return {section: dict(config[section]) for section in config.sections()}

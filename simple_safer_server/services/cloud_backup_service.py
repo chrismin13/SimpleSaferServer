@@ -150,15 +150,15 @@ class CloudBackupService:
                 raise ValidationProblem(str(exc)) from exc
         if "bandwidth_limit" in data:
             backup_changes["bandwidth_limit"] = normalize_bandwidth_limit(data["bandwidth_limit"])
-        self._config_manager.load_config()
-        previous = self._config_manager.get_all_config()
         changes = {"backup": backup_changes}
         if backup_time:
             changes["schedule"] = {"backup_cloud_time": backup_time}
         # Keep unrelated settings fresh; destination and enabled must be one
         # write so a scheduled backup never observes half a selection.
-        self._config_manager.update_values(changes)
-        config = self._config_manager.get_all_config()
+        update = self._config_manager.update_values(changes)
+        # Status reloads can replace the shared parser while this request runs.
+        # Generate timers and recover failed changes from the locked transaction.
+        config = update.current
         try:
             setup_complete = str(config.get("system", {}).get("setup_complete", "false")).lower()
             # First-run setup has not chosen a schedule yet. Its completion
@@ -171,7 +171,7 @@ class CloudBackupService:
                     raise OperationProblem(f"Failed to update systemd timers: {err}")
         except ApiProblem, OSError:
             rollback = {
-                section: {key: previous.get(section, {}).get(key, "") for key in values}
+                section: {key: update.previous.get(section, {}).get(key, "") for key in values}
                 for section, values in changes.items()
             }
             self._config_manager.update_values(rollback)
