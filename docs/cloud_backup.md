@@ -27,12 +27,17 @@ any follow-up questions or errors.
 
 The questions depend on the provider and your answers, so there is no fixed question count.
 **Back** restores the preceding question and its draft configuration. **Cancel** discards the
-unsaved connection edits. Cancel preserves refreshed OAuth tokens for existing connections whose
-other settings are unchanged, provided the saved configuration still matches the draft's starting
-configuration for that connection, including its token. Edits to other saved connections are kept.
-This includes an existing connection used by an unsaved alias or crypt connection:
-discarding the new connection keeps its upstream's refreshed credentials available to backups.
-A running backup can delay cancellation until those tokens can be saved; retry after it finishes.
+unsaved connection edits. OAuth token refreshes for existing connections are saved as each provider
+operation finishes, even when folder access fails after refreshing credentials. This applies only
+when the connection's other settings are unchanged and its saved credentials still match the draft's
+baseline. It also protects an existing connection used by an unsaved alias or crypt connection.
+Back and Cancel retain these eligible refreshed credentials without saving the other edits.
+
+Backups and editor provider operations share a lock. A backup may wait while the editor lists or
+creates folders, completes a configuration question, or waits for browser sign-in. The lock is
+released after refreshed credentials are saved; an idle question or folder picker does not hold it.
+If writing credentials fails, backups keep waiting while the editor retries rather than using an
+invalidated token. A running backup prevents new provider operations; retry after it finishes.
 Creating a folder is immediate and is not undone by cancelling configuration.
 
 Existing connections are read from the managed `rclone.conf`, including MEGA connections. Choose
@@ -112,6 +117,8 @@ Drafts live privately on the server and expire after 30 minutes without a reques
 page resumes a draft in the same browser session. Expiration preserves eligible token refreshes with
 the same checks as Cancel. If a backup or file-write failure delays this cleanup, the server keeps
 the draft and retries automatically; it still counts toward the four-session editor limit.
+The server also checks unfinished configuration jobs every minute so completed work can release
+its backup lock even after the browser closes.
 Restarting SSS ends drafts and discards unsaved connection settings. An orderly shutdown preserves
 eligible refreshed credentials. If a backup or write failure blocks publication, SSS stores a private
 token recovery record in its data directory (`/var/lib/SimpleSaferServer/rclone-recovery` in production,
@@ -125,9 +132,11 @@ unsaved edits: compare the affected connection before copying its refreshed toke
 config. Recover it before rebooting because the workspace lives in volatile storage. Sudden power loss
 or forced termination can still lose credentials that exist only in an open draft.
 
-Saves reject stale configuration instead of overwriting another administrator's changes
-or a token refresh. A running SSS backup locks configuration until it finishes. External CLI
-edits should also wait until backup and web editing finish.
+Before reusing an open connection, the editor adopts newer saved tokens only into unchanged
+connections. Other concurrent configuration changes require cancelling and reopening the draft.
+Its own token refreshes keep the draft's saved baseline current so a later Save remains valid.
+Saves reject stale configuration instead of overwriting another administrator's changes.
+External CLI edits should also wait until backup and web editing finish.
 
 ## Storage Safety Checks
 

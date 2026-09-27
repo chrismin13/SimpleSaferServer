@@ -130,7 +130,8 @@ The requested capability is unavailable in the current runtime or operating syst
 The Cloud Backup task is missing from the configured task service.
 
 Connection editor validation and provider errors use `validation-error`. Expired drafts,
-stale question revisions, changed saved configuration, and a running backup use `conflict`.
+stale question revisions, changed saved configuration, and a running backup or another editor's
+provider operation use `conflict`.
 Credentials are available only through the admin/setup credential editor, not general backup
 status or settings responses.
 

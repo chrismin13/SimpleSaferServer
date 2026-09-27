@@ -106,7 +106,9 @@ relative `SSS_*` overrides, helper paths, and executable lookup remain tied to t
 
 `config/providers` supplies the catalog. Non-interactive `config/create` and `config/update`
 return opaque state plus question metadata. Jobs are polled asynchronously. Back restores both
-a config checkpoint and its state by restarting the worker; cancellation/expiry terminates it.
+a config checkpoint and its state, retaining eligible refreshed tokens. Workers stop after provider
+operations and restart from their private files for subsequent work; this prevents cached backends
+or background token writers from continuing outside the shared backup lock.
 The frontend has two shared OAuth presentations (`config_is_local` and `config_token`), with a
 generic renderer for all other questions. New backends do not require an SSS provider registry.
 
@@ -129,7 +131,21 @@ settings are discarded; volatile drafts are not configuration backups.
 Publication compares the config and selected destination with the editor's starting revision.
 The stable `rclone.conf.sss.lock` is shared with production and fake-mode sync jobs. The backup
 holds it before reading destination settings through completion of rclone, including token
-refresh. Web saves fail promptly while the lock is held. The config is atomically published
+refresh. Provider work uses one shared service boundary: it acquires the lock before reading or
+changing credentials, and keeps it for the whole synchronous call or asynchronous configuration job.
+The worker stops before its final credential snapshot, including after RC errors/timeouts, Back,
+Cancel, expiry, or shutdown. Eligible refreshes are published before the lock is released, including
+when a provider operation fails after refreshing its token. Backups can therefore wait during
+active editor work or browser authorization, but idle questions and folder pickers do not block them.
+The janitor polls active jobs every minute so browser disconnection does not strand a finished job's
+lock. Publication failures retain lock ownership for retry while the server is running.
+
+Before the next provider operation, newer saved tokens are adopted only into draft sections that
+still match their baseline. Unrelated durable edits or changed identities require reopening the
+draft. Publishing or adopting tokens also updates the draft baseline and eligible Back checkpoints,
+including token-question defaults, so the editor cannot undo its own refresh or create a false Save
+conflict. Unsaved remote changes remain private. Web saves and other provider operations fail
+promptly while the shared lock is held. The config is atomically published
 before related settings; an ordinary settings/timer failure restores the prior file. Two files
 cannot be one crash-atomic filesystem transaction; inspect configuration after an interrupted
 system update or hard shutdown. External rclone processes do not honor the SSS lock automatically.

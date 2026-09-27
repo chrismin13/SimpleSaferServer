@@ -10,6 +10,7 @@ import pytest
 from flask import Flask
 
 from simple_safer_server.adapters.rclone import RcloneAdapter
+from simple_safer_server.adapters.rclone_config import RcloneError
 from simple_safer_server.services import runtime
 from simple_safer_server.services.cloud_backup_service import CloudBackupService
 from simple_safer_server.services.config_manager import ConfigManager
@@ -291,6 +292,388 @@ def test_token_only_draft_publishes_once_and_cleans_up(service, monkeypatch, act
     assert not draft.worker.path.exists()
 
 
+@pytest.mark.parametrize('action', ['folders', 'mkdir'])
+def test_provider_refresh_is_available_to_backup_while_draft_stays_open(
+    service, monkeypatch, action
+):
+    """Use real Box token refreshes, with all HTTP confined to a local issuer/proxy."""
+    import json
+    import subprocess
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    exchanges, lock_observations = [], []
+    next_token = 0
+
+    class TokenEndpoint(BaseHTTPRequestHandler):
+        def do_POST(self):
+            nonlocal next_token
+            parameters = urllib.parse.parse_qs(
+                self.rfile.read(int(self.headers['Content-Length'])).decode()
+            )
+            token = parameters.get('refresh_token', [''])[0]
+            exchanges.append(token)
+            try:
+                with locked_path(service.lock_path, blocking=False):
+                    lock_observations.append(False)
+            except BlockingIOError:
+                lock_observations.append(True)
+            accepted = token == f'refresh-{next_token}'
+            if accepted:
+                next_token += 1
+                payload = {
+                    'access_token': f'access-{next_token}',
+                    'refresh_token': f'refresh-{next_token}',
+                    'token_type': 'Bearer',
+                    'expires_in': 3600,
+                }
+            else:
+                payload = {'error': 'invalid_grant', 'error_description': 'Token already used'}
+            body = json.dumps(payload).encode()
+            self.send_response(200 if accepted else 400)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_CONNECT(self):
+            # Fail folder access after OAuth succeeds, without contacting Box.
+            self.send_error(502, 'Provider API disabled in this test')
+
+        def log_message(self, *args):
+            pass
+
+    with ThreadingHTTPServer(('127.0.0.1', 0), TokenEndpoint) as issuer:
+        thread = threading.Thread(target=issuer.serve_forever, daemon=True)
+        thread.start()
+        try:
+            endpoint = f'http://127.0.0.1:{issuer.server_port}'
+            for key in ('HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy'):
+                monkeypatch.setenv(key, endpoint)
+            for key in ('NO_PROXY', 'no_proxy'):
+                monkeypatch.setenv(key, '127.0.0.1,localhost')
+            token = json.dumps(
+                {
+                    'access_token': 'expired',
+                    'refresh_token': 'refresh-0',
+                    'token_type': 'Bearer',
+                    'expiry': '2000-01-01T00:00:00Z',
+                }
+            )
+            raw(
+                service,
+                '[box]\ntype = box\nclient_id = local-test\nclient_secret = local-test\n'
+                f'token_url = {endpoint}/token\ntoken = {token}\n',
+                'box:Backups',
+                True,
+            )
+            result = call(service, 'start', {'name': 'box', 'purpose': 'choose'})
+            draft = service.drafts[OWNER]
+            with pytest.raises(RcloneError):
+                call(service, action, {**result, 'path': '', 'name': 'New folder'})
+            assert exchanges == ['refresh-0']
+            saved = parse_config(service.path.read_text())
+            assert json.loads(saved.get('box', 'token'))['refresh_token'] == 'refresh-1'
+            assert draft.base == service.path.read_text()
+            assert draft.worker.process.poll() is not None
+
+            # Model the next backup needing a refresh, while this same draft
+            # remains open. The issuer rejects a token as soon as it is used.
+            with locked_path(service.lock_path):
+                latest = json.loads(saved.get('box', 'token'))
+                latest['expiry'] = '2000-01-01T00:00:00Z'
+                service.path.write_text(
+                    service.path.read_text().replace(saved.get('box', 'token'), json.dumps(latest))
+                )
+                backup = subprocess.run(
+                    [
+                        'rclone',
+                        'lsd',
+                        'box:',
+                        '--config',
+                        str(service.path),
+                        '--retries',
+                        '1',
+                        '--low-level-retries',
+                        '1',
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+            assert 'invalid_grant' not in backup.stderr
+            assert exchanges == ['refresh-0', 'refresh-1']
+            assert lock_observations == [True, True]
+
+            # Reusing the draft must adopt the backup's newer credential and
+            # still permit Save, without accepting unrelated configuration edits.
+            with pytest.raises(RcloneError):
+                call(service, action, {**result, 'path': '', 'name': 'New folder'})
+            assert exchanges == ['refresh-0', 'refresh-1']
+            assert 'refresh-2' in draft.worker.path.read_text()
+            assert draft.base == service.path.read_text()
+            assert save(service, result)['destination_text'] == 'box:Backups'
+        finally:
+            issuer.shutdown()
+            thread.join(5)
+
+
+@pytest.mark.parametrize('action', ['folders', 'mkdir', 'advance'])
+def test_provider_work_does_not_start_while_backup_owns_configuration(service, monkeypatch, action):
+    result = local_draft(service)
+    draft = service.drafts[OWNER]
+    if action == 'advance':
+        draft.output = {'State': 'question', 'Option': {'Name': 'value'}}
+    calls = []
+    monkeypatch.setattr(draft.worker, 'call', lambda *args, **kwargs: calls.append(args))
+    with locked_path(service.lock_path):
+        with pytest.raises(ConflictProblem, match='backup or another editor action'):
+            call(service, action, {**result, 'name': 'New folder', 'answer': ''})
+    assert calls == []
+    assert draft.provider_lock is None
+
+
+def test_busy_backup_does_not_leave_an_unreturned_configuration_draft(service):
+    with locked_path(service.lock_path):
+        with pytest.raises(ConflictProblem, match='backup or another editor action'):
+            call(service, 'start', {'name': 'new', 'type': 'alias'})
+    assert service.drafts == {}
+
+
+def test_keeping_token_question_default_cannot_restore_a_superseded_token(service, monkeypatch):
+    text = '[cloud]\ntype = box\ntoken = old\n'
+    raw(service, text)
+    result = call(service, 'start', {'name': 'cloud', 'purpose': 'choose'})
+    draft = service.drafts[OWNER]
+    draft.output = {'State': 'question', 'Option': {'Name': 'token', 'DefaultStr': 'old'}}
+    service.path.write_text(text.replace('old', 'newer'))
+    original_call = draft.worker.call
+    answers = []
+
+    def answer_question(endpoint, payload=None, **kwargs):
+        if endpoint == 'config/update':
+            answers.append(payload['opt']['result'])
+            return {'jobid': 123}
+        if endpoint == 'job/status':
+            return {'finished': True, 'success': True, 'output': {}}
+        return original_call(endpoint, payload, **kwargs)
+
+    monkeypatch.setattr(draft.worker, 'call', answer_question)
+    result = call(service, 'advance', {**result, 'answer': 'old'})
+    assert answers == ['newer']
+    result = call(service, 'back', result)
+    assert result['option']['DefaultStr'] == 'newer'
+    assert parse_config(draft.worker.path.read_text()).get('cloud', 'token') == 'newer'
+    assert service.path.read_text() == draft.base
+
+
+@pytest.mark.parametrize('failure', ['before-replace', 'after-replace'])
+def test_failed_token_publication_keeps_backup_blocked_until_retry(service, monkeypatch, failure):
+    from simple_safer_server.services import rclone_config_service as module
+
+    text = '[cloud]\ntype = box\ntoken = old\n'
+    raw(service, text)
+    result = call(service, 'start', {'name': 'cloud', 'purpose': 'choose'})
+    draft = service.drafts[OWNER]
+    original_call, write = draft.worker.call, module.atomic_write_text
+
+    def refresh(endpoint, *args, **kwargs):
+        if endpoint == 'operations/list':
+            draft.worker.path.write_text(text.replace('old', 'rotated'))
+            return {'list': []}
+        return original_call(endpoint, *args, **kwargs)
+
+    def fail_saved_write(path, *args, **kwargs):
+        if path == service.path:
+            if failure == 'after-replace':
+                write(path, *args, **kwargs)
+            raise OSError('Cannot persist token')
+        return write(path, *args, **kwargs)
+
+    monkeypatch.setattr(draft.worker, 'call', refresh)
+    monkeypatch.setattr(module, 'atomic_write_text', fail_saved_write)
+    with pytest.raises(OSError, match='Cannot persist'):
+        call(service, 'folders', result)
+    assert draft.worker.process.poll() is not None
+    assert draft.provider_lock is not None
+    with pytest.raises(BlockingIOError), locked_path(service.lock_path, blocking=False):
+        pytest.fail('Backup read invalidated credentials')
+    monkeypatch.setattr(module, 'atomic_write_text', write)
+    call(service, 'poll', result)
+    with locked_path(service.lock_path, blocking=False):
+        assert 'rotated' in service.path.read_text()
+    assert draft.provider_lock is None
+    assert draft.base == service.path.read_text()
+    save(service, result)
+
+
+@pytest.mark.parametrize(
+    'completion', ['poll', 'failure', 'janitor', 'back', 'cancel', 'expire', 'close']
+)
+def test_async_config_owns_lock_until_tokens_are_published(service, monkeypatch, completion):
+    text = '[cloud]\ntype = box\ntoken = old\n\n[backup]\ntype = alias\nremote = cloud:Saved\n'
+    raw(service, text, 'backup:Backups', True)
+    result = settle(service, call(service, 'start', {'name': 'backup', 'purpose': 'edit'}))
+    draft = service.drafts[OWNER]
+    original_call = draft.worker.call
+    finished = False
+
+    def configure(endpoint, *args, **kwargs):
+        if endpoint == 'config/update':
+            draft.worker.path.write_text(
+                text.replace('token = old', 'token = rotated').replace(
+                    'cloud:Saved', 'cloud:Unsaved'
+                )
+            )
+            return {'jobid': 123}
+        if endpoint == 'job/status':
+            return {
+                'finished': finished,
+                'success': completion != 'failure',
+                'output': {},
+                'error': 'Provider rejected configuration',
+            }
+        if endpoint == 'config/oauthstatus':
+            return {'status': 'stopped'}
+        return original_call(endpoint, *args, **kwargs)
+
+    monkeypatch.setattr(draft.worker, 'call', configure)
+    result = call(service, 'advance', {**result, 'answer': 'cloud:Unsaved'})
+    assert result['phase'] == 'pending'
+    assert service.path.read_text() == text
+    assert draft.worker.process.poll() is None
+    with pytest.raises(BlockingIOError), locked_path(service.lock_path, blocking=False):
+        pytest.fail('Backup ran while configuration could still rotate tokens')
+    finished = True
+    if completion == 'janitor':
+        ticks = iter([False, True])
+        touched = draft.touched
+        janitor = SimpleNamespace(
+            _stop=SimpleNamespace(wait=lambda timeout: next(ticks)),
+            lock=service.lock,
+            drafts=service.drafts,
+            _recover_pending=service._recover_pending,
+            _poll_draft=service._poll_draft,
+            _expire=service._expire,
+        )
+        RcloneConfigService._cleanup_loop(janitor)
+        assert draft.touched == touched
+        result = draft.view()
+    elif completion == 'expire':
+        draft.touched -= DRAFT_TTL_SECONDS + 1
+        call(service, 'state')
+    elif completion == 'close':
+        service.close()
+    else:
+        result = call(service, 'poll' if completion == 'failure' else completion, result)
+    with locked_path(service.lock_path, blocking=False):
+        saved = parse_config(service.path.read_text())
+        assert saved.get('cloud', 'token') == 'rotated'
+        assert saved.get('backup', 'remote') == 'cloud:Saved'
+    assert draft.provider_lock is None
+    if completion == 'back':
+        assert parse_config(draft.worker.path.read_text()).get('cloud', 'token') == 'rotated'
+        assert parse_config(draft.worker.path.read_text()).get('backup', 'remote') == 'cloud:Saved'
+    else:
+        assert draft.worker.process.poll() is not None
+    if completion in {'poll', 'janitor'}:
+        assert draft.base == service.path.read_text()
+        save(service, result)
+        assert parse_config(service.path.read_text()).get('backup', 'remote') == 'cloud:Unsaved'
+    elif completion in {'cancel', 'expire', 'close'}:
+        assert OWNER not in service.drafts
+        assert not draft.worker.path.exists()
+
+
+def test_provider_timeout_stops_worker_before_snapshot_and_unlock(service, monkeypatch):
+    text = '[cloud]\ntype = box\ntoken = old\n'
+    raw(service, text)
+    result = call(service, 'start', {'name': 'cloud', 'purpose': 'choose'})
+    draft = service.drafts[OWNER]
+    original_call, close = draft.worker.call, draft.worker.close
+    request_in_progress = False
+
+    def timed_out(endpoint, *args, **kwargs):
+        nonlocal request_in_progress
+        if endpoint == 'operations/list':
+            request_in_progress = True
+            raise RcloneError('RC request timed out')
+        return original_call(endpoint, *args, **kwargs)
+
+    def stop_writer():
+        nonlocal request_in_progress
+        close()
+        if request_in_progress:
+            with pytest.raises(BlockingIOError), locked_path(service.lock_path, blocking=False):
+                pytest.fail('Lock released while a timed-out request was still writing')
+            # The HTTP caller timed out before rclone finished persisting its token.
+            draft.worker.path.write_text(text.replace('old', 'rotated'))
+            request_in_progress = False
+
+    monkeypatch.setattr(draft.worker, 'call', timed_out)
+    monkeypatch.setattr(draft.worker, 'close', stop_writer)
+    with pytest.raises(RcloneError, match='timed out'):
+        call(service, 'folders', result)
+    with locked_path(service.lock_path, blocking=False):
+        assert 'rotated' in service.path.read_text()
+    assert draft.worker.process.poll() is not None
+    assert draft.base == service.path.read_text()
+
+
+@pytest.mark.parametrize('change', ['identity', 'unrelated', 'edited-identity-token'])
+def test_provider_reconciliation_rejects_unsafe_concurrent_changes(service, monkeypatch, change):
+    text = '[cloud]\ntype = box\ntoken = old\n'
+    raw(service, text)
+    result = call(service, 'start', {'name': 'cloud', 'purpose': 'choose'})
+    draft = service.drafts[OWNER]
+    if change == 'identity':
+        saved = text + 'client_id = changed\n'
+    elif change == 'unrelated':
+        saved = text + '\n[other]\ntype = local\n'
+    else:
+        draft.worker.path.write_text(text + 'client_id = unsaved\n')
+        saved = text.replace('old', 'newer')
+    private = draft.worker.path.read_text()
+    service.path.write_text(saved)
+    calls = []
+    monkeypatch.setattr(draft.worker, 'call', lambda *args, **kwargs: calls.append(args))
+    with pytest.raises(ConflictProblem, match='changed while editing'):
+        call(service, 'folders', result)
+    assert calls == []
+    assert service.path.read_text() == saved
+    assert draft.worker.path.read_text() == private
+    assert draft.base == text
+    with locked_path(service.lock_path, blocking=False):
+        pass
+
+
+def test_failed_private_token_reload_never_publishes_an_older_credential(service, monkeypatch):
+    from simple_safer_server.services import rclone_config_service as module
+
+    text = '[cloud]\ntype = box\ntoken = old\n'
+    raw(service, text)
+    result = call(service, 'start', {'name': 'cloud', 'purpose': 'choose'})
+    draft = service.drafts[OWNER]
+    newer = text.replace('old', 'newer')
+    service.path.write_text(newer)
+    write = module.atomic_write_text
+
+    def fail_private_write(path, *args, **kwargs):
+        if path == draft.worker.path:
+            raise OSError('Cannot reload private credentials')
+        return write(path, *args, **kwargs)
+
+    monkeypatch.setattr(module, 'atomic_write_text', fail_private_write)
+    with pytest.raises(OSError, match='Cannot reload'):
+        call(service, 'folders', result)
+    assert service.path.read_text() == newer
+    assert draft.worker.path.read_text() == text
+    assert draft.base == text
+    assert draft.worker.process.poll() is not None
+    with locked_path(service.lock_path, blocking=False):
+        pass
+
+
 @pytest.mark.parametrize(
     'candidate',
     [
@@ -339,7 +722,7 @@ def test_cleanup_keeps_upstream_tokens_while_discarding_other_connection_edits(s
         draft.touched -= DRAFT_TTL_SECONDS + 1
     with locked_path(service.lock_path):
         if cleanup == 'cancel':
-            with pytest.raises(ConflictProblem, match='backup or another save'):
+            with pytest.raises(ConflictProblem, match='backup or another editor action'):
                 call(service, 'cancel', result)
         else:
             assert call(service, 'state')['draft']['id'] == draft.identifier
@@ -566,7 +949,7 @@ def test_cancel_keeps_refreshed_tokens_for_retry_when_backup_holds_lock(service)
     refreshed = text.replace('old', 'refreshed')
     draft.worker.path.write_text(refreshed)
     with locked_path(service.lock_path):
-        with pytest.raises(ConflictProblem, match='backup or another save'):
+        with pytest.raises(ConflictProblem, match='backup or another editor action'):
             call(service, 'cancel', result)
     assert service.path.read_text() == text
     assert service.drafts[OWNER] is draft
@@ -664,6 +1047,7 @@ def test_cleanup_loop_survives_an_unexpected_worker_failure(caplog):
     janitor = SimpleNamespace(
         _stop=SimpleNamespace(wait=lambda timeout: next(ticks)),
         lock=threading.RLock(),
+        drafts={},
         _recover_pending=lambda: None,
         _expire=expire,
     )
@@ -734,7 +1118,7 @@ def test_draft_ownership_revision_expiration_and_backup_lock(service):
     with pytest.raises(ConflictProblem, match='question changed'):
         save(service, {**result, 'revision': -1})
     with locked_path(service.lock_path):
-        with pytest.raises(ConflictProblem, match='backup or another save'):
+        with pytest.raises(ConflictProblem, match='backup or another editor action'):
             save(service, result)
     worker = service.drafts[OWNER].worker
     service.drafts[OWNER].touched -= DRAFT_TTL_SECONDS + 1
@@ -917,8 +1301,9 @@ def test_browser_callback_completes_real_rclone_token_exchange(service, oauth_li
             result = settle(service, call(service, 'oauth_return', {**result, 'url': callback}))
             assert result['phase'] == 'ready', result.get('error')
             assert exchanges[0]['code'] == ['local-code']
-            # Tokens stay in the private draft until the administrator saves.
-            assert 'test-refresh' not in service.path.read_text()
+            # The saved identity is unchanged, so its token must be available
+            # to backups even if the administrator leaves the editor open.
+            assert 'test-refresh' in service.path.read_text()
             save(service, result)
             assert 'test-refresh' in service.path.read_text()
         finally:

@@ -15,7 +15,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -92,6 +92,7 @@ class ConfigDraft:
     job: int | None = None
     oauth_supported: bool = False
     oauth: bool = False
+    provider_lock: AbstractContextManager | None = None
 
     def view(self) -> dict:
         return {
@@ -239,6 +240,16 @@ class RcloneConfigService:
             try:
                 with self.lock:
                     self._recover_pending()
+                    for draft in list(self.drafts.values()):
+                        if draft.provider_lock is not None:
+                            try:
+                                # A closed browser must not leave a completed
+                                # configuration job blocking scheduled backups.
+                                self._poll_draft(draft)
+                            except RcloneError, OSError:
+                                # Keep ownership until publication succeeds or
+                                # expiration stops the worker and retries cleanup.
+                                continue
                     self._expire()
             except Exception as exc:
                 # This daemon is a background execution boundary. Unexpected
@@ -324,18 +335,19 @@ class RcloneConfigService:
             draft.oauth_supported = 'config/oauthstatus' in endpoints
             if purpose == 'choose':
                 return draft.view()
-            draft.job = worker.call(
-                'config/update' if editing else 'config/create',
-                {
-                    'name': name,
-                    'type': provider,
-                    'parameters': {'config_auth_no_browser': 'true'},
-                    'opt': {'nonInteractive': True, 'all': True},
-                    '_async': True,
-                },
-            )['jobid']
+            with self._provider_operation(draft):
+                draft.job = worker.call(
+                    'config/update' if editing else 'config/create',
+                    {
+                        'name': name,
+                        'type': provider,
+                        'parameters': {'config_auth_no_browser': 'true'},
+                        'opt': {'nonInteractive': True, 'all': True},
+                        '_async': True,
+                    },
+                )['jobid']
             return self.poll(owner, {'id': draft.identifier})
-        except RcloneError:
+        except ApiProblem, OSError:
             self.cancel(owner, {'id': draft.identifier})
             raise
 
@@ -347,31 +359,39 @@ class RcloneConfigService:
         if not isinstance(answer, str):
             raise ValidationProblem('The answer must be text.')
         option = draft.output.get('Option') or {}
-        if option.get('IsPassword') and answer and answer != option.get('DefaultStr'):
-            # Continuation results bypass config/update's parameter obscuring.
-            # Match rclone's CLI password widget using its own encoder, while
-            # retaining an unchanged stored default without encoding it twice.
-            answer = draft.worker.call('core/obscure', {'clear': answer})['obscured']
-        draft.history.append((draft.worker.path.read_text(), copy.deepcopy(draft.output)))
-        draft.job = draft.worker.call(
-            'config/update',
-            {
-                'name': draft.name,
-                'parameters': {'config_auth_no_browser': 'true'},
-                'opt': {
-                    'nonInteractive': True,
-                    'continue': True,
-                    'state': draft.output['State'],
-                    'result': answer,
+        previous_default = option.get('DefaultStr')
+        with self._provider_operation(draft):
+            if option.get('Name') == 'token' and answer == previous_default:
+                answer = option.get('DefaultStr', answer)
+            if option.get('IsPassword') and answer and answer != option.get('DefaultStr'):
+                # Continuation results bypass config/update's parameter obscuring.
+                # Match rclone's CLI password widget using its own encoder, while
+                # retaining an unchanged stored default without encoding it twice.
+                answer = draft.worker.call('core/obscure', {'clear': answer})['obscured']
+            draft.history.append((draft.worker.path.read_text(), copy.deepcopy(draft.output)))
+            draft.job = draft.worker.call(
+                'config/update',
+                {
+                    'name': draft.name,
+                    'parameters': {'config_auth_no_browser': 'true'},
+                    'opt': {
+                        'nonInteractive': True,
+                        'continue': True,
+                        'state': draft.output['State'],
+                        'result': answer,
+                    },
+                    '_async': True,
                 },
-                '_async': True,
-            },
-        )['jobid']
+            )['jobid']
         draft.revision += 1
         return self.poll(owner, data)
 
     def poll(self, owner, data):
         draft = self.require_draft(owner, data)
+        self._poll_draft(draft)
+        return draft.view()
+
+    def _poll_draft(self, draft):
         if draft.job is not None:
             status = draft.worker.call('job/status', {'jobid': draft.job})
             if status['finished']:
@@ -388,12 +408,15 @@ class RcloneConfigService:
                 draft.revision += 1
             elif draft.oauth_supported:
                 draft.oauth = draft.worker.call('config/oauthstatus')['status'] == 'running'
-        return draft.view()
+        if draft.job is None and draft.provider_lock is not None:
+            self._finish_provider_operation(draft)
 
     def back(self, owner, data):
         draft = self.require_draft(owner, data, changing=True)
         if not draft.history:
             raise ValidationProblem('Cancel to choose another service.')
+        if draft.provider_lock is not None:
+            self._finish_provider_operation(draft)
         text, output = draft.history.pop()
         # rclone's opaque state has no undo. Restore the file and matching state,
         # and terminate any OAuth listener before returning to its question.
@@ -401,6 +424,92 @@ class RcloneConfigService:
         draft.output, draft.job, draft.oauth = output, None, False
         draft.revision += 1
         return draft.view()
+
+    def _adopt_refreshed_base(self, draft, saved):
+        """Keep this draft and its Back checkpoints on the published token lineage."""
+        previous = draft.base
+        updated = self._refreshed_config(previous, saved) or previous
+        # Save compares bytes to catch external edits. Reuse the actual saved
+        # formatting when token reconciliation accounts for its whole content.
+        if parse_config(updated) == parse_config(saved):
+            updated = saved
+        before = parse_config(previous).get(draft.name, 'token', fallback='')
+        after = parse_config(updated).get(draft.name, 'token', fallback='')
+        if before != after:
+            for output in [draft.output, *(output for _, output in draft.history)]:
+                option = output.get('Option') or {}
+                if option.get('Name') == 'token' and option.get('DefaultStr') == before:
+                    # Keeping a displayed default must not submit a superseded
+                    # refresh token after another backup/editor has renewed it.
+                    option['DefaultStr'] = option['Default'] = after
+        draft.history = [
+            (self._refreshed_config(previous, updated, text) or text, output)
+            for text, output in draft.history
+        ]
+        draft.base = updated
+
+    def _prepare_provider_operation(self, draft):
+        saved, text = self._read(), draft.worker.path.read_text()
+        updated = self._refreshed_config(draft.base, saved, text) or text
+        reconciled_base = self._refreshed_config(text, updated, draft.base) or draft.base
+        if parse_config(reconciled_base) != parse_config(saved):
+            # Never substitute credentials into an edited identity, or allow
+            # an old draft to overwrite unrelated durable configuration later.
+            raise ConflictProblem(
+                'Saved configuration changed while editing. Cancel and reopen it to keep those changes.'
+            )
+        if updated != text:
+            draft.worker.close()
+            atomic_write_text(draft.worker.path, updated, mode=0o600, durable=False)
+        # Advance the baseline only after the private write succeeds. Otherwise
+        # cleanup could misread an older private token as a fresh rotation and
+        # publish it over the newer durable credential after a reload failure.
+        self._adopt_refreshed_base(draft, saved)
+        if draft.worker.process is None or draft.worker.process.poll() is not None:
+            draft.worker.start()
+
+    def _release_provider_lock(self, draft):
+        if draft.provider_lock is not None:
+            draft.provider_lock.__exit__(None, None, None)
+            draft.provider_lock = None
+
+    def _finish_provider_operation(self, draft):
+        # RC HTTP timeouts do not cancel rclone's work, and a backend can own
+        # background token writers. Quiesce the process before taking its final
+        # snapshot; the next question/operation restarts from this private file.
+        draft.worker.close()
+        draft.job, draft.oauth = None, False
+        text, current = draft.worker.path.read_text(), self._read()
+        refreshed = self._refreshed_config(draft.base, text, current)
+        if refreshed is None and current == self._refreshed_config(draft.base, text):
+            # A durable write can replace the file and then fail its fsync.
+            # Retry that exact publication before acknowledging its baseline.
+            refreshed = current
+        if refreshed is not None:
+            atomic_write_text(self.path, refreshed, mode=0o600)
+            self._adopt_refreshed_base(draft, refreshed)
+        # If persistence fails, keep ownership so a backup cannot consume an
+        # invalidated token. Poll, cleanup, or cancellation can retry publication.
+        self._release_provider_lock(draft)
+
+    @contextmanager
+    def _provider_operation(self, draft):
+        if draft.provider_lock is not None:
+            self._finish_provider_operation(draft)
+        guard = self._publishing()
+        guard.__enter__()
+        draft.provider_lock = guard
+        pending = False
+        try:
+            self._prepare_provider_operation(draft)
+            yield
+            pending = draft.job is not None
+        finally:
+            # Configuration calls run asynchronously, including browser OAuth.
+            # Keep the same lock across requests until their job is finished,
+            # cancelled, expired, or stopped by Back/shutdown.
+            if not pending:
+                self._finish_provider_operation(draft)
 
     @staticmethod
     def _refreshed_config(base: str, text: str, current: str | None = None) -> str | None:
@@ -468,6 +577,9 @@ class RcloneConfigService:
         return {}
 
     def _discard_draft(self, owner, draft):
+        draft.worker.close()
+        if draft.provider_lock is not None:
+            self._finish_provider_operation(draft)
         text = draft.worker.path.read_text()
         if refreshed := self._refreshed_config(draft.base, text):
             # Browsing can rotate refresh tokens, invalidating the saved ones.
@@ -493,16 +605,17 @@ class RcloneConfigService:
     def folders(self, owner, data):
         draft = self._ready(owner, data)
         path = self._path(data)
-        result = draft.worker.call(
-            'operations/list',
-            {
-                # RC's remote is relative to fs. Put the exact destination in
-                # fs so absolute paths retain the same meaning as rclone sync.
-                'fs': draft.name + ':' + path,
-                'remote': '',
-                'opt': {'dirsOnly': True, 'noModTime': True, 'noMimeType': True},
-            },
-        )
+        with self._provider_operation(draft):
+            result = draft.worker.call(
+                'operations/list',
+                {
+                    # RC's remote is relative to fs. Put the exact destination in
+                    # fs so absolute paths retain the same meaning as rclone sync.
+                    'fs': draft.name + ':' + path,
+                    'remote': '',
+                    'opt': {'dirsOnly': True, 'noModTime': True, 'noMimeType': True},
+                },
+            )
         return {'path': path, 'folders': result.get('list') or []}
 
     def mkdir(self, owner, data):
@@ -511,7 +624,8 @@ class RcloneConfigService:
         if not name.strip() or name in {'.', '..'} or any(c in name for c in '/\\\x00\r\n'):
             raise ValidationProblem('Enter a folder name without slashes.')
         path = self._path(data)
-        draft.worker.call('operations/mkdir', {'fs': draft.name + ':' + path, 'remote': name})
+        with self._provider_operation(draft):
+            draft.worker.call('operations/mkdir', {'fs': draft.name + ':' + path, 'remote': name})
         return {}
 
     @contextmanager
@@ -523,7 +637,7 @@ class RcloneConfigService:
                 yield
         except BlockingIOError:
             raise ConflictProblem(
-                'A cloud backup or another save is running. Wait for it to finish before saving.'
+                'A cloud backup or another editor action is running. Wait for it to finish before continuing.'
             ) from None
 
     def _publish(self, text, destination, enabled):
@@ -780,3 +894,6 @@ class RcloneConfigService:
                             type(recovery_exc).__name__,
                             draft.worker.path,
                         )
+                finally:
+                    if draft.worker.process is None or draft.worker.process.poll() is not None:
+                        self._release_provider_lock(draft)
