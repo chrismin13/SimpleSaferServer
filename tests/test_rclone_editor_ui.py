@@ -254,13 +254,15 @@ const handler = source.slice(source.indexOf('async function cancelDraft()'),
     )
 
 
-def test_advanced_form_submits_the_fresh_snapshot_instead_of_old_page_settings():
+@pytest.mark.parametrize('destination', ['disk:new', 'disk:Backups ', 'disk:Backups\u00a0'])
+def test_advanced_form_uses_fresh_values_and_keeps_rejected_destination(destination):
     node = shutil.which('node')
     if node is None:
         pytest.skip('Node.js is required for the rclone editor JavaScript harness.')
     script = r"""
 const fs = require('fs');
 const vm = require('vm');
+const scenario = JSON.parse(fs.readFileSync(0, 'utf8'));
 const elements = new Map();
 class Element {
   constructor(id = '') {
@@ -302,6 +304,7 @@ elements.set('[data-rclone-overview]', new Element('overview'));
 elements.set('[data-rclone-content]', new Element('content'));
 new Element('rclone-editor-title');
 new Element('rclone-editor-context');
+new Element('action-error');
 const page = {
   remotes: [], destination: null, destination_text: 'disk:old',
   enabled: true, version: 'old', source: '/source'
@@ -319,6 +322,7 @@ const window = {
     if (url.endsWith('/raw')) return pendingRaw;
     if (url.endsWith('/apply_raw')) {
       submitted = JSON.parse(options.body);
+      if (scenario.error) throw new Error(scenario.error);
       return { data: { ...page, ...fresh } };
     }
     throw new Error(url);
@@ -349,17 +353,29 @@ const flush = () => new Promise(resolve => setImmediate(resolve));
     enabled: elements.get('#raw-enabled').checked
   };
   const enabledAfterLoading = ids.every(id => !elements.get('#' + id).disabled);
+  elements.get('#raw-destination').value = scenario.destination;
   elements.get('#raw-ack').checked = true;
   overlay.listeners.submit({
     target: { id: 'advanced-form' }, submitter: elements.get('#raw-save'),
     preventDefault() {}
   });
   await flush();
-  console.log(JSON.stringify({ disabledWhileLoading, enabledAfterLoading, displayed, submitted }));
+  console.log(JSON.stringify({
+    disabledWhileLoading, enabledAfterLoading, displayed, submitted,
+    destinationAfterSubmit: elements.get('#raw-destination').value,
+    error: elements.get('#action-error').textContent || ''
+  }));
 })().catch(error => { console.error(error); process.exitCode = 1; });
 """
+    error = (
+        'Backup destinations cannot start or end with whitespace because the settings '
+        'file cannot preserve it. Choose a different folder or path.'
+        if destination != destination.strip()
+        else ''
+    )
     result = subprocess.run(
         [node, '-e', script],
+        input=json.dumps({'destination': destination, 'error': error}),
         cwd=Path(__file__).resolve().parents[1],
         check=True,
         capture_output=True,
@@ -372,11 +388,15 @@ const flush = () => new Promise(resolve => setImmediate(resolve));
     assert output['displayed'] == {'destination': 'disk:new', 'enabled': False}
     assert output['submitted'] == {
         'config': '[disk]\ntype = local\n',
-        'destination': 'disk:new',
+        'destination': destination,
         'enabled': False,
         'acknowledged': True,
         'version': 'fresh',
     }
+    # The API owns the INI constraint. The UI must send the exact value and
+    # display its error while retaining the form, rather than silently trim it.
+    assert output['destinationAfterSubmit'] == destination
+    assert output['error'] == error
 
 
 def test_destination_access_test_reconciles_tokens_and_exposes_cleanup_retry():

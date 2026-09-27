@@ -173,6 +173,96 @@ def test_create_folder_save_edit_and_reopen_durable_configuration(service):
         other.close()
 
 
+@pytest.mark.parametrize('suffix', [' ', '\u00a0'])
+def test_guided_destination_rejects_trailing_whitespace_but_keeps_browsing(service, suffix):
+    target = service.runtime.cloud_target_dir
+    name = 'Backups' + suffix
+    (target / name / 'Server files').mkdir(parents=True)
+    text = f'[backup]\ntype = alias\nremote = {target}\n'
+    raw(service, text, 'backup:Saved', True)
+    saved_config = service.config_manager.config_path.read_text()
+    result = call(service, 'start', {'name': 'backup', 'purpose': 'choose'})
+
+    # Existing names remain browsable; a safe child path can include whitespace
+    # inside the INI value even when the parent alone cannot be saved exactly.
+    listing = call(service, 'folders', {**result, 'path': ''})
+    assert name in {entry['Name'] for entry in listing['folders']}
+    listing = call(service, 'folders', {**result, 'path': name})
+    assert listing['path'] == name
+    assert [entry['Name'] for entry in listing['folders']] == ['Server files']
+    with pytest.raises(ValidationProblem, match='cannot start or end with whitespace'):
+        save(service, result, name)
+    assert service.path.read_text() == text
+    assert service.config_manager.config_path.read_text() == saved_config
+    assert call(service, 'state')['draft']['id'] == result['id']
+    assert save(service, result, name + '/Server files')['destination_text'] == (
+        'backup:' + name + '/Server files'
+    )
+
+
+@pytest.mark.parametrize('suffix', [' ', '\t', '\u00a0', '\u001c'])
+def test_new_folder_rejects_trailing_whitespace_before_creating_it(service, monkeypatch, suffix):
+    target = service.runtime.cloud_target_dir
+    target.mkdir(parents=True, exist_ok=True)
+    raw(service, f'[backup]\ntype = alias\nremote = {target}\n')
+    result = call(service, 'start', {'name': 'backup', 'purpose': 'choose'})
+
+    def unexpected_provider_call(*args, **kwargs):
+        pytest.fail('Invalid names must be rejected before contacting the provider')
+
+    with monkeypatch.context() as patch:
+        patch.setattr(service.drafts[OWNER].worker, 'call', unexpected_provider_call)
+        with pytest.raises(ValidationProblem, match='Folder names cannot end with whitespace'):
+            call(service, 'mkdir', {**result, 'name': 'Backups' + suffix})
+    assert not (target / ('Backups' + suffix)).exists()
+    # A space after remote: is inside the stored value, so leading spaces in
+    # folder names and spaces between words remain supported without trimming.
+    call(service, 'mkdir', {**result, 'name': ' Family files'})
+    assert (target / ' Family files').is_dir()
+    assert save(service, result, ' Family files')['destination_text'] == 'backup: Family files'
+
+
+@pytest.mark.parametrize('enabled', [False, True])
+@pytest.mark.parametrize(
+    'destination', ['disk:Backups ', '/tmp/Backups\t', ' disk:Backups', 'disk:Backups\u001c']
+)
+def test_advanced_api_rejects_whitespace_without_publishing_config(
+    service, monkeypatch, enabled, destination
+):
+    from simple_safer_server.routes import rclone_config as routes
+    from simple_safer_server.web.api import json_problem
+
+    app = Flask(__name__)
+    app.secret_key = 'testing-only'
+    app.extensions['simple_safer_server'] = SimpleNamespace(rclone_config_service=service)
+    app.register_blueprint(routes.rclone_config)
+    app.register_error_handler(ApiProblem, json_problem)
+    monkeypatch.setitem(
+        routes.setup_api_access_required.__globals__,
+        'config_manager',
+        SimpleNamespace(is_setup_complete=lambda: False),
+    )
+    text = '[disk]\ntype = local\n'
+    raw(service, text, 'disk:Saved', True)
+    before = call(service, 'raw')
+    saved_config = service.config_manager.config_path.read_text()
+    response = app.test_client().post(
+        '/api/setup/cloud-backup/rclone/apply_raw',
+        headers={'X-SSS-Rclone': '1'},
+        json={
+            'config': text + '\n[extra]\ntype = local\n',
+            'destination': destination,
+            'enabled': enabled,
+            'acknowledged': True,
+            'version': before['version'],
+        },
+    )
+    assert response.status_code == 400
+    assert 'cannot start or end with whitespace' in response.json['detail']
+    assert call(service, 'raw') == before
+    assert service.config_manager.config_path.read_text() == saved_config
+
+
 def test_editor_and_backup_resolve_the_same_destination_without_ambient_overrides(
     service, tmp_path, monkeypatch
 ):

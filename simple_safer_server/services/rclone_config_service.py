@@ -623,6 +623,13 @@ class RcloneConfigService:
         name = str(data.get('name', ''))
         if not name.strip() or name in {'.', '..'} or any(c in name for c in '/\\\x00\r\n'):
             raise ValidationProblem('Enter a folder name without slashes.')
+        # A newly created folder should be selectable as a destination. INI
+        # values lose trailing whitespace, even when rclone preserves the name.
+        if name != name.rstrip():
+            raise ValidationProblem(
+                'Folder names cannot end with whitespace because backup destination settings '
+                'cannot preserve it. Choose a different name.'
+            )
         path = self._path(data)
         with self._provider_operation(draft):
             draft.worker.call('operations/mkdir', {'fs': draft.name + ':' + path, 'remote': name})
@@ -641,6 +648,7 @@ class RcloneConfigService:
             ) from None
 
     def _publish(self, text, destination, enabled):
+        self._validate_destination_text(destination)
         old_text = self._read()
         atomic_write_text(self.path, text, mode=0o600)
         try:
@@ -695,9 +703,21 @@ class RcloneConfigService:
             raise ConflictProblem('Finish or cancel the open connection first.')
 
     @staticmethod
-    def _validate_destination(destination, parser, enabled):
+    def _validate_destination_text(destination):
         if not isinstance(destination, str) or any(c in destination for c in '\x00\r\n'):
             raise ValidationProblem('Enter an exact rclone destination.')
+        # config.conf is shared with backup scripts through ConfigParser, which
+        # strips value-edge whitespace on read. Never save a different sync target
+        # from the one browsed and confirmed, including while backup is disabled.
+        if destination != destination.strip():
+            raise ValidationProblem(
+                'Backup destinations cannot start or end with whitespace because the settings '
+                'file cannot preserve it. Choose a different folder or path.'
+            )
+
+    @classmethod
+    def _validate_destination(cls, destination, parser, enabled):
+        cls._validate_destination_text(destination)
         if not destination:
             if enabled:
                 raise ValidationProblem('Choose a backup destination before enabling cloud backup.')

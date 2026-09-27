@@ -94,6 +94,10 @@ to match the local source. Choose a dedicated backup folder. Folder selection sh
 saving; it can also accept an exact path when the provider does not permit directory listing.
 Browsing and creating folders use the exact destination path, including the leading slash when
 the backend distinguishes absolute paths from paths relative to its default directory.
+The settings file cannot preserve whitespace at the start or end of a destination, so saving
+such a path shows an error without trimming it or changing the saved destination. Spaces inside
+the destination remain supported. New folder names cannot end with whitespace. Existing folders
+with such names can still be browsed, including to select a child folder with a supported path.
 Local filesystem paths resolve from `/` in the editor and both production and fake-mode backups.
 For example, `disk:backups` with a local `disk` connection selects `/backups`. This also applies to
 relative local paths reached through alias or crypt connections.
