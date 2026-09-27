@@ -22,6 +22,7 @@ def _run_script(
     wrong_source=False,
     missing_marker=False,
     missing_helper=False,
+    relative_overrides=False,
 ):
     storage_path = tmp_path / source_name
     storage_path.mkdir()
@@ -66,7 +67,8 @@ def _run_script(
     )
     _write_executable(
         bin_dir / "rclone",
-        '#!/bin/sh\nprintf "rclone:%s\\n" "$@" >> "$SSS_TEST_CALLS"\n',
+        '#!/bin/sh\nprintf "rclone-cwd:%s\\n" "$PWD" >> "$SSS_TEST_CALLS"\n'
+        'printf "rclone:%s\\n" "$@" >> "$SSS_TEST_CALLS"\n',
     )
     _write_executable(bin_dir / "journalctl", "#!/bin/sh\necho journal\n")
 
@@ -101,9 +103,20 @@ def _run_script(
             "SSS_TEST_CALLS": str(calls_path),
         }
     )
+    if relative_overrides:
+        env['PATH'] = f"bin:{os.environ.get('PATH', '')}"
+        for key in (
+            'SSS_CONFIG_FILE',
+            'SSS_RCLONE_CONFIG_FILE',
+            'SSS_PYTHON_BIN',
+            'SSS_VALIDATE_STORAGE_SCRIPT',
+            'SSS_LOG_ALERT_SCRIPT',
+        ):
+            env[key] = os.path.relpath(env[key], tmp_path)
     result = subprocess.run(
         ["bash", str(SCRIPT)],
         env=env,
+        cwd=tmp_path,
         capture_output=True,
         text=True,
         timeout=10,
@@ -138,6 +151,7 @@ def test_backup_uses_exact_validated_path_with_nonexecutable_helper(tmp_path, so
     assert result.returncode == 0, result.stderr
     assert f"Storage source verified: {tmp_path / source_name}" in result.stdout
     assert calls.splitlines() == [
+        "rclone-cwd:/",
         "rclone:sync",
         f"rclone:{tmp_path / source_name}",
         'rclone:remote:/backup="photos"',
@@ -146,6 +160,14 @@ def test_backup_uses_exact_validated_path_with_nonexecutable_helper(tmp_path, so
         "rclone:--create-empty-src-dirs",
         "rclone:-v",
     ]
+
+
+def test_backup_resolves_relative_overrides_before_changing_rclone_directory(tmp_path):
+    result, calls = _run_script(tmp_path, cloud_enabled='true', relative_overrides=True)
+    assert result.returncode == 0, result.stderr
+    assert 'rclone-cwd:/\n' in calls
+    assert f"rclone:{tmp_path / 'data' / 'rclone' / 'rclone.conf'}\n" in calls
+    assert f"Storage source verified: {tmp_path / 'storage'}" in result.stdout
 
 
 @pytest.mark.parametrize("failure", ["wrong_source", "missing_marker", "missing_helper"])

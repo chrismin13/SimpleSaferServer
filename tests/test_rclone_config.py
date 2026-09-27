@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 from flask import Flask
 
+from simple_safer_server.adapters.rclone import RcloneAdapter
 from simple_safer_server.services import runtime
 from simple_safer_server.services.cloud_backup_service import CloudBackupService
 from simple_safer_server.services.config_manager import ConfigManager
@@ -16,6 +17,7 @@ from simple_safer_server.services.file_persistence import locked_path
 from simple_safer_server.services.rclone_config_service import (
     DRAFT_TTL_SECONDS,
     RcloneConfigService,
+    parse_config,
 )
 from simple_safer_server.web.problems import ApiProblem, ConflictProblem, ValidationProblem
 
@@ -171,32 +173,54 @@ def test_create_folder_save_edit_and_reopen_durable_configuration(service):
 
 
 @pytest.mark.parametrize('absolute', [False, True])
+@pytest.mark.parametrize('wrapped', [False, True])
 def test_folder_actions_use_the_same_destination_as_backup(
-    service, tmp_path, monkeypatch, absolute
+    service, tmp_path, monkeypatch, absolute, wrapped
 ):
     cwd = tmp_path / 'worker-cwd'
     cwd.mkdir()
     monkeypatch.chdir(cwd)
-    destination = tmp_path / 'destination' if absolute else cwd / 'destination'
+    destination = tmp_path / 'destination'
     destination.mkdir()
     (destination / 'intended').mkdir()
-    path = str(destination) if absolute else 'destination'
-    if absolute:
-        # RC remote paths are relative to fs even when they begin with '/'.
-        # A matching relative directory makes the wrong listing look valid.
-        wrong_destination = cwd / path.lstrip('/')
-        wrong_destination.mkdir(parents=True)
-        (wrong_destination / 'wrong-directory').mkdir()
-
-    raw(service, '[disk]\ntype = local\n')
-    result = call(service, 'start', {'name': 'disk', 'purpose': 'choose'})
+    path = str(destination) if absolute else str(destination).lstrip('/')
+    # A plausible destination under Gunicorn's different working directory
+    # must never be browsed or changed by either editor or backup operations.
+    wrong_destination = cwd / path.lstrip('/')
+    wrong_destination.mkdir(parents=True)
+    (wrong_destination / 'wrong-directory').mkdir()
+    text = '[disk]\ntype = local\n'
+    name = 'disk'
+    if wrapped:
+        with service._temporary_worker('') as worker:
+            password = worker.call('core/obscure', {'clear': 'local-test-password'})['obscured']
+        text += (
+            f'\n[alias]\ntype = alias\nremote = disk:{path}\n'
+            '\n[encrypted]\ntype = crypt\nremote = alias:\n'
+            f'password = {password}\nfilename_encryption = off\ndirectory_name_encryption = false\n'
+        )
+        name, path = 'encrypted', ''
+    raw(service, text)
+    result = call(service, 'start', {'name': name, 'purpose': 'choose'})
     listing = call(service, 'folders', {**result, 'path': path})
     assert [entry['Name'] for entry in listing['folders']] == ['intended']
     call(service, 'mkdir', {**result, 'path': path, 'name': 'created'})
     assert (destination / 'created').is_dir()
-    if absolute:
-        assert not (wrong_destination / 'created').exists()
-    assert save(service, result, path)['destination_text'] == 'disk:' + path
+    assert not (wrong_destination / 'created').exists()
+    saved_destination = name + ':' + path
+    assert save(service, result, path)['destination_text'] == saved_destination
+
+    source = tmp_path / 'source'
+    source.mkdir()
+    (source / 'synced.txt').write_text('backup content')
+    process = RcloneAdapter().sync(str(source), saved_destination, config_path=str(service.path))
+    stdout, stderr = process.communicate(timeout=10)
+    assert process.returncode == 0, stdout + stderr
+    # Crypt keeps a .bin suffix even with filename encryption disabled.
+    stored_name = 'synced.txt.bin' if wrapped else 'synced.txt'
+    assert (destination / stored_name).is_file()
+    assert not (wrong_destination / stored_name).exists()
+    assert (wrong_destination / 'wrong-directory').is_dir()
 
 
 def test_advanced_snapshot_refreshes_destination_and_enabled_with_its_version(service):
@@ -274,13 +298,13 @@ def test_token_only_draft_publishes_once_and_cleans_up(service, monkeypatch, act
         '[cloud]\ntype=dropbox\ntoken=old\n',
         '[cloud]\ntype = drive\ntoken = refreshed\n',
         '[cloud]\ntype = dropbox\ntoken = refreshed\nclient_id = edited\n',
-        '[cloud]\ntype = dropbox\ntoken = refreshed\n\n[new]\ntype = local\n',
         '[cloud]\ntype = dropbox\n',
+        '[cloud]\ntype = dropbox\ntoken =\n',
         '',
         'invalid config',
     ],
 )
-def test_cancel_discards_drafts_without_only_refreshed_tokens(service, candidate):
+def test_cancel_discards_drafts_without_safe_refreshed_tokens(service, candidate):
     text = '[cloud]\ntype = dropbox\ntoken = old\n'
     raw(service, text)
     result = call(service, 'start', {'name': 'cloud', 'purpose': 'choose'})
@@ -289,6 +313,48 @@ def test_cancel_discards_drafts_without_only_refreshed_tokens(service, candidate
     with locked_path(service.lock_path):
         assert call(service, 'cancel', result) == {}
     assert service.path.read_text() == text
+    assert OWNER not in service.drafts
+    assert draft.worker.process.poll() is not None
+    assert not draft.worker.path.exists()
+
+
+@pytest.mark.parametrize('cleanup', ['cancel', 'expire'])
+def test_cleanup_keeps_upstream_tokens_while_discarding_other_connection_edits(service, cleanup):
+    text = (
+        '[cloud]\ntype = box\ntoken = old\n'
+        '\n[edited]\ntype = drive\nclient_id = original\ntoken = original\n'
+        '\n[removed]\ntype = drive\ntoken = retained\n'
+    )
+    raw(service, text, 'cloud:Backups', True)
+    result = call(service, 'start', {'name': 'cloud', 'purpose': 'choose'})
+    draft = service.drafts[OWNER]
+    # Browsing a new alias/crypt connection can rotate its saved upstream's
+    # single-use token. Edits to other identities must still be discarded.
+    draft.worker.path.write_text(
+        '[cloud]\ntype = box\ntoken = refreshed\n'
+        '\n[edited]\ntype = drive\nclient_id = changed\ntoken = other-identity\n'
+        '\n[new]\ntype = alias\nremote = cloud:Backups\n'
+    )
+    if cleanup == 'expire':
+        draft.touched -= DRAFT_TTL_SECONDS + 1
+    with locked_path(service.lock_path):
+        if cleanup == 'cancel':
+            with pytest.raises(ConflictProblem, match='backup or another save'):
+                call(service, 'cancel', result)
+        else:
+            assert call(service, 'state')['draft']['id'] == draft.identifier
+        assert service.path.read_text() == text
+        assert draft.worker.path.exists()
+
+    if cleanup == 'cancel':
+        call(service, 'cancel', result)
+    else:
+        assert call(service, 'state')['draft'] is None
+    expected = parse_config(text)
+    expected.set('cloud', 'token', 'refreshed')
+    assert parse_config(service.path.read_text()) == expected
+    assert service._settings() == ('cloud:Backups', 'true')
+    assert service.path.stat().st_mode & 0o777 == 0o600
     assert OWNER not in service.drafts
     assert draft.worker.process.poll() is not None
     assert not draft.worker.path.exists()

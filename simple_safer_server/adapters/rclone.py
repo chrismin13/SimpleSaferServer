@@ -1,5 +1,9 @@
 from simple_safer_server.adapters.command_runner import PIPE, CommandRunner
 
+# Relative local paths can also be hidden behind alias/crypt remotes. Match the
+# production backup script's working directory for every rclone process, including RC.
+RCLONE_WORKING_DIRECTORY = "/"
+
 
 class RcloneAdapter:
     """Wraps rclone process creation so backup services do not own subprocess details."""
@@ -27,6 +31,7 @@ class RcloneAdapter:
             stderr=PIPE,
             text=True,
             bufsize=1,
+            cwd=RCLONE_WORKING_DIRECTORY,
         )
 
     @staticmethod

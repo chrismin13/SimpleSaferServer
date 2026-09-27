@@ -383,19 +383,32 @@ class RcloneConfigService:
         return draft.view()
 
     @staticmethod
-    def _only_token_changes(base, text):
+    def _refreshed_config(base: str, text: str) -> str | None:
+        """Keep tokens for existing connections whose other settings are unchanged."""
         try:
             original, updated = parse_config(base), parse_config(text)
         except ValidationProblem:
-            return False
-        if original == updated:
-            return False
-        # Only nonempty tokens on existing remotes survive discarding a draft;
-        # removed credentials and other connection edits must remain unsaved.
+            return None
+        changed = False
+        # A new alias/crypt remote can refresh its existing upstream connection.
+        # Discarding that wrapper must not discard a rotated, single-use token.
+        # Compare each connection independently so edited account settings never
+        # publish a token that belongs to a different identity.
         for name in original.sections():
-            if token := updated.get(name, 'token', fallback=''):
+            if not updated.has_section(name):
+                continue
+            before, after = dict(original.items(name)), dict(updated.items(name))
+            old_token, token = before.pop('token', ''), after.pop('token', '')
+            if token and token != old_token and before == after:
                 original.set(name, 'token', token)
-        return original == updated
+                changed = True
+        if not changed:
+            return None
+        if original == updated:
+            return text
+        output = io.StringIO()
+        original.write(output)
+        return output.getvalue()
 
     def cancel(self, owner, data):
         draft = self.require_draft(owner, data)
@@ -404,12 +417,13 @@ class RcloneConfigService:
 
     def _discard_draft(self, owner, draft):
         text = draft.worker.path.read_text()
-        if self._only_token_changes(draft.base, text):
+        if refreshed := self._refreshed_config(draft.base, text):
             # Browsing can rotate refresh tokens, invalidating the saved ones.
-            # Keep them only when all other config is unchanged.
+            # Preserve those credentials without publishing unsaved edits, and
+            # never overwrite a configuration changed since this draft began.
             with self._publishing():
                 if self._read() == draft.base:
-                    atomic_write_text(self.path, text, mode=0o600)
+                    atomic_write_text(self.path, refreshed, mode=0o600)
         draft.close()
         del self.drafts[owner]
 

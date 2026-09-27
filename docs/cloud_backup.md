@@ -27,11 +27,12 @@ any follow-up questions or errors.
 
 The questions depend on the provider and your answers, so there is no fixed question count.
 **Back** restores the preceding question and its draft configuration. **Cancel** discards the
-unsaved connection edits. If only OAuth tokens changed, Cancel preserves them when the saved
-configuration still matches the draft's starting configuration. This keeps token refreshes from
-folder browsing available to backups. A running backup can delay cancellation until those tokens
-can be saved; retry after it finishes. Creating a folder is immediate and is not undone by
-cancelling configuration.
+unsaved connection edits. Cancel preserves refreshed OAuth tokens for existing connections whose
+other settings are unchanged, provided the saved configuration still matches the draft's starting
+configuration. This includes an existing connection used by an unsaved alias or crypt connection:
+discarding the new connection keeps its upstream's refreshed credentials available to backups.
+A running backup can delay cancellation until those tokens can be saved; retry after it finishes.
+Creating a folder is immediate and is not undone by cancelling configuration.
 
 Existing connections are read from the managed `rclone.conf`, including MEGA connections. Choose
 one to select its folder, or edit it without changing the selected backup path. Saving an extra
@@ -86,6 +87,9 @@ to match the local source. Choose a dedicated backup folder. Folder selection sh
 saving; it can also accept an exact path when the provider does not permit directory listing.
 Browsing and creating folders use the exact destination path, including the leading slash when
 the backend distinguishes absolute paths from paths relative to its default directory.
+Local filesystem paths resolve from `/` in the editor and both production and fake-mode backups.
+For example, `disk:backups` with a local `disk` connection selects `/backups`. This also applies to
+relative local paths reached through alias or crypt connections.
 
 ## Advanced configuration and existing installations
 
@@ -104,7 +108,7 @@ Opening Advanced reloads the configuration, destination, and enable setting toge
 saved elsewhere after that snapshot require reopening the editor before saving.
 
 Drafts live privately on the server and expire after 30 minutes without a request. Refreshing the
-page resumes a draft in the same browser session. Expiration preserves token-only refreshes with
+page resumes a draft in the same browser session. Expiration preserves eligible token refreshes with
 the same checks as Cancel. If a backup or file-write failure delays this cleanup, the server keeps
 the draft and retries automatically; it still counts toward the four-session editor limit.
 Restarting SSS ends drafts; saved settings

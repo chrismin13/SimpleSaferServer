@@ -98,6 +98,12 @@ Credentials travel in JSON, while RC authentication uses private environment var
 output is discarded. Provider errors are returned only to the editor, without request payloads
 or credential-bearing logs. No arbitrary RC passthrough exists.
 
+Editor workers, the Python sync adapter, and the production backup script run rclone with `/` as
+its working directory. This gives relative local destinations the same meaning during browsing,
+folder creation, and sync, including paths reached through alias/crypt connections. The script
+resolves its rclone executable, source, and config path before changing the subprocess directory;
+relative `SSS_*` overrides, helper paths, and executable lookup remain tied to the caller's directory.
+
 `config/providers` supplies the catalog. Non-interactive `config/create` and `config/update`
 return opaque state plus question metadata. Jobs are polled asynchronously. Back restores both
 a config checkpoint and its state by restarting the worker; cancellation/expiry terminates it.
@@ -126,8 +132,11 @@ refresh. Web saves fail promptly while the lock is held. The config is atomicall
 before related settings; an ordinary settings/timer failure restores the prior file. Two files
 cannot be one crash-atomic filesystem transaction; inspect configuration after an interrupted
 system update or hard shutdown. External rclone processes do not honor the SSS lock automatically.
-Cancellation and expiration preserve nonempty OAuth token updates when they are the only configuration
-changes. Cleanup uses the publication lock and rechecks the saved config against the draft's base
+Cancellation and expiration preserve nonempty OAuth token updates per existing remote when its
+other settings are unchanged. Cleanup reconstructs the starting configuration with only those
+eligible tokens, so added, edited, or removed connections remain unsaved. This matters when an
+unsaved alias/crypt connection refreshes its existing upstream's single-use credentials.
+Cleanup uses the publication lock and rechecks the saved config against the draft's base
 before writing, without changing destination settings. If the lock is busy, the draft remains
 open for retry; if the saved config changed, cleanup discards the draft without publishing.
 Expired drafts delayed by a busy lock or failed file write retain their original expiry time,

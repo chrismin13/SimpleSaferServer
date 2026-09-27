@@ -11,6 +11,7 @@ import urllib.request
 from pathlib import Path
 
 from simple_safer_server.adapters.command_runner import DEVNULL, CommandRunner, TimeoutExpired
+from simple_safer_server.adapters.rclone import RCLONE_WORKING_DIRECTORY
 from simple_safer_server.services.file_persistence import atomic_write_text
 from simple_safer_server.web.problems import ValidationProblem
 
@@ -64,6 +65,7 @@ class RcloneWorker:
             env=env,
             stdout=DEVNULL,
             stderr=DEVNULL,
+            cwd=RCLONE_WORKING_DIRECTORY,
         )
         for _ in range(80):
             if self.process.poll() is not None:
