@@ -6,6 +6,7 @@ import copy
 import hashlib
 import http.client
 import io
+import logging
 import re
 import secrets
 import threading
@@ -210,13 +211,26 @@ class RcloneConfigService:
     def _expire(self):
         for owner, draft in list(self.drafts.items()):
             if time.monotonic() - draft.touched > DRAFT_TTL_SECONDS:
-                draft.close()
-                del self.drafts[owner]
+                try:
+                    self._discard_draft(owner, draft)
+                except ConflictProblem, OSError:
+                    # A backup or failed write can delay publishing rotated
+                    # tokens. Keep the original TTL so the next janitor pass
+                    # retries; retained drafts still count toward MAX_DRAFTS.
+                    continue
 
     def _cleanup_loop(self):
         while not self._stop.wait(60):
-            with self.lock:
-                self._expire()
+            try:
+                with self.lock:
+                    self._expire()
+            except Exception as exc:
+                # This daemon is a background execution boundary. Unexpected
+                # worker cleanup failures must not disable all future expiry,
+                # and exception messages can contain credential-bearing paths.
+                logging.getLogger(__name__).warning(
+                    'Rclone draft cleanup failed (%s); retrying.', type(exc).__name__
+                )
 
     def dispatch(self, owner, action, data):
         # Only this explicit vocabulary is exposed to HTTP. In particular there
@@ -376,7 +390,7 @@ class RcloneConfigService:
             return False
         if original == updated:
             return False
-        # Only nonempty tokens on existing remotes can be preserved on cancel;
+        # Only nonempty tokens on existing remotes survive discarding a draft;
         # removed credentials and other connection edits must remain unsaved.
         for name in original.sections():
             if token := updated.get(name, 'token', fallback=''):
@@ -385,6 +399,10 @@ class RcloneConfigService:
 
     def cancel(self, owner, data):
         draft = self.require_draft(owner, data)
+        self._discard_draft(owner, draft)
+        return {}
+
+    def _discard_draft(self, owner, draft):
         text = draft.worker.path.read_text()
         if self._only_token_changes(draft.base, text):
             # Browsing can rotate refresh tokens, invalidating the saved ones.
@@ -394,7 +412,6 @@ class RcloneConfigService:
                     atomic_write_text(self.path, text, mode=0o600)
         draft.close()
         del self.drafts[owner]
-        return {}
 
     def _ready(self, owner, data, *, changing=False):
         draft = self.require_draft(owner, data, changing=changing)

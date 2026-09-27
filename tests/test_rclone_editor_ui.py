@@ -377,3 +377,91 @@ const flush = () => new Promise(resolve => setImmediate(resolve));
         'acknowledged': True,
         'version': 'fresh',
     }
+
+
+def test_destination_access_test_reconciles_tokens_and_exposes_cleanup_retry():
+    node = shutil.which('node')
+    if node is None:
+        pytest.skip('Node.js is required for the rclone editor JavaScript harness.')
+    script = r"""
+const assert = require('assert/strict');
+const fs = require('fs');
+const vm = require('vm');
+const source = fs.readFileSync('static/js/rclone_editor.js', 'utf8');
+(async () => {
+  for (const scenario of ['success', 'busy', 'cleanup-error', 'listing-error']) {
+    let serverDraft = null, serverVersion = 'old';
+    let cleanupBlocked = ['busy', 'cleanup-error'].includes(scenario);
+    const context = {
+      draft: null, path: '', view: 'home', polling: null,
+      pollGeneration: 0, folderRequest: 0, clearTimeout,
+      state: { version: 'old', destination: { name: 'cloud', path: 'Backups' } },
+      toast(message) { context.success = message; },
+      renderHome() { context.renderedVersion = context.state.version; },
+      panel(body, actions, title) { context.panel = { body, actions, title }; },
+      api: async (action, data) => {
+        if (action === 'start') {
+          assert.equal(serverDraft, null);
+          serverDraft = { id: 'test-draft', revision: 0 };
+          return serverDraft;
+        }
+        if (action === 'folders') {
+          assert.equal(data.id, serverDraft.id);
+          assert.equal(data.path, 'Backups');
+          if (scenario === 'listing-error') throw new Error('Cannot list folder');
+          return {};
+        }
+        if (action === 'cancel') {
+          assert.equal(data.id, serverDraft.id);
+          if (cleanupBlocked) throw Object.assign(new Error('Cannot close yet'), {
+            status: scenario === 'busy' ? 409 : 500
+          });
+          serverDraft = null;
+          serverVersion = 'refreshed-token-version';
+          return {};
+        }
+        if (action === 'state') return { version: serverVersion, draft: serverDraft };
+        throw new Error(action);
+      }
+    };
+    vm.createContext(context);
+    for (const [start, end] of [
+      ['const button =', 'const remoteLabel ='],
+      ['function render()', 'function renderProviders('],
+      ['async function cancelDraft()', 'async function startDraft('],
+      ['async function testDestination()', 'function remoteMenu(']
+    ]) vm.runInContext(source.slice(source.indexOf(start), source.indexOf(end)), context);
+    if (cleanupBlocked) {
+      await assert.rejects(context.testDestination(), /Cannot close yet/);
+      assert.equal(context.draft.id, serverDraft.id);
+      assert.equal(context.path, 'Backups');
+      assert.equal(context.view, 'test-cleanup');
+      assert.ok(context.panel.actions.includes('data-action="cancel"'));
+      assert.ok(context.panel.actions.includes('Retry closing'));
+      assert.equal(context.success, undefined);
+      cleanupBlocked = false;
+      // The visible retry uses the same cancellation path as the editor.
+      await context.cancelDraft();
+    } else if (scenario === 'listing-error') {
+      await assert.rejects(context.testDestination(), /Cannot list folder/);
+      assert.equal(context.success, undefined);
+      assert.equal(context.renderedVersion, serverVersion);
+    } else {
+      await context.testDestination();
+      assert.equal(context.success, 'Destination folder is accessible.');
+      assert.equal(context.renderedVersion, serverVersion);
+    }
+    assert.equal(context.draft, null);
+    assert.equal(serverDraft, null);
+    assert.equal(context.state.version, 'refreshed-token-version');
+  }
+})().catch(error => { console.error(error); process.exitCode = 1; });
+"""
+    subprocess.run(
+        [node, '-e', script],
+        cwd=Path(__file__).resolve().parents[1],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )

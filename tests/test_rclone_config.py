@@ -334,6 +334,102 @@ def test_cancel_keeps_refreshed_tokens_for_retry_when_backup_holds_lock(service)
     assert OWNER not in service.drafts
 
 
+def test_expiration_preserves_refreshed_tokens(service):
+    text = '[cloud]\ntype = dropbox\ntoken = old\n'
+    raw(service, text, 'cloud:Backups', True)
+    call(service, 'start', {'name': 'cloud', 'purpose': 'choose'})
+    draft = service.drafts[OWNER]
+    refreshed = text.replace('old', 'refreshed')
+    draft.worker.path.write_text(refreshed)
+    draft.touched -= DRAFT_TTL_SECONDS + 1
+
+    assert call(service, 'state')['draft'] is None
+    assert service.path.read_text() == refreshed
+    assert service._settings() == ('cloud:Backups', 'true')
+    assert draft.worker.process.poll() is not None
+    assert not draft.worker.path.exists()
+
+
+@pytest.mark.parametrize('changed_elsewhere', [False, True])
+def test_expiration_retries_busy_token_publication_without_extending_ttl(
+    service, changed_elsewhere
+):
+    text = '[cloud]\ntype = dropbox\ntoken = old\n'
+    raw(service, text)
+    call(service, 'start', {'name': 'cloud', 'purpose': 'choose'})
+    draft = service.drafts[OWNER]
+    refreshed = text.replace('old', 'refreshed')
+    draft.worker.path.write_text(refreshed)
+    # Unchanged expired drafts need no publication and must still be cleaned
+    # while another draft waits for the backup's token-writing lock.
+    call(service, 'start', {'name': 'cloud', 'purpose': 'choose'}, owner='other')
+    draft.touched -= DRAFT_TTL_SECONDS + 1
+    expired_at = draft.touched
+    service.drafts['other'].touched -= DRAFT_TTL_SECONDS + 1
+
+    with locked_path(service.lock_path):
+        for _ in range(2):
+            assert call(service, 'state')['draft']['id'] == draft.identifier
+            assert service.drafts == {OWNER: draft}
+            assert draft.touched == expired_at
+            assert draft.worker.path.read_text() == refreshed
+        if changed_elsewhere:
+            service.path.write_text(text.replace('old', 'external'))
+
+    # A retry runs immediately once the lock is free, rather than waiting for
+    # another full TTL, and cannot overwrite the backup's newer configuration.
+    assert call(service, 'state')['draft'] is None
+    assert service.path.read_text() == (
+        text.replace('old', 'external') if changed_elsewhere else refreshed
+    )
+    assert not draft.worker.path.exists()
+
+
+def test_expiration_retries_a_failed_token_write(service, monkeypatch):
+    from simple_safer_server.services import rclone_config_service as module
+
+    text = '[cloud]\ntype = dropbox\ntoken = old\n'
+    raw(service, text)
+    call(service, 'start', {'name': 'cloud', 'purpose': 'choose'})
+    draft = service.drafts[OWNER]
+    refreshed = text.replace('old', 'refreshed')
+    draft.worker.path.write_text(refreshed)
+    draft.touched -= DRAFT_TTL_SECONDS + 1
+    write = module.atomic_write_text
+
+    def fail_write(*args, **kwargs):
+        raise OSError('Cannot publish configuration')
+
+    monkeypatch.setattr(module, 'atomic_write_text', fail_write)
+    assert call(service, 'state')['draft']['id'] == draft.identifier
+    assert service.path.read_text() == text
+    monkeypatch.setattr(module, 'atomic_write_text', write)
+    assert call(service, 'state')['draft'] is None
+    assert service.path.read_text() == refreshed
+
+
+def test_cleanup_loop_survives_an_unexpected_worker_failure(caplog):
+    import threading
+
+    ticks = iter([False, False, True])
+    attempts = []
+
+    def expire():
+        attempts.append(True)
+        if len(attempts) == 1:
+            raise RuntimeError('private credential detail')
+
+    janitor = SimpleNamespace(
+        _stop=SimpleNamespace(wait=lambda timeout: next(ticks)),
+        lock=threading.RLock(),
+        _expire=expire,
+    )
+    RcloneConfigService._cleanup_loop(janitor)
+    assert len(attempts) == 2
+    assert 'RuntimeError' in caplog.text
+    assert 'private credential detail' not in caplog.text
+
+
 def test_manage_and_dependency_guards(service):
     save(service, local_draft(service))
     manage(service, 'backup', 'duplicate', 'spare')

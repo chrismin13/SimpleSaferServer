@@ -126,10 +126,15 @@ refresh. Web saves fail promptly while the lock is held. The config is atomicall
 before related settings; an ordinary settings/timer failure restores the prior file. Two files
 cannot be one crash-atomic filesystem transaction; inspect configuration after an interrupted
 system update or hard shutdown. External rclone processes do not honor the SSS lock automatically.
-Cancellation also preserves nonempty OAuth token updates when they are the only configuration
-changes. It uses the publication lock and rechecks the saved config against the draft's base
+Cancellation and expiration preserve nonempty OAuth token updates when they are the only configuration
+changes. Cleanup uses the publication lock and rechecks the saved config against the draft's base
 before writing, without changing destination settings. If the lock is busy, the draft remains
-open for retry; if the saved config changed, cancellation discards the draft without publishing.
+open for retry; if the saved config changed, cleanup discards the draft without publishing.
+Expired drafts delayed by a busy lock or failed file write retain their original expiry time,
+so the cleanup thread retries on its next one-minute pass. They count toward the four-draft
+limit. Unexpected cleanup failures are logged by exception type and cannot stop that thread.
+Destination access tests use the frontend's shared draft cleanup path, refresh the saved version
+after token publication, and expose a close retry when the draft must remain open.
 
 See [Cloud Backup](cloud_backup.md) for configuration paths and authentication behavior, and
 [rclone's RC API](https://rclone.org/rc/) and

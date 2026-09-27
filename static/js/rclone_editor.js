@@ -201,6 +201,9 @@ window.RcloneEditor = {
       else if (view === 'manage') renderManage();
       else if (view === 'remote-action') renderRemoteAction();
       else if (view === 'advanced') renderAdvanced();
+      else if (view === 'test-cleanup') panel(
+        '<p class="rclone-copy">The destination test has finished, but its connection session could not close. Retry closing it before editing connections.</p>',
+        button('cancel', 'Retry closing', 'primary'), 'Finish connection test');
       else {
         renderHome();
         closeEditor();
@@ -589,21 +592,29 @@ window.RcloneEditor = {
     }
 
     async function testDestination() {
-      const temporary = await api('start', {
+      path = state.destination.path;
+      draft = await api('start', {
         name: state.destination.name,
         purpose: 'choose'
       });
       try {
         await api('folders', {
-          id: temporary.id,
-          path: state.destination.path
+          id: draft.id,
+          path
         });
-        toast('Destination folder is accessible.');
       } finally {
-        await api('cancel', {
-          id: temporary.id
-        });
+        try {
+          // Listing can refresh tokens, so cleanup also reloads the saved
+          // version. Keep the shared draft handle if closing needs a retry.
+          await cancelDraft();
+          renderHome();
+        } catch (err) {
+          view = 'test-cleanup';
+          render();
+          throw err;
+        }
       }
+      toast('Destination folder is accessible.');
     }
 
     function remoteMenu(name, event) {

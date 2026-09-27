@@ -71,7 +71,9 @@ they do not authenticate personal cloud accounts.
 
 The main page shows the saved source and destination, enable/disable controls, a connection test,
 backup status, and schedule. **More → Test destination access** lists the selected folder; it does not prove write
-permission or run a sync. **Run Backup Now** runs the actual backup task. The task log reports
+permission or run a sync. The test closes its temporary connection session and refreshes the saved
+configuration view. If closing must wait to preserve refreshed credentials, use **Retry closing**
+after the current backup finishes. **Run Backup Now** runs the actual backup task. The task log reports
 transfer errors. The schedule uses server time in `HH:MM` format; optional bandwidth limits look
 like `512k`, `4M`, or `1G`.
 
@@ -102,7 +104,10 @@ Opening Advanced reloads the configuration, destination, and enable setting toge
 saved elsewhere after that snapshot require reopening the editor before saving.
 
 Drafts live privately on the server and expire after 30 minutes without a request. Refreshing the
-page resumes a draft in the same browser session. Restarting SSS ends drafts; saved settings
+page resumes a draft in the same browser session. Expiration preserves token-only refreshes with
+the same checks as Cancel. If a backup or file-write failure delays this cleanup, the server keeps
+the draft and retries automatically; it still counts toward the four-session editor limit.
+Restarting SSS ends drafts; saved settings
 remain. Saves reject stale configuration instead of overwriting another administrator's changes
 or a token refresh. A running SSS backup locks configuration until it finishes. External CLI
 edits should also wait until backup and web editing finish.
