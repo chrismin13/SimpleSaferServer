@@ -122,8 +122,9 @@ Unknown types remain editable without adding a provider-specific field mapping.
 
 The shipped server uses one threaded worker. Draft state is process-local (maximum four open
 editors, one per browser session); multi-worker deployments need a shared editor coordinator.
-A cleanup thread expires idle drafts after 30 minutes and normal process exit closes workers.
-Volatile drafts are not configuration backups and are discarded on restart.
+A cleanup thread expires idle drafts after 30 minutes. Normal process exit stops workers and
+preserves eligible token refreshes before cleaning up their private workspaces. Unsaved connection
+settings are discarded; volatile drafts are not configuration backups.
 
 Publication compares the config and selected destination with the editor's starting revision.
 The stable `rclone.conf.sss.lock` is shared with production and fake-mode sync jobs. The backup
@@ -136,14 +137,29 @@ Cancellation and expiration preserve nonempty OAuth token updates per existing r
 other settings are unchanged. Cleanup reconstructs the starting configuration with only those
 eligible tokens, so added, edited, or removed connections remain unsaved. This matters when an
 unsaved alias/crypt connection refreshes its existing upstream's single-use credentials.
-Cleanup uses the publication lock and rechecks the saved config against the draft's base
-before writing, without changing destination settings. If the lock is busy, the draft remains
-open for retry; if the saved config changed, cleanup discards the draft without publishing.
+Cleanup uses the publication lock and compares each saved remote against its section in the draft's
+base before writing, without changing destination settings. Unrelated saved edits remain intact.
+A remote whose saved settings or token changed is excluded from reconciliation. If the lock is busy,
+the draft remains open for retry.
 Expired drafts delayed by a busy lock or failed file write retain their original expiry time,
 so the cleanup thread retries on its next one-minute pass. They count toward the four-draft
 limit. Unexpected cleanup failures are logged by exception type and cannot stop that thread.
 Destination access tests use the frontend's shared draft cleanup path, refresh the saved version
 after token publication, and expose a close retry when the draft must remain open.
+
+Shutdown uses the same reconciliation without waiting for the backup lock. If publication fails,
+it atomically writes a mode-0600 JSON recovery record under the mode-0700
+`runtime.data_dir/rclone-recovery` directory. Records contain the original saved configuration and
+eligible token-only updates, excluding unsaved connection changes. Construction retries them before
+serving editor requests and starts the cleanup thread if any remain; that thread retries every
+minute even with no browser requests. Replay compares each remote to its recorded base under the
+publication lock, making repeated replay safe if shutdown occurs after publication but before record
+removal. The uninstaller removes records with the app data directory.
+
+If both publication and recovery persistence fail, shutdown retains the stopped worker's volatile
+workspace and logs its app-generated path for manual credential recovery. Workspaces use explicit
+cleanup so `TemporaryDirectory` finalization cannot silently remove this last copy. Operators must
+recover it before reboot; abrupt termination or power loss can still lose unpersisted draft tokens.
 
 See [Cloud Backup](cloud_backup.md) for configuration paths and authentication behavior, and
 [rclone's RC API](https://rclone.org/rc/) and

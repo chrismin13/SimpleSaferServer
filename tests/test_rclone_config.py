@@ -382,6 +382,182 @@ def test_cancel_checks_saved_config_under_publication_lock(service, monkeypatch)
     assert not draft.worker.path.exists()
 
 
+@pytest.mark.parametrize('cleanup', ['cancel', 'expire', 'close'])
+def test_token_cleanup_preserves_unrelated_concurrent_connection_changes(service, cleanup):
+    text = '[cloud]\ntype = box\ntoken = old\n\n[other]\ntype = local\n'
+    raw(service, text, 'cloud:Backups', True)
+    result = call(service, 'start', {'name': 'cloud', 'purpose': 'choose'})
+    draft = service.drafts[OWNER]
+    call(
+        service,
+        'manage',
+        {
+            'name': 'other',
+            'operation': 'rename',
+            'new_name': 'renamed',
+            'version': call(service, 'raw')['version'],
+        },
+        owner='other-admin',
+    )
+    # Model a provider rotating a single-use token while the first admin
+    # browses. A concurrent unrelated edit must not strand the old token.
+    draft.worker.path.write_text(
+        text.replace('token = old', 'token = rotated')
+        + '\n[unsaved]\ntype = alias\nremote = cloud:Temporary\n'
+    )
+    with pytest.raises(ConflictProblem, match='changed while editing'):
+        save(service, result)
+    if cleanup == 'cancel':
+        call(service, 'cancel', result)
+    elif cleanup == 'expire':
+        draft.touched -= DRAFT_TTL_SECONDS + 1
+        call(service, 'state')
+    else:
+        service.close()
+        service.close()  # Shutdown and its atexit hook may both run.
+    saved = parse_config(service.path.read_text())
+    assert saved.sections() == ['cloud', 'renamed']
+    assert saved.get('cloud', 'token') == 'rotated'
+    assert service._settings() == ('cloud:Backups', 'true')
+    assert OWNER not in service.drafts
+    assert not draft.worker.path.exists()
+    assert draft.worker.process.poll() is not None
+
+
+@pytest.mark.parametrize(
+    'current',
+    [
+        '[cloud]\ntype = box\ntoken = newer\n',
+        '[cloud]\ntype = box\ntoken = old\nclient_id = other-account\n',
+        '[cloud]\ntype = drive\ntoken = old\n',
+        '[renamed]\ntype = box\ntoken = old\n',
+    ],
+)
+def test_token_cleanup_never_replaces_a_durably_changed_remote(service, current):
+    text = '[cloud]\ntype = box\ntoken = old\n'
+    raw(service, text)
+    result = call(service, 'start', {'name': 'cloud', 'purpose': 'choose'})
+    service.drafts[OWNER].worker.path.write_text(text.replace('old', 'rotated'))
+    service.path.write_text(current)
+    call(service, 'cancel', result)
+    assert service.path.read_text() == current
+
+
+@pytest.mark.parametrize('failure', ['backup-lock', 'config-write'])
+def test_shutdown_queues_credentials_and_startup_retries_without_editor_requests(
+    service, monkeypatch, failure
+):
+    import json
+
+    from simple_safer_server.services import rclone_config_service as module
+
+    text = '[cloud]\ntype = box\ntoken = old\n'
+    raw(service, text, 'cloud:Backups', True)
+    call(service, 'start', {'name': 'cloud', 'purpose': 'choose'})
+    draft = service.drafts[OWNER]
+    draft.worker.path.write_text(
+        text.replace('old', 'rotated') + '\n[unsaved]\ntype = ftp\npass = unsaved-secret\n'
+    )
+    write = module.atomic_write_text
+    blocked = True
+
+    def fail_config_write(path, *args, **kwargs):
+        if path == service.path and blocked:
+            raise OSError('Cannot publish configuration')
+        return write(path, *args, **kwargs)
+
+    @contextmanager
+    def block_publication():
+        if failure == 'backup-lock':
+            with locked_path(service.lock_path):
+                yield
+        else:
+            monkeypatch.setattr(module, 'atomic_write_text', fail_config_write)
+            yield
+
+    monkeypatch.setattr(module, 'CLEANUP_INTERVAL_SECONDS', 0.01)
+    replacement = None
+    try:
+        with block_publication():
+            start = time.monotonic()
+            service.close()
+            assert time.monotonic() - start < 3
+            assert service.path.read_text() == text
+            records = list(service.recovery_root.glob('*.json'))
+            assert len(records) == 1
+            record = json.loads(records[0].read_text())
+            assert parse_config(record['config']).get('cloud', 'token') == 'rotated'
+            assert 'unsaved-secret' not in records[0].read_text()
+            assert records[0].stat().st_mode & 0o777 == 0o600
+            assert service.recovery_root.stat().st_mode & 0o777 == 0o700
+            assert draft.worker.process.poll() is not None
+            assert not draft.worker.path.exists()
+            assert not service.drafts
+
+            # Construction must start retrying even if nobody loads a page.
+            replacement = RcloneConfigService(
+                service.runtime, service.config_manager, service.cloud
+            )
+            assert replacement._janitor.is_alive()
+            assert records[0].exists()
+        blocked = False
+        deadline = time.monotonic() + 3
+        while records[0].exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert not records[0].exists()
+        assert parse_config(service.path.read_text()).get('cloud', 'token') == 'rotated'
+        assert service._settings() == ('cloud:Backups', 'true')
+
+        # Replaying a record after a crash between publish and unlink must not
+        # replace a newer saved credential or unrelated durable configuration.
+        current = '[cloud]\ntype = box\ntoken = newest\n\n[other]\ntype = local\n'
+        with replacement.lock:
+            write(records[0], json.dumps(record), mode=0o600)
+            write(service.path, current, mode=0o600)
+            replacement._recover_pending()
+        assert service.path.read_text() == current
+        assert not records[0].exists()
+    finally:
+        if replacement:
+            replacement.close()
+
+
+def test_shutdown_retains_workspace_if_both_publication_and_recovery_writes_fail(
+    service, monkeypatch, caplog
+):
+    import gc
+
+    from simple_safer_server.services import rclone_config_service as module
+
+    text = '[cloud]\ntype = box\ntoken = old\n'
+    raw(service, text)
+    call(service, 'start', {'name': 'cloud', 'purpose': 'choose'})
+    draft = service.drafts[OWNER]
+    workspace = draft.worker.path
+    workspace.write_text(text.replace('old', 'private-rotated-token'))
+
+    def fail_write(*args, **kwargs):
+        raise OSError('private error details')
+
+    monkeypatch.setattr(module, 'atomic_write_text', fail_write)
+    monkeypatch.setattr(module, 'atomic_write_json', fail_write)
+    service.close()
+    assert draft.worker.process.poll() is not None
+    assert workspace.exists()
+    assert service.path.read_text() == text
+    assert 'retained for manual credential recovery' in caplog.text
+    assert str(workspace) in caplog.text
+    assert 'private-rotated-token' not in caplog.text
+    assert 'private error details' not in caplog.text
+
+    # Finalizing TemporaryDirectory must not erase the last recovery copy.
+    del service.drafts[OWNER]
+    del draft
+    gc.collect()
+    assert parse_config(workspace.read_text()).get('cloud', 'token') == 'private-rotated-token'
+    shutil.rmtree(workspace.parent)
+
+
 def test_cancel_keeps_refreshed_tokens_for_retry_when_backup_holds_lock(service):
     text = '[cloud]\ntype = dropbox\ntoken = old\n'
     raw(service, text)
@@ -488,6 +664,7 @@ def test_cleanup_loop_survives_an_unexpected_worker_failure(caplog):
     janitor = SimpleNamespace(
         _stop=SimpleNamespace(wait=lambda timeout: next(ticks)),
         lock=threading.RLock(),
+        _recover_pending=lambda: None,
         _expire=expire,
     )
     RcloneConfigService._cleanup_loop(janitor)

@@ -29,7 +29,8 @@ The questions depend on the provider and your answers, so there is no fixed ques
 **Back** restores the preceding question and its draft configuration. **Cancel** discards the
 unsaved connection edits. Cancel preserves refreshed OAuth tokens for existing connections whose
 other settings are unchanged, provided the saved configuration still matches the draft's starting
-configuration. This includes an existing connection used by an unsaved alias or crypt connection:
+configuration for that connection, including its token. Edits to other saved connections are kept.
+This includes an existing connection used by an unsaved alias or crypt connection:
 discarding the new connection keeps its upstream's refreshed credentials available to backups.
 A running backup can delay cancellation until those tokens can be saved; retry after it finishes.
 Creating a folder is immediate and is not undone by cancelling configuration.
@@ -111,8 +112,20 @@ Drafts live privately on the server and expire after 30 minutes without a reques
 page resumes a draft in the same browser session. Expiration preserves eligible token refreshes with
 the same checks as Cancel. If a backup or file-write failure delays this cleanup, the server keeps
 the draft and retries automatically; it still counts toward the four-session editor limit.
-Restarting SSS ends drafts; saved settings
-remain. Saves reject stale configuration instead of overwriting another administrator's changes
+Restarting SSS ends drafts and discards unsaved connection settings. An orderly shutdown preserves
+eligible refreshed credentials. If a backup or write failure blocks publication, SSS stores a private
+token recovery record in its data directory (`/var/lib/SimpleSaferServer/rclone-recovery` in production,
+`$SSS_DATA_DIR/rclone-recovery` in fake mode). Startup retries these records immediately and every
+minute while any remain, without requiring the editor to be opened. Recovery preserves unrelated
+saved edits and never replaces a connection or token changed since the draft opened.
+
+If both configuration publication and recovery-file persistence fail, SSS logs the retained private
+workspace path for manual credential recovery. The workspace contains credentials and may include
+unsaved edits: compare the affected connection before copying its refreshed token into the managed
+config. Recover it before rebooting because the workspace lives in volatile storage. Sudden power loss
+or forced termination can still lose credentials that exist only in an open draft.
+
+Saves reject stale configuration instead of overwriting another administrator's changes
 or a token refresh. A running SSS backup locks configuration until it finishes. External CLI
 edits should also wait until backup and web editing finish.
 

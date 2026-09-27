@@ -6,6 +6,7 @@ import copy
 import hashlib
 import http.client
 import io
+import json
 import logging
 import re
 import secrets
@@ -21,10 +22,15 @@ from tempfile import TemporaryDirectory
 from typing import Any
 
 from simple_safer_server.adapters.rclone_config import NoRedirect, RcloneError, RcloneWorker
-from simple_safer_server.services.file_persistence import atomic_write_text, locked_path
+from simple_safer_server.services.file_persistence import (
+    atomic_write_json,
+    atomic_write_text,
+    locked_path,
+)
 from simple_safer_server.web.problems import ApiProblem, ConflictProblem, ValidationProblem
 
 DRAFT_TTL_SECONDS = 1800
+CLEANUP_INTERVAL_SECONDS = 60
 MAX_DRAFTS = 4
 MAX_CONFIG_BYTES = 1024 * 1024
 # Match rclone's portable config names, including Unicode letters and digits.
@@ -124,6 +130,7 @@ class RcloneConfigService:
         self.path = runtime.rclone_config_dir / 'rclone.conf'
         self.lock_path = self.path.with_suffix('.conf.sss.lock')
         self.root = runtime.volatile_dir / 'rclone'
+        self.recovery_root = runtime.data_dir / 'rclone-recovery'
         self.lock = threading.RLock()
         self.drafts: dict[str, ConfigDraft] = {}
         self._providers: list | None = None
@@ -131,6 +138,11 @@ class RcloneConfigService:
         self._stop = threading.Event()
         self._janitor = None
         atexit.register(self.close)
+        # Credential recovery cannot depend on somebody opening the editor:
+        # scheduled backups may be the first provider access after a restart.
+        self._recover_pending()
+        if any(self.recovery_root.glob('*.json')):
+            self._start_janitor()
 
     def _read(self) -> str:
         try:
@@ -156,10 +168,13 @@ class RcloneConfigService:
     def _workspace(self, text):
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.root.chmod(0o700)
-        directory = TemporaryDirectory(prefix='edit-', dir=self.root)
+        # Normal exits explicitly clean up. A shutdown that cannot persist a
+        # rotated token must be able to retain this workspace for recovery,
+        # including after TemporaryDirectory's finalizer runs.
+        directory = TemporaryDirectory(prefix='edit-', dir=self.root, delete=False)
         path = Path(directory.name) / 'rclone.conf'
-        atomic_write_text(path, text, mode=0o600, durable=False)
         try:
+            atomic_write_text(path, text, mode=0o600, durable=False)
             worker = self.worker_factory(path)
         except OSError, RcloneError:
             directory.cleanup()
@@ -220,9 +235,10 @@ class RcloneConfigService:
                     continue
 
     def _cleanup_loop(self):
-        while not self._stop.wait(60):
+        while not self._stop.wait(CLEANUP_INTERVAL_SECONDS):
             try:
                 with self.lock:
+                    self._recover_pending()
                     self._expire()
             except Exception as exc:
                 # This daemon is a background execution boundary. Unexpected
@@ -231,6 +247,13 @@ class RcloneConfigService:
                 logging.getLogger(__name__).warning(
                     'Rclone draft cleanup failed (%s); retrying.', type(exc).__name__
                 )
+
+    def _start_janitor(self):
+        if self._janitor is None:
+            self._janitor = threading.Thread(
+                target=self._cleanup_loop, name='rclone-draft-cleanup', daemon=True
+            )
+            self._janitor.start()
 
     def dispatch(self, owner, action, data):
         # Only this explicit vocabulary is exposed to HTTP. In particular there
@@ -256,12 +279,9 @@ class RcloneConfigService:
         if action not in actions:
             raise ValidationProblem('Unknown connection action.')
         with self.lock:
+            self._recover_pending()
             self._expire()
-            if self._janitor is None:
-                self._janitor = threading.Thread(
-                    target=self._cleanup_loop, name='rclone-draft-cleanup', daemon=True
-                )
-                self._janitor.start()
+            self._start_janitor()
             return actions[action]()
 
     def require_draft(self, owner, data, *, changing=False):
@@ -383,32 +403,64 @@ class RcloneConfigService:
         return draft.view()
 
     @staticmethod
-    def _refreshed_config(base: str, text: str) -> str | None:
-        """Keep tokens for existing connections whose other settings are unchanged."""
+    def _refreshed_config(base: str, text: str, current: str | None = None) -> str | None:
+        """Merge token-only changes into saved connections that still match their base."""
         try:
             original, updated = parse_config(base), parse_config(text)
+            saved = parse_config(base if current is None else current)
         except ValidationProblem:
             return None
         changed = False
         # A new alias/crypt remote can refresh its existing upstream connection.
         # Discarding that wrapper must not discard a rotated, single-use token.
-        # Compare each connection independently so edited account settings never
-        # publish a token that belongs to a different identity.
+        # Compare each connection independently: unrelated durable edits must
+        # survive, and neither a changed identity nor a newer saved token can
+        # be replaced by credentials from an older draft.
         for name in original.sections():
-            if not updated.has_section(name):
+            if not updated.has_section(name) or not saved.has_section(name):
+                continue
+            if dict(saved.items(name)) != dict(original.items(name)):
                 continue
             before, after = dict(original.items(name)), dict(updated.items(name))
             old_token, token = before.pop('token', ''), after.pop('token', '')
             if token and token != old_token and before == after:
-                original.set(name, 'token', token)
+                saved.set(name, 'token', token)
                 changed = True
         if not changed:
             return None
-        if original == updated:
+        if saved == updated:
             return text
         output = io.StringIO()
-        original.write(output)
+        saved.write(output)
         return output.getvalue()
+
+    def _publish_refreshed(self, base, text):
+        with self._publishing():
+            if refreshed := self._refreshed_config(base, text, self._read()):
+                atomic_write_text(self.path, refreshed, mode=0o600)
+
+    def _recover_pending(self):
+        """Retry token-only shutdown records without restoring unsaved edits."""
+        for path in self.recovery_root.glob('*.json'):
+            try:
+                record = json.loads(path.read_text())
+                base, text = record['base'], record['config']
+                if not isinstance(base, str) or not isinstance(text, str):
+                    raise ValueError('Invalid credential recovery record')
+                parse_config(base)
+                parse_config(text)
+                self._publish_refreshed(base, text)
+                # Repeating a published record is safe: its old token no longer
+                # matches the saved one, so a crash before unlink cannot undo it.
+                path.unlink(missing_ok=True)
+            except ConflictProblem:
+                # Backup ownership takes priority; startup and janitor never
+                # wait for an unbounded sync just to replay credentials.
+                continue
+            except OSError, ValueError, KeyError, TypeError, ValidationProblem:
+                logging.getLogger(__name__).error(
+                    'Rclone credential recovery remains pending in %s.', path
+                )
 
     def cancel(self, owner, data):
         draft = self.require_draft(owner, data)
@@ -420,10 +472,8 @@ class RcloneConfigService:
         if refreshed := self._refreshed_config(draft.base, text):
             # Browsing can rotate refresh tokens, invalidating the saved ones.
             # Preserve those credentials without publishing unsaved edits, and
-            # never overwrite a configuration changed since this draft began.
-            with self._publishing():
-                if self._read() == draft.base:
-                    atomic_write_text(self.path, refreshed, mode=0o600)
+            # reconcile each remote against the saved file under its lock.
+            self._publish_refreshed(draft.base, refreshed)
         draft.close()
         del self.drafts[owner]
 
@@ -695,6 +745,38 @@ class RcloneConfigService:
     def close(self):
         self._stop.set()
         with self.lock:
-            for draft in self.drafts.values():
-                draft.close()
-            self.drafts.clear()
+            for owner, draft in list(self.drafts.items()):
+                try:
+                    # Quiesce token writers before taking the shutdown snapshot.
+                    draft.worker.close()
+                    self._discard_draft(owner, draft)
+                except Exception as exc:
+                    # Shutdown is an execution boundary: failure for one draft
+                    # must not prevent the other workers from being stopped.
+                    try:
+                        text = draft.worker.path.read_text()
+                        refreshed = self._refreshed_config(draft.base, text)
+                        if refreshed:
+                            self.recovery_root.mkdir(parents=True, exist_ok=True, mode=0o700)
+                            self.recovery_root.chmod(0o700)
+                            atomic_write_json(
+                                self.recovery_root / f'{draft.identifier}.json',
+                                {'base': draft.base, 'config': refreshed},
+                                mode=0o600,
+                            )
+                            logging.getLogger(__name__).warning(
+                                'Rclone refreshed credentials queued for recovery after restart.'
+                            )
+                        draft.close()
+                        del self.drafts[owner]
+                    except Exception as recovery_exc:
+                        # Keep the only available credentials if even durable
+                        # recovery fails (for example a full/read-only disk).
+                        # The retained path is app-generated, never provider data.
+                        logging.getLogger(__name__).error(
+                            'Rclone shutdown recovery failed (%s, %s); private workspace '
+                            'retained for manual credential recovery at %s.',
+                            type(exc).__name__,
+                            type(recovery_exc).__name__,
+                            draft.worker.path,
+                        )
