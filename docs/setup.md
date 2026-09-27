@@ -110,10 +110,15 @@ Boot behavior:
 
 Cloud Backup is optional.
 
-The connection dialog opens on first setup. Choose a service and answer the questions returned
-by rclone, then choose or create a dedicated destination folder. Existing rclone connections are offered first so they can be reused. **Back**
-restores a question; **Cancel** discards unsaved connection settings. **Advanced config** accepts
-a full rclone configuration and exact destination.
+Choose **Choose destination** to open the connection dialog. Choose a service and answer the
+questions returned by rclone, then choose or create a dedicated destination folder. Existing
+rclone connections are offered first so they can be reused. **Back** restores a question;
+**Cancel** discards unsaved connection settings. Cancel stays on the left, Back in the middle,
+and the next or save action on the right, including during sign-in.
+
+New connections use an available name such as `sss-backup`, `sss-backup-2`, or `sss-backup-3`.
+Expand **Advanced options** in the service picker to change the connection name or open
+**Advanced rclone config**, which accepts a full configuration and exact destination.
 
 Browser sign-in and command-based authorization are available through rclone's shared OAuth flow.
 See [Cloud Backup](cloud_backup.md#authorize-an-account) for remote-browser callback instructions.

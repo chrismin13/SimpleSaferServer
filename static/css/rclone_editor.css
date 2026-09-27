@@ -67,8 +67,13 @@ body.fake-mode-active .rclone-editor.modal-overlay { --rclone-banner-offset: var
 .rclone-body-content h3 { font-size: 16px; font-weight: 500; line-height: 1.5; margin: 0 0 16px; }
 .rclone-copy { color: var(--text-secondary); font-size: 13px; line-height: 1.6; margin: 0 0 16px; }
 .rclone-editor-footer { flex: 0 0 auto; border-top: 1px solid var(--border-subtle); background: hsla(220, 18%, 8%, .3); }
-.rclone-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 20px; }
-.rclone-actions-right { display: flex; align-items: center; gap: 8px; }
+/* Empty slots stay in the grid so Cancel and Back cannot slide into Next. */
+.rclone-actions { display: grid; grid-template-columns: minmax(64px, 1fr) minmax(72px, 1fr) minmax(0, 2fr); align-items: center; gap: 8px; padding: 16px 20px; }
+.rclone-actions > div { min-width: 0; display: flex; }
+.rclone-action-back { justify-content: center; }
+.rclone-action-primary { justify-content: flex-end; }
+/* Two-line labels fit on phones without moving the single-line controls. */
+.rclone-actions .btn { min-height: 48px; max-width: 100%; }
 .rclone-editor-footer > .rclone-error { padding: 12px 20px 0; margin: 0; }
 .rclone-error { color: var(--danger-text); font-size: 13px; margin-top: 12px; line-height: 1.5; overflow-wrap: anywhere; }
 .rclone-error:empty { display: none; }
@@ -143,7 +148,6 @@ body.fake-mode-active .rclone-editor.modal-overlay { --rclone-banner-offset: var
   .rclone-editor .rclone-workspace { height: calc(100dvh - var(--rclone-banner-offset) - 24px); }
   .rclone-workspace .modal-header, .rclone-body-content, .rclone-actions { padding: 16px; }
   .rclone-workspace .modal-header h2 { font-size: 15px; }
-  .rclone-actions-right { flex-wrap: wrap; justify-content: flex-end; }
   .rclone-provider-grid { grid-template-columns: 1fr; }
   .rclone-overview-heading { padding: 16px 16px 0; }
   .rclone-destination { padding: 16px; }

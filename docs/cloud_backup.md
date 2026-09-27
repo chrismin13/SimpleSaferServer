@@ -13,6 +13,13 @@ connection and one dedicated destination folder; additional connections are avai
 3. Browse to a destination folder, create a folder, or enter the exact path.
 4. Review the destination and confirm that it is dedicated to this server's backups, then save.
 
+Entering the Cloud Backup setup step shows the saved destination summary. The service picker
+opens when you choose **Choose destination**. New connections default to `sss-backup`, with a
+numeric suffix (`sss-backup-2`, `sss-backup-3`, etc.) if that name is already in the managed
+rclone configuration. Expand **Advanced options** in the picker to use a different name.
+Custom names must be unused; the server rejects collisions, including names added after the
+picker opened, without overwriting the existing connection. Existing names are kept as saved.
+
 Suggested values appear as selectable choices with descriptions. Short lists, including Google
 Drive's scopes, use radio buttons; longer lists use a dropdown with the selected choice's full
 description below it. **Custom value** is available when rclone accepts values beyond its examples,
@@ -26,6 +33,8 @@ sizes with units, lists, and provider-specific formats. Rclone validates answers
 any follow-up questions or errors.
 
 The questions depend on the provider and your answers, so there is no fixed question count.
+Dialog controls keep Cancel on the left, Back in the middle, and the next or save action on the
+right. Steps that wait for sign-in leave the primary action's position empty.
 **Back** restores the preceding question and its draft configuration. **Cancel** discards the
 unsaved connection edits. OAuth token refreshes for existing connections are saved as each provider
 operation finishes, even when folder access fails after refreshing credentials. This applies only

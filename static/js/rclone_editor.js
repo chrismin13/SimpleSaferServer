@@ -119,6 +119,13 @@ window.RcloneEditor = {
     }
 
     const button = (action, text, style = 'secondary', extra = '') => `<button type="button" class="btn btn-${style} btn-sm" data-action="${action}" ${extra}>${text}</button>`;
+
+    function footerActions({ cancel = 'cancel', cancelLabel = 'Cancel', back = '', primary = '' } = {}) {
+      // Keep all three slots even when a step has no primary action. In
+      // particular, waiting for OAuth must never put Cancel under Next.
+      return `<div class="rclone-action-cancel">${cancel ? button(cancel, cancelLabel) : ''}</div><div class="rclone-action-back">${back}</div><div class="rclone-action-primary">${primary}</div>`;
+    }
+
     const remoteLabel = remote => providerLabel(providers.find(p => p.Name === remote.type) || {
       Name: remote.type,
       Description: remote.description
@@ -139,10 +146,12 @@ window.RcloneEditor = {
       }));
     }
 
-    function uniqueName(base) {
-      let name = base || 'backup',
+    function uniqueName(base = 'sss-backup') {
+      let name = base,
         index = 2;
-      while (state.remotes.some(remote => remote.name === name)) name = `${base || 'backup'}-${index++}`;
+      // This is a suggestion from the page snapshot. The server also rejects
+      // collisions with remotes created elsewhere while the picker is open.
+      while (state.remotes.some(remote => remote.name === name)) name = `${base}-${index++}`;
       return name;
     }
 
@@ -203,7 +212,7 @@ window.RcloneEditor = {
       else if (view === 'advanced') renderAdvanced();
       else if (view === 'test-cleanup') panel(
         '<p class="rclone-copy">The destination test has finished, but its connection session could not close. Retry closing it before editing connections.</p>',
-        button('cancel', 'Retry closing', 'primary'), 'Finish connection test');
+        footerActions({ cancel: '', primary: button('cancel', 'Retry closing', 'primary') }), 'Finish connection test');
       else {
         renderHome();
         closeEditor();
@@ -213,8 +222,8 @@ window.RcloneEditor = {
     function renderProviders() {
       panel(`<div class="rclone-search">${icon('magnifying-glass')}<input class="form-control" id="provider-search" type="search" placeholder="Search services" value="${esc(search)}" aria-label="Search storage services"></div>
         <div id="provider-results" class="rclone-provider-grid"></div>
-        <details class="rclone-help"><summary>Connection name</summary><div class="rclone-field"><label for="remote-name">Name</label><input id="remote-name" class="form-control" value="${esc(uniqueName('backup'))}" autocomplete="off"></div></details>`,
-        `${button('home','Cancel')}<div class="rclone-actions-right">${button('advanced','Advanced config')}${button('start','Next '+icon('arrow-right'),'primary',selectedProvider ? '' : 'disabled')}</div>`,
+        <details class="rclone-help"><summary>Advanced options</summary><div class="rclone-field"><label for="remote-name">Connection name</label><input id="remote-name" class="form-control" value="${esc(uniqueName())}" autocomplete="off" aria-describedby="remote-name-help"><p id="remote-name-help" class="rclone-default">Identifies this connection in rclone. The suggested name avoids existing connections; a custom name must also be unused.</p></div>${button('advanced','Advanced rclone config')}</details>`,
+        footerActions({ cancel: 'home', primary: button('start','Next '+icon('arrow-right'),'primary',selectedProvider ? '' : 'disabled') }),
         'Choose storage service');
       providerResults();
     }
@@ -233,7 +242,10 @@ window.RcloneEditor = {
     }
 
     function questionActions(submitLabel = 'Next') {
-      return `<div class="rclone-actions-right">${button('back',icon('arrow-left')+' Back','secondary',draft.can_back ? '' : 'disabled')}${button('cancel','Cancel')}</div>${submitLabel ? `<button class="btn btn-primary btn-sm" form="question-form" type="submit">${submitLabel} ${icon('arrow-right')}</button>` : ''}`;
+      return footerActions({
+        back: button('back',icon('arrow-left')+' Back','secondary',draft.can_back ? '' : 'disabled'),
+        primary: submitLabel ? `<button class="btn btn-primary btn-sm" form="question-form" type="submit">${submitLabel} ${icon('arrow-right')}</button>` : ''
+      });
     }
 
     function renderAuthorizationChoice(option) {
@@ -302,7 +314,7 @@ window.RcloneEditor = {
     function renderQuestion() {
       const option = draft.option;
       if (!option) {
-        panel(`<p class="rclone-copy">${esc(draft.error || 'Restart this connection to continue.')}</p>`, `${button('cancel','Cancel connection')}${button('back','Go back','secondary',draft.can_back ? '' : 'disabled')}`, 'Connection needs attention');
+        panel(`<p class="rclone-copy">${esc(draft.error || 'Restart this connection to continue.')}</p>`, questionActions(null), 'Connection needs attention');
         return;
       }
       if (option.Name === 'config_is_local' && option.Type === 'bool') {
@@ -318,7 +330,7 @@ window.RcloneEditor = {
         panel(`
         <div class="rclone-help-content rclone-auth-instructions">${helpMarkup(option.Help || '')}</div>
         <form id="question-form"><label class="rclone-label" for="answer">Authorization result</label><textarea id="answer" class="form-control rclone-code" autocomplete="off" spellcheck="false" placeholder="Paste the result from rclone">${esc(initial)}</textarea></form>
-        ${draft.error ? `<div class="rclone-error" role="alert">${esc(draft.error)}</div>` : ''}`, questionActions('Apply authorization'), 'Authorize with rclone');
+        ${draft.error ? `<div class="rclone-error" role="alert">${esc(draft.error)}</div>` : ''}`, questionActions('Authorize'), 'Authorize with rclone');
         return;
       }
       const help = lines.slice(1).join('\n').trim();
@@ -341,7 +353,7 @@ window.RcloneEditor = {
         <details class="rclone-help"><summary>Localhost page didn’t open?</summary><p class="rclone-copy">Copy the full address from that page and paste it below.</p>
         <label class="rclone-label" for="callback-url">Final localhost address</label><input id="callback-url" class="form-control" placeholder="http://localhost:53682/?code=…&state=…" autocomplete="off">
         <div class="rclone-field">${button('oauth-return','Complete sign-in')}</div></details>` : '<p class="rclone-copy" role="status">Waiting for rclone…</p>',
-        `${button('back',icon('arrow-left')+(draft.oauth ? ' Sign-in methods' : ' Back'),'secondary',draft.can_back ? '' : 'disabled')}${button('cancel','Cancel')}`,
+        questionActions(null),
         draft.oauth ? 'Finish sign-in' : 'Connect storage');
     }
 
@@ -392,7 +404,7 @@ window.RcloneEditor = {
         <form id="new-folder-form" class="rclone-inline-form" hidden><input id="new-folder-name" class="form-control" placeholder="Folder name" aria-label="New folder name" required><button class="btn btn-primary btn-sm">Create</button><small>Created immediately. Names cannot end with whitespace.</small></form>
         <div class="rclone-folder-list" aria-live="polite">${loadingFolders ? '<div class="rclone-empty">Loading…</div>' : folderData.length ? folderData.map(entry => `<button type="button" class="rclone-folder" data-folder-path="${esc(joinPath(path,entry.Name))}">${icon('folder')}<span>${esc(entry.Name)}</span>${icon('chevron-right')}</button>`).join('') : `<div class="rclone-empty">${folderError ? 'Cannot list this folder.' : 'No subfolders.'}</div>`}</div>
         ${folderError ? `<div class="rclone-error">${esc(folderError)}</div><p class="rclone-default">You can still enter an exact destination path.</p>` : ''}`,
-        `${button('cancel','Cancel')}${button('review','Use this folder '+icon('arrow-right'),'primary',loadingFolders ? 'disabled' : '')}`, 'Destination folder', '');
+        footerActions({ primary: button('review','Use this folder '+icon('arrow-right'),'primary',loadingFolders ? 'disabled' : '') }), 'Destination folder', '');
     }
 
     function joinPath(base, name) {
@@ -433,7 +445,10 @@ window.RcloneEditor = {
         ${folderVerified ? '' : '<p class="rclone-default">Folder access has not been verified.</p>'}
         <div class="rclone-warning">Files in this destination will be overwritten or deleted as needed to match your server.</div>
         <label class="rclone-ack"><input id="destination-ack" type="checkbox">Use this folder only for this server’s backups.</label>`}`,
-        `${connectionOnly ? button('cancel','Cancel') : button('folders',icon('arrow-left')+' Back')}${button('save',connectionOnly ? 'Save settings' : screen === 'setup' ? 'Save & continue' : 'Save destination','primary',connectionOnly ? '' : 'disabled')}`,
+        footerActions({
+          back: connectionOnly ? '' : button('folders',icon('arrow-left')+' Back'),
+          primary: button('save',connectionOnly ? 'Save settings' : screen === 'setup' ? 'Save & continue' : 'Save destination','primary',connectionOnly ? '' : 'disabled')
+        }),
         connectionOnly ? 'Save connection settings' : 'Confirm destination');
     }
 
@@ -460,7 +475,7 @@ window.RcloneEditor = {
 
     function renderManage() {
       panel(state.remotes.length ? remoteRows() : '<div class="rclone-empty">No saved connections.</div>',
-        `${button('home','Close')}${button('add-remote',icon('plus')+' Add connection','primary')}`,
+        footerActions({ cancel: 'home', cancelLabel: 'Close', primary: button('add-remote',icon('plus')+' Add connection','primary') }),
         flow === 'choose' ? 'Choose destination connection' : 'Storage connections');
     }
 
@@ -471,7 +486,7 @@ window.RcloneEditor = {
       } = managementAction;
       const removing = operation === 'delete';
       panel(`<form id="remote-action-form">${removing ? `<p class="rclone-copy">Remove <strong>${esc(name)}</strong>? Remote files will be kept.</p>` : `<label class="rclone-label" for="new-remote-name">Connection name</label><input id="new-remote-name" class="form-control" value="${esc(operation === 'duplicate' ? uniqueName(name+'-copy') : name)}" required>`}</form>`,
-        `${button('manage','Cancel')}<button type="submit" form="remote-action-form" class="btn btn-${removing ? 'danger' : 'primary'} btn-sm">${removing ? 'Remove' : 'Save'}</button>`,
+        footerActions({ cancel: 'manage', primary: `<button type="submit" form="remote-action-form" class="btn btn-${removing ? 'danger' : 'primary'} btn-sm">${removing ? 'Remove' : 'Save'}</button>` }),
         removing ? 'Remove connection' : operation === 'rename' ? 'Rename connection' : 'Duplicate connection');
     }
 
@@ -483,7 +498,7 @@ window.RcloneEditor = {
       <label class="rclone-ack"><input id="raw-enabled" type="checkbox" disabled>Enable cloud backup</label>
       <div class="rclone-warning">Files in this destination will be overwritten or deleted as needed to match your server.</div>
       <label class="rclone-ack"><input id="raw-ack" type="checkbox" disabled>This destination is dedicated to this server’s backups.</label></form>`,
-        `${button('home','Cancel')}<button class="btn btn-primary btn-sm" id="raw-save" form="advanced-form" type="submit" disabled>Save configuration</button>`, 'Advanced rclone config');
+        footerActions({ cancel: 'home', primary: '<button class="btn btn-primary btn-sm" id="raw-save" form="advanced-form" type="submit" disabled>Save configuration</button>' }), 'Advanced rclone config');
       try {
         const result = await api('raw');
         if (view === 'advanced') {
@@ -919,9 +934,6 @@ window.RcloneEditor = {
           flow = draft.purpose === 'edit' ? 'edit' : draft.purpose === 'add' ? 'manage-add' : 'destination';
           if (draft.purpose === 'choose' && draft.name === state.destination?.name) path = state.destination.path;
           acceptDraft(draft);
-        } else if (screen === 'setup' && !destinationString() && !state.remotes.length && !state.configuration_error) {
-          view = 'providers';
-          render();
         } else render();
       } catch (err) {
         state ||= {

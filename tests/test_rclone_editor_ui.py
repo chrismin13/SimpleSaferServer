@@ -485,3 +485,109 @@ const source = fs.readFileSync('static/js/rclone_editor.js', 'utf8');
         text=True,
         timeout=15,
     )
+
+
+def test_editor_entry_naming_and_footer_roles_across_connection_steps():
+    node = shutil.which('node')
+    if node is None:
+        pytest.skip('Node.js is required for the rclone editor JavaScript harness.')
+    script = r"""
+const assert = require('assert/strict');
+const fs = require('fs');
+const vm = require('vm');
+const source = fs.readFileSync('static/js/rclone_editor.js', 'utf8');
+const controls = new Map();
+const context = {
+  window: {}, state: {}, providers: [], selectedProvider: '', search: '',
+  draft: { name: 'sss-backup', can_back: true }, path: '', folderData: [],
+  loadingFolders: false, folderVerified: true, folderError: '', flow: 'destination',
+  $: selector => controls.get(selector) || null,
+  overlay: { querySelector: () => null },
+  panel(body, actions) { context.body = body; context.actions = actions; },
+  renderHome() {},
+  render() { context.renderedView = context.view; },
+  acceptDraft(draft) { context.resumed = draft; },
+  destinationString: () => context.state.destination_text || '',
+  providerLabel: provider => provider.Description || provider.Name,
+  api: async action => action === 'state' ? context.state : [],
+};
+vm.createContext(context);
+vm.runInContext(source, context);
+for (const [start, end] of [
+  ['const esc =', 'let state,'],
+  ['const button =', 'const remoteLabel ='],
+  ['function uniqueName(', 'function connectionContext('],
+  ['function renderProviders(', 'function acceptDraft('],
+  ['function renderFolders(', 'function renderHome('],
+  ['async function init()', '\n    init();']
+]) vm.runInContext(source.slice(source.indexOf(start), source.indexOf(end)), context);
+controls.set('#provider-results', {});
+controls.set('#answer', { focus() {} });
+
+// Assert the rendered roles for each transition, including screens where
+// OAuth removes Next. A repeated click in that slot must never cancel a draft.
+function footer(expectedPrimary, expectedBack = true) {
+  const slots = [...context.actions.matchAll(/<div class="rclone-action-([^"]+)">([\s\S]*?)<\/div>/g)];
+  assert.deepEqual(slots.map(slot => slot[1]), ['cancel', 'back', 'primary']);
+  assert.match(slots[0][2], />Cancel<\/button>/);
+  assert.equal(slots[1][2].includes(' Back'), expectedBack);
+  assert.equal(slots[2][2].includes('<button'), expectedPrimary);
+  assert.ok(!slots[2][2].includes('Cancel'));
+}
+(async () => {
+  for (const screen of ['setup', 'backup']) {
+    context.screen = screen;
+    context.state = { remotes: [], destination_text: '' };
+    context.view = 'home';
+    await context.init();
+    assert.equal(context.renderedView, 'home');
+    assert.equal(context.resumed, undefined);
+
+    assert.equal(context.uniqueName(), 'sss-backup');
+    context.state.remotes = ['backup', 'sss-backup', 'sss-backup-2', 'sss-backup-4'].map(name => ({ name }));
+    context.renderProviders();
+    assert.match(context.body, /value="sss-backup-3"/);
+    assert.match(context.body, /<details class="rclone-help"><summary>Advanced options/);
+    footer(true, false);
+
+    context.draft.option = { Name: 'client_id', Type: 'string', Help: 'Client ID' };
+    context.renderQuestion();
+    footer(true);
+    context.draft.option = { Name: 'config_is_local', Type: 'bool' };
+    context.renderQuestion();
+    footer(false);
+    for (const oauth of [null, { url: 'https://example.invalid' }]) {
+      context.draft.oauth = oauth;
+      context.renderPending();
+      footer(false);
+    }
+    context.draft.option = { Name: 'config_token', Type: 'string' };
+    context.renderQuestion();
+    footer(true);
+    context.draft.option = null;
+    context.renderQuestion();
+    footer(false);
+    context.renderFolders();
+    footer(true, false);
+    context.renderReview();
+    footer(true);
+    context.flow = 'edit';
+    context.renderReview();
+    footer(true, false);
+    context.flow = 'destination';
+  }
+  // Reloading an intentionally opened draft still resumes that work.
+  context.state.draft = { name: 'existing', purpose: 'edit' };
+  await context.init();
+  assert.equal(context.resumed.name, 'existing');
+  assert.equal(context.flow, 'edit');
+})().catch(error => { console.error(error); process.exitCode = 1; });
+"""
+    subprocess.run(
+        [node, '-e', script],
+        cwd=Path(__file__).resolve().parents[1],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
