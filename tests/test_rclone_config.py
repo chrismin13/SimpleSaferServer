@@ -173,6 +173,35 @@ def test_create_folder_save_edit_and_reopen_durable_configuration(service):
         other.close()
 
 
+def test_editor_and_backup_resolve_the_same_destination_without_ambient_overrides(
+    service, tmp_path, monkeypatch
+):
+    chosen = tmp_path / 'chosen'
+    overridden = tmp_path / 'overridden'
+    source = tmp_path / 'source'
+    for directory in (chosen, overridden, source):
+        directory.mkdir()
+    (chosen / 'confirmed-folder').mkdir()
+    (overridden / 'unrelated-file.txt').write_text('keep this data')
+    (source / 'source-file.txt').write_text('backup data')
+    monkeypatch.setenv('RCLONE_CONFIG_BACKUP_REMOTE', str(overridden))
+    raw(service, f'[backup]\ntype = alias\nremote = {chosen}\n', 'backup:', True)
+    result = call(service, 'start', {'name': 'backup', 'purpose': 'choose'})
+    folders = call(service, 'folders', {**result, 'path': ''})['folders']
+    assert [folder['Name'] for folder in folders] == ['confirmed-folder']
+    call(service, 'cancel', result)
+
+    # Browsing and sync must resolve the same remote: a hidden environment
+    # override must never redirect deletion into an unconfirmed destination.
+    process = RcloneAdapter().sync(str(source), 'backup:', config_path=str(service.path))
+    _, stderr = process.communicate(timeout=10)
+    assert process.returncode == 0, stderr
+    assert [path.name for path in chosen.iterdir()] == ['source-file.txt']
+    assert (chosen / 'source-file.txt').read_text() == 'backup data'
+    assert [path.name for path in overridden.iterdir()] == ['unrelated-file.txt']
+    assert (overridden / 'unrelated-file.txt').read_text() == 'keep this data'
+
+
 @pytest.mark.parametrize('absolute', [False, True])
 @pytest.mark.parametrize('wrapped', [False, True])
 def test_folder_actions_use_the_same_destination_as_backup(

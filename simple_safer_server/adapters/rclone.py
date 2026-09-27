@@ -1,8 +1,18 @@
+import os
+
 from simple_safer_server.adapters.command_runner import PIPE, CommandRunner
 
 # Relative local paths can also be hidden behind alias/crypt remotes. Match the
 # production backup script's working directory for every rclone process, including RC.
 RCLONE_WORKING_DIRECTORY = "/"
+
+
+def managed_rclone_environment() -> dict[str, str]:
+    """Keep managed config authoritative while retaining unrelated process settings."""
+    # The editor and sync must resolve the same credentials and destination.
+    # Ambient remote/backend overrides can otherwise redirect a destructive sync.
+    # Callers may add their own private RC authentication after this filtering.
+    return {key: value for key, value in os.environ.items() if not key.startswith('RCLONE_')}
 
 
 class RcloneAdapter:
@@ -31,6 +41,7 @@ class RcloneAdapter:
             stderr=PIPE,
             text=True,
             bufsize=1,
+            env=managed_rclone_environment(),
             cwd=RCLONE_WORKING_DIRECTORY,
         )
 

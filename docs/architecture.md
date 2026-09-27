@@ -108,6 +108,11 @@ its working directory. This gives relative local destinations the same meaning d
 folder creation, and sync, including paths reached through alias/crypt connections. The script
 resolves its rclone executable, source, and config path before changing the subprocess directory;
 relative `SSS_*` overrides, helper paths, and executable lookup remain tied to the caller's directory.
+The Python adapters share `managed_rclone_environment()`, and the shell script applies equivalent
+filtering, to remove inherited `RCLONE_*` variables before launching rclone. Remote, backend, and
+credential overrides must not make sync resolve a different destination from the editor. Unrelated
+environment variables remain available; private RC credentials are added after filtering for each
+editor worker. The shell filter passes variable names, never their values, through command arguments.
 
 `config/providers` supplies the catalog. Non-interactive `config/create` and `config/update`
 return opaque state plus question metadata. Jobs are polled asynchronously. Back restores both

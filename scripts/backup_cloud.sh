@@ -117,8 +117,18 @@ if ! (
     /*) ;;
     *) MOUNT_POINT="$PWD/$MOUNT_POINT" ;;
   esac
+  # Match managed_rclone_environment() in the Python adapters: inherited
+  # RCLONE_* overrides must not redirect sync away from the confirmed folder.
+  # Enumerate the actual environment, including names containing punctuation,
+  # and pass only variable names to env; credential values never enter argv.
+  rclone_environment_args=()
+  while IFS= read -r -d '' rclone_environment_entry; do
+    case "$rclone_environment_entry" in
+      RCLONE_*=*) rclone_environment_args+=(-u "${rclone_environment_entry%%=*}") ;;
+    esac
+  done < <(env -0)
   cd / || exit 1
-  exec "$RCLONE_BIN" sync "$MOUNT_POINT" "$RCLONE_DIR" --config "$RCLONE_CONFIG_FILE" --create-empty-src-dirs -v "${extra_args[@]}"
+  exec env "${rclone_environment_args[@]}" "$RCLONE_BIN" sync "$MOUNT_POINT" "$RCLONE_DIR" --config "$RCLONE_CONFIG_FILE" --create-empty-src-dirs -v "${extra_args[@]}"
 ); then
   logs=$(journalctl -u backup_cloud.service -n 100 --no-pager 2>/dev/null || echo "Could not retrieve logs")
   send_email "BACKUP TO CLOUD FAILED - Unknown Error" "Backup failed. Recent logs:\n\n$logs"

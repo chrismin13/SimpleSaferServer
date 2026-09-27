@@ -2,7 +2,6 @@
 
 import base64
 import json
-import os
 import secrets
 import socket
 import time
@@ -11,7 +10,10 @@ import urllib.request
 from pathlib import Path
 
 from simple_safer_server.adapters.command_runner import DEVNULL, CommandRunner, TimeoutExpired
-from simple_safer_server.adapters.rclone import RCLONE_WORKING_DIRECTORY
+from simple_safer_server.adapters.rclone import (
+    RCLONE_WORKING_DIRECTORY,
+    managed_rclone_environment,
+)
 from simple_safer_server.services.file_persistence import atomic_write_text
 from simple_safer_server.web.problems import ValidationProblem
 
@@ -44,9 +46,9 @@ class RcloneWorker:
         self.url = f'http://127.0.0.1:{port}/'
         password = secrets.token_urlsafe(32)
         self.authorization = 'Basic ' + base64.b64encode(f'sss:{password}'.encode()).decode()
-        # Each editor must see exactly its private config. Inherited RCLONE_*
-        # overrides could silently select different credentials or destinations.
-        env = {key: value for key, value in os.environ.items() if not key.startswith('RCLONE_')}
+        # Private RC authentication belongs only to this worker; never inherit
+        # another listener's credentials from the server's environment.
+        env = managed_rclone_environment()
         env.update(RCLONE_RC_USER='sss', RCLONE_RC_PASS=password)
         self.process = self.runner.popen(
             [

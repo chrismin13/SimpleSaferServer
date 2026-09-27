@@ -108,8 +108,11 @@ credentials. The guided editor and backups use that same file:
 
 Other remote sections and unknown settings are retained. Rclone and INI serialization may
 normalize formatting and comments. Configs encrypted with rclone's config password must be
-decrypted using rclone before editing here. Environment-only remotes and inherited `RCLONE_*`
-overrides are not imported into the editor; put managed settings in the file.
+decrypted using rclone before editing here. The editor and both production and fake-mode backups
+ignore inherited `RCLONE_*` variables, including environment-only remotes, backend options, and
+credential overrides. Put managed settings in the file so browsing and sync use the same destination
+and credentials. Other environment variables remain available, including provider-specific variables
+used by a connection explicitly configured for environment authentication.
 Opening Advanced reloads the configuration, destination, and enable setting together. Changes
 saved elsewhere after that snapshot require reopening the editor before saving.
 
